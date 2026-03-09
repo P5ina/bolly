@@ -1,0 +1,9 @@
+port = 8080
+
+[llm]
+provider = "anthropic"
+model = "claude-sonnet-4-6"
+
+[llm.tokens]
+OPEN_AI = ""
+ANTHROPIC = ""

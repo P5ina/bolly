@@ -1,0 +1,64 @@
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
+
+use crate::domain::instance::InstanceSummary;
+
+pub fn count_directories(path: &Path) -> io::Result<usize> {
+    Ok(fs::read_dir(path)?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_dir())
+        .count())
+}
+
+pub fn read_instances(path: &Path) -> io::Result<Vec<InstanceSummary>> {
+    let mut instances = fs::read_dir(path)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .filter_map(|path| summarize_instance(&path))
+        .collect::<Vec<_>>();
+
+    instances.sort_by(|a, b| a.slug.cmp(&b.slug));
+    Ok(instances)
+}
+
+pub fn summarize_instance(path: &Path) -> Option<InstanceSummary> {
+    let slug = path.file_name()?.to_string_lossy().to_string();
+    let drops_dir = path.join("drops");
+    let memory_dir = path.join("memory");
+
+    Some(InstanceSummary {
+        slug,
+        soul_exists: path.join("soul.md").exists(),
+        drops_count: count_markdown_files(&drops_dir).unwrap_or(0),
+        has_memory: memory_dir.exists(),
+        has_skin: has_skin_file(path),
+    })
+}
+
+fn count_markdown_files(path: &Path) -> io::Result<usize> {
+    if !path.exists() {
+        return Ok(0);
+    }
+
+    Ok(fs::read_dir(path)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "md"))
+        .count())
+}
+
+fn has_skin_file(path: &Path) -> bool {
+    path.join("skin.glb").exists() || contains_glb_file(path)
+}
+
+fn contains_glb_file(path: &Path) -> bool {
+    fs::read_dir(path)
+        .ok()
+        .into_iter()
+        .flat_map(|entries| entries.filter_map(Result::ok))
+        .map(|entry| entry.path())
+        .any(|path: PathBuf| path.extension().is_some_and(|ext| ext == "glb"))
+}

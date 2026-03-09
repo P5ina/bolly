@@ -1,0 +1,30 @@
+use axum::{Json, Router, extract::State, routing::get};
+
+use crate::{
+    app::state::AppState,
+    domain::meta::{LlmSummary, ServerMetaResponse},
+    services::workspace,
+};
+
+pub fn router() -> Router<AppState> {
+    Router::new().route("/api/meta", get(server_meta))
+}
+
+async fn server_meta(State(state): State<AppState>) -> Json<ServerMetaResponse> {
+    let instances_dir = state.workspace_dir.join("instances");
+    let skills_dir = state.workspace_dir.join("skills");
+
+    Json(ServerMetaResponse {
+        app: "personality",
+        port: state.config.port,
+        workspace_dir: state.workspace_dir.display().to_string(),
+        instances_count: workspace::count_directories(&instances_dir).unwrap_or(0),
+        skills_count: workspace::count_directories(&skills_dir).unwrap_or(0),
+        llm: LlmSummary {
+            provider: state.config.llm.provider,
+            model: state.config.llm.model.clone(),
+            openai_configured: !state.config.llm.tokens.open_ai.trim().is_empty(),
+            anthropic_configured: !state.config.llm.tokens.anthropic.trim().is_empty(),
+        },
+    })
+}
