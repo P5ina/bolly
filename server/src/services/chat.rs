@@ -6,21 +6,29 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use rig::providers::openai;
+
+use rig::tool::ToolDyn;
+
 use crate::{
     domain::chat::{ChatMessage, ChatRequest, ChatResponse, ChatRole},
     domain::instance::InstanceSummary,
     services::{
         llm::{self, LlmBackend},
+        memory,
+        tools::{EditSoulTool, ListFilesTool, ReadFileTool, WriteFileTool},
         workspace,
     },
 };
 
 static MESSAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+
 pub async fn append_chat_turn(
     workspace_dir: &Path,
     request: ChatRequest,
     llm: Option<&LlmBackend>,
+    embedding_model: Option<&openai::EmbeddingModel>,
 ) -> io::Result<ChatResponse> {
     let instance_slug = sanitize_slug(&request.instance_slug);
     if instance_slug.is_empty() {
@@ -49,12 +57,27 @@ pub async fn append_chat_turn(
 
     // Generate reply via LLM or fall back to stub
     let reply = if let Some(backend) = llm {
-        let system_prompt = llm::load_system_prompt(workspace_dir, &instance_slug);
+        let base_prompt = llm::load_system_prompt(workspace_dir, &instance_slug);
+        let memory_prompt = memory::retrieve_and_format(
+            workspace_dir,
+            &instance_slug,
+            &content,
+            embedding_model,
+        )
+        .await;
+        let system_prompt = if memory_prompt.is_empty() {
+            base_prompt
+        } else {
+            format!("{base_prompt}\n\n{memory_prompt}")
+        };
+
         let existing = load_messages_vec(&messages_path(workspace_dir, &instance_slug))?;
         let history = llm::to_rig_messages(&existing);
 
+        let tools = build_instance_tools(workspace_dir, &instance_slug);
+
         backend
-            .chat(&system_prompt, &content, history)
+            .chat_with_tools(&system_prompt, &content, history, tools)
             .await
             .unwrap_or_else(|e| {
                 log::warn!("LLM call failed, using stub: {e}");
@@ -75,6 +98,22 @@ pub async fn append_chat_turn(
     messages.push(user_message.clone());
     messages.push(assistant_message.clone());
     save_messages(workspace_dir, &instance_slug, &messages)?;
+
+    // Spawn background memory extraction
+    if let Some(backend) = llm {
+        let backend = backend.clone();
+        let emb = embedding_model.cloned();
+        let ws = workspace_dir.to_path_buf();
+        let slug = instance_slug.clone();
+        let recent = vec![user_message.clone(), assistant_message.clone()];
+        tokio::spawn(async move {
+            if let Err(e) =
+                memory::extract_and_store(&ws, &slug, &recent, &backend, emb.as_ref()).await
+            {
+                log::warn!("memory extraction failed: {e}");
+            }
+        });
+    }
 
     Ok(ChatResponse {
         instance_slug,
@@ -174,4 +213,13 @@ fn unix_millis() -> u128 {
         .duration_since(UNIX_EPOCH)
         .expect("system time should be after unix epoch")
         .as_millis()
+}
+
+fn build_instance_tools(workspace_dir: &Path, instance_slug: &str) -> Vec<Box<dyn ToolDyn>> {
+    vec![
+        Box::new(EditSoulTool::new(workspace_dir, instance_slug)),
+        Box::new(ReadFileTool::new(workspace_dir, instance_slug)),
+        Box::new(WriteFileTool::new(workspace_dir, instance_slug)),
+        Box::new(ListFilesTool::new(workspace_dir, instance_slug)),
+    ]
 }

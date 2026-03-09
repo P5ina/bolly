@@ -9,6 +9,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::instances::router())
         .merge(routes::chat::router())
         .merge(routes::config::router())
+        .merge(routes::soul::router())
         .merge(routes::ws::router())
         .with_state(state)
 }

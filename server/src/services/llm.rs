@@ -3,6 +3,7 @@ use std::path::Path;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
 use rig::providers::{anthropic, openai};
+use rig::tool::ToolDyn;
 
 use crate::config::{Config, LlmProvider};
 use crate::domain::chat::{ChatMessage, ChatRole};
@@ -51,7 +52,7 @@ impl LlmBackend {
                     .llm
                     .model
                     .clone()
-                    .unwrap_or_else(|| "gpt-4o".to_string());
+                    .unwrap_or_else(|| "gpt-5.4".to_string());
                 Some(LlmBackend::OpenAI { client, model })
             }
         }
@@ -74,14 +75,46 @@ impl LlmBackend {
             }
         }
     }
+
+    pub async fn chat_with_tools(
+        &self,
+        system_prompt: &str,
+        prompt: &str,
+        history: Vec<Message>,
+        tools: Vec<Box<dyn ToolDyn>>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        if tools.is_empty() {
+            return self.chat(system_prompt, prompt, history).await;
+        }
+
+        match self {
+            LlmBackend::Anthropic { client, model } => {
+                let agent = client
+                    .agent(model)
+                    .preamble(system_prompt)
+                    .tools(tools)
+                    .build();
+                Ok(agent.chat(prompt, history).await?)
+            }
+            LlmBackend::OpenAI { client, model } => {
+                let agent = client
+                    .agent(model)
+                    .preamble(system_prompt)
+                    .tools(tools)
+                    .build();
+                Ok(agent.chat(prompt, history).await?)
+            }
+        }
+    }
 }
 
 pub fn load_system_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
-    let soul_path = workspace_dir
-        .join("instances")
-        .join(instance_slug)
-        .join("soul.md");
-    std::fs::read_to_string(soul_path).unwrap_or_else(|_| DEFAULT_ONBOARDING_PROMPT.to_string())
+    let soul = super::soul::read_soul(workspace_dir, instance_slug);
+    if soul.exists && !soul.content.trim().is_empty() {
+        soul.content
+    } else {
+        DEFAULT_ONBOARDING_PROMPT.to_string()
+    }
 }
 
 pub fn to_rig_messages(messages: &[ChatMessage]) -> Vec<Message> {

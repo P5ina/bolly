@@ -33,7 +33,7 @@ pub fn summarize_instance(path: &Path) -> Option<InstanceSummary> {
         slug,
         soul_exists: path.join("soul.md").exists(),
         drops_count: count_markdown_files(&drops_dir).unwrap_or(0),
-        has_memory: memory_dir.exists(),
+        has_memory: memory_dir.join("facts.md").exists(),
         has_skin: has_skin_file(path),
     })
 }

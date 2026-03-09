@@ -3,6 +3,8 @@ import type {
 	ChatResponse,
 	InstanceSummary,
 	ServerMeta,
+	Soul,
+	SoulTemplate,
 	UpdateLlmRequest,
 } from "./types.js";
 
@@ -46,6 +48,33 @@ export function updateLlmConfig(req: UpdateLlmRequest): Promise<void> {
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(req),
 	});
+}
+
+export function fetchSoul(slug: string): Promise<Soul> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/soul`);
+}
+
+export function updateSoul(slug: string, content: string): Promise<Soul> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/soul`, {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ content }),
+	});
+}
+
+export function applySoulTemplate(
+	slug: string,
+	templateId: string,
+): Promise<Soul> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/soul/apply-template`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ template_id: templateId }),
+	});
+}
+
+export function fetchSoulTemplates(): Promise<SoulTemplate[]> {
+	return json("/api/soul/templates");
 }
 
 export function createWebSocket(): WebSocket {

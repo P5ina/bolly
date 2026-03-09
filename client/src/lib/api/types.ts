@@ -47,6 +47,18 @@ export interface UpdateLlmRequest {
 	api_key: string;
 }
 
+export interface Soul {
+	content: string;
+	exists: boolean;
+}
+
+export interface SoulTemplate {
+	id: string;
+	name: string;
+	description: string;
+	content: string;
+}
+
 export type ServerEvent =
 	| {
 			type: "chat_message_created";

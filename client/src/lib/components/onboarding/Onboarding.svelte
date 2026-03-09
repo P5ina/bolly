@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { goto } from "$app/navigation";
-	import { sendMessage, updateLlmConfig } from "$lib/api/client.js";
+	import {
+		sendMessage,
+		updateLlmConfig,
+		fetchSoulTemplates,
+		applySoulTemplate,
+	} from "$lib/api/client.js";
+	import type { SoulTemplate } from "$lib/api/types.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 
 	const instances = getInstances();
@@ -10,10 +16,13 @@
 		| "waking"
 		| "greeting"
 		| "picking-provider"
+		| "picking-model"
 		| "waiting-key"
 		| "testing"
+		| "picking-language"
 		| "asking-name"
 		| "waiting-name"
+		| "picking-soul"
 		| "confirming"
 		| "asking-first"
 		| "waiting-first"
@@ -29,10 +38,41 @@
 	let apiKeyValue = $state("");
 	let keyInput: HTMLInputElement | undefined = $state();
 	let chosenProvider = $state<"anthropic" | "openai" | null>(null);
+	let chosenModel = $state<string | null>(null);
+	let chosenLanguage = $state("english");
 	let keyError = $state("");
+	let soulTemplates = $state<SoulTemplate[]>([]);
 
 	// visible lines of companion text, each with typewriter state
 	let lines = $state<{ text: string; revealed: string; done: boolean }[]>([]);
+
+	const MODELS: Record<string, { id: string; label: string; note: string }[]> = {
+		anthropic: [
+			{ id: "claude-sonnet-4-6", label: "sonnet 4.6", note: "balanced" },
+			{ id: "claude-opus-4-6", label: "opus 4.6", note: "powerful" },
+			{ id: "claude-haiku-4-5", label: "haiku 4.5", note: "fast" },
+		],
+		openai: [
+			{ id: "gpt-4o", label: "gpt-4o", note: "capable" },
+			{ id: "gpt-4o-mini", label: "gpt-4o mini", note: "light" },
+			{ id: "o3-mini", label: "o3 mini", note: "reasoning" },
+		],
+	};
+
+	const LANGUAGES = [
+		{ id: "english", label: "English" },
+		{ id: "russian", label: "Русский" },
+		{ id: "spanish", label: "Español" },
+		{ id: "french", label: "Français" },
+		{ id: "german", label: "Deutsch" },
+		{ id: "japanese", label: "日本語" },
+		{ id: "chinese", label: "中文" },
+		{ id: "korean", label: "한국어" },
+		{ id: "portuguese", label: "Português" },
+		{ id: "italian", label: "Italiano" },
+		{ id: "turkish", label: "Türkçe" },
+		{ id: "arabic", label: "العربية" },
+	];
 
 	// -- typewriter engine --
 	function typewrite(text: string, speed = 38): Promise<void> {
@@ -52,7 +92,6 @@
 				lines[idx].revealed += char;
 				i++;
 
-				// natural pauses on punctuation
 				let delay = speed;
 				if (char === "." || char === "?" || char === "!") delay = speed * 8;
 				else if (char === ",") delay = speed * 3;
@@ -79,7 +118,6 @@
 
 	// -- orchestrator --
 	async function runSequence() {
-		// waking glow
 		await pause(800);
 
 		stage = "greeting";
@@ -90,7 +128,6 @@
 		await typewrite("this is your space.");
 		await pause(800);
 
-		// config setup
 		await typewrite("before we begin \u2014 who should i think with?");
 		stage = "picking-provider";
 	}
@@ -101,10 +138,21 @@
 	}
 
 	async function continueAfterProvider() {
-		stage = "greeting"; // hide picker while typing
+		stage = "greeting";
 		await pause(300);
 		const name = chosenProvider === "anthropic" ? "anthropic" : "openai";
 		await typewrite(`${name}. good choice.`);
+		await pause(400);
+		await typewrite("which mind should i wear?");
+		stage = "picking-model";
+	}
+
+	async function pickModel(modelId: string) {
+		chosenModel = modelId;
+		stage = "greeting";
+		await pause(300);
+		const model = MODELS[chosenProvider!]?.find((m) => m.id === modelId);
+		await typewrite(`${model?.label ?? modelId}. noted.`);
 		await pause(400);
 		await typewrite("paste your api key and i\u2019ll wake up.");
 		stage = "waiting-key";
@@ -122,6 +170,7 @@
 		try {
 			await updateLlmConfig({
 				provider: chosenProvider,
+				model: chosenModel ?? undefined,
 				api_key: key,
 			});
 		} catch (err) {
@@ -136,53 +185,109 @@
 		await pause(300);
 		await typewrite("i can feel it. i\u2019m alive now.");
 		await pause(600);
-		stage = "asking-name";
-		await typewrite("what should i call you?");
-		stage = "waiting-name";
-
-		await pause(100);
-		nameInput?.focus();
+		await askLanguage();
 	}
 
 	async function skipConfig() {
-		stage = "greeting"; // hide picker
+		stage = "greeting";
 		await pause(300);
 		await typewrite("alright, we\u2019ll figure that out later.");
+		await pause(600);
+		await askLanguage();
+	}
+
+	async function askLanguage() {
+		await typewrite("what language do you think in?");
+		stage = "picking-language";
+	}
+
+	async function pickLanguage(langId: string) {
+		chosenLanguage = langId;
+		localStorage.setItem("personality:language", langId);
+		stage = "greeting";
+		await pause(300);
+		const lang = LANGUAGES.find((l) => l.id === langId);
+		await typewrite(`${lang?.label ?? langId}. beautiful.`);
 		await pause(600);
 
 		stage = "asking-name";
 		await typewrite("what should i call you?");
 		stage = "waiting-name";
-
 		await pause(100);
 		nameInput?.focus();
 	}
 
 	async function submitName() {
-		const slug = slugify(nameValue);
-		if (!slug) return;
-		chosenSlug = slug;
+		const name = nameValue.trim();
+		if (!name) return;
+		chosenSlug = slugify(name);
+		if (!chosenSlug) return;
+		localStorage.setItem("personality:preferredName", name);
 
+		stage = "greeting";
+		await pause(300);
+		await typewrite(`${name}. nice.`);
+		await pause(500);
+
+		// Load soul templates
+		try {
+			soulTemplates = await fetchSoulTemplates();
+		} catch {
+			soulTemplates = [];
+		}
+
+		if (soulTemplates.length > 0) {
+			await typewrite("who should i be for you?");
+			stage = "picking-soul";
+		} else {
+			await continueAfterSoul();
+		}
+	}
+
+	async function pickSoul(template: SoulTemplate) {
+		stage = "greeting";
+		await pause(200);
+
+		if (template.id !== "custom") {
+			try {
+				await applySoulTemplate(chosenSlug, template.id);
+			} catch {
+				// will use default prompt
+			}
+			await typewrite(`${template.name}. i can be that.`);
+		} else {
+			await typewrite("a blank canvas. you can shape me later.");
+		}
+
+		await pause(500);
+		await continueAfterSoul();
+	}
+
+	async function continueAfterSoul() {
 		stage = "confirming";
 		await pause(300);
 
-		// If LLM is configured, let the AI respond to the name
+		const name = nameValue.trim();
+		const langLabel =
+			LANGUAGES.find((l) => l.id === chosenLanguage)?.label ?? chosenLanguage;
+		const setupMessage = `my name is ${name}. please always speak to me in ${langLabel}.`;
+
 		if (chosenProvider) {
 			try {
-				const res = await sendMessage(chosenSlug, `my name is ${nameValue.trim()}`);
+				const res = await sendMessage(chosenSlug, setupMessage);
 				const aiReply = res.messages.find((m) => m.role === "assistant");
 				if (aiReply) {
 					await typewrite(aiReply.content);
 				} else {
-					await typewrite(`${nameValue.trim()}. i like that.`);
+					await typewrite("i\u2019m here.");
 				}
 			} catch {
-				await typewrite(`${nameValue.trim()}. i like that.`);
+				await typewrite("i\u2019m here.");
 			}
 		} else {
-			await typewrite(`${nameValue.trim()}.`);
-			await pause(500);
-			await typewrite("i like that.");
+			await typewrite(
+				"i\u2019m here. configure a language model later to wake me fully.",
+			);
 		}
 
 		await pause(600);
@@ -190,7 +295,6 @@
 		stage = "asking-first";
 		await typewrite("tell me something \u2014 anything on your mind right now.");
 		stage = "waiting-first";
-
 		await pause(100);
 		messageInput?.focus();
 	}
@@ -206,7 +310,6 @@
 			const res = await sendMessage(chosenSlug, content);
 			await instances.refresh();
 
-			// If LLM is configured, typewrite the AI response
 			if (chosenProvider) {
 				const aiReply = res.messages.find((m) => m.role === "assistant");
 				if (aiReply) {
@@ -276,7 +379,6 @@
 					style="animation-delay: {i * 50}ms"
 				>
 					{#if i === 0 && line.done}
-						<!-- first line is the big greeting -->
 						<p class="font-display text-4xl font-bold tracking-tight text-foreground">
 							{line.revealed}
 						</p>
@@ -303,15 +405,15 @@
 				<div class="flex gap-3">
 					<button
 						onclick={() => pickProvider("anthropic")}
-						class="flex-1 rounded-xl border border-warm/20 bg-warm/5 px-5 py-3.5 font-display text-sm text-foreground transition-all duration-300 hover:border-warm/40 hover:bg-warm/10 hover:shadow-[0_0_30px_-5px] hover:shadow-warm/15"
+						class="onboard-pill flex-1"
 					>
-						anthropic
+						<span class="font-display text-sm">anthropic</span>
 					</button>
 					<button
 						onclick={() => pickProvider("openai")}
-						class="flex-1 rounded-xl border border-warm/20 bg-warm/5 px-5 py-3.5 font-display text-sm text-foreground transition-all duration-300 hover:border-warm/40 hover:bg-warm/10 hover:shadow-[0_0_30px_-5px] hover:shadow-warm/15"
+						class="onboard-pill flex-1"
 					>
-						openai
+						<span class="font-display text-sm">openai</span>
 					</button>
 				</div>
 				<button
@@ -320,6 +422,23 @@
 				>
 					skip for now
 				</button>
+			</div>
+		{/if}
+
+		<!-- model picker -->
+		{#if stage === "picking-model" && chosenProvider}
+			<div class="onboard-input-enter">
+				<div class="grid grid-cols-3 gap-2.5">
+					{#each MODELS[chosenProvider] as model}
+						<button
+							onclick={() => pickModel(model.id)}
+							class="onboard-pill flex-col gap-0.5 py-3.5"
+						>
+							<span class="font-display text-sm">{model.label}</span>
+							<span class="text-[10px] text-muted-foreground/40">{model.note}</span>
+						</button>
+					{/each}
+				</div>
 			</div>
 		{/if}
 
@@ -333,13 +452,13 @@
 						onkeydown={handleKeyKeydown}
 						type="password"
 						placeholder="sk-..."
-						class="w-full rounded-xl border border-warm/20 bg-warm/5 px-5 py-3.5 font-mono text-sm text-foreground placeholder:text-muted-foreground/25 outline-none transition-all duration-300 focus:border-warm/40 focus:shadow-[0_0_30px_-5px] focus:shadow-warm/15"
+						class="onboard-text-input font-mono text-sm"
 					/>
 					{#if apiKeyValue.trim()}
 						<button
 							onclick={submitKey}
 							aria-label="Submit key"
-							class="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-lg bg-warm text-warm-foreground transition-all hover:bg-warm/90"
+							class="onboard-submit-btn"
 						>
 							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
 						</button>
@@ -359,6 +478,23 @@
 			</div>
 		{/if}
 
+		<!-- language picker -->
+		{#if stage === "picking-language"}
+			<div class="onboard-input-enter">
+				<div class="grid grid-cols-4 gap-2">
+					{#each LANGUAGES as lang}
+						<button
+							onclick={() => pickLanguage(lang.id)}
+							class="onboard-pill py-2.5 text-sm"
+							class:onboard-pill-active={chosenLanguage === lang.id}
+						>
+							{lang.label}
+						</button>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
 		<!-- name input -->
 		{#if stage === "waiting-name"}
 			<div class="onboard-input-enter">
@@ -368,17 +504,36 @@
 						bind:value={nameValue}
 						onkeydown={handleNameKeydown}
 						placeholder="your name"
-						class="w-full rounded-xl border border-warm/20 bg-warm/5 px-5 py-3.5 font-display text-lg text-foreground placeholder:text-muted-foreground/25 outline-none transition-all duration-300 focus:border-warm/40 focus:shadow-[0_0_30px_-5px] focus:shadow-warm/15"
+						class="onboard-text-input font-display text-lg"
 					/>
 					{#if nameValue.trim()}
 						<button
 							onclick={submitName}
 							aria-label="Continue"
-							class="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-lg bg-warm text-warm-foreground transition-all hover:bg-warm/90"
+							class="onboard-submit-btn"
 						>
 							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
 						</button>
 					{/if}
+				</div>
+			</div>
+		{/if}
+
+		<!-- soul picker -->
+		{#if stage === "picking-soul"}
+			<div class="onboard-input-enter">
+				<div class="grid grid-cols-2 gap-2.5">
+					{#each soulTemplates as template (template.id)}
+						<button
+							onclick={() => pickSoul(template)}
+							class="onboard-pill flex-col items-start gap-1 py-3.5 px-4 text-left"
+						>
+							<span class="font-display text-sm">{template.name}</span>
+							<span class="text-[10px] leading-tight text-muted-foreground/40">
+								{template.description}
+							</span>
+						</button>
+					{/each}
 				</div>
 			</div>
 		{/if}
@@ -536,5 +691,68 @@
 	}
 	@keyframes spin {
 		to { transform: rotate(360deg); }
+	}
+
+	/* shared pill button */
+	.onboard-pill {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 0.75rem;
+		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		background: oklch(0.78 0.12 75 / 4%);
+		padding: 0.75rem 1rem;
+		color: var(--foreground);
+		transition: all 0.3s ease;
+		cursor: pointer;
+	}
+	.onboard-pill:hover {
+		border-color: oklch(0.78 0.12 75 / 35%);
+		background: oklch(0.78 0.12 75 / 10%);
+		box-shadow: 0 0 30px -5px oklch(0.78 0.12 75 / 12%);
+	}
+	.onboard-pill-active {
+		border-color: oklch(0.78 0.12 75 / 50%);
+		background: oklch(0.78 0.12 75 / 15%);
+	}
+
+	/* shared text input */
+	.onboard-text-input {
+		width: 100%;
+		border-radius: 0.75rem;
+		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		background: oklch(0.78 0.12 75 / 4%);
+		padding: 0.875rem 1.25rem;
+		color: var(--foreground);
+		outline: none;
+		transition: all 0.3s ease;
+	}
+	.onboard-text-input::placeholder {
+		color: oklch(var(--muted-foreground) / 0.25);
+		opacity: 0.25;
+	}
+	.onboard-text-input:focus {
+		border-color: oklch(0.78 0.12 75 / 35%);
+		box-shadow: 0 0 30px -5px oklch(0.78 0.12 75 / 12%);
+	}
+
+	/* shared submit button inside inputs */
+	.onboard-submit-btn {
+		position: absolute;
+		right: 0.5rem;
+		top: 50%;
+		transform: translateY(-50%);
+		display: flex;
+		height: 2rem;
+		width: 2rem;
+		align-items: center;
+		justify-content: center;
+		border-radius: 0.5rem;
+		background: var(--warm);
+		color: var(--warm-foreground);
+		transition: all 0.2s ease;
+	}
+	.onboard-submit-btn:hover {
+		opacity: 0.9;
 	}
 </style>

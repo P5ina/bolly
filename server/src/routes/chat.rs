@@ -27,7 +27,9 @@ async fn post_chat(
 ) -> Result<Json<ChatResponse>, (StatusCode, String)> {
     let llm_guard = state.llm.read().await;
     let llm_ref = llm_guard.as_ref();
-    let response = chat::append_chat_turn(&state.workspace_dir, request, llm_ref)
+    let emb_guard = state.embedding_model.read().await;
+    let emb_ref = emb_guard.as_ref();
+    let response = chat::append_chat_turn(&state.workspace_dir, request, llm_ref, emb_ref)
         .await
         .map_err(map_chat_error)?;
 

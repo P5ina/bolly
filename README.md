@@ -186,7 +186,7 @@ topics = ["game dev", "rust", "shaders", "your current projects"]
 ## Roadmap
 
 - [x] Core architecture
-- [ ] Basic chat with persistent memory
+- [x] Basic chat with persistent memory
 - [ ] Soul + personality system
 - [ ] Drops engine
 - [ ] Web UI + PWA
