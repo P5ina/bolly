@@ -18,6 +18,7 @@ use crate::{
     services::{
         llm::{self, LlmBackend},
         memory,
+        rhythm,
         tools::{
             self, CreateDropTool, CreateTaskTool, CurrentTimeTool, EditSoulTool, GetMoodTool,
             GetProjectStateTool, InstallPackageTool, JournalTool, ListFilesTool, ListTasksTool,
@@ -110,6 +111,7 @@ pub async fn run_single_turn(
 
     let journal_prompt = load_recent_journal(workspace_dir, &instance_slug);
     let mood_prompt = load_mood_prompt(workspace_dir, &instance_slug);
+    let rhythm_prompt = load_rhythm_prompt(workspace_dir, &instance_slug);
 
     let mut system_prompt = base_prompt;
     if !memory_prompt.is_empty() {
@@ -120,6 +122,9 @@ pub async fn run_single_turn(
     }
     if !mood_prompt.is_empty() {
         system_prompt = format!("{system_prompt}\n\n{mood_prompt}");
+    }
+    if !rhythm_prompt.is_empty() {
+        system_prompt = format!("{system_prompt}\n\n{rhythm_prompt}");
     }
 
     let autonomy_prompt = load_autonomy_prompt(workspace_dir, &instance_slug);
@@ -866,6 +871,14 @@ respond ONLY with those two lines."#
     tools::save_mood_state(&instance_dir, &mood);
     // Don't broadcast MoodUpdated here — this only updates user sentiment,
     // not the companion's mood. The set_mood tool handles companion mood changes.
+}
+
+/// Load rhythm insights for injection into the chat system prompt.
+/// Uses the last persisted rhythm (recomputed during heartbeat).
+fn load_rhythm_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
+    let instance_dir = workspace_dir.join("instances").join(instance_slug);
+    let rhythm_data = rhythm::load_rhythm(&instance_dir);
+    rhythm::build_rhythm_insights(workspace_dir, instance_slug, &rhythm_data)
 }
 
 fn build_instance_tools(

@@ -16,7 +16,7 @@ use crate::domain::chat::{ChatMessage, ChatRole};
 use crate::domain::events::ServerEvent;
 use crate::domain::mood::MoodState;
 use crate::domain::thought::Thought;
-use crate::services::{drops, llm::LlmBackend, thoughts};
+use crate::services::{drops, llm::LlmBackend, rhythm, thoughts};
 use crate::services::tools::{load_mood_state, save_mood_state, ALLOWED_MOODS};
 
 static HEARTBEAT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -120,6 +120,11 @@ async fn heartbeat_instance(
         .join("messages.json");
     let last_messages = load_tail_messages(&messages_path, 6);
 
+    // Recompute and persist interaction rhythm
+    let rhythm_data = rhythm::recompute_rhythm(workspace_dir, slug);
+    rhythm::save_rhythm(instance_dir, &rhythm_data);
+    let rhythm_insights = rhythm::build_rhythm_insights(workspace_dir, slug, &rhythm_data);
+
     // Build the reflection prompt
     let reflection = build_reflection_prompt(
         &mood,
@@ -127,6 +132,7 @@ async fn heartbeat_instance(
         &journal_context,
         &facts,
         &last_messages,
+        &rhythm_insights,
     );
 
     let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
@@ -195,6 +201,7 @@ fn build_reflection_prompt(
     journal: &str,
     facts: &str,
     last_messages: &str,
+    rhythm_insights: &str,
 ) -> String {
     let now = Utc::now().format("%Y-%m-%d %H:%M UTC").to_string();
     let mut prompt = format!("current time: {now}\n\n");
@@ -264,6 +271,12 @@ fn build_reflection_prompt(
     if !journal.is_empty() {
         prompt.push_str("your recent journal:\n");
         prompt.push_str(journal);
+        prompt.push('\n');
+    }
+
+    // Rhythm insights
+    if !rhythm_insights.is_empty() {
+        prompt.push_str(rhythm_insights);
         prompt.push('\n');
     }
 
