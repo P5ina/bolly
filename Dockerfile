@@ -8,7 +8,7 @@ COPY client/ .
 RUN pnpm build
 
 # Stage 2: Build server
-FROM rust:latest AS server-build
+FROM rust:bookworm AS server-build
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY server/ server/
