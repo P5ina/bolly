@@ -2,7 +2,15 @@
 	import type { ChatMessage } from "$lib/api/types.js";
 	import { Marked } from "marked";
 
-	let { message, index = 0 }: { message: ChatMessage; index?: number } = $props();
+	let {
+		message,
+		index = 0,
+		prevMessage,
+	}: {
+		message: ChatMessage;
+		index?: number;
+		prevMessage?: ChatMessage;
+	} = $props();
 
 	const isUser = $derived(message.role === "user");
 	const time = $derived(() => {
@@ -10,6 +18,15 @@
 		if (Number.isNaN(ms)) return "";
 		const d = new Date(ms);
 		return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+	});
+
+	// Consecutive companion messages within 30s — collapse UI
+	const isConsecutive = $derived(() => {
+		if (!prevMessage) return false;
+		if (prevMessage.role !== message.role) return false;
+		if (isUser) return false;
+		const gap = Math.abs(Number(message.created_at) - Number(prevMessage.created_at));
+		return gap < 30_000;
 	});
 
 	const marked = new Marked({
@@ -24,6 +41,7 @@
 	class="msg"
 	class:msg-user={isUser}
 	class:msg-companion={!isUser}
+	class:msg-consecutive={isConsecutive()}
 	style="animation-delay: {Math.min(index * 20, 300)}ms"
 >
 	{#if isUser}
@@ -35,15 +53,22 @@
 			{@html html}
 		</div>
 	{/if}
-	<span class="msg-time" class:msg-time-right={isUser}>
-		{time()}
-	</span>
+	{#if !isConsecutive()}
+		<span class="msg-time" class:msg-time-right={isUser}>
+			{time()}
+		</span>
+	{/if}
 </div>
 
 <style>
 	.msg {
 		padding: 0.375rem 0;
 		animation: msg-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	/* Consecutive companion messages — tight spacing, no gap */
+	.msg-consecutive {
+		padding: 0.0625rem 0;
 	}
 
 	@keyframes msg-enter {

@@ -140,17 +140,21 @@ async fn run_agent_loop(state: AppState, instance_slug: String, cancel: Cancella
         state.reload_config().await;
 
         match result {
-            Ok(assistant_message) => {
-                // Broadcast the assistant message
-                let _ = state.events.send(ServerEvent::ChatMessageCreated {
-                    instance_slug: instance_slug.clone(),
-                    message: assistant_message.clone(),
-                });
+            Ok(assistant_messages) => {
+                // Broadcast each message chunk separately
+                for msg in &assistant_messages {
+                    let _ = state.events.send(ServerEvent::ChatMessageCreated {
+                        instance_slug: instance_slug.clone(),
+                        message: msg.clone(),
+                    });
+                }
 
-                // Check if the response ends with a continuation marker
-                // If the LLM used tools (rig handled up to 8 sub-turns) and the response
-                // suggests more work, continue. Otherwise, stop.
-                if !should_continue(&assistant_message.content) {
+                // Check if the last message suggests more work is needed
+                let last_content = assistant_messages
+                    .last()
+                    .map(|m| m.content.as_str())
+                    .unwrap_or("");
+                if !should_continue(last_content) {
                     break;
                 }
 

@@ -116,7 +116,7 @@ impl ReadFileTool {
 /// Arguments for read_file tool.
 #[derive(Deserialize, JsonSchema)]
 pub struct ReadFileArgs {
-    /// Relative path within the instance directory (e.g. "soul.md", "drops/idea.md", "memory/facts.md").
+    /// File path. Can be relative to instance directory (e.g. "soul.md") or absolute (e.g. "/Users/timur/projects/app/src/main.rs").
     pub path: String,
 }
 
@@ -129,24 +129,30 @@ impl Tool for ReadFileTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "read_file".into(),
-            description: "Read a file from your instance workspace. The path is relative to \
-                your instance directory."
+            description: "Read a file. Use a relative path for your instance workspace \
+                or an absolute path (starting with /) to read any file on the system."
                 .into(),
             parameters: openai_schema::<ReadFileArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let target = self.instance_dir.join(&args.path);
+        let target = if args.path.starts_with('/') {
+            PathBuf::from(&args.path)
+        } else {
+            self.instance_dir.join(&args.path)
+        };
 
-        // prevent path traversal
-        if !target.starts_with(&self.instance_dir) {
-            return Err(ToolExecError(
-                "path must stay within instance directory".into(),
-            ));
+        let content = fs::read_to_string(&target)
+            .map_err(|e| ToolExecError(format!("{}: {e}", target.display())))?;
+
+        // Truncate very large files
+        if content.len() > 50_000 {
+            let truncated: String = content.chars().take(50_000).collect();
+            Ok(format!("{truncated}\n\n...(file truncated at 50000 chars, total: {} chars)", content.len()))
+        } else {
+            Ok(content)
         }
-
-        fs::read_to_string(&target).map_err(|e| ToolExecError(format!("{}: {e}", args.path)))
     }
 }
 
@@ -169,7 +175,7 @@ impl WriteFileTool {
 /// Arguments for write_file tool.
 #[derive(Deserialize, JsonSchema)]
 pub struct WriteFileArgs {
-    /// Relative path within the instance directory (e.g. "drops/new-idea.md"). Parent directories are created automatically.
+    /// File path. Relative for instance workspace (e.g. "drops/idea.md") or absolute (e.g. "/Users/timur/projects/app/src/main.rs"). Parent directories are created automatically.
     pub path: String,
     /// The full content to write to the file.
     pub content: String,
@@ -184,23 +190,20 @@ impl Tool for WriteFileTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "write_file".into(),
-            description: "Write or overwrite a file in your instance workspace. The path is \
-                relative to your instance directory. Parent directories will be created \
-                automatically."
+            description: "Write or overwrite a file. Use a relative path for your instance \
+                workspace or an absolute path (starting with /) for any file on the system. \
+                Parent directories will be created automatically."
                 .into(),
             parameters: openai_schema::<WriteFileArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let target = self.instance_dir.join(&args.path);
-
-        // prevent path traversal
-        if !target.starts_with(&self.instance_dir) {
-            return Err(ToolExecError(
-                "path must stay within instance directory".into(),
-            ));
-        }
+        let target = if args.path.starts_with('/') {
+            PathBuf::from(&args.path)
+        } else {
+            self.instance_dir.join(&args.path)
+        };
 
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent).map_err(|e| ToolExecError(e.to_string()))?;
@@ -234,7 +237,7 @@ impl ListFilesTool {
 /// Arguments for list_files tool.
 #[derive(Deserialize, JsonSchema)]
 pub struct ListFilesArgs {
-    /// Optional relative subdirectory path (e.g. "drops"). Omit to list the root of your instance directory.
+    /// Directory path. Absolute (e.g. "/Users/timur/projects/app/src") or relative to instance directory. Omit to list instance root.
     pub path: Option<String>,
 }
 
@@ -247,22 +250,19 @@ impl Tool for ListFilesTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "list_files".into(),
-            description: "List files and directories in your instance workspace.".into(),
+            description: "List files and directories. Use an absolute path to browse any \
+                directory on the system, or a relative path / omit for your instance workspace."
+                .into(),
             parameters: openai_schema::<ListFilesArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let target = match &args.path {
+            Some(p) if p.starts_with('/') => PathBuf::from(p),
             Some(p) if !p.is_empty() => self.instance_dir.join(p),
             _ => self.instance_dir.clone(),
         };
-
-        if !target.starts_with(&self.instance_dir) {
-            return Err(ToolExecError(
-                "path must stay within instance directory".into(),
-            ));
-        }
 
         if !target.is_dir() {
             return Err(ToolExecError(format!(
@@ -1644,7 +1644,7 @@ impl SearchCodeTool {
 pub struct SearchCodeArgs {
     /// Text or pattern to search for (case-insensitive substring match).
     pub query: String,
-    /// Optional subdirectory to search in (relative to instance root). Default: search all files.
+    /// Directory to search in. Absolute path (e.g. "/Users/timur/projects/app") or relative to instance root. Default: instance directory.
     pub path: Option<String>,
 }
 
@@ -1658,8 +1658,8 @@ impl Tool for SearchCodeTool {
         ToolDefinition {
             name: "search_code".into(),
             description: "Search through files for a text pattern. Returns matching lines \
-                with file paths and line numbers. Use this to find relevant code, \
-                configuration, or content across the project."
+                with file paths and line numbers. Use an absolute path to search any \
+                directory on the system, or omit path to search your instance workspace."
                 .into(),
             parameters: openai_schema::<SearchCodeArgs>(),
         }
@@ -1672,7 +1672,11 @@ impl Tool for SearchCodeTool {
         }
 
         let search_dir = if let Some(ref p) = args.path {
-            self.instance_dir.join(p)
+            if p.starts_with('/') {
+                PathBuf::from(p)
+            } else {
+                self.instance_dir.join(p)
+            }
         } else {
             self.instance_dir.clone()
         };
@@ -1682,7 +1686,7 @@ impl Tool for SearchCodeTool {
         }
 
         let mut results = Vec::new();
-        search_files_recursive(&search_dir, &query, &self.instance_dir, &mut results, 0);
+        search_files_recursive(&search_dir, &query, &search_dir, &mut results, 0);
 
         if results.is_empty() {
             return Ok(format!("no matches for '{}'", args.query));
@@ -1706,7 +1710,7 @@ fn search_files_recursive(
     results: &mut Vec<String>,
     depth: usize,
 ) {
-    if depth > 5 || results.len() > 200 {
+    if depth > 10 || results.len() > 200 {
         return;
     }
 
@@ -1718,6 +1722,11 @@ fn search_files_recursive(
     for entry in entries.filter_map(Result::ok) {
         let path = entry.path();
         if path.is_dir() {
+            // Skip heavy/irrelevant directories
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if matches!(name, "node_modules" | ".git" | "target" | ".next" | "dist" | "build" | ".svelte-kit" | "__pycache__" | ".venv" | "venv") {
+                continue;
+            }
             search_files_recursive(&path, query, base, results, depth + 1);
         } else if path.is_file() {
             // Skip binary/large files
@@ -1754,8 +1763,10 @@ impl RunCommandTool {
 
 #[derive(Deserialize, JsonSchema)]
 pub struct RunCommandArgs {
-    /// The shell command to execute. Runs in the instance directory.
+    /// The shell command to execute.
     pub command: String,
+    /// Working directory for the command. Absolute path (e.g. "/Users/timur/projects/app"). Default: instance directory.
+    pub cwd: Option<String>,
 }
 
 impl Tool for RunCommandTool {
@@ -1767,9 +1778,9 @@ impl Tool for RunCommandTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "run_command".into(),
-            description: "Execute a shell command in the instance directory. Use this to run \
-                tests, check build output, inspect files, or perform any shell operation. \
-                The command runs with a 30-second timeout."
+            description: "Execute a shell command. Optionally specify a working directory \
+                with an absolute path, otherwise runs in your instance directory. \
+                Use this to run builds, tests, git commands, or any shell operation."
                 .into(),
             parameters: openai_schema::<RunCommandArgs>(),
         }
@@ -1781,10 +1792,16 @@ impl Tool for RunCommandTool {
             return Err(ToolExecError("command cannot be empty".into()));
         }
 
+        let work_dir = args.cwd
+            .as_deref()
+            .filter(|p| p.starts_with('/'))
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.instance_dir.clone());
+
         let output = tokio::process::Command::new("sh")
             .arg("-c")
             .arg(&command)
-            .current_dir(&self.instance_dir)
+            .current_dir(&work_dir)
             .output()
             .await
             .map_err(|e| ToolExecError(format!("failed to execute command: {e}")))?;

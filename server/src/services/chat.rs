@@ -61,7 +61,8 @@ pub fn save_user_message(
 }
 
 /// Run a single LLM turn: build context, call LLM with tools, save response.
-/// Returns the assistant message. Rig handles up to 8 internal tool sub-turns.
+/// Returns one or more assistant messages (the reply is split into chat-like chunks).
+/// Rig handles up to 8 internal tool sub-turns.
 pub async fn run_single_turn(
     workspace_dir: &Path,
     config_path: &Path,
@@ -70,7 +71,7 @@ pub async fn run_single_turn(
     embedding_model: Option<&openai::EmbeddingModel>,
     brave_api_key: Option<&str>,
     events: broadcast::Sender<ServerEvent>,
-) -> io::Result<ChatMessage> {
+) -> io::Result<Vec<ChatMessage>> {
     let instance_slug = sanitize_slug(instance_slug);
 
     // Build system prompt with all context
@@ -109,6 +110,28 @@ pub async fn run_single_turn(
     let autonomy_prompt = load_autonomy_prompt(workspace_dir, &instance_slug);
     system_prompt = format!("{system_prompt}\n\n{autonomy_prompt}");
 
+    // Messaging style — write like a friend, not an assistant
+    system_prompt.push_str(
+        "\n\n## how you write\n\
+         you write like a real person in a messenger — NOT like an assistant.\n\
+         - split your thoughts into separate short messages using double newlines between them\n\
+         - each message is 1-2 sentences max, like texting a friend\n\
+         - NO walls of text. NO bullet-point lists unless sharing code or data\n\
+         - NO formal structure (no headers, no numbered lists in conversation)\n\
+         - if you have 3 thoughts, send 3 short messages, not one long one\n\
+         - lowercase, casual, warm — like you already do in your soul\n\
+         - it's ok to send just a few words if that's all that's needed\n\
+         - use double newlines (blank lines) to separate each message chunk\n\n\
+         example of GOOD response (each blank line = separate message bubble):\n\
+         oh, interesting idea\n\n\
+         i think we could try websockets — would be faster\n\n\
+         want me to sketch it out?\n\n\
+         example of BAD response (wall of text, assistant-like):\n\
+         That's an interesting idea. I think we could try several approaches: \
+         1) WebSocket for speed, 2) polling for simplicity, 3) SSE as a compromise. \
+         Would you like me to draft an implementation?"
+    );
+
     // Trim history for context limits
     let max_history = 50;
     let trimmed = if existing.len() > max_history {
@@ -135,16 +158,22 @@ pub async fn run_single_turn(
             format!("i hit an error: {e}")
         });
 
-    let assistant_message = ChatMessage {
-        id: next_id(),
-        role: ChatRole::Assistant,
-        content: reply,
-        created_at: timestamp(),
-    };
+    // Split reply into chat-like chunks (by double newline)
+    let chunks: Vec<String> = split_into_messages(&reply);
 
-    // Save to disk
+    let mut assistant_messages = Vec::new();
+    for chunk in &chunks {
+        assistant_messages.push(ChatMessage {
+            id: next_id(),
+            role: ChatRole::Assistant,
+            content: chunk.clone(),
+            created_at: timestamp(),
+        });
+    }
+
+    // Save all to disk
     let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug))?;
-    messages.push(assistant_message.clone());
+    messages.extend(assistant_messages.clone());
     save_messages(workspace_dir, &instance_slug, &messages)?;
 
     // Background memory + sentiment extraction
@@ -154,12 +183,13 @@ pub async fn run_single_turn(
         let ws = workspace_dir.to_path_buf();
         let slug = instance_slug.clone();
         let user_content = last_user_content.to_string();
+        let last_msg = assistant_messages.last().cloned().unwrap();
         let recent_pair = existing
             .iter()
             .rev()
             .take(1)
             .cloned()
-            .chain(std::iter::once(assistant_message.clone()))
+            .chain(std::iter::once(last_msg))
             .collect::<Vec<_>>();
         let events_bg = events.clone();
         tokio::spawn(async move {
@@ -172,7 +202,7 @@ pub async fn run_single_turn(
         });
     }
 
-    Ok(assistant_message)
+    Ok(assistant_messages)
 }
 
 pub fn load_messages(workspace_dir: &Path, instance_slug: &str) -> io::Result<ChatResponse> {
@@ -235,6 +265,40 @@ fn save_messages(
     let body = serde_json::to_string_pretty(messages)
         .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))?;
     fs::write(path, body)
+}
+
+/// Split a single LLM reply into multiple chat-like messages.
+/// Splits on double-newlines, merges very short fragments, and drops empty ones.
+fn split_into_messages(reply: &str) -> Vec<String> {
+    let parts: Vec<&str> = reply.split("\n\n").collect();
+    let mut messages: Vec<String> = Vec::new();
+
+    for part in parts {
+        let trimmed = part.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // If the chunk is very short (< 20 chars) and there's a previous message,
+        // merge it to avoid single-word bubbles
+        if trimmed.len() < 20 && !messages.is_empty() {
+            let last = messages.last_mut().unwrap();
+            last.push('\n');
+            last.push_str(trimmed);
+        } else {
+            messages.push(trimmed.to_string());
+        }
+    }
+
+    // If nothing was split (no double-newlines), return the original as one message
+    if messages.is_empty() {
+        let trimmed = reply.trim();
+        if !trimmed.is_empty() {
+            messages.push(trimmed.to_string());
+        }
+    }
+
+    messages
 }
 
 fn sanitize_slug(input: &str) -> String {

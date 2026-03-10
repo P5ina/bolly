@@ -137,7 +137,7 @@
 				</div>
 			{:else}
 				{#each messages as message, i (message.id)}
-					<MessageBubble {message} index={i} />
+					<MessageBubble {message} index={i} prevMessage={i > 0 ? messages[i - 1] : undefined} />
 				{/each}
 			{/if}
 
