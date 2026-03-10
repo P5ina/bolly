@@ -148,13 +148,16 @@ async fn heartbeat_instance(
 
     let response = llm.chat(&system, &reflection, vec![]).await?;
 
+    // Strip leaked tool-call artifacts from the response
+    let cleaned_response = strip_tool_artifacts(&response);
+
     // Parse the response and execute actions
-    let actions = process_heartbeat_response(workspace_dir, slug, instance_dir, &response, events, &mood);
+    let actions = process_heartbeat_response(workspace_dir, slug, instance_dir, &cleaned_response, events, &mood);
 
     // Save and broadcast the thought
     let thought = Thought {
         id: format!("thought_{}", unix_millis()),
-        raw: response.clone(),
+        raw: cleaned_response,
         actions,
         mood: mood.companion_mood.clone(),
         created_at: unix_millis().to_string(),
@@ -532,6 +535,33 @@ fn load_recent_drops_context(workspace_dir: &Path, slug: &str) -> String {
         }))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Strip hallucinated tool-call artifacts from heartbeat responses.
+/// The heartbeat LLM call has no tool support, so the model sometimes
+/// outputs <tool_call>/<tool_response> XML or JSON tool calls as text.
+fn strip_tool_artifacts(response: &str) -> String {
+    let mut result = response.to_string();
+
+    // Strip <tool_call>...</tool_call> blocks (including multiline)
+    let tool_call_re = regex::Regex::new(r"(?s)<tool_call>.*?</tool_call>").unwrap();
+    result = tool_call_re.replace_all(&result, "").to_string();
+
+    // Strip <tool_response>...</tool_response> blocks (including multiline)
+    let tool_response_re = regex::Regex::new(r"(?s)<tool_response>.*?</tool_response>").unwrap();
+    result = tool_response_re.replace_all(&result, "").to_string();
+
+    // Strip JSON tool calls: {"name": "...", "arguments": {...}}
+    let json_tool_re = regex::Regex::new(
+        r#"\{["\s]*"?name"?\s*:\s*"[a-z_]+".*?"(?:parameters|arguments)"\s*:\s*\{[^}]*\}\s*\}"#
+    ).unwrap();
+    result = json_tool_re.replace_all(&result, "").to_string();
+
+    // Collapse excessive blank lines left behind
+    let blank_lines_re = regex::Regex::new(r"\n{3,}").unwrap();
+    result = blank_lines_re.replace_all(&result, "\n\n").to_string();
+
+    result.trim().to_string()
 }
 
 fn unix_millis() -> u128 {
