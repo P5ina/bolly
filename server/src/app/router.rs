@@ -19,11 +19,13 @@ pub fn build_router(state: AppState, static_dir: Option<PathBuf>) -> Router {
         .merge(routes::ws::router())
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 
-    // Health check — no auth (for load balancers, monitoring)
+    // Public routes — no auth
     let health = routes::health::router();
+    let auth = routes::auth::router();
 
     let app = Router::new()
         .merge(health)
+        .merge(auth)
         .merge(api)
         .with_state(state);
 

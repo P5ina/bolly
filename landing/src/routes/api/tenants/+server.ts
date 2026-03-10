@@ -31,9 +31,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		});
 		return json(tenant, { status: 201 });
 	} catch (err: any) {
+		console.error('provisionTenant error:', err);
 		if (err.message?.includes('unique') || err.code === '23505') {
 			error(409, 'That slug is already taken');
 		}
-		throw err;
+		error(500, err.message ?? 'Failed to create companion');
 	}
 };

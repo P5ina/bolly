@@ -33,8 +33,8 @@
 		}
 	}
 
-	function companionUrl(flyAppId: string | null) {
-		return flyAppId ? `https://${flyAppId}.fly.dev` : '#';
+	function connectUrl(slug: string) {
+		return `/connect/${slug}`;
 	}
 </script>
 
@@ -128,7 +128,7 @@
 			<div class="grid gap-3">
 				{#each data.tenants as tenant}
 					<a
-						href={companionUrl(tenant.flyAppId)}
+						href={connectUrl(tenant.slug)}
 						target="_blank"
 						class="group flex items-center justify-between p-5 rounded-xl border transition-all duration-300 hover:-translate-y-0.5"
 						style="background: var(--color-bg); border-color: var(--color-border);"

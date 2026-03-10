@@ -118,7 +118,7 @@ export async function getTenantBySlug(slug: string): Promise<Tenant | undefined>
 	return tenant;
 }
 
-export async function getTenantUrl(tenant: Tenant): string {
+export async function getTenantUrl(tenant: Tenant): Promise<string> {
 	if (tenant.flyAppId) {
 		return `https://${tenant.flyAppId}.fly.dev`;
 	}

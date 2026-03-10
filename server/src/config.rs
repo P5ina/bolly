@@ -184,7 +184,15 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     let path = config_path();
     ensure_config_exists(&path)?;
     let raw = fs::read_to_string(&path)?;
-    let config: Config = toml::from_str(&raw)?;
+    let mut config: Config = toml::from_str(&raw)?;
     ensure_workspace_layout(&workspace_root())?;
+
+    // Allow env var overrides for managed hosting
+    if let Ok(token) = env::var("BOLLY_AUTH_TOKEN") {
+        if !token.is_empty() {
+            config.auth_token = token;
+        }
+    }
+
     Ok(config)
 }

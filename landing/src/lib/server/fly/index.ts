@@ -3,8 +3,10 @@ import { env } from '$env/dynamic/private';
 const FLY_API = 'https://api.machines.dev/v1';
 
 function headers() {
+	const raw = env.FLY_API_TOKEN ?? '';
+	const auth = raw.startsWith('FlyV1') ? raw : `Bearer ${raw}`;
 	return {
-		Authorization: `Bearer ${env.FLY_API_TOKEN}`,
+		Authorization: auth,
 		'Content-Type': 'application/json',
 	};
 }
@@ -21,7 +23,9 @@ export async function createApp(name: string): Promise<{ id: string; name: strin
 		}),
 	});
 	if (!res.ok) throw new Error(`Fly createApp failed: ${res.status} ${await res.text()}`);
-	return res.json();
+	const data = await res.json();
+	// API returns { id, created_at } — name isn't in the response
+	return { id: data.id, name };
 }
 
 export async function deleteApp(name: string): Promise<void> {
@@ -79,6 +83,7 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 				env: {
 					BOLLY_HOME: '/data',
 					RUST_LOG: 'info',
+					BOLLY_AUTH_TOKEN: opts.authToken,
 				},
 				guest: {
 					cpus: opts.cpus ?? 1,
