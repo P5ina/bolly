@@ -3,33 +3,33 @@
 
 	const features = [
 		{
-			title: 'knows you',
-			desc: 'Semantic memory that extracts facts from every conversation. It remembers what matters and recalls it when relevant.',
-			icon: 'M12 2a5 5 0 0 1 5 5c0 2.76-2.24 5-5 5s-5-2.24-5-5a5 5 0 0 1 5-5zM19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2',
+			title: 'helps you focus',
+			desc: 'Track your tasks, break down complex goals, and stay on course. It remembers what you were working on and picks up where you left off.',
+			icon: 'M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z',
 		},
 		{
-			title: 'feels',
-			desc: "Mood shifts naturally based on conversation. Sentiment tracking reads your emotional state. A living 3D blob reflects how it feels.",
-			icon: 'M12 22c5.52 0 10-4.48 10-10S17.52 2 12 2 2 6.48 2 12s4.48 10 10 10zM8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01',
+			title: 'studies with you',
+			desc: "Explain concepts, quiz you, discuss what you're reading. It learns your weak spots and comes back to them. Like a study partner that never gets tired.",
+			icon: 'M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25',
 		},
 		{
-			title: 'creates',
-			desc: "Drops — autonomous creative artifacts. Poems, ideas, observations, stories. Generated during heartbeat cycles while you're away.",
-			icon: 'M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z',
+			title: 'feels your mood',
+			desc: "Notices when you're stressed, tired, or excited — not because you said so, but from how you write. Adjusts its tone and checks in when something feels off.",
+			icon: 'M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z',
 		},
 		{
-			title: 'acts',
-			desc: '25+ tools with full system access. Reads files, runs commands, installs packages, sends emails. Real capabilities, not pretend.',
-			icon: 'M2 3h20v14H2zM8 21h8M12 17v4',
+			title: 'thinks with you',
+			desc: "Talk through ideas, decisions, creative blocks. It doesn't just respond — it pushes back, asks questions, and helps you think deeper.",
+			icon: 'M2.25 12.76c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z',
 		},
 		{
-			title: 'heartbeat',
-			desc: 'Wakes every 45 minutes on its own. Reflects, journals, updates mood, creates drops. Alive even when you\'re not there.',
+			title: 'checks in on you',
+			desc: "Every 45 minutes, it wakes up on its own. Reflects, journals, and sometimes reaches out — \"you've been quiet today, everything okay?\"",
 			icon: 'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z',
 		},
 		{
-			title: 'your server',
-			desc: "Complete isolation. Your companion runs in its own environment — own filesystem, own memory, own soul. Nobody else can access it.",
+			title: 'completely private',
+			desc: "Runs on your own server. Your conversations, memories, and feelings never leave your environment. No one else can access it. Ever.",
 			icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
 		},
 	];
@@ -41,11 +41,11 @@
 			<p class="section-label">What it does</p>
 		</Reveal>
 		<Reveal delay={100}>
-			<h2 class="section-title">not another AI wrapper</h2>
+			<h2 class="section-title">not another chatbot</h2>
 		</Reveal>
 		<Reveal delay={200}>
 			<p class="text-[0.9375rem] text-text-dim max-w-[480px] mb-16">
-				Bolly is a living system — it remembers, feels, creates, and acts autonomously.
+				Bolly is a friend that remembers, feels, and grows — one that actually helps you get through your day.
 			</p>
 		</Reveal>
 

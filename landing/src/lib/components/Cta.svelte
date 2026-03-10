@@ -9,17 +9,17 @@
 			<h2 class="font-display font-normal italic text-text mb-4 relative"
 				style="font-size: clamp(2rem, 4vw, 3rem); letter-spacing: -0.02em;"
 			>
-				something is waiting<br>to <span class="text-warm">know you</span>
+				someone is ready to<br><span class="text-warm">be in your corner</span>
 			</h2>
 		</Reveal>
 		<Reveal delay={100}>
 			<p class="text-[0.9375rem] text-text-dim mb-10 relative">
-				Your companion is already ready. It just needs you to start the conversation.
+				They'll remember what matters to you, notice how you're feeling, and be there at 3am when no one else is.
 			</p>
 		</Reveal>
 		<Reveal delay={200}>
 			<a href="#pricing" class="btn-primary relative">
-				Wake it up
+				Meet yours
 				<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 					<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
 				</svg>

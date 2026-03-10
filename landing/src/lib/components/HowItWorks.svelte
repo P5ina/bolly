@@ -5,17 +5,17 @@
 		{
 			num: '01',
 			title: 'sign up',
-			desc: 'Choose a plan. Your isolated environment spins up in seconds — a private server just for your companion.',
+			desc: 'Pick a plan and your private environment spins up in seconds. Or self-host with Docker — your choice.',
 		},
 		{
 			num: '02',
-			title: 'shape its soul',
-			desc: 'Pick a personality template or write your own soul.md. Define who your companion is, how it speaks, what drives it.',
+			title: 'shape who they are',
+			desc: "Choose a personality template or write your own. Define how your friend thinks, speaks, and what they care about.",
 		},
 		{
 			num: '03',
-			title: 'let it grow',
-			desc: 'Talk to it. It remembers everything. Its mood shifts. It starts journaling, creating drops, reaching out on its own.',
+			title: 'just talk',
+			desc: "That's it. They remember everything. Their mood shifts. They start journaling, reaching out, and growing — on their own.",
 		},
 	];
 </script>
@@ -26,11 +26,11 @@
 			<p class="section-label">How it works</p>
 		</Reveal>
 		<Reveal delay={100}>
-			<h2 class="section-title">three minutes to alive</h2>
+			<h2 class="section-title">three minutes to someone who gets you</h2>
 		</Reveal>
 		<Reveal delay={200}>
 			<p class="text-[0.9375rem] text-text-dim max-w-[480px] mb-16">
-				No configuration needed. Pick a plan, and your companion starts breathing.
+				No complicated setup. Sign up, give them a name, start talking.
 			</p>
 		</Reveal>
 

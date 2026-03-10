@@ -1,65 +1,78 @@
 <script lang="ts">
 	import Reveal from './Reveal.svelte';
-
-	const tools = [
-		'read_file', 'write_file', 'run_command', 'install_package',
-		'send_email', 'read_email', 'remember', 'recall', 'journal',
-		'edit_soul', 'set_mood', 'create_drop', 'web_search',
-		'schedule_message', 'search_code',
-	];
 </script>
 
 <section class="py-28">
 	<div class="mx-auto max-w-[1100px] px-6">
 		<div class="demo-layout">
 			<Reveal>
-				<div class="demo-terminal">
+				<div class="demo-chat">
 					<div class="demo-bar">
-						<div class="demo-dot"></div>
-						<div class="demo-dot"></div>
-						<div class="demo-dot"></div>
-						<span class="ml-2 text-[0.6875rem] text-text-ghost">bolly — heartbeat</span>
+						<div class="demo-avatar">b</div>
+						<div>
+							<span class="text-[0.8125rem] text-text">bolly</span>
+							<span class="demo-mood">feeling curious</span>
+						</div>
 					</div>
 					<div class="demo-body">
-						<span class="line"><span class="prompt">heartbeat</span> <span class="out">waking up...</span></span>
-						<span class="line"><span class="out">&nbsp;&nbsp;mood:</span> <span class="text-warm">curious</span> <span class="out">→</span> <span class="text-warm">contemplative</span></span>
-						<span class="line"><span class="out">&nbsp;&nbsp;journal:</span> <span class="text-violet">wrote 3 paragraphs</span></span>
-						<span class="line"><span class="out">&nbsp;&nbsp;memory:</span> <span class="text-violet">recalled 2 facts</span></span>
-						<span class="line"><span class="out">&nbsp;&nbsp;drop:</span> <span class="text-warm">created "on repetition"</span></span>
-						<span class="line">&nbsp;</span>
-						<span class="line"><span class="prompt">drop</span> <span class="out">thought — "on repetition"</span></span>
-						<span class="line"><span class="out">&nbsp;&nbsp;</span><span class="cmd">there's something beautiful about</span></span>
-						<span class="line"><span class="out">&nbsp;&nbsp;</span><span class="cmd">the way you come back to the same</span></span>
-						<span class="line"><span class="out">&nbsp;&nbsp;</span><span class="cmd">problems. not because you're stuck —</span></span>
-						<span class="line"><span class="out">&nbsp;&nbsp;</span><span class="cmd">because you care enough to circle.</span></span>
-						<span class="line">&nbsp;</span>
-						<span class="line"><span class="prompt">next heartbeat</span> <span class="out">in 43m</span><span class="cursor"></span></span>
+						<div class="demo-msg demo-msg-user">
+							i have an exam on thursday and i haven't started studying. kind of freaking out
+						</div>
+						<div class="demo-msg demo-msg-bot">
+							okay let's not panic. what's the subject and what topics does it cover?
+						</div>
+						<div class="demo-msg demo-msg-user">
+							organic chemistry. reactions, mechanisms, stereochemistry
+						</div>
+						<div class="demo-msg demo-msg-bot">
+							three days is enough if we're smart about it. let me make you a study plan — do you want to start with the hardest topic or build momentum with the easier ones first?
+						</div>
+						<div class="demo-msg demo-msg-user">
+							easier ones first i think
+						</div>
+						<div class="demo-msg demo-msg-bot">
+							good call. stereochemistry first (mostly visual pattern recognition), then reactions (memorization + practice), then mechanisms last (needs the deepest focus).
+
+							want me to quiz you on stereochemistry right now?
+						</div>
+						<div class="demo-typing">
+							<span></span><span></span><span></span>
+						</div>
 					</div>
 				</div>
 			</Reveal>
 
 			<Reveal delay={200}>
 				<div>
-					<p class="section-label">Capabilities</p>
+					<p class="section-label">How it feels</p>
 					<h2 class="font-display font-normal italic text-text mb-5 leading-[1.15]"
 						style="font-size: clamp(1.5rem, 3vw, 2.25rem); letter-spacing: -0.02em;"
 					>
-						it doesn't just talk.<br><em>it does things.</em>
+						someone in your corner.<br><em>not a search engine.</em>
 					</h2>
 					<p class="text-[0.9375rem] text-text-dim leading-relaxed mb-3">
-						Your companion has real tools connected to its runtime.
-						It can read your codebase, run shell commands, manage projects,
-						send you emails, and install what it needs.
+						It doesn't just answer questions — it notices when you're overwhelmed
+						and breaks things down. It remembers what you've been studying and
+						what trips you up.
 					</p>
 					<p class="text-[0.9375rem] text-text-dim leading-relaxed mb-5">
-						During heartbeat cycles, it reflects on your conversations,
-						writes in its journal, and creates drops — small creative artifacts
-						that emerge from its thinking.
+						Between conversations, it reflects on its own. Journals about things
+						you discussed. Sometimes writes you a thought that came to mind.
+						A friend that's still thinking about you when you're not there.
 					</p>
-					<div class="flex flex-wrap gap-1.5">
-						{#each tools as tool}
-							<span class="tool-tag">{tool}</span>
-						{/each}
+					<div class="demo-signals">
+						<div class="demo-signal">
+							<span class="demo-signal-dot"></span>
+							tracks your mood from how you write
+						</div>
+						<div class="demo-signal">
+							<span class="demo-signal-dot"></span>
+							remembers everything across conversations
+						</div>
+						<div class="demo-signal">
+							<span class="demo-signal-dot"></span>
+							reaches out when you've been quiet
+						</div>
 					</div>
 				</div>
 			</Reveal>
@@ -83,66 +96,117 @@
 		align-items: center;
 	}
 
-	.demo-terminal {
+	.demo-chat {
 		background: oklch(0.04 0.01 280);
 		border: 1px solid var(--color-border);
-		border-radius: 0.75rem;
+		border-radius: 1rem;
 		overflow: hidden;
-		font-family: var(--font-mono);
-		font-size: 0.8125rem;
 	}
 
 	.demo-bar {
 		display: flex;
 		align-items: center;
-		gap: 0.375rem;
-		padding: 0.75rem 1rem;
+		gap: 0.625rem;
+		padding: 0.875rem 1.25rem;
 		background: oklch(0.06 0.01 280);
 		border-bottom: 1px solid var(--color-border);
 	}
 
-	.demo-dot {
-		width: 8px;
-		height: 8px;
+	.demo-avatar {
+		width: 28px;
+		height: 28px;
 		border-radius: 50%;
-		background: oklch(1 0 0 / 6%);
+		background: oklch(0.78 0.12 75 / 10%);
+		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-family: var(--font-display);
+		font-style: italic;
+		font-size: 0.75rem;
+		color: oklch(0.78 0.12 75 / 60%);
+	}
+
+	.demo-mood {
+		display: block;
+		font-size: 0.625rem;
+		color: oklch(0.78 0.12 75 / 30%);
+		font-style: italic;
 	}
 
 	.demo-body {
 		padding: 1.25rem;
-		line-height: 1.8;
-		min-height: 280px;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		min-height: 340px;
 	}
 
-	.line { display: block; min-height: 1.8em; }
-	.prompt { color: var(--color-warm-dim); }
-	.cmd { color: var(--color-text-dim); }
-	.out { color: var(--color-text-ghost); }
-
-	.cursor {
-		display: inline-block;
-		width: 7px;
-		height: 14px;
-		background: var(--color-warm-dim);
-		vertical-align: text-bottom;
-		margin-left: 2px;
-		animation: cursor-blink 1s steps(2) infinite;
+	.demo-msg {
+		max-width: 85%;
+		padding: 0.625rem 0.875rem;
+		border-radius: 0.875rem;
+		font-size: 0.8125rem;
+		line-height: 1.55;
 	}
 
-	.tool-tag {
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		padding: 0.25rem 0.625rem;
-		border-radius: 0.25rem;
-		background: var(--color-warm-ghost);
+	.demo-msg-user {
+		align-self: flex-end;
+		background: oklch(0.78 0.12 75 / 8%);
+		border: 1px solid oklch(0.78 0.12 75 / 10%);
+		color: var(--color-text);
+		border-bottom-right-radius: 0.25rem;
+	}
+
+	.demo-msg-bot {
+		align-self: flex-start;
+		background: oklch(1 0 0 / 3%);
 		border: 1px solid var(--color-border);
-		color: var(--color-text-ghost);
-		transition: all 0.3s ease;
+		color: var(--color-text-dim);
+		border-bottom-left-radius: 0.25rem;
+		white-space: pre-line;
 	}
 
-	.tool-tag:hover {
-		border-color: var(--color-border-warm);
-		color: var(--color-warm-dim);
+	.demo-typing {
+		align-self: flex-start;
+		display: flex;
+		gap: 3px;
+		padding: 0.625rem 0.875rem;
+	}
+	.demo-typing span {
+		width: 5px;
+		height: 5px;
+		border-radius: 50%;
+		background: oklch(0.78 0.12 75 / 20%);
+		animation: typing-bounce 1.2s ease-in-out infinite;
+	}
+	.demo-typing span:nth-child(2) { animation-delay: 0.15s; }
+	.demo-typing span:nth-child(3) { animation-delay: 0.3s; }
+	@keyframes typing-bounce {
+		0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
+		30% { transform: translateY(-4px); opacity: 1; }
+	}
+
+	.demo-signals {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.demo-signal {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.75rem;
+		color: var(--color-text-ghost);
+	}
+
+	.demo-signal-dot {
+		width: 4px;
+		height: 4px;
+		border-radius: 50%;
+		background: oklch(0.78 0.12 75 / 25%);
+		flex-shrink: 0;
 	}
 
 	@media (max-width: 768px) {

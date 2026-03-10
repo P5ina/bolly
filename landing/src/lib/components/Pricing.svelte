@@ -4,24 +4,24 @@
 	const plans = [
 		{
 			name: 'starter',
-			desc: 'For trying it out',
+			desc: 'See if it clicks',
 			price: 5,
-			features: ['1 companion instance', '1 GB storage', 'Heartbeat every 45 min', 'All 25+ tools', 'Your own API key'],
+			features: ['1 companion', '1 GB storage', 'Heartbeat every 45 min', 'Memory & mood tracking', 'Your own API key'],
 			featured: false,
 		},
 		{
 			name: 'companion',
-			desc: 'For daily use',
+			desc: 'For everyday life',
 			price: 12,
-			features: ['3 companion instances', '5 GB storage', 'Custom heartbeat interval', 'Email tools (SMTP + IMAP)', 'Priority support'],
+			features: ['3 companions', '5 GB storage', 'Custom heartbeat interval', 'Email integration', 'Priority support'],
 			featured: true,
 			badge: 'popular',
 		},
 		{
 			name: 'unlimited',
-			desc: 'For power users',
+			desc: 'No limits',
 			price: 25,
-			features: ['Unlimited instances', '20 GB storage', 'Custom heartbeat interval', 'SSH access to your environment', 'Early access to new features'],
+			features: ['Unlimited companions', '20 GB storage', 'Custom heartbeat interval', 'SSH access', 'Early access to new features'],
 			featured: false,
 		},
 	];
@@ -37,7 +37,7 @@
 		</Reveal>
 		<Reveal delay={200}>
 			<p class="text-[0.9375rem] text-text-dim max-w-[480px] mb-16">
-				Every plan includes full isolation, persistent storage, and 24/7 heartbeat.
+				Every plan includes full privacy, persistent memory, and a friend that never sleeps.
 				Bring your own API key.
 			</p>
 		</Reveal>
