@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use base64::Engine as _;
 use rig::client::CompletionClient;
-use rig::completion::{Chat, Message};
+use rig::completion::{Chat, Message, Prompt};
 use rig::completion::message::{UserContent, ImageMediaType, DocumentMediaType, MimeType};
 use rig::one_or_many::OneOrMany;
 use rig::providers::{anthropic, openai};
@@ -161,25 +161,31 @@ impl LlmBackend {
                 let mut builder = client
                     .agent(model)
                     .preamble(system_prompt)
-                    .default_max_turns(8)
                     .tools(tools);
                 if let Some(index) = memory_index {
                     builder = builder.dynamic_context(8, index);
                 }
                 let agent = builder.build();
-                agent.chat(prompt, history.clone()).await
+                let mut chat_history = history.clone();
+                agent.prompt(prompt)
+                    .with_history(&mut chat_history)
+                    .max_turns(16)
+                    .await
             }
             LlmBackend::OpenAI { client, model } => {
                 let mut builder = client
                     .agent(model)
                     .preamble(system_prompt)
-                    .default_max_turns(8)
                     .tools(tools);
                 if let Some(index) = memory_index {
                     builder = builder.dynamic_context(8, index);
                 }
                 let agent = builder.build();
-                agent.chat(prompt, history.clone()).await
+                let mut chat_history = history.clone();
+                agent.prompt(prompt)
+                    .with_history(&mut chat_history)
+                    .max_turns(16)
+                    .await
             }
         };
 
@@ -192,8 +198,7 @@ impl LlmBackend {
             }
             Err(e) => {
                 log::error!("Tool agent failed: {e:?}");
-                log::warn!("Retrying without tools");
-                self.chat(system_prompt, &prompt_text, history).await
+                Err(e.into())
             }
         }
     }
