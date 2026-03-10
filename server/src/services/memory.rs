@@ -15,7 +15,7 @@ use crate::domain::memory::MemoryFact;
 use crate::services::llm::LlmBackend;
 
 type SqliteExtensionFn =
-    unsafe extern "C" fn(*mut sqlite3, *mut *mut i8, *const sqlite3_api_routines) -> i32;
+    unsafe extern "C" fn(*mut sqlite3, *mut *mut std::ffi::c_char, *const sqlite3_api_routines) -> i32;
 
 static SQLITE_VEC_INIT: Once = Once::new();
 
