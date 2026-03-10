@@ -79,7 +79,7 @@ jobs:
           build-args: |
             GIT_HASH=${{ github.sha }}
           tags: |
-            ${{ env.FLY_IMAGE }}
+            ${{ startsWith(github.ref, 'refs/tags/v') && env.FLY_IMAGE || '' }}
             ${{ !startsWith(github.ref, 'refs/tags/v') && env.FLY_NIGHTLY || '' }}
             ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
