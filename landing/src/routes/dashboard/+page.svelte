@@ -1,10 +1,27 @@
 <script lang="ts">
+	import { page } from '$app/state';
+	import { invalidateAll } from '$app/navigation';
+
 	let { data } = $props();
 	let creating = $state(false);
 	let slugInput = $state('');
 	let selectedPlan = $state<'starter' | 'companion' | 'unlimited'>('starter');
 	let errorMsg = $state('');
 	let showCreate = $state(false);
+	let provisioning = $state(page.url.searchParams.get('checkout') === 'success');
+
+	// Poll for new tenant after checkout
+	$effect(() => {
+		if (!provisioning) return;
+		const interval = setInterval(async () => {
+			await invalidateAll();
+			if (data.tenants.length > 0) {
+				provisioning = false;
+				clearInterval(interval);
+			}
+		}, 3000);
+		return () => clearInterval(interval);
+	});
 
 	async function createTenant() {
 		if (!slugInput.trim()) return;
@@ -18,14 +35,17 @@
 				body: JSON.stringify({ slug: slugInput.trim().toLowerCase(), plan: selectedPlan }),
 			});
 
+			const body = await res.json().catch(() => ({ message: res.statusText }));
+
 			if (!res.ok) {
-				const err = await res.json().catch(() => ({ message: res.statusText }));
-				errorMsg = err.message ?? 'Failed to create companion';
+				errorMsg = body.message ?? 'Failed to create companion';
 				return;
 			}
 
-			// Reload page to show new tenant
-			location.reload();
+			const { checkoutUrl } = body;
+			if (checkoutUrl) {
+				window.location.href = checkoutUrl;
+			}
 		} catch {
 			errorMsg = 'Network error';
 		} finally {
@@ -118,8 +138,15 @@
 			</div>
 		{/if}
 
+		{#if provisioning}
+			<div class="mb-6 p-4 rounded-xl border flex items-center gap-3" style="background: var(--color-warm-ghost); border-color: var(--color-border-warm);">
+				<div class="w-2 h-2 rounded-full bg-warm animate-pulse"></div>
+				<p class="text-sm text-text-dim">Payment received — provisioning your companion...</p>
+			</div>
+		{/if}
+
 		<!-- tenant list -->
-		{#if data.tenants.length === 0}
+		{#if data.tenants.length === 0 && !provisioning}
 			<div class="text-center py-20">
 				<p class="text-text-dim mb-2 font-display italic text-lg">no companions yet</p>
 				<p class="text-text-ghost text-sm">Create one to get started.</p>

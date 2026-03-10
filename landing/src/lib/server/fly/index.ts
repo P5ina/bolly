@@ -38,6 +38,28 @@ export async function deleteApp(name: string): Promise<void> {
 	}
 }
 
+// ─── IPs ─────────────────────────────────────────────────────────────────────
+
+export async function allocateSharedIp(appName: string): Promise<string> {
+	const res = await fetch(`https://api.fly.io/graphql`, {
+		method: 'POST',
+		headers: headers(),
+		body: JSON.stringify({
+			query: `mutation($input: AllocateIPAddressInput!) { allocateIpAddress(input: $input) { ipAddress { id address type } } }`,
+			variables: {
+				input: {
+					appId: appName,
+					type: 'shared_v4',
+				},
+			},
+		}),
+	});
+	if (!res.ok) throw new Error(`Fly allocateIp failed: ${res.status} ${await res.text()}`);
+	const data = await res.json();
+	if (data.errors) throw new Error(`Fly allocateIp: ${data.errors[0].message}`);
+	return data.data.allocateIpAddress.ipAddress.address;
+}
+
 // ─── Volumes ─────────────────────────────────────────────────────────────────
 
 export async function createVolume(

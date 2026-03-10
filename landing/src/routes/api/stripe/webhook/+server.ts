@@ -2,10 +2,11 @@ import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { env } from '$env/dynamic/private';
 import { stripe } from '$lib/server/stripe/index.js';
+import { destroyTenant, provisionTenant } from '$lib/server/tenants.js';
 import { db } from '$lib/server/db/index.js';
-import { tenants, users } from '$lib/server/db/schema.js';
+import { tenants } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { destroyTenant } from '$lib/server/tenants.js';
+import type { PlanId } from '$lib/server/stripe/index.js';
 
 export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.text();
@@ -21,9 +22,31 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	switch (event.type) {
+		case 'checkout.session.completed': {
+			const session = event.data.object;
+			const { user_id, slug, plan } = session.metadata ?? {};
+
+			if (!user_id || !slug || !plan) {
+				console.error('checkout.session.completed missing metadata:', session.metadata);
+				break;
+			}
+
+			try {
+				await provisionTenant({
+					userId: user_id,
+					slug,
+					plan: plan as PlanId,
+					stripeSubscriptionId: session.subscription as string,
+				});
+				console.log(`Provisioned tenant ${slug} for user ${user_id}`);
+			} catch (err) {
+				console.error(`Failed to provision tenant ${slug}:`, err);
+			}
+			break;
+		}
+
 		case 'customer.subscription.deleted': {
 			const subscription = event.data.object;
-			// Find and destroy tenant with this subscription
 			const [tenant] = await db()
 				.select()
 				.from(tenants)
@@ -32,6 +55,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 			if (tenant) {
 				await destroyTenant(tenant.id);
+				console.log(`Destroyed tenant ${tenant.slug} (subscription cancelled)`);
 			}
 			break;
 		}
@@ -39,8 +63,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		case 'customer.subscription.updated': {
 			const subscription = event.data.object;
 			if (subscription.status === 'past_due' || subscription.status === 'unpaid') {
-				// Could stop machine here to save costs
-				// For now just log
 				console.warn(`Subscription ${subscription.id} is ${subscription.status}`);
 			}
 			break;

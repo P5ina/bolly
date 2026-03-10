@@ -1,6 +1,8 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { getTenantsByUser, provisionTenant } from '$lib/server/tenants.js';
+import { getTenantsByUser } from '$lib/server/tenants.js';
+import { createCheckoutSession, priceIdForPlan, type PlanId } from '$lib/server/stripe/index.js';
+import { env } from '$env/dynamic/private';
 
 // GET /api/tenants — list user's tenants
 export const GET: RequestHandler = async ({ locals }) => {
@@ -9,7 +11,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 	return json(list);
 };
 
-// POST /api/tenants — provision new tenant
+// POST /api/tenants — create Stripe checkout session, provision happens in webhook
 export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!locals.user) error(401, 'Not authenticated');
 
@@ -23,18 +25,28 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		error(400, 'Invalid plan');
 	}
 
+	if (!locals.user.stripeCustomerId) {
+		error(400, 'No billing account. Please contact support.');
+	}
+
+	const origin = env.ORIGIN ?? 'https://bollyai.dev';
+
 	try {
-		const tenant = await provisionTenant({
-			userId: locals.user.id,
-			slug,
-			plan,
+		const checkoutUrl = await createCheckoutSession({
+			customerId: locals.user.stripeCustomerId,
+			priceId: priceIdForPlan(plan as PlanId),
+			successUrl: `${origin}/dashboard?checkout=success`,
+			cancelUrl: `${origin}/dashboard?checkout=cancelled`,
+			metadata: {
+				user_id: locals.user.id,
+				slug,
+				plan,
+			},
 		});
-		return json(tenant, { status: 201 });
+
+		return json({ checkoutUrl });
 	} catch (err: any) {
-		console.error('provisionTenant error:', err);
-		if (err.message?.includes('unique') || err.code === '23505') {
-			error(409, 'That slug is already taken');
-		}
-		error(500, err.message ?? 'Failed to create companion');
+		console.error('Stripe checkout error:', err);
+		error(500, err.message ?? 'Failed to create checkout session');
 	}
 };

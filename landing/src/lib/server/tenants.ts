@@ -43,6 +43,9 @@ export async function provisionTenant(opts: {
 		const sizeGb = Math.max(1, Math.ceil(planConfig.storageLimit / 1024));
 		const volume = await fly.createVolume(app.name, { sizeGb });
 
+		// Allocate shared IPv4
+		await fly.allocateSharedIp(app.name);
+
 		// Create machine
 		const machine = await fly.createMachine({
 			appName: app.name,

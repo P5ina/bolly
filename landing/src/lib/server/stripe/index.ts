@@ -33,6 +33,15 @@ export const PLANS = {
 
 export type PlanId = keyof typeof PLANS;
 
+export function priceIdForPlan(plan: PlanId): string {
+	const map: Record<PlanId, string> = {
+		starter: env.STRIPE_STARTER_PRICE_ID!,
+		companion: env.STRIPE_COMPANION_PRICE_ID!,
+		unlimited: env.STRIPE_UNLIMITED_PRICE_ID!,
+	};
+	return map[plan];
+}
+
 export async function createCheckoutSession(opts: {
 	customerId: string;
 	priceId: string;
@@ -47,6 +56,9 @@ export async function createCheckoutSession(opts: {
 		success_url: opts.successUrl,
 		cancel_url: opts.cancelUrl,
 		metadata: opts.metadata,
+		subscription_data: {
+			metadata: opts.metadata,
+		},
 	});
 	return session.url!;
 }
