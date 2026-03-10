@@ -2,6 +2,7 @@ import { pgTable, text, timestamp, integer, pgEnum } from 'drizzle-orm/pg-core';
 
 export const planEnum = pgEnum('plan', ['starter', 'companion', 'unlimited']);
 export const tenantStatusEnum = pgEnum('tenant_status', ['provisioning', 'running', 'stopped', 'error', 'destroyed']);
+export const imageChannelEnum = pgEnum('image_channel', ['stable', 'nightly']);
 
 // ─── Users ───────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ export const tenants = pgTable('tenants', {
 	// Bolly instance config
 	authToken: text('auth_token'), // auto-generated, used to proxy to the instance
 	errorMessage: text('error_message'),
+	imageChannel: imageChannelEnum('image_channel').notNull().default('stable'),
 
 	// Stripe
 	stripeSubscriptionId: text('stripe_subscription_id'),

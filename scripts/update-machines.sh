@@ -61,6 +61,16 @@ for app in $apps; do
       continue
     fi
 
+    # Skip nightly machines when updating to stable image (and vice versa)
+    if [[ "$IMAGE" == *":latest" ]] && [[ "$current_image" == *":nightly" ]]; then
+      echo " skipped (nightly channel)"
+      continue
+    fi
+    if [[ "$IMAGE" == *":nightly" ]] && [[ "$current_image" != *":nightly" ]]; then
+      echo " skipped (stable channel)"
+      continue
+    fi
+
     # Update machine with new image
     update_payload=$(echo "$config" | jq --arg img "$IMAGE" '{
       config: (.config | .image = $img)

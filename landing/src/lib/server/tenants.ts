@@ -79,6 +79,7 @@ export async function provisionTenant(opts: {
 			appName: app.name,
 			volumeId: volume.id,
 			authToken,
+			channel: (tenant.imageChannel as fly.ImageChannel) ?? 'stable',
 		});
 
 		// 6. Update tenant
@@ -150,4 +151,28 @@ export async function getTenantBySlug(slug: string): Promise<Tenant | undefined>
 
 export async function getTenantUrl(tenant: Tenant): Promise<string> {
 	return `https://${cf.tenantHostname(tenant.slug)}`;
+}
+
+export async function switchTenantChannel(
+	tenantId: string,
+	channel: fly.ImageChannel
+): Promise<void> {
+	const [tenant] = await db()
+		.select()
+		.from(tenants)
+		.where(eq(tenants.id, tenantId))
+		.limit(1);
+
+	if (!tenant || !tenant.flyAppId || !tenant.flyMachineId) {
+		throw new Error('Tenant not found or not running');
+	}
+
+	// Update the machine image on Fly
+	await fly.updateMachineImage(tenant.flyAppId, tenant.flyMachineId, fly.imageForChannel(channel));
+
+	// Update DB
+	await db()
+		.update(tenants)
+		.set({ imageChannel: channel, updatedAt: new Date() })
+		.where(eq(tenants.id, tenantId));
 }

@@ -22,6 +22,13 @@
       "when": 1773151714480,
       "tag": "0002_polite_night_thrasher",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1773155557296,
+      "tag": "0003_dizzy_forge",
+      "breakpoints": true
     }
   ]
 }

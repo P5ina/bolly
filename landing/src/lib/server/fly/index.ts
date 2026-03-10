@@ -7,6 +7,13 @@ export function registryApp(): string {
 	return env.FLY_REGISTRY_APP ?? 'bolly';
 }
 
+export type ImageChannel = 'stable' | 'nightly';
+
+export function imageForChannel(channel: ImageChannel): string {
+	const registry = `registry.fly.io/${registryApp()}`;
+	return channel === 'nightly' ? `${registry}:nightly` : `${registry}:latest`;
+}
+
 function headers() {
 	const raw = env.FLY_API_TOKEN ?? '';
 	const auth = raw.startsWith('FlyV1') ? raw : `Bearer ${raw}`;
@@ -124,6 +131,7 @@ export interface CreateMachineOpts {
 	appName: string;
 	volumeId: string;
 	authToken: string;
+	channel?: ImageChannel;
 	region?: string;
 	cpus?: number;
 	memoryMb?: number;
@@ -140,7 +148,7 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 		body: JSON.stringify({
 			region: opts.region ?? env.FLY_REGION ?? 'iad',
 			config: {
-				image: env.BOLLY_IMAGE ?? `registry.fly.io/${registryApp()}:latest`,
+				image: env.BOLLY_IMAGE ?? imageForChannel(opts.channel ?? 'stable'),
 				env: {
 					BOLLY_HOME: '/data',
 					RUST_LOG: 'info',
@@ -182,6 +190,25 @@ export async function destroyMachine(appName: string, machineId: string): Promis
 	if (!res.ok && res.status !== 404) {
 		throw new Error(`Fly destroyMachine failed: ${res.status} ${await res.text()}`);
 	}
+}
+
+export async function updateMachineImage(appName: string, machineId: string, image: string): Promise<void> {
+	// Get current config
+	const getRes = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}`, {
+		headers: headers(),
+	});
+	if (!getRes.ok) throw new Error(`Fly getMachine failed: ${getRes.status} ${await getRes.text()}`);
+	const machine = await getRes.json();
+
+	// Update with new image
+	const res = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}`, {
+		method: 'POST',
+		headers: headers(),
+		body: JSON.stringify({
+			config: { ...machine.config, image },
+		}),
+	});
+	if (!res.ok) throw new Error(`Fly updateMachine failed: ${res.status} ${await res.text()}`);
 }
 
 export async function getMachine(appName: string, machineId: string): Promise<{ id: string; state: string; private_ip: string }> {
