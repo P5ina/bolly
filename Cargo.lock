@@ -2542,6 +2542,7 @@ dependencies = [
  "futures",
  "lettre",
  "log",
+ "regex",
  "reqwest",
  "rig-core",
  "rig-sqlite",

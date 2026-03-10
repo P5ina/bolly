@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use base64::Engine as _;
 use rig::client::CompletionClient;
-use rig::completion::{Chat, Message, Prompt};
+use rig::completion::{Chat, Message};
 use rig::completion::message::{UserContent, ImageMediaType, DocumentMediaType, MimeType};
 use rig::one_or_many::OneOrMany;
 use rig::providers::{anthropic, openai};
@@ -129,7 +129,7 @@ impl LlmBackend {
     pub async fn chat_with_tools(
         &self,
         system_prompt: &str,
-        prompt: &str,
+        prompt: Message,
         history: Vec<Message>,
         tools: Vec<Box<dyn ToolDyn>>,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
@@ -138,8 +138,17 @@ impl LlmBackend {
             log::debug!("  tool: {}", t.name());
         }
 
+        let prompt_text = match &prompt {
+            Message::User { content } => {
+                content.iter().find_map(|c| {
+                    if let UserContent::Text(t) = c { Some(t.text.clone()) } else { None }
+                }).unwrap_or_default()
+            }
+            _ => String::new(),
+        };
+
         if tools.is_empty() {
-            return self.chat(system_prompt, prompt, history).await;
+            return self.chat(system_prompt, &prompt_text, history).await;
         }
 
         let result = match self {
@@ -168,63 +177,89 @@ impl LlmBackend {
             Err(e) if is_rate_limit_error(&e.to_string()) => {
                 log::warn!("Rate limited during tool agent, retrying without tools after backoff");
                 tokio::time::sleep(Duration::from_millis(INITIAL_BACKOFF_MS)).await;
-                self.chat(system_prompt, prompt, history).await
+                self.chat(system_prompt, &prompt_text, history).await
             }
             Err(e) => {
                 log::error!("Tool agent failed: {e:?}");
                 log::warn!("Retrying without tools");
-                self.chat(system_prompt, prompt, history).await
+                self.chat(system_prompt, &prompt_text, history).await
             }
         }
     }
+}
 
-    pub async fn chat_with_vision(
-        &self,
-        system_prompt: &str,
-        prompt: &str,
-        file_bytes: &[u8],
-        mime_type: &str,
-    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        // Build multimodal user message with text + image/document
-        let text_content = UserContent::text(prompt);
+/// Build a multimodal Message from text + file attachments.
+/// Parses [attached: name (upload_id)] references and loads the actual files.
+pub fn build_multimodal_prompt(
+    text: &str,
+    workspace_dir: &Path,
+    instance_slug: &str,
+) -> Message {
+    let re = regex::Regex::new(r"\[attached:\s*(.+?)\s*\((\w+)\)\]").unwrap();
 
-        let b64 = base64::engine::general_purpose::STANDARD.encode(file_bytes);
+    let mut contents: Vec<UserContent> = Vec::new();
 
-        let file_content = if mime_type.starts_with("image/") {
-            let media = ImageMediaType::from_mime_type(mime_type);
-            UserContent::image_base64(b64, media, None)
-        } else if mime_type == "application/pdf" {
-            UserContent::document(b64, Some(DocumentMediaType::PDF))
-        } else {
-            // Fallback: treat as text if possible
-            let text = String::from_utf8_lossy(file_bytes);
-            return self.chat(system_prompt, &format!("{prompt}\n\nFile content:\n{text}"), vec![]).await;
+    // Strip attachment markers from text and add as text content
+    let clean_text = re.replace_all(text, "").trim().to_string();
+    if !clean_text.is_empty() {
+        contents.push(UserContent::text(&clean_text));
+    }
+
+    // Load each attachment
+    for cap in re.captures_iter(text) {
+        let name = &cap[1];
+        let upload_id = &cap[2];
+
+        let meta = match super::uploads::get_upload(workspace_dir, instance_slug, upload_id) {
+            Ok(Some(m)) => m,
+            _ => {
+                log::warn!("attachment {upload_id} not found, skipping");
+                continue;
+            }
         };
 
-        let content = OneOrMany::many(vec![text_content, file_content])?;
-        let message = Message::User { content };
-
-        let backend = self.clone();
-        let system = system_prompt.to_string();
-        retry_on_rate_limit(|| {
-            let backend = backend.clone();
-            let system = system.clone();
-            let message = message.clone();
-            async move {
-                match &backend {
-                    LlmBackend::Anthropic { client, model } => {
-                        let agent = client.agent(model).preamble(&system).build();
-                        Ok(agent.prompt(message).await?)
-                    }
-                    LlmBackend::OpenAI { client, model } => {
-                        let agent = client.agent(model).preamble(&system).build();
-                        Ok(agent.prompt(message).await?)
-                    }
-                }
+        let file_path = match super::uploads::get_upload_file_path(workspace_dir, instance_slug, upload_id) {
+            Some(p) => p,
+            None => {
+                log::warn!("attachment file for {upload_id} missing, skipping");
+                continue;
             }
-        })
-        .await
+        };
+
+        let bytes = match std::fs::read(&file_path) {
+            Ok(b) => b,
+            Err(e) => {
+                log::warn!("failed to read attachment {upload_id}: {e}");
+                continue;
+            }
+        };
+
+        if meta.mime_type.starts_with("image/") {
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            let media = ImageMediaType::from_mime_type(&meta.mime_type);
+            contents.push(UserContent::image_base64(b64, media, None));
+            log::info!("attached image: {name} ({}, {} bytes)", meta.mime_type, bytes.len());
+        } else if meta.mime_type == "application/pdf" {
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            contents.push(UserContent::document(b64, Some(DocumentMediaType::PDF)));
+            log::info!("attached PDF: {name} ({} bytes)", bytes.len());
+        } else if meta.mime_type.starts_with("text/") || meta.mime_type == "application/json" {
+            // Inline text files directly
+            let text_content = String::from_utf8_lossy(&bytes);
+            let truncated: String = text_content.chars().take(10_000).collect();
+            contents.push(UserContent::text(format!("\n--- {name} ---\n{truncated}\n---")));
+            log::info!("attached text file: {name} ({} bytes)", bytes.len());
+        } else {
+            contents.push(UserContent::text(format!("[file: {name} — {}, {} bytes, binary format]", meta.mime_type, bytes.len())));
+        }
     }
+
+    if contents.is_empty() {
+        contents.push(UserContent::text(text));
+    }
+
+    let content = OneOrMany::many(contents).unwrap_or_else(|_| OneOrMany::one(UserContent::text(text)));
+    Message::User { content }
 }
 
 pub fn load_system_prompt(workspace_dir: &Path, instance_slug: &str) -> String {

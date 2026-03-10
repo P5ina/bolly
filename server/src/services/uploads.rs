@@ -186,31 +186,6 @@ pub fn delete_upload(workspace_dir: &Path, instance_slug: &str, upload_id: &str)
     Ok(true)
 }
 
-/// Read the content of a text-based upload. Returns None for binary files.
-pub fn read_upload_text(workspace_dir: &Path, instance_slug: &str, upload_id: &str) -> io::Result<Option<String>> {
-    let meta = match get_upload(workspace_dir, instance_slug, upload_id)? {
-        Some(m) => m,
-        None => return Err(io::Error::new(ErrorKind::NotFound, "upload not found")),
-    };
-
-    let is_text = meta.mime_type.starts_with("text/") || meta.mime_type == "application/json";
-
-    if !is_text {
-        return Ok(None);
-    }
-
-    let path = workspace_dir
-        .join("instances")
-        .join(instance_slug)
-        .join("uploads")
-        .join(&meta.stored_name);
-
-    let content = fs::read_to_string(&path)?;
-    // Limit to 10k chars for LLM context
-    let truncated: String = content.chars().take(10_000).collect();
-    Ok(Some(truncated))
-}
-
 fn unix_millis() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
