@@ -6,9 +6,20 @@
 	import { AuthError } from "$lib/api/client.js";
 	import type { ServerEvent } from "$lib/api/types.js";
 	import { page } from "$app/state";
+	import { onMount } from "svelte";
+	import { pwaInfo } from "virtual:pwa-info";
 	import AuthGate from "$lib/components/auth/AuthGate.svelte";
 
 	let { children } = $props();
+
+	const webManifest = $derived(pwaInfo ? pwaInfo.webManifest.linkTag : "");
+
+	onMount(async () => {
+		if (pwaInfo) {
+			const { registerSW } = await import("virtual:pwa-register");
+			registerSW({ immediate: true });
+		}
+	});
 
 	const instances = getInstances();
 	const ws = getWebSocket();
@@ -51,6 +62,7 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+	{@html webManifest}
 	<title>bolly</title>
 </svelte:head>
 

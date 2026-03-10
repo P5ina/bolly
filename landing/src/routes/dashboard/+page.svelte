@@ -1,8 +1,21 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { invalidateAll } from '$app/navigation';
-	import { ExternalLink, AlertTriangle, Loader, Mail, CreditCard, CalendarClock, XCircle, RotateCw, RefreshCw } from 'lucide-svelte';
+	import { ExternalLink, AlertTriangle, Loader, Mail, CreditCard, CalendarClock, XCircle, RotateCw, RefreshCw, Share2, Check } from 'lucide-svelte';
 	import { enhance } from '$app/forms';
+
+	let shared = $state<string | null>(null);
+
+	async function shareLink(slug: string) {
+		const url = `${window.location.origin}/connect/${slug}`;
+		if (navigator.share) {
+			await navigator.share({ title: `bolly — ${slug}`, url });
+		} else {
+			await navigator.clipboard.writeText(url);
+			shared = slug;
+			setTimeout(() => (shared = null), 2000);
+		}
+	}
 
 	function formatPrice(cents: number) {
 		return `$${(cents / 100).toFixed(0)}`;
@@ -270,14 +283,28 @@
 										</div>
 									</div>
 								</div>
-								<a
-									href={connectUrl(tenant.slug)}
-									target="_blank"
-									class="group inline-flex items-center gap-1.5 text-xs py-2 px-4 rounded-lg text-warm transition-all duration-300 hover:-translate-y-0.5"
-									style="background: var(--color-warm-glow); border: 1px solid var(--color-border-warm);"
-								>
-									Open <ExternalLink size={13} />
-								</a>
+								<div class="flex items-center gap-2">
+									<button
+										onclick={() => shareLink(tenant.slug)}
+										class="inline-flex items-center gap-1.5 text-xs py-2 px-3 rounded-lg transition-all duration-300"
+										style="color: var(--color-text-ghost); border: 1px solid var(--color-border);"
+										title="Share connection link"
+									>
+										{#if shared === tenant.slug}
+											<Check size={13} /> copied
+										{:else}
+											<Share2 size={13} /> share
+										{/if}
+									</button>
+									<a
+										href={connectUrl(tenant.slug)}
+										target="_blank"
+										class="group inline-flex items-center gap-1.5 text-xs py-2 px-4 rounded-lg text-warm transition-all duration-300 hover:-translate-y-0.5"
+										style="background: var(--color-warm-glow); border: 1px solid var(--color-border-warm);"
+									>
+										Open <ExternalLink size={13} />
+									</a>
+								</div>
 							</div>
 
 							<!-- Subscription details -->
