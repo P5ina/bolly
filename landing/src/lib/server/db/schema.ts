@@ -48,6 +48,7 @@ export const tenants = pgTable('tenants', {
 
 	// Bolly instance config
 	authToken: text('auth_token'), // auto-generated, used to proxy to the instance
+	shareToken: text('share_token'), // public share link token
 	errorMessage: text('error_message'),
 	imageChannel: imageChannelEnum('image_channel').notNull().default('stable'),
 

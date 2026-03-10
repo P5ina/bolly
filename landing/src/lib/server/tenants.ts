@@ -37,6 +37,7 @@ export async function provisionTenant(opts: {
 
 	const id = generateId();
 	const authToken = generateId(32);
+	const shareToken = generateId(32);
 
 	const [tenant] = await db()
 		.insert(tenants)
@@ -47,6 +48,7 @@ export async function provisionTenant(opts: {
 			plan: opts.plan,
 			status: 'provisioning',
 			authToken,
+			shareToken,
 			stripeSubscriptionId: opts.stripeSubscriptionId,
 			storageLimit: planConfig.storageLimit,
 			maxInstances: planConfig.maxInstances,

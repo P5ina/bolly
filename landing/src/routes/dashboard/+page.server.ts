@@ -60,6 +60,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 					flyAppId: t.flyAppId,
 					errorMessage: t.errorMessage,
 					imageChannel: t.imageChannel,
+					shareToken: t.shareToken,
 					createdAt: t.createdAt.toISOString(),
 					subscription,
 				};

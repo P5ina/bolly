@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "share_token" text;

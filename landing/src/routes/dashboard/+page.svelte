@@ -6,8 +6,9 @@
 
 	let shared = $state<string | null>(null);
 
-	async function shareLink(slug: string) {
-		const url = `${window.location.origin}/connect/${slug}`;
+	async function shareLink(slug: string, shareToken: string | null) {
+		const base = `${window.location.origin}/connect/${slug}`;
+		const url = shareToken ? `${base}?share=${shareToken}` : base;
 		if (navigator.share) {
 			await navigator.share({ title: `bolly — ${slug}`, url });
 		} else {
@@ -285,7 +286,7 @@
 								</div>
 								<div class="flex items-center gap-2">
 									<button
-										onclick={() => shareLink(tenant.slug)}
+										onclick={() => shareLink(tenant.slug, tenant.shareToken)}
 										class="inline-flex items-center gap-1.5 text-xs py-2 px-3 rounded-lg transition-all duration-300"
 										style="color: var(--color-text-ghost); border: 1px solid var(--color-border);"
 										title="Share connection link"
