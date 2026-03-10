@@ -103,11 +103,14 @@ pub async fn run_single_turn(
     };
 
     let memory_prompt = if memory_index.is_none() {
-        // No RAG — inject all facts into system prompt as fallback
+        // No RAG — inject all facts + episodes into system prompt as fallback
         memory::build_facts_md_prompt(workspace_dir, &instance_slug)
     } else {
-        // RAG will handle memory retrieval via dynamic_context
-        String::from("## memory\nyou have persistent memory. relevant memories are loaded automatically based on the conversation.")
+        // RAG handles facts via dynamic_context; episodes are always injected directly
+        let episodes = memory::build_episodes_prompt(workspace_dir, &instance_slug);
+        format!(
+            "## memory\nyou have persistent memory. relevant facts are loaded automatically based on the conversation.{episodes}"
+        )
     };
 
     let journal_prompt = load_recent_journal(workspace_dir, &instance_slug);

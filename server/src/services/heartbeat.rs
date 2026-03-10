@@ -16,7 +16,7 @@ use crate::domain::chat::{ChatMessage, ChatRole};
 use crate::domain::events::ServerEvent;
 use crate::domain::mood::MoodState;
 use crate::domain::thought::Thought;
-use crate::services::{drops, llm::LlmBackend, rhythm, thoughts};
+use crate::services::{drops, llm::LlmBackend, memory, rhythm, thoughts};
 use crate::services::tools::{load_mood_state, save_mood_state, ALLOWED_MOODS};
 
 static HEARTBEAT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -128,6 +128,9 @@ async fn heartbeat_instance(
     // Load recent drops so we don't repeat ourselves
     let recent_drops = load_recent_drops_context(workspace_dir, slug);
 
+    // Load episodic memories — shared moments
+    let episodes = memory::load_episodes_for_heartbeat(workspace_dir, slug);
+
     // Build the reflection prompt
     let reflection = build_reflection_prompt(
         &mood,
@@ -137,6 +140,7 @@ async fn heartbeat_instance(
         &last_messages,
         &rhythm_insights,
         &recent_drops,
+        &episodes,
     );
 
     let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
@@ -207,6 +211,7 @@ fn build_reflection_prompt(
     last_messages: &str,
     rhythm_insights: &str,
     recent_drops: &str,
+    episodes: &str,
 ) -> String {
     let now = Utc::now().format("%Y-%m-%d %H:%M UTC").to_string();
     let mut prompt = format!("current time: {now}\n\n");
@@ -282,6 +287,13 @@ fn build_reflection_prompt(
     // Rhythm insights
     if !rhythm_insights.is_empty() {
         prompt.push_str(rhythm_insights);
+        prompt.push('\n');
+    }
+
+    // Episodic memories — shared moments
+    if !episodes.is_empty() {
+        prompt.push_str("moments you remember sharing:\n");
+        prompt.push_str(episodes);
         prompt.push('\n');
     }
 

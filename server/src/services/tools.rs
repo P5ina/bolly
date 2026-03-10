@@ -962,7 +962,7 @@ impl Tool for RecallTool {
             name: "recall".into(),
             description: "Search your memories about the user. Use this when you need to \
                 remember something specific — their preferences, projects, personal details, \
-                or anything they've told you before."
+                or shared moments. Searches both facts and episodic memories (moments you've shared together)."
                 .into(),
             parameters: openai_schema::<RecallArgs>(),
         }
@@ -976,10 +976,6 @@ impl Tool for RecallTool {
 
         let facts_path = self.instance_dir.join("memory").join("facts.md");
         let content = fs::read_to_string(&facts_path).unwrap_or_default();
-
-        if content.is_empty() {
-            return Ok("no memories yet.".into());
-        }
 
         // Simple keyword matching — collect all facts that match any query word
         let query_words: Vec<&str> = query.split_whitespace().collect();
@@ -1002,26 +998,55 @@ impl Tool for RecallTool {
             }
         }
 
-        if matches.is_empty() {
-            // Return all facts as fallback
+        // Search episodes too
+        let workspace_dir = self.instance_dir.parent().and_then(|p| p.parent());
+        let slug = self.instance_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        let episode_matches = if let Some(ws) = workspace_dir {
+            crate::services::memory::search_episodes(ws, slug, &query)
+        } else {
+            Vec::new()
+        };
+
+        let mut result = String::new();
+
+        if !matches.is_empty() {
+            result.push_str(&format!(
+                "facts matching \"{query}\":\n{}\n",
+                categorized.join("\n")
+            ));
+        }
+
+        if !episode_matches.is_empty() {
+            if !result.is_empty() {
+                result.push('\n');
+            }
+            result.push_str(&format!("moments matching \"{query}\":\n"));
+            for ep in &episode_matches {
+                result.push_str(&format!("- {} (felt: {})\n", ep.content, ep.emotion));
+                if !ep.significance.is_empty() {
+                    result.push_str(&format!("  why: {}\n", ep.significance));
+                }
+            }
+        }
+
+        if result.is_empty() {
+            // Return all facts + episodes as fallback
             let all_facts: Vec<&str> = content
                 .lines()
                 .filter(|l| l.starts_with("- "))
                 .map(|l| l.trim_start_matches("- "))
                 .collect();
-            if all_facts.is_empty() {
+
+            if all_facts.is_empty() && episode_matches.is_empty() {
                 return Ok("no memories yet.".into());
             }
-            return Ok(format!(
+            result = format!(
                 "no exact matches for \"{query}\", but here's everything I remember:\n{}",
                 all_facts.join("\n")
-            ));
+            );
         }
 
-        Ok(format!(
-            "memories matching \"{query}\":\n{}",
-            categorized.join("\n")
-        ))
+        Ok(result)
     }
 }
 
