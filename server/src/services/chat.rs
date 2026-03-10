@@ -346,6 +346,20 @@ pub fn list_chats(workspace_dir: &Path, instance_slug: &str) -> io::Result<Vec<c
     Ok(summaries)
 }
 
+/// Get the title of a chat (empty string if no title set).
+pub fn get_chat_title(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> io::Result<String> {
+    let instance_slug = sanitize_slug(instance_slug);
+    let chat_id = sanitize_slug(chat_id);
+    let meta_path = chat_dir(workspace_dir, &instance_slug, &chat_id).join("meta.json");
+    if !meta_path.exists() {
+        return Ok(String::new());
+    }
+    let raw = fs::read_to_string(&meta_path)?;
+    let meta: crate::domain::chat::ChatMeta =
+        serde_json::from_str(&raw).map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
+    Ok(meta.title)
+}
+
 /// Update the title of a chat.
 pub fn update_chat_title(workspace_dir: &Path, instance_slug: &str, chat_id: &str, title: &str) -> io::Result<()> {
     let instance_slug = sanitize_slug(instance_slug);

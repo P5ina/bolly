@@ -204,6 +204,35 @@ async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String,
         }
     }
 
+    // Auto-generate title if missing
+    if let Ok(response) = chat::load_messages(&state.workspace_dir, &instance_slug, &chat_id) {
+        let needs_title = chat::get_chat_title(&state.workspace_dir, &instance_slug, &chat_id)
+            .map(|t| t.is_empty())
+            .unwrap_or(true);
+
+        if needs_title && !response.messages.is_empty() {
+            let llm_guard = state.llm.read().await;
+            if let Some(llm) = llm_guard.as_ref() {
+                let snippet: String = response
+                    .messages
+                    .iter()
+                    .take(6)
+                    .map(|m| format!("{}: {}", if m.role == ChatRole::User { "user" } else { "assistant" }, m.content.chars().take(200).collect::<String>()))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                let prompt = format!(
+                    "Generate a very short title (3-6 words, no quotes) for this conversation:\n\n{snippet}"
+                );
+
+                if let Ok(title) = llm.chat("You generate short chat titles. Respond with only the title, nothing else.", &prompt, vec![]).await {
+                    let title = title.trim().trim_matches('"').to_string();
+                    let _ = chat::update_chat_title(&state.workspace_dir, &instance_slug, &chat_id, &title);
+                }
+            }
+        }
+    }
+
     // Clean up
     let key = task_key(&instance_slug, &chat_id);
     {
