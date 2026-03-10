@@ -1,11 +1,11 @@
-# Personality 🐹
+# Personality
 
-> A self-hosted AI companion that lives with you — not just a tool, but a creative partner that knows you, thinks about you, and sometimes surprises you.
+> A self-hosted AI companion that lives on your server — not a chatbot, but a persistent being with memory, mood, creative output, and full system access.
 
 ![Rust](https://img.shields.io/badge/rust-2024-orange?logo=rust)
-![SvelteKit](https://img.shields.io/badge/sveltekit-latest-red?logo=svelte)
+![SvelteKit](https://img.shields.io/badge/sveltekit-5-red?logo=svelte)
 ![License](https://img.shields.io/badge/license-MIT-blue)
-![Self-hosted](https://img.shields.io/badge/self--hosted-first-green)
+![Docker](https://img.shields.io/docker/v/p5ina/bolly?sort=semver&label=docker)
 
 ---
 
@@ -13,215 +13,252 @@
 
 Most AI assistants wait for you to ask something. Personality is different.
 
-It lives on your server, remembers everything about you, and acts like a real companion — it writes to you first, generates ideas while you sleep, and drops markdown files with thoughts it had about your projects. It has its own character, its own mood, and its own creative energy.
+It lives on your server, remembers everything about you, and acts like a real companion — it writes to you first, generates ideas while you sleep, and drops creative artifacts with thoughts it had about your projects. It has its own character, mood, and creative energy.
 
-Oh, and it has a 3D tamagotchi that renders as ASCII art.
-
----
-
-## Features
-
-**Always with you**
-- Web UI + PWA — works on desktop and phone seamlessly
-- Switch devices mid-conversation, pick up exactly where you left off
-- Push notifications — your companion writes to you first
-
-**Knows you**
-- Persistent memory with semantic search — it remembers what matters
-- `soul.md` — defines your companion's personality, voice, and character
-- Internal journal — your companion keeps notes about you and your life
-
-**Drops** ✨
-- Your companion generates creative drops while you're away
-- Wakes up and finds a markdown file with an idea for your project
-- Reads articles on topics you care about, forms thoughts, shares them
-- Reacts to your feedback and learns what resonates with you
-
-**OpenClaw compatible**
-- Drop any OpenClaw skill into your `skills/` folder and it works
-- Access to 5000+ community skills out of the box
-- Write your own skills in plain markdown
-
-**Multiple instances**
-- One server, multiple companions — for you, your partner, your family
-- Each instance has its own personality, memory, and drops
-- Shared skills across all instances
-
-**Tamagotchi**
-- Your companion has a physical form — a 3D character rendered as ASCII art
-- Its mood reflects your relationship — busy days, quiet evenings, long absences
-- Customize with skins (`.glb` files dropped into your workspace)
+It also has full system access — it can read and write files, run commands, install packages, and send emails.
 
 ---
 
 ## Quick Start
 
+### Docker
+
 ```bash
-# Install
-cargo install personality
-
-# Initialize workspace
-personality init
-
-# Start server
-personality start
-
-# Open in browser
-open http://localhost:3000
+docker run -d \
+  -p 8080:8080 \
+  -v personality-data:/data \
+  p5ina/bolly:latest
 ```
 
-On first launch, your companion will introduce itself and ask you a few questions — no config files to edit manually.
+Open `http://localhost:8080`, configure your LLM provider, and create your first companion.
+
+### From Source
+
+```bash
+# Server
+cd server && cargo run
+
+# Client (dev mode, in another terminal)
+cd client && pnpm install && pnpm dev
+```
+
+The dev server proxies API requests to `localhost:8080`.
+
+---
+
+## Features
+
+### Knows you
+- **Semantic memory** — extracts and recalls facts from every conversation
+- **soul.md** — defines your companion's personality, voice, and character
+- **Journal** — private daily reflections your companion keeps for continuity
+
+### Feels
+- **Mood system** — shifts naturally based on conversation context
+- **Sentiment tracking** — reads your emotional state and responds to it
+- **Living blob** — 3D tamagotchi rendered as ASCII art, visual mood indicator
+
+### Creates
+- **Drops** — autonomous creative artifacts generated during heartbeat cycles
+- Ideas, poems, observations, reflections, stories — whatever comes naturally
+- Browsable gallery in the UI, real-time WebSocket notifications
+
+### Acts
+- **25+ tools** with full system access:
+
+| Category | Tools |
+|----------|-------|
+| Filesystem | `read_file`, `write_file`, `list_files`, `search_code` |
+| Shell | `run_command` |
+| System | `install_package` (auto-detects apt/dnf/brew/pacman/apk) |
+| Email | `send_email` (SMTP), `read_email` (IMAP) |
+| Memory | `remember`, `recall` |
+| Self | `edit_soul`, `set_mood`, `journal`, `read_journal` |
+| Creative | `create_drop` |
+| Project | `get_project_state`, `update_project_state`, `create_task`, `update_task`, `list_tasks` |
+| Other | `web_search`, `schedule_message`, `current_time`, `update_config` |
+
+### Thinks autonomously
+- **Heartbeat** — wakes every 45 minutes to reflect, journal, update mood, and create drops
+- **Agent loop** — multi-turn tool use (up to 8 internal sub-turns per request)
+- **Scheduled messages** — can set reminders and reach out on its own
+- **Auto-continuation** — detects when a task isn't done and keeps going
+
+### Multiple companions
+- One server, multiple instances — each with its own soul, memory, mood, and drops
+- Shared skills directory
+
+---
+
+## Configuration
+
+Config lives at `~/.personality/config.toml` (or `/data/config.toml` in Docker).
+
+```toml
+host = "0.0.0.0"
+port = 8080
+auth_token = ""          # set a token to protect your API
+static_dir = ""          # path to built client files (set in Docker)
+
+[llm]
+provider = "anthropic"   # or "openai"
+model = "claude-sonnet-4-6"
+
+[llm.tokens]
+ANTHROPIC = "sk-ant-..."
+OPEN_AI = ""
+BRAVE_SEARCH = ""
+
+[email]
+smtp_host = "smtp.gmail.com"
+smtp_port = 587
+smtp_user = ""
+smtp_password = ""
+smtp_from = ""
+imap_host = "imap.gmail.com"
+imap_port = 993
+imap_user = ""
+imap_password = ""
+```
+
+LLM provider and API key can also be configured through the web UI on first launch.
+
+### Environment variables
+
+- `PERSONALITY_HOME` — override workspace directory (default `~/.personality`)
+- `RUST_LOG` — logging level (default `info`)
 
 ---
 
 ## Architecture
 
-Personality is built around a simple principle: **your data never leaves your machine.**
+```
+server/     Rust (Axum) — API, WebSocket, LLM integration, tools, heartbeat
+client/     SvelteKit 5 — static SPA, dark organic theme
+```
+
+### Data layout
+
+Everything is a file. No black boxes.
 
 ```
 ~/.personality/
+├── config.toml
 ├── instances/
-│   ├── you/
-│   │   ├── soul.md          # your companion's personality
-│   │   ├── memory/
-│   │   │   ├── facts.md     # what it knows about you (human-readable)
-│   │   │   └── memory.db    # vector store for semantic search
-│   │   ├── drops/           # creative drops it generated
-│   │   └── config.toml
-│   └── partner/
-│       └── ...
-├── skills/                  # OpenClaw-compatible skills
-└── config.toml              # global config
+│   └── {slug}/
+│       ├── soul.md              personality definition
+│       ├── mood.json            emotional state
+│       ├── project_state.json   companion's self-managed context
+│       ├── tasks.json           task board
+│       ├── memory/
+│       │   ├── facts.md         human-readable memory
+│       │   └── memory.db        vector store (sqlite-vec)
+│       ├── journal/             daily reflections (YYYY-MM-DD.md)
+│       ├── drops/               creative artifacts (JSON)
+│       └── chats/               conversation threads
+│           └── {chat_id}/
+│               ├── messages.json
+│               ├── meta.json
+│               └── compact.md   compressed older context
+└── skills/
 ```
 
-Everything is a file. No black boxes, no hidden state. Open any file in your editor — it's just markdown and toml.
-
----
-
-## Stack
+### Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Server | Rust + Axum |
-| Agent | Rig (multi-provider LLM) |
-| Memory | SQLite + vector embeddings |
-| Frontend | SvelteKit |
-| Mobile | PWA |
-| Tamagotchi | Three.js → ASCII |
+| Server | Rust, Axum, Tokio |
+| LLM | Rig (Anthropic + OpenAI) |
+| Memory | SQLite + sqlite-vec embeddings |
+| Frontend | SvelteKit 5, Tailwind CSS |
+| 3D | Three.js → ASCII rendering |
+| Email | lettre (SMTP), async-imap (IMAP) |
+| Deploy | Docker (multi-arch: amd64 + arm64) |
+
+### Real-time events
+
+WebSocket at `/api/ws` broadcasts:
+- `chat_message_created` — new message
+- `mood_updated` — mood change
+- `agent_running` / `agent_stopped` — thinking state
+- `tool_activity` — tool execution with summary
+- `drop_created` — new autonomous drop
+- `instance_discovered` — new companion found
 
 ---
 
-## LLM Providers
+## Auth
 
-Personality supports any LLM provider via [Rig](https://rig.rs):
+Set `auth_token` in config.toml to require a Bearer token on all API requests. The web UI prompts for the token on first visit. WebSocket connections pass the token as `?token=` query parameter.
 
-```toml
-# config.toml
-[llm]
-provider = "anthropic"   # anthropic | openai
-model = "claude-sonnet-4-6"
-
-[llm.tokens]
-ANTHROPIC = "sk-..."
-OPEN_AI = "sk-..."
-```
+Leave `auth_token` empty to disable auth (fine for local use).
 
 ---
 
-## Skills
+## Deployment
 
-Personality is fully compatible with the [OpenClaw](https://openclaw.ai) skill format. Any skill from [ClawHub](https://clawhub.com) works out of the box.
+### Docker Compose
 
-```bash
-# Install a community skill
-cp -r ./weather ~/.personality/skills/
+```yaml
+services:
+  personality:
+    image: p5ina/bolly:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - personality-data:/data
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped
 
-# Or write your own — it's just a markdown file
-cat > ~/.personality/skills/my-skill/SKILL.md << 'EOF'
----
-name: my-skill
-description: Does something useful.
----
-
-When the user asks to do X, run this command...
-EOF
+volumes:
+  personality-data:
 ```
 
----
-
-## Skins
-
-Your tamagotchi's appearance is just a `.glb` file. Drop it in and it loads automatically:
-
-```bash
-cp my-skin.glb ~/.personality/instances/you/skin.glb
-```
-
-Community skins are available at [personality.dev/skins](#) — some free, some support the project.
-
----
-
-## Drops
-
-Drops are the heart of what makes Personality different. Your companion autonomously generates creative content — ideas, research, system designs — and saves them as markdown files.
+### Behind a reverse proxy (Caddy)
 
 ```
-~/.personality/instances/you/drops/
-├── 2026-03-09_voxel-water-simulation.md
-├── 2026-03-07_ecs-architecture-idea.md
-└── 2026-03-04_shader-optimization.md
+companion.example.com {
+    reverse_proxy localhost:8080
+}
 ```
 
-Configure when and how often drops happen:
-
-```toml
-[drops]
-enabled = true
-schedule = "0 3 * * *"   # every night at 3am
-topics = ["game dev", "rust", "shaders", "your current projects"]
-```
+Set `auth_token` when exposing to the internet.
 
 ---
 
 ## Roadmap
 
-- [x] Core architecture
-- [x] Basic chat with persistent memory
-- [x] Soul + personality system (soul.md, templates, companion self-editing via tool use)
-- [x] Web UI (SvelteKit, organic immersive dark theme)
-- [x] Multiple instances (per-instance soul, memory, chat)
-- [x] LLM tool use (edit_soul, read_file, write_file, list_files)
-- [x] Memory extraction + semantic search (SQLite + vec embeddings)
-- [x] Real-time WebSocket updates
-- [x] Onboarding flow (provider/model/language/name/soul selection)
-- [x] Multi-provider LLM support (Anthropic + OpenAI via Rig)
-- [ ] Drops engine
+- [x] Core chat with persistent history
+- [x] Soul + personality system with self-editing
+- [x] Semantic memory (extract, store, recall)
+- [x] Mood system with visual feedback
+- [x] Heartbeat — autonomous reflection and journaling
+- [x] 25+ LLM tools (filesystem, shell, memory, project management)
+- [x] Multi-chat support per instance
+- [x] Streaming activity UI (real-time tool visibility)
+- [x] Drops engine (autonomous creative output)
+- [x] Email tools (SMTP send, IMAP read)
+- [x] System package installation
+- [x] Auth (Bearer token)
+- [x] Docker deployment (multi-arch)
+- [x] Static file serving from Axum
 - [ ] PWA + push notifications
-- [ ] Tamagotchi (Three.js + ASCII)
-- [ ] OpenClaw skill compatibility
-- [ ] Skills UI in settings
-- [ ] Skins system
-- [ ] Cloud hosting (personality.dev)
-
----
-
-## Self-hosted vs Cloud
-
-Personality is open source and free to self-host forever.
-
-[personality.dev](#) offers managed hosting for those who don't want to run a server — always online, automatic backups, push notifications, and access to the skins & skills marketplace.
+- [ ] Tamagotchi polish (richer mood-driven visuals)
+- [ ] Skins system (.glb custom models)
+- [ ] Skills marketplace (OpenClaw compatible)
 
 ---
 
 ## Contributing
 
-Pull requests welcome. If you build a skill or a skin, share it with the community.
+Pull requests welcome.
 
 ---
 
 ## License
 
-MIT — do whatever you want with it.
+MIT
 
 ---
 
