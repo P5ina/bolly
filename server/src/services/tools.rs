@@ -58,6 +58,7 @@ fn tool_summary(name: &str, args: &str) -> String {
         "update_task" => format!("updating task {}", v["id"].as_str().unwrap_or("?")),
         "update_project_state" => "updating project state".into(),
         "web_search" => format!("web search: {}", v["query"].as_str().unwrap_or("?")),
+        "web_fetch" => format!("fetching {}", v["url"].as_str().unwrap_or("?")),
         "update_config" => "updating config".into(),
         "create_drop" => format!("creating drop: {}", v["title"].as_str().unwrap_or("?")),
         "send_email" => format!("sending email to {}", v["to"].as_str().unwrap_or("?")),
@@ -534,6 +535,120 @@ impl Tool for WebSearchTool {
         }
         Ok(output)
     }
+}
+
+// ---------------------------------------------------------------------------
+// web_fetch — fetch content from a URL
+// ---------------------------------------------------------------------------
+
+pub struct WebFetchTool;
+
+/// Arguments for web_fetch tool.
+#[derive(Deserialize, JsonSchema)]
+pub struct WebFetchArgs {
+    /// The URL to fetch content from.
+    pub url: String,
+}
+
+impl Tool for WebFetchTool {
+    const NAME: &'static str = "web_fetch";
+    type Error = ToolExecError;
+    type Args = WebFetchArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "web_fetch".into(),
+            description: "Fetch the content of a web page. Use this after web_search to read \
+                a specific page, or when the user shares a URL you need to inspect. \
+                Returns the text content of the page (HTML tags stripped)."
+                .into(),
+            parameters: openai_schema::<WebFetchArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let url = args.url.trim();
+        if url.is_empty() {
+            return Err(ToolExecError("url cannot be empty".into()));
+        }
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .redirect(reqwest::redirect::Policy::limited(5))
+            .build()
+            .map_err(|e| ToolExecError(format!("failed to build HTTP client: {e}")))?;
+
+        let response = client
+            .get(url)
+            .header("User-Agent", "Mozilla/5.0 (compatible; PersonalityBot/1.0)")
+            .header("Accept", "text/html,application/xhtml+xml,text/plain,application/json")
+            .send()
+            .await
+            .map_err(|e| ToolExecError(format!("fetch failed: {e}")))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            return Err(ToolExecError(format!("HTTP {status} for {url}")));
+        }
+
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_lowercase();
+
+        let body = response
+            .text()
+            .await
+            .map_err(|e| ToolExecError(format!("failed to read response body: {e}")))?;
+
+        // For JSON responses, return as-is (truncated)
+        if content_type.contains("json") {
+            let truncated: String = body.chars().take(12_000).collect();
+            return Ok(truncated);
+        }
+
+        // For HTML, strip tags to extract text content
+        let text = if content_type.contains("html") {
+            strip_html_tags(&body)
+        } else {
+            body
+        };
+
+        // Collapse whitespace and truncate
+        let cleaned: String = text
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let truncated: String = cleaned.chars().take(12_000).collect();
+        if cleaned.len() > 12_000 {
+            Ok(format!("{truncated}\n\n[content truncated — {url}]"))
+        } else {
+            Ok(truncated)
+        }
+    }
+}
+
+/// Minimal HTML tag stripping — removes tags, decodes common entities.
+fn strip_html_tags(html: &str) -> String {
+    // Remove script and style blocks entirely
+    let re_script = regex::Regex::new(r"(?is)<(script|style)[^>]*>.*?</\1>").unwrap();
+    let no_scripts = re_script.replace_all(html, " ");
+
+    // Remove all HTML tags
+    let re_tags = regex::Regex::new(r"<[^>]+>").unwrap();
+    let text = re_tags.replace_all(&no_scripts, " ");
+
+    // Decode common HTML entities
+    text.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ")
 }
 
 // ---------------------------------------------------------------------------
