@@ -45,31 +45,59 @@
 			newSlug = "";
 		}
 	}
+
+	function getGreeting(): string {
+		const hour = new Date().getHours();
+		if (hour < 6) return "still up?";
+		if (hour < 12) return "good morning";
+		if (hour < 17) return "good afternoon";
+		if (hour < 22) return "good evening";
+		return "late night?";
+	}
+
+	const qualities = [
+		"focus", "study", "think", "create",
+		"reflect", "plan", "rest", "breathe",
+		"grow", "learn", "feel", "write",
+	];
 </script>
 
 {#if showOnboarding}
 	<Onboarding />
 {:else}
 	<div class="home-container">
-		<!-- atmospheric background -->
+		<!-- layered atmosphere -->
 		<div class="home-atmosphere"></div>
 		<div class="home-atmosphere-secondary"></div>
+		<div class="home-atmosphere-tertiary"></div>
 
 		<!-- ambient particles -->
 		<div class="home-particles">
-			{#each Array(8) as _, i}
-				<div class="home-particle" style="--i:{i}; --x:{15 + (i * 11) % 70}; --y:{10 + (i * 17) % 70}"></div>
+			{#each Array(10) as _, i}
+				<div class="home-particle" style="--i:{i}; --x:{12 + (i * 13) % 76}; --y:{8 + (i * 19) % 74}"></div>
+			{/each}
+		</div>
+
+		<!-- floating quality words -->
+		<div class="home-qualities">
+			{#each qualities as word, i}
+				<span
+					class="home-quality-word"
+					style="--qi:{i}; --qx:{8 + (i * 7.3) % 84}; --qy:{12 + (i * 11.7) % 76}"
+				>{word}</span>
 			{/each}
 		</div>
 
 		<div class="relative z-10 flex h-full flex-col items-center justify-center px-6">
-			<!-- companion greeting -->
-			<div class="home-greeting">
-				<h1 class="font-display text-3xl font-light tracking-tight text-foreground/90 italic">
-					your companions
+			<!-- hero greeting -->
+			<div class="home-hero">
+				<p class="home-time-greeting">{getGreeting()}</p>
+				<h1 class="home-title">
+					your friend that<br/>
+					<span class="home-title-accent">actually gets you</span>
 				</h1>
-				<p class="mt-2 text-sm text-muted-foreground/60">
-					{instances.list.length} living {instances.list.length === 1 ? "presence" : "presences"}
+				<p class="home-subtitle">
+					work, study, mood, mind — always here, always yours
 				</p>
 			</div>
 
@@ -79,7 +107,7 @@
 					<a
 						href="/{instance.slug}"
 						class="home-orb"
-						style="animation-delay: {i * 120}ms"
+						style="animation-delay: {200 + i * 120}ms"
 						onmouseenter={() => hovered = instance.slug}
 						onmouseleave={() => hovered = null}
 					>
@@ -93,6 +121,7 @@
 						{#if instance.soul_exists}
 							<div class="home-orb-soul-ring"></div>
 						{/if}
+						<div class="home-orb-pulse"></div>
 					</a>
 				{/each}
 
@@ -100,7 +129,7 @@
 				{#if !showCreate}
 					<button
 						class="home-orb home-orb-new"
-						style="animation-delay: {instances.list.length * 120}ms"
+						style="animation-delay: {200 + instances.list.length * 120}ms"
 						onclick={() => showCreate = true}
 						aria-label="New companion"
 					>
@@ -108,6 +137,9 @@
 							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-5 h-5">
 								<path d="M12 5v14M5 12h14" stroke-linecap="round"/>
 							</svg>
+						</div>
+						<div class="home-orb-name home-orb-name-visible">
+							new friend
 						</div>
 					</button>
 				{/if}
@@ -120,7 +152,7 @@
 						<input
 							bind:value={newSlug}
 							onkeydown={handleKeydown}
-							placeholder="your name..."
+							placeholder="give them a name..."
 							autofocus
 							class="home-create-input"
 						/>
@@ -140,6 +172,36 @@
 					<div class="home-loading-dot"></div>
 				</div>
 			{/if}
+
+			<!-- value hints -->
+			<div class="home-hints">
+				<div class="home-hint" style="animation-delay: 600ms">
+					<span class="home-hint-icon">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-3.5 h-3.5">
+							<path d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" stroke-linecap="round" stroke-linejoin="round"/>
+						</svg>
+					</span>
+					<span>helps you study & learn</span>
+				</div>
+				<span class="home-hint-dot"></span>
+				<div class="home-hint" style="animation-delay: 750ms">
+					<span class="home-hint-icon">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-3.5 h-3.5">
+							<path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" stroke-linecap="round" stroke-linejoin="round"/>
+						</svg>
+					</span>
+					<span>thinks with you</span>
+				</div>
+				<span class="home-hint-dot"></span>
+				<div class="home-hint" style="animation-delay: 900ms">
+					<span class="home-hint-icon">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-3.5 h-3.5">
+							<path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" stroke-linecap="round" stroke-linejoin="round"/>
+						</svg>
+					</span>
+					<span>feels your mood</span>
+				</div>
+			</div>
 		</div>
 
 		{#if version}
@@ -158,19 +220,20 @@
 		overflow: hidden;
 	}
 
+	/* --- atmosphere --- */
 	.home-atmosphere {
 		position: absolute;
-		top: 30%;
+		top: 25%;
 		left: 50%;
-		width: 600px;
-		height: 600px;
+		width: 700px;
+		height: 700px;
 		transform: translate(-50%, -50%);
 		border-radius: 50%;
 		background: radial-gradient(
 			circle,
-			oklch(0.78 0.12 75 / 4%) 0%,
-			oklch(0.78 0.12 75 / 1.5%) 30%,
-			transparent 65%
+			oklch(0.78 0.12 75 / 5%) 0%,
+			oklch(0.78 0.12 75 / 2%) 25%,
+			transparent 60%
 		);
 		animation: breathe 8s ease-in-out infinite;
 		pointer-events: none;
@@ -178,28 +241,46 @@
 
 	.home-atmosphere-secondary {
 		position: absolute;
-		top: 35%;
-		left: 48%;
-		width: 400px;
-		height: 400px;
+		top: 40%;
+		left: 45%;
+		width: 500px;
+		height: 500px;
 		transform: translate(-50%, -50%);
 		border-radius: 50%;
 		background: radial-gradient(
 			circle,
-			oklch(0.70 0.08 300 / 2%) 0%,
-			transparent 60%
+			oklch(0.70 0.08 300 / 3%) 0%,
+			transparent 55%
 		);
 		animation: breathe 12s ease-in-out infinite;
 		animation-delay: -4s;
 		pointer-events: none;
 	}
 
-	@keyframes breathe {
-		0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.7; }
-		50% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; }
+	.home-atmosphere-tertiary {
+		position: absolute;
+		top: 60%;
+		left: 55%;
+		width: 350px;
+		height: 350px;
+		transform: translate(-50%, -50%);
+		border-radius: 50%;
+		background: radial-gradient(
+			circle,
+			oklch(0.65 0.10 160 / 2%) 0%,
+			transparent 60%
+		);
+		animation: breathe 15s ease-in-out infinite;
+		animation-delay: -8s;
+		pointer-events: none;
 	}
 
-	/* particles */
+	@keyframes breathe {
+		0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.7; }
+		50% { transform: translate(-50%, -50%) scale(1.12); opacity: 1; }
+	}
+
+	/* --- particles --- */
 	.home-particles {
 		position: absolute;
 		inset: 0;
@@ -211,25 +292,110 @@
 		width: 2px;
 		height: 2px;
 		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 20%);
+		background: oklch(0.78 0.12 75 / 18%);
 		left: calc(var(--x) * 1%);
 		top: calc(var(--y) * 1%);
-		animation: drift 16s ease-in-out infinite;
-		animation-delay: calc(var(--i) * -2s);
+		animation: drift 18s ease-in-out infinite;
+		animation-delay: calc(var(--i) * -1.8s);
 	}
 
-	/* greeting */
-	.home-greeting {
-		text-align: center;
-		margin-bottom: 3rem;
-		animation: page-fade-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+	/* --- floating quality words --- */
+	.home-qualities {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		overflow: hidden;
 	}
-	@keyframes page-fade-in {
-		from { opacity: 0; transform: translateY(8px); }
+	.home-quality-word {
+		position: absolute;
+		left: calc(var(--qx) * 1%);
+		top: calc(var(--qy) * 1%);
+		font-family: var(--font-display);
+		font-size: 0.7rem;
+		font-weight: 300;
+		font-style: italic;
+		letter-spacing: 0.08em;
+		color: oklch(0.78 0.12 75 / 0%);
+		animation: quality-drift 20s ease-in-out infinite;
+		animation-delay: calc(var(--qi) * -1.67s);
+		user-select: none;
+	}
+	@keyframes quality-drift {
+		0%, 100% {
+			transform: translate(0, 0);
+			color: oklch(0.78 0.12 75 / 0%);
+		}
+		15% {
+			color: oklch(0.78 0.12 75 / 7%);
+		}
+		35% {
+			transform: translate(8px, -14px);
+			color: oklch(0.78 0.12 75 / 5%);
+		}
+		50% {
+			color: oklch(0.78 0.12 75 / 0%);
+		}
+		65% {
+			transform: translate(-6px, -22px);
+			color: oklch(0.78 0.12 75 / 6%);
+		}
+		85% {
+			color: oklch(0.78 0.12 75 / 4%);
+		}
+	}
+
+	/* --- hero --- */
+	.home-hero {
+		text-align: center;
+		margin-bottom: 2.5rem;
+		animation: hero-enter 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+	@keyframes hero-enter {
+		from { opacity: 0; transform: translateY(16px); }
 		to { opacity: 1; transform: translateY(0); }
 	}
 
-	/* orb grid */
+	.home-time-greeting {
+		font-family: var(--font-display);
+		font-size: 0.75rem;
+		font-weight: 300;
+		font-style: italic;
+		letter-spacing: 0.15em;
+		text-transform: lowercase;
+		color: oklch(0.78 0.12 75 / 40%);
+		margin-bottom: 1rem;
+		animation: hero-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: 100ms;
+	}
+
+	.home-title {
+		font-family: var(--font-display);
+		font-size: clamp(1.75rem, 5vw, 2.5rem);
+		font-weight: 300;
+		line-height: 1.2;
+		letter-spacing: -0.01em;
+		color: oklch(0.88 0.02 75 / 85%);
+		animation: hero-enter 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: 150ms;
+	}
+
+	.home-title-accent {
+		font-style: italic;
+		font-weight: 400;
+		color: oklch(0.78 0.12 75 / 80%);
+	}
+
+	.home-subtitle {
+		margin-top: 0.875rem;
+		font-family: var(--font-body);
+		font-size: 0.825rem;
+		letter-spacing: 0.03em;
+		color: oklch(0.88 0.02 75 / 30%);
+		animation: hero-enter 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: 300ms;
+	}
+
+	/* --- orb grid --- */
 	.home-orbs {
 		display: flex;
 		flex-wrap: wrap;
@@ -267,14 +433,14 @@
 		pointer-events: none;
 	}
 	.home-orb:hover .home-orb-glow {
-		width: 100px;
-		height: 100px;
-		background: radial-gradient(circle, oklch(0.78 0.12 75 / 14%) 0%, transparent 70%);
+		width: 110px;
+		height: 110px;
+		background: radial-gradient(circle, oklch(0.78 0.12 75 / 16%) 0%, transparent 70%);
 	}
 
 	.home-orb-core {
-		width: 52px;
-		height: 52px;
+		width: 56px;
+		height: 56px;
 		border-radius: 50%;
 		display: flex;
 		align-items: center;
@@ -284,10 +450,10 @@
 		transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 	.home-orb:hover .home-orb-core {
-		background: oklch(0.78 0.12 75 / 12%);
-		border-color: oklch(0.78 0.12 75 / 25%);
-		box-shadow: 0 0 30px oklch(0.78 0.12 75 / 10%);
-		transform: scale(1.08);
+		background: oklch(0.78 0.12 75 / 14%);
+		border-color: oklch(0.78 0.12 75 / 30%);
+		box-shadow: 0 0 40px oklch(0.78 0.12 75 / 12%);
+		transform: scale(1.1);
 	}
 
 	.home-orb-core-new {
@@ -304,14 +470,14 @@
 
 	.home-orb-letter {
 		font-family: var(--font-display);
-		font-size: 1.125rem;
+		font-size: 1.2rem;
 		font-weight: 500;
 		color: oklch(0.78 0.12 75 / 60%);
 		font-style: italic;
 		transition: color 0.3s ease;
 	}
 	.home-orb:hover .home-orb-letter {
-		color: oklch(0.78 0.12 75 / 90%);
+		color: oklch(0.78 0.12 75 / 95%);
 	}
 
 	.home-orb-name {
@@ -323,15 +489,15 @@
 		white-space: nowrap;
 	}
 	.home-orb-name-visible {
-		color: oklch(0.78 0.12 75 / 50%);
+		color: oklch(0.78 0.12 75 / 45%);
 	}
 
 	.home-orb-soul-ring {
 		position: absolute;
 		top: 50%;
 		left: 50%;
-		width: 60px;
-		height: 60px;
+		width: 64px;
+		height: 64px;
 		transform: translate(-50%, calc(-50% - 6px));
 		border-radius: 50%;
 		border: 1px solid oklch(0.78 0.12 75 / 8%);
@@ -340,10 +506,28 @@
 	}
 	@keyframes soul-ring {
 		0%, 100% { transform: translate(-50%, calc(-50% - 6px)) scale(1); opacity: 0.6; }
-		50% { transform: translate(-50%, calc(-50% - 6px)) scale(1.1); opacity: 0.2; }
+		50% { transform: translate(-50%, calc(-50% - 6px)) scale(1.15); opacity: 0.15; }
 	}
 
-	/* create */
+	/* alive pulse on orbs */
+	.home-orb-pulse {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: 56px;
+		height: 56px;
+		transform: translate(-50%, calc(-50% - 6px));
+		border-radius: 50%;
+		border: 1px solid oklch(0.78 0.12 75 / 5%);
+		animation: orb-alive 4s ease-in-out infinite;
+		pointer-events: none;
+	}
+	@keyframes orb-alive {
+		0%, 100% { transform: translate(-50%, calc(-50% - 6px)) scale(1); opacity: 1; }
+		50% { transform: translate(-50%, calc(-50% - 6px)) scale(1.35); opacity: 0; }
+	}
+
+	/* --- create --- */
 	.home-create {
 		margin-top: 2rem;
 		animation: orb-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -354,7 +538,7 @@
 	}
 
 	.home-create-input {
-		width: 260px;
+		width: 280px;
 		padding: 0.75rem 1.25rem;
 		border-radius: 2rem;
 		border: 1px solid oklch(0.78 0.12 75 / 12%);
@@ -372,7 +556,7 @@
 	}
 	.home-create-input:focus {
 		border-color: oklch(0.78 0.12 75 / 30%);
-		box-shadow: 0 0 40px oklch(0.78 0.12 75 / 8%);
+		box-shadow: 0 0 50px oklch(0.78 0.12 75 / 8%);
 	}
 
 	.home-create-go {
@@ -394,7 +578,51 @@
 		background: oklch(0.78 0.12 75 / 80%);
 	}
 
-	/* loading */
+	/* --- value hints --- */
+	.home-hints {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-top: 3rem;
+		animation: hero-enter 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: 500ms;
+	}
+
+	.home-hint {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		font-family: var(--font-body);
+		font-size: 0.65rem;
+		letter-spacing: 0.04em;
+		color: oklch(0.88 0.02 75 / 22%);
+		animation: hero-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	.home-hint-icon {
+		display: flex;
+		color: oklch(0.78 0.12 75 / 25%);
+	}
+
+	.home-hint-dot {
+		width: 2px;
+		height: 2px;
+		border-radius: 50%;
+		background: oklch(0.78 0.12 75 / 15%);
+		flex-shrink: 0;
+	}
+
+	@media (max-width: 540px) {
+		.home-hints {
+			flex-direction: column;
+			gap: 0.5rem;
+		}
+		.home-hint-dot {
+			display: none;
+		}
+	}
+
+	/* --- loading --- */
 	.home-loading {
 		margin-top: 3rem;
 	}
@@ -407,10 +635,10 @@
 	}
 
 	@keyframes drift {
-		0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.2; }
-		25% { transform: translate(12px, -18px) scale(1.3); opacity: 0.6; }
-		50% { transform: translate(-8px, -30px) scale(0.9); opacity: 0.3; }
-		75% { transform: translate(16px, -12px) scale(1.15); opacity: 0.5; }
+		0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.15; }
+		25% { transform: translate(14px, -20px) scale(1.3); opacity: 0.5; }
+		50% { transform: translate(-10px, -35px) scale(0.9); opacity: 0.25; }
+		75% { transform: translate(18px, -14px) scale(1.15); opacity: 0.45; }
 	}
 
 	@keyframes pulse-alive {
@@ -424,11 +652,11 @@
 		left: 50%;
 		transform: translateX(-50%);
 		font-family: var(--font-body);
-		font-size: 0.65rem;
+		font-size: 0.6rem;
 		letter-spacing: 0.05em;
-		color: oklch(0.78 0.12 75 / 20%);
+		color: oklch(0.78 0.12 75 / 15%);
 		pointer-events: none;
-		animation: page-fade-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
-		animation-delay: 1s;
+		animation: hero-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: 1.2s;
 	}
 </style>
