@@ -18,18 +18,44 @@ const BASE = "";
 // ---------------------------------------------------------------------------
 
 const TOKEN_KEY = "bolly_auth_token";
+const TOKEN_COOKIE = "bolly_token";
+
+function getCookie(name: string): string | null {
+	if (typeof document === "undefined") return null;
+	const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+	return match ? decodeURIComponent(match[1]) : null;
+}
+
+function setCookie(name: string, value: string) {
+	if (typeof document === "undefined") return;
+	// 1 year expiry, same-site strict, secure on https
+	const secure = location.protocol === "https:" ? "; Secure" : "";
+	document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=31536000; SameSite=Strict${secure}`;
+}
+
+function deleteCookie(name: string) {
+	if (typeof document === "undefined") return;
+	document.cookie = `${name}=; path=/; max-age=0`;
+}
 
 export function getAuthToken(): string | null {
-	if (typeof localStorage === "undefined") return null;
-	return localStorage.getItem(TOKEN_KEY);
+	if (typeof localStorage === "undefined") return getCookie(TOKEN_COOKIE);
+	// Try localStorage first, fall back to cookie (for PWA isolated storage)
+	return localStorage.getItem(TOKEN_KEY) ?? getCookie(TOKEN_COOKIE);
 }
 
 export function setAuthToken(token: string) {
-	localStorage.setItem(TOKEN_KEY, token);
+	if (typeof localStorage !== "undefined") {
+		localStorage.setItem(TOKEN_KEY, token);
+	}
+	setCookie(TOKEN_COOKIE, token);
 }
 
 export function clearAuthToken() {
-	localStorage.removeItem(TOKEN_KEY);
+	if (typeof localStorage !== "undefined") {
+		localStorage.removeItem(TOKEN_KEY);
+	}
+	deleteCookie(TOKEN_COOKIE);
 }
 
 function authHeaders(): Record<string, string> {
