@@ -180,6 +180,10 @@ pub async fn run_single_turn(
                 total_history_tokens,
                 compact_threshold,
             );
+            let _ = events.send(ServerEvent::ContextCompacting {
+                instance_slug: instance_slug.clone(),
+                messages_compacted: to_compact.len(),
+            });
             let new_summary = compact_messages(llm, &existing_compact, to_compact).await;
             if !new_summary.is_empty() {
                 if let Err(e) = fs::write(&compact_path, &new_summary) {

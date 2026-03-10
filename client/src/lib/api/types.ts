@@ -158,4 +158,9 @@ export type ServerEvent =
 			type: "heartbeat_thought";
 			instance_slug: string;
 			thought: Thought;
+	  }
+	| {
+			type: "context_compacting";
+			instance_slug: string;
+			messages_compacted: number;
 	  };

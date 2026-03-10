@@ -35,4 +35,8 @@ pub enum ServerEvent {
         instance_slug: String,
         thought: Thought,
     },
+    ContextCompacting {
+        instance_slug: String,
+        messages_compacted: usize,
+    },
 }

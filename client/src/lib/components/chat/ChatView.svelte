@@ -145,6 +145,8 @@
 				pushActivity("tool", event.summary);
 			} else if (event.type === "drop_created") {
 				pushActivity("tool", `dropped: ${event.drop.title}`);
+			} else if (event.type === "context_compacting") {
+				pushActivity("state", `compacting ${event.messages_compacted} messages...`);
 			}
 		});
 		return unsub;
