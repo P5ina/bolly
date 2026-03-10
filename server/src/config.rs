@@ -7,10 +7,18 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
+    #[serde(default = "default_host")]
+    pub host: String,
     #[serde(default = "default_port")]
     pub port: u16,
     #[serde(default)]
+    pub auth_token: String,
+    #[serde(default)]
+    pub static_dir: String,
+    #[serde(default)]
     pub llm: LlmConfig,
+    #[serde(default)]
+    pub email: EmailConfig,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -40,15 +48,63 @@ pub struct LlmTokens {
     pub brave_search: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EmailConfig {
+    #[serde(default)]
+    pub smtp_host: String,
+    #[serde(default = "default_smtp_port")]
+    pub smtp_port: u16,
+    #[serde(default)]
+    pub smtp_user: String,
+    #[serde(default)]
+    pub smtp_password: String,
+    #[serde(default)]
+    pub smtp_from: String,
+    #[serde(default)]
+    pub imap_host: String,
+    #[serde(default = "default_imap_port")]
+    pub imap_port: u16,
+    #[serde(default)]
+    pub imap_user: String,
+    #[serde(default)]
+    pub imap_password: String,
+}
+
+impl EmailConfig {
+    pub fn is_smtp_configured(&self) -> bool {
+        !self.smtp_host.is_empty() && !self.smtp_user.is_empty() && !self.smtp_password.is_empty()
+    }
+
+    pub fn is_imap_configured(&self) -> bool {
+        !self.imap_host.is_empty() && !self.imap_user.is_empty() && !self.imap_password.is_empty()
+    }
+}
+
+fn default_host() -> String {
+    "0.0.0.0".into()
+}
+
 fn default_port() -> u16 {
     8080
+}
+
+fn default_smtp_port() -> u16 {
+    587
+}
+
+fn default_imap_port() -> u16 {
+    993
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
+            host: default_host(),
             port: 8080,
+            auth_token: String::new(),
+            static_dir: String::new(),
             llm: LlmConfig::default(),
+            email: EmailConfig::default(),
         }
     }
 }
@@ -69,6 +125,22 @@ impl Default for LlmTokens {
             open_ai: String::new(),
             anthropic: String::new(),
             brave_search: String::new(),
+        }
+    }
+}
+
+impl Default for EmailConfig {
+    fn default() -> Self {
+        Self {
+            smtp_host: String::new(),
+            smtp_port: default_smtp_port(),
+            smtp_user: String::new(),
+            smtp_password: String::new(),
+            smtp_from: String::new(),
+            imap_host: String::new(),
+            imap_port: default_imap_port(),
+            imap_user: String::new(),
+            imap_password: String::new(),
         }
     }
 }

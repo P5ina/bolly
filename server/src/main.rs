@@ -19,9 +19,28 @@ async fn main() {
         )
     });
 
+    let host = config.host.clone();
     let port = config.port;
+    let static_dir = if config.static_dir.is_empty() {
+        None
+    } else {
+        let path = std::path::PathBuf::from(&config.static_dir);
+        if path.is_dir() {
+            Some(path)
+        } else {
+            log::warn!("static_dir {} does not exist, skipping", config.static_dir);
+            None
+        }
+    };
+
     let state = app::state::AppState::new(config);
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+
+    let addr: SocketAddr = format!("{host}:{port}")
+        .parse()
+        .unwrap_or_else(|_| {
+            log::warn!("invalid host:port {host}:{port}, falling back to 0.0.0.0:{port}");
+            SocketAddr::from(([0, 0, 0, 0], port))
+        });
 
     // Start background scheduler for scheduled messages
     services::scheduler::start(&state.workspace_dir, state.events.clone());
@@ -33,7 +52,7 @@ async fn main() {
         state.events.clone(),
     );
 
-    let app = app::router::build_router(state);
+    let app = app::router::build_router(state, static_dir);
 
     info!("Starting server on http://{addr}");
 

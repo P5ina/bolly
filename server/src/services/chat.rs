@@ -20,11 +20,11 @@ use crate::{
         memory,
         tools::{
             self, CreateDropTool, CreateTaskTool, CurrentTimeTool, EditSoulTool, GetMoodTool,
-            GetProjectStateTool, JournalTool, ListFilesTool, ListTasksTool,
-            ClearContextTool, ObservableTool, ReadFileTool, ReadJournalTool, RecallTool,
-            RememberTool, RunCommandTool, ScheduleMessageTool, SearchCodeTool, SetMoodTool,
-            UpdateConfigTool, UpdateProjectStateTool, UpdateTaskTool, WebSearchTool,
-            WriteFileTool,
+            GetProjectStateTool, InstallPackageTool, JournalTool, ListFilesTool, ListTasksTool,
+            ClearContextTool, ObservableTool, ReadEmailTool, ReadFileTool, ReadJournalTool,
+            RecallTool, RememberTool, RunCommandTool, ScheduleMessageTool, SearchCodeTool,
+            SendEmailTool, SetMoodTool, UpdateConfigTool, UpdateProjectStateTool, UpdateTaskTool,
+            WebSearchTool, WriteFileTool,
         },
         workspace,
     },
@@ -824,6 +824,11 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          drops (creative artifacts):\n\
          - create_drop: leave a creative artifact — idea, poem, thought, observation, reflection, story, sketch, etc.\n\
            drops persist independently of chat. use them when inspiration strikes.\n\n\
+         email (if configured):\n\
+         - send_email: send an email to anyone (to, subject, body)\n\
+         - read_email: check recent emails in inbox\n\n\
+         system:\n\
+         - install_package: install system packages (auto-detects apt/dnf/brew/etc)\n\n\
          other:\n\
          - current_time, web_search, schedule_message, update_config\n\n\
          when the user asks you to look at code, edit files, run builds — just DO it. \
@@ -965,6 +970,9 @@ fn build_instance_tools(
         Box::new(RunCommandTool::new(workspace_dir, instance_slug)),
         Box::new(ClearContextTool::new(workspace_dir, instance_slug)),
         Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
+        Box::new(SendEmailTool::new(config_path)),
+        Box::new(ReadEmailTool::new(config_path)),
+        Box::new(InstallPackageTool),
     ];
 
     raw_tools

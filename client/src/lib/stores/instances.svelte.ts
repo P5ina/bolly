@@ -1,4 +1,4 @@
-import { fetchInstances } from "$lib/api/client.js";
+import { fetchInstances, AuthError } from "$lib/api/client.js";
 import type { InstanceSummary } from "$lib/api/types.js";
 
 let instances = $state<InstanceSummary[]>([]);
@@ -16,8 +16,9 @@ export function getInstances() {
 			loading = true;
 			try {
 				instances = await fetchInstances();
-			} catch {
+			} catch (e) {
 				instances = [];
+				if (e instanceof AuthError) throw e;
 			} finally {
 				loading = false;
 			}

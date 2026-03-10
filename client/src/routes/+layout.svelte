@@ -3,17 +3,28 @@
 	import favicon from "$lib/assets/favicon.svg";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
+	import { AuthError } from "$lib/api/client.js";
 	import type { ServerEvent } from "$lib/api/types.js";
 	import { page } from "$app/state";
+	import AuthGate from "$lib/components/auth/AuthGate.svelte";
 
 	let { children } = $props();
 
 	const instances = getInstances();
 	const ws = getWebSocket();
 
-	$effect(() => {
-		instances.refresh();
+	let needsAuth = $state(false);
+
+	function init() {
+		needsAuth = false;
+		instances.refresh().catch((e: unknown) => {
+			if (e instanceof AuthError) needsAuth = true;
+		});
 		ws.connect();
+	}
+
+	$effect(() => {
+		init();
 
 		const unsub = ws.subscribe((event: ServerEvent) => {
 			if (event.type === "instance_discovered") {
@@ -27,9 +38,15 @@
 		};
 	});
 
+	function handleAuth() {
+		// Re-init with new token
+		ws.disconnect();
+		init();
+	}
+
 	const isHome = $derived(page.url.pathname === "/");
 	const currentSlug = $derived(page.params.slug);
-	const showNav = $derived(!instances.loading && instances.list.length > 0 && !isHome);
+	const showNav = $derived(!needsAuth && !instances.loading && instances.list.length > 0 && !isHome);
 </script>
 
 <svelte:head>
@@ -38,7 +55,11 @@
 </svelte:head>
 
 <div class="relative h-dvh overflow-hidden">
-	{@render children()}
+	{#if needsAuth}
+		<AuthGate onauth={handleAuth} />
+	{:else}
+		{@render children()}
+	{/if}
 
 	<!-- floating instance nav — organic dots -->
 	{#if showNav}

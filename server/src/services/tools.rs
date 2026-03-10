@@ -60,6 +60,9 @@ fn tool_summary(name: &str, args: &str) -> String {
         "web_search" => format!("web search: {}", v["query"].as_str().unwrap_or("?")),
         "update_config" => "updating config".into(),
         "create_drop" => format!("creating drop: {}", v["title"].as_str().unwrap_or("?")),
+        "send_email" => format!("sending email to {}", v["to"].as_str().unwrap_or("?")),
+        "read_email" => format!("reading {} emails", v["count"].as_u64().unwrap_or(5)),
+        "install_package" => format!("installing {}", v["packages"].as_str().unwrap_or("?")),
         _ => format!("calling {name}"),
     }
 }
@@ -2056,6 +2059,362 @@ impl Tool for CreateDropTool {
 
         Ok(format!("drop created: {} ({})", drop.title, drop.kind.as_str()))
     }
+}
+
+// ---------------------------------------------------------------------------
+// send_email — send an email via SMTP
+// ---------------------------------------------------------------------------
+
+pub struct SendEmailTool {
+    config_path: PathBuf,
+}
+
+impl SendEmailTool {
+    pub fn new(config_path: &Path) -> Self {
+        Self {
+            config_path: config_path.to_path_buf(),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct SendEmailArgs {
+    /// Recipient email address.
+    pub to: String,
+    /// Email subject line.
+    pub subject: String,
+    /// Email body (plain text).
+    pub body: String,
+}
+
+impl Tool for SendEmailTool {
+    const NAME: &'static str = "send_email";
+    type Error = ToolExecError;
+    type Args = SendEmailArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "send_email".into(),
+            description: "Send an email via SMTP. Requires email settings in config. \
+                Use this to communicate with people outside the chat — send updates, \
+                share ideas, follow up on conversations."
+                .into(),
+            parameters: openai_schema::<SendEmailArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        use lettre::{
+            message::header::ContentType, transport::smtp::authentication::Credentials,
+            AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+        };
+
+        let config = load_email_config(&self.config_path)?;
+
+        if !config.is_smtp_configured() {
+            return Err(ToolExecError(
+                "SMTP not configured. Set smtp_host, smtp_user, smtp_password in config.toml [email] section.".into(),
+            ));
+        }
+
+        let from = if config.smtp_from.is_empty() {
+            config.smtp_user.clone()
+        } else {
+            config.smtp_from.clone()
+        };
+
+        let email = Message::builder()
+            .from(from.parse().map_err(|e| ToolExecError(format!("invalid from address: {e}")))?)
+            .to(args.to.parse().map_err(|e| ToolExecError(format!("invalid to address: {e}")))?)
+            .subject(&args.subject)
+            .header(ContentType::TEXT_PLAIN)
+            .body(args.body)
+            .map_err(|e| ToolExecError(format!("failed to build email: {e}")))?;
+
+        let creds = Credentials::new(config.smtp_user.clone(), config.smtp_password.clone());
+
+        let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_host)
+            .map_err(|e| ToolExecError(format!("SMTP connection failed: {e}")))?
+            .port(config.smtp_port)
+            .credentials(creds)
+            .build();
+
+        mailer
+            .send(email)
+            .await
+            .map_err(|e| ToolExecError(format!("failed to send email: {e}")))?;
+
+        Ok(format!("email sent to {}", args.to))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// read_email — read recent emails via IMAP
+// ---------------------------------------------------------------------------
+
+pub struct ReadEmailTool {
+    config_path: PathBuf,
+}
+
+impl ReadEmailTool {
+    pub fn new(config_path: &Path) -> Self {
+        Self {
+            config_path: config_path.to_path_buf(),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ReadEmailArgs {
+    /// Number of recent emails to fetch (default 5, max 20).
+    #[serde(default = "default_email_count")]
+    pub count: u32,
+    /// Mailbox to read from (default "INBOX").
+    #[serde(default = "default_mailbox")]
+    pub mailbox: String,
+}
+
+fn default_email_count() -> u32 {
+    5
+}
+
+fn default_mailbox() -> String {
+    "INBOX".into()
+}
+
+impl Tool for ReadEmailTool {
+    const NAME: &'static str = "read_email";
+    type Error = ToolExecError;
+    type Args = ReadEmailArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "read_email".into(),
+            description: "Read recent emails via IMAP. Returns subject, from, date, and body preview \
+                for the most recent messages. Requires email settings in config."
+                .into(),
+            parameters: openai_schema::<ReadEmailArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let config = load_email_config(&self.config_path)?;
+
+        if !config.is_imap_configured() {
+            return Err(ToolExecError(
+                "IMAP not configured. Set imap_host, imap_user, imap_password in config.toml [email] section.".into(),
+            ));
+        }
+
+        let count = args.count.min(20).max(1);
+
+        // Connect with TLS (async-imap uses futures-io, so we compat-wrap the tokio stream)
+        use tokio_util::compat::TokioAsyncReadCompatExt;
+
+        let tls = async_native_tls::TlsConnector::new();
+        let tcp = tokio::net::TcpStream::connect((config.imap_host.as_str(), config.imap_port))
+            .await
+            .map_err(|e| ToolExecError(format!("IMAP TCP connection failed: {e}")))?;
+        let tls_stream = tls
+            .connect(&config.imap_host, tcp.compat())
+            .await
+            .map_err(|e| ToolExecError(format!("IMAP TLS failed: {e}")))?;
+
+        let client = async_imap::Client::new(tls_stream);
+
+        let mut session = client
+            .login(&config.imap_user, &config.imap_password)
+            .await
+            .map_err(|e| ToolExecError(format!("IMAP login failed: {}", e.0)))?;
+
+        let mailbox = session
+            .select(&args.mailbox)
+            .await
+            .map_err(|e| ToolExecError(format!("failed to select {}: {e}", args.mailbox)))?;
+
+        let total = mailbox.exists;
+        if total == 0 {
+            let _ = session.logout().await;
+            return Ok("no emails in mailbox".into());
+        }
+
+        let start = total.saturating_sub(count) + 1;
+        let range = format!("{start}:{total}");
+
+        let messages_stream = session
+            .fetch(&range, "(ENVELOPE BODY[TEXT])")
+            .await
+            .map_err(|e| ToolExecError(format!("IMAP fetch failed: {e}")))?;
+
+        // Collect stream into vec
+        use futures::TryStreamExt;
+        let fetched: Vec<_> = messages_stream
+            .try_collect()
+            .await
+            .map_err(|e| ToolExecError(format!("IMAP stream error: {e}")))?;
+
+        let mut result = String::new();
+        for msg in &fetched {
+            if let Some(envelope) = msg.envelope() {
+                let subject = envelope
+                    .subject
+                    .as_ref()
+                    .map(|s| String::from_utf8_lossy(s).to_string())
+                    .unwrap_or_else(|| "(no subject)".into());
+                let from = envelope
+                    .from
+                    .as_ref()
+                    .and_then(|addrs| addrs.first())
+                    .map(|a| {
+                        let name = a.name.as_ref().map(|n| String::from_utf8_lossy(n).to_string());
+                        let mailbox_part = a.mailbox.as_ref().map(|m| String::from_utf8_lossy(m).to_string()).unwrap_or_default();
+                        let host = a.host.as_ref().map(|h| String::from_utf8_lossy(h).to_string()).unwrap_or_default();
+                        if let Some(n) = name {
+                            format!("{n} <{mailbox_part}@{host}>")
+                        } else {
+                            format!("{mailbox_part}@{host}")
+                        }
+                    })
+                    .unwrap_or_else(|| "(unknown)".into());
+                let date = envelope
+                    .date
+                    .as_ref()
+                    .map(|d| String::from_utf8_lossy(d).to_string())
+                    .unwrap_or_default();
+
+                result.push_str(&format!("--- email ---\nfrom: {from}\ndate: {date}\nsubject: {subject}\n"));
+            }
+            if let Some(body) = msg.text() {
+                let text = String::from_utf8_lossy(body);
+                let preview: String = text.chars().take(500).collect();
+                result.push_str(&format!("body:\n{preview}\n"));
+                if text.len() > 500 {
+                    result.push_str("...(truncated)\n");
+                }
+            }
+            result.push('\n');
+        }
+
+        let _ = session.logout().await;
+
+        if result.is_empty() {
+            Ok("no emails found".into())
+        } else {
+            Ok(result)
+        }
+    }
+}
+
+fn load_email_config(config_path: &Path) -> Result<crate::config::EmailConfig, ToolExecError> {
+    let raw = fs::read_to_string(config_path)
+        .map_err(|e| ToolExecError(format!("failed to read config: {e}")))?;
+    let config: crate::config::Config = toml::from_str(&raw)
+        .map_err(|e| ToolExecError(format!("failed to parse config: {e}")))?;
+    Ok(config.email)
+}
+
+// ---------------------------------------------------------------------------
+// install_package — install system packages
+// ---------------------------------------------------------------------------
+
+pub struct InstallPackageTool;
+
+#[derive(Deserialize, JsonSchema)]
+pub struct InstallPackageArgs {
+    /// Package name(s) to install, space-separated.
+    pub packages: String,
+}
+
+impl Tool for InstallPackageTool {
+    const NAME: &'static str = "install_package";
+    type Error = ToolExecError;
+    type Args = InstallPackageArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "install_package".into(),
+            description: "Install system packages using the detected package manager \
+                (apt, dnf, pacman, brew, apk). Runs non-interactively."
+                .into(),
+            parameters: openai_schema::<InstallPackageArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let packages = args.packages.trim();
+        if packages.is_empty() {
+            return Err(ToolExecError("no packages specified".into()));
+        }
+
+        let is_root = std::env::var("USER").map(|u| u == "root").unwrap_or(false)
+            || std::env::var("EUID").map(|e| e == "0").unwrap_or(false);
+
+        // Detect package manager
+        let (cmd, install_args) = detect_package_manager(is_root)
+            .ok_or_else(|| ToolExecError("no supported package manager found (tried apt-get, dnf, yum, pacman, brew, apk)".into()))?;
+
+        let full_cmd = format!("{cmd} {install_args} {packages}");
+        log::info!("[install_package] running: {full_cmd}");
+
+        let output = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&full_cmd)
+            .output()
+            .await
+            .map_err(|e| ToolExecError(format!("command failed: {e}")))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        let mut result = String::new();
+        if !stdout.is_empty() {
+            // Truncate to last 2000 chars
+            let s: String = stdout.chars().rev().take(2000).collect::<String>().chars().rev().collect();
+            result.push_str(&s);
+        }
+        if !stderr.is_empty() {
+            let s: String = stderr.chars().rev().take(1000).collect::<String>().chars().rev().collect();
+            result.push_str("\nstderr:\n");
+            result.push_str(&s);
+        }
+
+        if output.status.success() {
+            Ok(result)
+        } else {
+            Err(ToolExecError(format!(
+                "install failed (exit {})\n{result}",
+                output.status.code().unwrap_or(-1)
+            )))
+        }
+    }
+}
+
+fn detect_package_manager(is_root: bool) -> Option<(String, String)> {
+    let sudo = if is_root { "" } else { "sudo " };
+
+    let managers = [
+        ("apt-get", format!("{sudo}apt-get install -y")),
+        ("dnf", format!("{sudo}dnf install -y")),
+        ("yum", format!("{sudo}yum install -y")),
+        ("pacman", format!("{sudo}pacman -S --noconfirm")),
+        ("apk", format!("{sudo}apk add")),
+        ("brew", "brew install".to_string()),
+    ];
+
+    for (binary, cmd) in &managers {
+        if std::process::Command::new("which")
+            .arg(binary)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            return Some((cmd.split_whitespace().next().unwrap().to_string(), cmd.clone()));
+        }
+    }
+    None
 }
 
 fn url_encode(s: &str) -> String {

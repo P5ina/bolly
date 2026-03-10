@@ -1,4 +1,12 @@
+host = "0.0.0.0"
 port = 8080
+
+# Set a token to protect your API (leave empty for no auth)
+auth_token = ""
+
+# Path to pre-built client files (leave empty to skip static serving)
+# In Docker: static_dir = "/opt/personality/static"
+static_dir = ""
 
 [llm]
 provider = "anthropic"
@@ -7,3 +15,15 @@ model = "claude-sonnet-4-6"
 [llm.tokens]
 OPEN_AI = ""
 ANTHROPIC = ""
+BRAVE_SEARCH = ""
+
+[email]
+smtp_host = ""
+smtp_port = 587
+smtp_user = ""
+smtp_password = ""
+smtp_from = ""
+imap_host = ""
+imap_port = 993
+imap_user = ""
+imap_password = ""

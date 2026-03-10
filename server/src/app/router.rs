@@ -1,10 +1,15 @@
-use axum::Router;
+use std::path::PathBuf;
+
+use axum::{middleware, Router};
+use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{app::state::AppState, routes};
 
-pub fn build_router(state: AppState) -> Router {
-    Router::new()
-        .merge(routes::health::router())
+use super::auth::auth_middleware;
+
+pub fn build_router(state: AppState, static_dir: Option<PathBuf>) -> Router {
+    // API routes — protected by auth middleware
+    let api = Router::new()
         .merge(routes::meta::router())
         .merge(routes::instances::router())
         .merge(routes::chat::router())
@@ -12,5 +17,22 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::config::router())
         .merge(routes::soul::router())
         .merge(routes::ws::router())
-        .with_state(state)
+        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
+
+    // Health check — no auth (for load balancers, monitoring)
+    let health = routes::health::router();
+
+    let app = Router::new()
+        .merge(health)
+        .merge(api)
+        .with_state(state);
+
+    // Serve static client files as fallback (SPA routing)
+    if let Some(dir) = static_dir {
+        let index = dir.join("index.html");
+        let serve = ServeDir::new(dir).not_found_service(ServeFile::new(index));
+        app.fallback_service(serve)
+    } else {
+        app
+    }
 }
