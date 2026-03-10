@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::Duration;
 
 use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
@@ -7,6 +8,33 @@ use rig::tool::ToolDyn;
 
 use crate::config::{Config, LlmProvider};
 use crate::domain::chat::{ChatMessage, ChatRole};
+
+const MAX_RETRIES: u32 = 3;
+const INITIAL_BACKOFF_MS: u64 = 2000;
+
+fn is_rate_limit_error(msg: &str) -> bool {
+    msg.contains("429") || msg.contains("rate_limit") || msg.contains("Too Many Requests")
+}
+
+async fn retry_on_rate_limit<F, Fut, T>(f: F) -> Result<T, Box<dyn std::error::Error + Send + Sync>>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
+{
+    let mut attempt = 0;
+    loop {
+        match f().await {
+            Ok(v) => return Ok(v),
+            Err(e) if attempt < MAX_RETRIES && is_rate_limit_error(&e.to_string()) => {
+                attempt += 1;
+                let delay = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1);
+                log::warn!("Rate limited, retrying in {delay}ms (attempt {attempt}/{MAX_RETRIES})");
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
 
 pub const DEFAULT_ONBOARDING_PROMPT: &str = "\
 you are a quiet, thoughtful companion. you speak in lowercase, keep your \
@@ -71,16 +99,28 @@ impl LlmBackend {
         prompt: &str,
         history: Vec<Message>,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        match self {
-            LlmBackend::Anthropic { client, model } => {
-                let agent = client.agent(model).preamble(system_prompt).build();
-                Ok(agent.chat(prompt, history).await?)
+        let backend = self.clone();
+        let system = system_prompt.to_string();
+        let prompt = prompt.to_string();
+        retry_on_rate_limit(|| {
+            let backend = backend.clone();
+            let system = system.clone();
+            let prompt = prompt.clone();
+            let history = history.clone();
+            async move {
+                match &backend {
+                    LlmBackend::Anthropic { client, model } => {
+                        let agent = client.agent(model).preamble(&system).build();
+                        Ok(agent.chat(&prompt, history).await?)
+                    }
+                    LlmBackend::OpenAI { client, model } => {
+                        let agent = client.agent(model).preamble(&system).build();
+                        Ok(agent.chat(&prompt, history).await?)
+                    }
+                }
             }
-            LlmBackend::OpenAI { client, model } => {
-                let agent = client.agent(model).preamble(system_prompt).build();
-                Ok(agent.chat(prompt, history).await?)
-            }
-        }
+        })
+        .await
     }
 
     pub async fn chat_with_tools(
@@ -122,6 +162,11 @@ impl LlmBackend {
 
         match result {
             Ok(response) => Ok(response),
+            Err(e) if is_rate_limit_error(&e.to_string()) => {
+                log::warn!("Rate limited during tool agent, retrying without tools after backoff");
+                tokio::time::sleep(Duration::from_millis(INITIAL_BACKOFF_MS)).await;
+                self.chat(system_prompt, prompt, history).await
+            }
             Err(e) => {
                 log::error!("Tool agent failed: {e:?}");
                 log::warn!("Retrying without tools");
