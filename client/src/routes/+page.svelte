@@ -420,7 +420,7 @@
 
 	.home-version {
 		position: absolute;
-		bottom: 1.5rem;
+		bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
 		left: 50%;
 		transform: translateX(-50%);
 		font-family: var(--font-body);

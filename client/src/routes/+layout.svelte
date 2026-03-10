@@ -120,8 +120,8 @@
 <style>
 	.companion-nav {
 		position: fixed;
-		bottom: 1.5rem;
-		right: 1.5rem;
+		bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+		right: calc(1.5rem + env(safe-area-inset-right, 0px));
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -138,8 +138,8 @@
 	@media (max-width: 720px) {
 		.companion-nav {
 			bottom: auto;
-			top: 0.5rem;
-			right: 0.5rem;
+			top: calc(0.5rem + env(safe-area-inset-top, 0px));
+			right: calc(0.5rem + env(safe-area-inset-right, 0px));
 			padding: 0.35rem 0.5rem;
 			gap: 0.35rem;
 		}
@@ -244,7 +244,7 @@
 
 	.connection-banner {
 		position: fixed;
-		top: 1rem;
+		top: calc(1rem + env(safe-area-inset-top, 0px));
 		left: 50%;
 		transform: translateX(-50%);
 		display: flex;

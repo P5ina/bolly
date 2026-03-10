@@ -139,7 +139,7 @@
 <style>
 	.whisper-container {
 		position: relative;
-		padding: 0.75rem 1.5rem 1.5rem;
+		padding: 0.75rem 1.5rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
 		z-index: 10;
 		flex-shrink: 0;
 		--input-accent: oklch(0.78 0.12 75 / 16%);
@@ -364,7 +364,7 @@
 
 	@media (max-width: 720px) {
 		.whisper-container {
-			padding: 0.5rem 0.75rem 0.75rem;
+			padding: 0.5rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
 		}
 	}
 </style>
