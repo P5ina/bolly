@@ -204,7 +204,9 @@ export async function deleteUpload(slug: string, uploadId: string): Promise<void
 }
 
 export function uploadFileUrl(slug: string, uploadId: string): string {
-	return `/api/instances/${encodeURIComponent(slug)}/uploads/${encodeURIComponent(uploadId)}/file`;
+	const base = `/api/instances/${encodeURIComponent(slug)}/uploads/${encodeURIComponent(uploadId)}/file`;
+	const token = getAuthToken();
+	return token ? `${base}?token=${encodeURIComponent(token)}` : base;
 }
 
 export function createWebSocket(): WebSocket {
