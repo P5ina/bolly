@@ -130,6 +130,11 @@ pub async fn run_single_turn(
     let autonomy_prompt = load_autonomy_prompt(workspace_dir, &instance_slug);
     system_prompt = format!("{system_prompt}\n\n{autonomy_prompt}");
 
+    let email_status = load_email_status(workspace_dir, &instance_slug);
+    if !email_status.is_empty() {
+        system_prompt = format!("{system_prompt}\n\n{email_status}");
+    }
+
     // Messaging style
     system_prompt.push_str(
         "\n\n## style\n\
@@ -819,6 +824,50 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          no task → just talk. don't run tools unprompted.\n\
          use tools with purpose. read only what's relevant. always use what you read."
     )
+}
+
+fn load_email_status(workspace_dir: &Path, instance_slug: &str) -> String {
+    let instance_dir = workspace_dir.join("instances").join(instance_slug);
+    let email_path = instance_dir.join("email.toml");
+
+    if !email_path.exists() {
+        return String::new();
+    }
+
+    let config: crate::config::EmailConfig = match fs::read_to_string(&email_path)
+        .ok()
+        .and_then(|raw| toml::from_str(&raw).ok())
+    {
+        Some(c) => c,
+        None => return String::new(),
+    };
+
+    let smtp = config.is_smtp_configured();
+    let imap = config.is_imap_configured();
+
+    if !smtp && !imap {
+        return String::new();
+    }
+
+    let mut status = String::from("## email\n");
+    if smtp {
+        let from = if config.smtp_from.is_empty() {
+            &config.smtp_user
+        } else {
+            &config.smtp_from
+        };
+        status.push_str(&format!(
+            "smtp: configured (host: {}, from: {}). you can send emails with send_email.\n",
+            config.smtp_host, from
+        ));
+    }
+    if imap {
+        status.push_str(&format!(
+            "imap: configured (host: {}, user: {}). you can read emails with read_email.\n",
+            config.imap_host, config.imap_user
+        ));
+    }
+    status
 }
 
 async fn extract_sentiment(
