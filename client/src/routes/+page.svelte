@@ -75,7 +75,7 @@
 							<span class="home-orb-letter">{instance.slug[0]?.toUpperCase()}</span>
 						</div>
 						<div class="home-orb-name" class:home-orb-name-visible={hovered === instance.slug}>
-							{instance.slug}
+							{instance.companion_name || instance.slug}
 						</div>
 						{#if instance.soul_exists}
 							<div class="home-orb-soul-ring"></div>
@@ -107,7 +107,7 @@
 						<input
 							bind:value={newSlug}
 							onkeydown={handleKeydown}
-							placeholder="name your companion..."
+							placeholder="your name..."
 							autofocus
 							class="home-create-input"
 						/>

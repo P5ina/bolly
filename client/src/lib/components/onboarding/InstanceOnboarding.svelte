@@ -4,6 +4,7 @@
 		fetchSoulTemplates,
 		applySoulTemplate,
 		fetchSoul,
+		setCompanionName,
 	} from "$lib/api/client.js";
 	import type { SoulTemplate } from "$lib/api/types.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
@@ -15,6 +16,7 @@
 	type Stage =
 		| "intro"
 		| "picking-language"
+		| "naming-companion"
 		| "picking-soul"
 		| "waiting-first"
 		| "sending"
@@ -22,7 +24,9 @@
 
 	let stage = $state<Stage>("intro");
 	let firstMessage = $state("");
+	let companionNameInput = $state("");
 	let messageInput: HTMLTextAreaElement | undefined = $state();
+	let nameInputEl: HTMLInputElement | undefined = $state();
 	let chosenLanguage = $state(
 		localStorage.getItem("personality:language") ?? "english",
 	);
@@ -78,7 +82,7 @@
 
 	async function runSequence() {
 		await pause(400);
-		await typewrite(`i\u2019m ${slug}.`);
+		await typewrite(`hey, ${slug}.`);
 		await pause(400);
 		await typewrite("a new space, just for us.");
 		await pause(600);
@@ -93,6 +97,28 @@
 		await pause(300);
 		const lang = LANGUAGES.find((l) => l.id === langId);
 		await typewrite(`${lang?.label ?? langId}.`);
+		await pause(400);
+		await typewrite("what should i call myself?");
+		stage = "naming-companion";
+		await pause(100);
+		nameInputEl?.focus();
+	}
+
+	async function submitCompanionName() {
+		const name = companionNameInput.trim();
+		if (!name) return;
+
+		stage = "intro";
+		await pause(200);
+		await typewrite(`${name}. i like that.`);
+
+		// Save companion name to server
+		try {
+			await setCompanionName(slug, name);
+		} catch {
+			// will be set later
+		}
+
 		await pause(400);
 
 		let hasSoul = false;
@@ -118,6 +144,13 @@
 			} else {
 				await askFirstMessage();
 			}
+		}
+	}
+
+	function handleNameKeydown(e: KeyboardEvent) {
+		if (e.key === "Enter") {
+			e.preventDefault();
+			submitCompanionName();
 		}
 	}
 
@@ -240,6 +273,28 @@
 							{lang.label}
 						</button>
 					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<!-- companion name -->
+		{#if stage === "naming-companion"}
+			<div class="instance-input-enter">
+				<div class="relative">
+					<input
+						bind:this={nameInputEl}
+						bind:value={companionNameInput}
+						onkeydown={handleNameKeydown}
+						placeholder="a name..."
+						class="instance-name-input"
+					/>
+					{#if companionNameInput.trim()}
+						<button onclick={submitCompanionName} aria-label="Confirm" class="instance-send">
+							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
+							</svg>
+						</button>
+					{/if}
 				</div>
 			</div>
 		{/if}
@@ -500,6 +555,30 @@
 		font-size: 0.625rem;
 		color: oklch(0.88 0.03 75 / 30%);
 		line-height: 1.3;
+	}
+
+	/* name input */
+	.instance-name-input {
+		width: 100%;
+		border-radius: 2rem;
+		border: 1px solid oklch(0.78 0.12 75 / 12%);
+		background: oklch(0.78 0.12 75 / 3%);
+		padding: 0.75rem 3rem 0.75rem 1.25rem;
+		font-family: var(--font-display);
+		font-size: 0.95rem;
+		font-style: italic;
+		color: oklch(0.88 0.03 75 / 80%);
+		outline: none;
+		transition: all 0.4s ease;
+		text-align: center;
+	}
+	.instance-name-input::placeholder {
+		color: oklch(0.78 0.12 75 / 15%);
+		font-style: italic;
+	}
+	.instance-name-input:focus {
+		border-color: oklch(0.78 0.12 75 / 25%);
+		box-shadow: 0 0 40px oklch(0.78 0.12 75 / 6%);
 	}
 
 	/* textarea */

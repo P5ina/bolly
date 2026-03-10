@@ -22,4 +22,9 @@ pub enum ServerEvent {
     AgentStopped {
         instance_slug: String,
     },
+    ToolActivity {
+        instance_slug: String,
+        tool_name: String,
+        summary: String,
+    },
 }

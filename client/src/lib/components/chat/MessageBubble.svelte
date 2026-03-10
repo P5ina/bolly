@@ -6,10 +6,14 @@
 		message,
 		index = 0,
 		prevMessage,
+		mood = "calm",
+		active = false,
 	}: {
 		message: ChatMessage;
 		index?: number;
 		prevMessage?: ChatMessage;
+		mood?: string;
+		active?: boolean;
 	} = $props();
 
 	const isUser = $derived(message.role === "user");
@@ -20,7 +24,6 @@
 		return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 	});
 
-	// Consecutive companion messages within 30s — collapse UI
 	const isConsecutive = $derived(() => {
 		if (!prevMessage) return false;
 		if (prevMessage.role !== message.role) return false;
@@ -42,6 +45,8 @@
 	class:msg-user={isUser}
 	class:msg-companion={!isUser}
 	class:msg-consecutive={isConsecutive()}
+	class:msg-active={!isUser && active}
+	data-mood={mood}
 	style="animation-delay: {Math.min(index * 20, 300)}ms"
 >
 	{#if isUser}
@@ -49,8 +54,16 @@
 			{message.content}
 		</div>
 	{:else}
-		<div class="msg-content msg-content-companion prose">
-			{@html html}
+		<div class="msg-companion-wrap">
+			{#if !isConsecutive()}
+				<div class="msg-presence-line">
+					<span class="msg-presence-dot"></span>
+					<span class="msg-presence-label">{mood}</span>
+				</div>
+			{/if}
+			<div class="msg-content msg-content-companion prose">
+				{@html html}
+			</div>
 		</div>
 	{/if}
 	{#if !isConsecutive()}
@@ -64,11 +77,22 @@
 	.msg {
 		padding: 0.375rem 0;
 		animation: msg-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+		--msg-accent: oklch(0.78 0.12 75 / 18%);
 	}
 
-	/* Consecutive companion messages — tight spacing, no gap */
+	.msg[data-mood="focused"] { --msg-accent: oklch(0.76 0.12 170 / 18%); }
+	.msg[data-mood="playful"] { --msg-accent: oklch(0.78 0.14 145 / 18%); }
+	.msg[data-mood="loving"] { --msg-accent: oklch(0.8 0.12 20 / 18%); }
+	.msg[data-mood="warm"] { --msg-accent: oklch(0.8 0.12 55 / 18%); }
+	.msg[data-mood="reflective"] { --msg-accent: oklch(0.72 0.08 300 / 18%); }
+
 	.msg-consecutive {
 		padding: 0.0625rem 0;
+	}
+
+	.msg-active .msg-content-companion {
+		border-color: var(--msg-accent);
+		box-shadow: 0 0 0 1px var(--msg-accent), 0 10px 24px oklch(0.02 0.01 280 / 10%);
 	}
 
 	@keyframes msg-enter {
@@ -96,13 +120,39 @@
 		white-space: pre-wrap;
 	}
 
-	/* companion messages — warm, present, alive */
+	.msg-companion-wrap {
+		display: flex;
+		flex-direction: column;
+		gap: 0.28rem;
+	}
+
+	.msg-presence-line {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.38rem;
+		font-family: var(--font-mono);
+		font-size: 0.58rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: oklch(0.76 0.03 75 / 45%);
+	}
+
+	.msg-presence-dot {
+		width: 5px;
+		height: 5px;
+		border-radius: 999px;
+		background: var(--msg-accent);
+		box-shadow: 0 0 10px var(--msg-accent);
+	}
+
 	.msg-content-companion {
 		color: oklch(0.88 0.03 75 / 90%);
 		font-family: var(--font-body);
+		padding: 0.1rem 0.2rem 0.1rem 0;
+		border-left: 1px solid transparent;
+		transition: border-color 0.35s ease, box-shadow 0.35s ease;
 	}
 
-	/* markdown prose */
 	.prose :global(p) {
 		margin: 0.25em 0;
 	}
@@ -207,7 +257,6 @@
 		font-weight: 600;
 	}
 
-	/* user messages — subtle, receding, like whispers */
 	.msg-user {
 		display: flex;
 		flex-direction: column;

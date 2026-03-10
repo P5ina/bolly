@@ -4,11 +4,13 @@
 		onStop,
 		disabled = false,
 		agentRunning = false,
+		mood = "calm",
 	}: {
 		onSend: (content: string) => void;
 		onStop: () => void;
 		disabled?: boolean;
 		agentRunning?: boolean;
+		mood?: string;
 	} = $props();
 
 	let value = $state("");
@@ -29,9 +31,13 @@
 	}
 </script>
 
-<div class="whisper-container" class:whisper-focused={focused} class:whisper-disabled={disabled}>
+<div class="whisper-container" class:whisper-focused={focused} class:whisper-disabled={disabled} data-mood={mood}>
 	<div class="whisper-inner">
-		<div class="whisper-glow" class:whisper-glow-active={focused}></div>
+		<div class="whisper-glow" class:whisper-glow-active={focused || agentRunning}></div>
+		<div class="whisper-sense-line">
+			<span>{agentRunning ? "alive" : focused ? "listening" : "ready"}</span>
+			<span>{mood}</span>
+		</div>
 		<textarea
 			bind:value
 			onkeydown={handleKeydown}
@@ -64,12 +70,38 @@
 		padding: 0.75rem 1.5rem 1.5rem;
 		z-index: 10;
 		flex-shrink: 0;
+		--input-accent: oklch(0.78 0.12 75 / 16%);
+	}
+
+	.whisper-container[data-mood="focused"] {
+		--input-accent: oklch(0.76 0.12 170 / 16%);
+	}
+
+	.whisper-container[data-mood="playful"] {
+		--input-accent: oklch(0.78 0.14 145 / 16%);
+	}
+
+	.whisper-container[data-mood="loving"] {
+		--input-accent: oklch(0.8 0.12 20 / 16%);
 	}
 
 	.whisper-inner {
 		position: relative;
 		max-width: 600px;
 		margin: 0 auto;
+	}
+
+	.whisper-sense-line {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 0.45rem;
+		padding: 0 0.3rem;
+		font-family: var(--font-mono);
+		font-size: 0.58rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: oklch(0.78 0.02 280 / 45%);
 	}
 
 	.whisper-glow {
@@ -86,7 +118,7 @@
 	}
 	.whisper-glow-active {
 		width: 300px;
-		background: radial-gradient(ellipse, oklch(0.78 0.12 75 / 6%) 0%, transparent 70%);
+		background: radial-gradient(ellipse, var(--input-accent) 0%, transparent 70%);
 	}
 
 	.whisper-input {
@@ -94,25 +126,27 @@
 		min-height: 44px;
 		max-height: 120px;
 		resize: none;
-		padding: 0.75rem 0;
+		padding: 0.75rem 1rem;
 		font-family: var(--font-body);
 		font-size: 0.875rem;
 		line-height: 1.6;
-		color: oklch(0.88 0.02 75 / 80%);
-		background: transparent;
-		border: none;
-		border-bottom: 1px solid oklch(0.78 0.12 75 / 8%);
+		color: oklch(0.90 0.02 75 / 90%);
+		background: oklch(0.10 0.01 280 / 40%);
+		border: 1px solid oklch(0.78 0.12 75 / 12%);
+		border-radius: 12px;
 		outline: none;
-		transition: all 0.4s ease;
+		transition: all 0.3s ease;
 		letter-spacing: 0.01em;
 	}
 	.whisper-input::placeholder {
-		color: oklch(0.78 0.12 75 / 15%);
+		color: oklch(0.78 0.12 75 / 30%);
 		font-style: italic;
 		font-family: var(--font-display);
 	}
 	.whisper-input:focus {
-		border-bottom-color: oklch(0.78 0.12 75 / 25%);
+		border-color: var(--input-accent);
+		background: oklch(0.12 0.01 280 / 50%);
+		box-shadow: 0 0 0 4px color-mix(in oklab, var(--input-accent) 55%, transparent);
 	}
 	.whisper-input:disabled {
 		opacity: 0.3;
@@ -120,8 +154,8 @@
 
 	.whisper-send {
 		position: absolute;
-		right: 0;
-		bottom: 0.5rem;
+		right: 0.5rem;
+		bottom: 0.45rem;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -139,8 +173,8 @@
 
 	.whisper-stop {
 		position: absolute;
-		right: 0;
-		bottom: 0.5rem;
+		right: 0.5rem;
+		bottom: 0.45rem;
 		display: flex;
 		align-items: center;
 		justify-content: center;

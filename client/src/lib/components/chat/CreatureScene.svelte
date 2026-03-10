@@ -33,12 +33,10 @@
 		energetic: "#fad7a0",
 	};
 
-	// Fuzzy mood matcher — handles "a bit sad", "excited and curious", etc.
+	// Fuzzy mood matcher
 	function matchMood(raw: string): string {
 		const m = raw.toLowerCase();
-		// Exact match first
 		if (moodColors[m]) return m;
-		// Check if any known mood is contained in the string (longest match wins)
 		const keys = Object.keys(moodColors).sort((a, b) => b.length - a.length);
 		for (const key of keys) {
 			if (m.includes(key)) return key;
@@ -118,40 +116,54 @@
 <!-- Camera -->
 <T.PerspectiveCamera makeDefault position={[0, 0, 3.2]} fov={45} />
 
-<!-- Lighting — neutral base so mood color dominates -->
-<T.AmbientLight intensity={0.15} color="#e0e0e0" />
-<T.PointLight
-	position={[2, 2, 3]}
-	intensity={thinking ? 2.5 : 1.8}
-	color={baseColor}
-	castShadow={false}
-/>
-<T.PointLight position={[-2, -1, 2]} intensity={0.3} color={baseColor} />
-<T.PointLight position={[0, 3, 0]} intensity={thinking ? 0.8 : 0.3} color="#e0e0e0" />
+<!-- Lighting — strong directional contrast for clear ASCII shading -->
+<!-- Low ambient so shadows are actually dark -->
+<T.AmbientLight intensity={0.05} color="#ffffff" />
 
-<!-- The creature -->
+<!-- Key light — strong, from upper-right-front. Creates the main highlight/shadow split -->
+<T.DirectionalLight
+	position={[3, 2, 4]}
+	intensity={thinking ? 3.5 : 2.5}
+	color={baseColor}
+/>
+
+<!-- Rim/back light — defines the edge opposite the key light -->
+<T.PointLight
+	position={[-3, 1, -2]}
+	intensity={thinking ? 1.0 : 0.6}
+	color="#ffffff"
+/>
+
+<!-- Subtle fill from below to prevent total blackout on bottom -->
+<T.PointLight
+	position={[0, -3, 1]}
+	intensity={0.15}
+	color={baseColor}
+/>
+
+<!-- The creature — no emissive so lighting actually creates shadows -->
 <T.Mesh bind:ref={meshRef}>
 	<T.IcosahedronGeometry args={[1, 4]} />
 	<T.MeshStandardMaterial
 		color={baseColor}
 		emissive={baseColor}
-		emissiveIntensity={thinking ? 0.35 : 0.15}
-		roughness={0.7}
-		metalness={0.1}
+		emissiveIntensity={thinking ? 0.08 : 0.03}
+		roughness={0.55}
+		metalness={0.15}
 		wireframe={false}
 		transparent
-		opacity={0.85}
+		opacity={0.92}
 	/>
 </T.Mesh>
 
-<!-- Inner glow core -->
+<!-- Inner glow core — slightly brighter for center highlight -->
 <T.Mesh>
-	<T.IcosahedronGeometry args={[0.5, 3]} />
+	<T.IcosahedronGeometry args={[0.45, 3]} />
 	<T.MeshStandardMaterial
 		color="#ffffff"
 		emissive="#ffffff"
-		emissiveIntensity={thinking ? 0.8 : 0.3}
+		emissiveIntensity={thinking ? 0.6 : 0.25}
 		transparent
-		opacity={thinking ? 0.25 : 0.12}
+		opacity={thinking ? 0.2 : 0.08}
 	/>
 </T.Mesh>

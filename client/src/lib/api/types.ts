@@ -10,15 +10,26 @@ export interface ChatMessage {
 export interface ChatRequest {
 	instance_slug: string;
 	content: string;
+	chat_id?: string;
 }
 
 export interface ChatResponse {
 	instance_slug: string;
+	chat_id: string;
 	messages: ChatMessage[];
+}
+
+export interface ChatSummary {
+	id: string;
+	title: string;
+	message_count: number;
+	last_message_at: string | null;
+	created_at: string;
 }
 
 export interface InstanceSummary {
 	slug: string;
+	companion_name: string;
 	soul_exists: boolean;
 	drops_count: number;
 	has_memory: boolean;
@@ -81,4 +92,10 @@ export type ServerEvent =
 	| {
 			type: "agent_stopped";
 			instance_slug: string;
+	  }
+	| {
+			type: "tool_activity";
+			instance_slug: string;
+			tool_name: string;
+			summary: string;
 	  };

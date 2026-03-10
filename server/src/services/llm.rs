@@ -52,9 +52,16 @@ impl LlmBackend {
                     .llm
                     .model
                     .clone()
-                    .unwrap_or_else(|| "gpt-5.4".to_string());
+                    .unwrap_or_else(|| "gpt-5.2".to_string());
                 Some(LlmBackend::OpenAI { client, model })
             }
+        }
+    }
+
+    pub fn model_name(&self) -> &str {
+        match self {
+            LlmBackend::Anthropic { model, .. } => model,
+            LlmBackend::OpenAI { model, .. } => model,
         }
     }
 

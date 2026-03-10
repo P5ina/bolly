@@ -1,13 +1,18 @@
 use std::{
     fmt,
     fs,
+    future::Future,
     path::{Path, PathBuf},
+    pin::Pin,
 };
 
 use chrono::{Local, Utc};
-use rig::{completion::ToolDefinition, tool::Tool};
+use rig::{completion::ToolDefinition, tool::{Tool, ToolDyn, ToolError}};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast;
+
+use crate::domain::events::ServerEvent;
 
 // ---------------------------------------------------------------------------
 // OpenAI-compatible schema helper
@@ -27,6 +32,76 @@ fn openai_schema<T: JsonSchema>() -> serde_json::Value {
         }
     }
     val
+}
+
+// ---------------------------------------------------------------------------
+// Tool activity summary helper
+// ---------------------------------------------------------------------------
+
+fn tool_summary(name: &str, args: &str) -> String {
+    let v: serde_json::Value = serde_json::from_str(args).unwrap_or_default();
+    match name {
+        "read_file" => format!("reading {}", v["path"].as_str().unwrap_or("?")),
+        "write_file" => format!("writing {}", v["path"].as_str().unwrap_or("?")),
+        "list_files" => format!("listing {}", v["path"].as_str().unwrap_or(".")),
+        "search_code" => format!("searching '{}'", v["query"].as_str().unwrap_or("?")),
+        "run_command" => {
+            let cmd = v["command"].as_str().unwrap_or("?");
+            let short: String = cmd.chars().take(60).collect();
+            format!("$ {short}")
+        }
+        "edit_soul" => "rewriting soul.md".into(),
+        "set_mood" => format!("mood → {}", v["mood"].as_str().unwrap_or("?")),
+        "remember" => "storing a memory".into(),
+        "recall" => format!("recalling '{}'", v["query"].as_str().unwrap_or("?")),
+        "create_task" => format!("creating task: {}", v["title"].as_str().unwrap_or("?")),
+        "update_task" => format!("updating task {}", v["id"].as_str().unwrap_or("?")),
+        "update_project_state" => "updating project state".into(),
+        "web_search" => format!("web search: {}", v["query"].as_str().unwrap_or("?")),
+        "update_config" => "updating config".into(),
+        _ => format!("calling {name}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ObservableTool — wraps any ToolDyn and broadcasts ToolActivity events
+// ---------------------------------------------------------------------------
+
+pub struct ObservableTool {
+    inner: Box<dyn ToolDyn>,
+    events: broadcast::Sender<ServerEvent>,
+    instance_slug: String,
+}
+
+impl ObservableTool {
+    pub fn new(
+        inner: Box<dyn ToolDyn>,
+        events: broadcast::Sender<ServerEvent>,
+        instance_slug: String,
+    ) -> Self {
+        Self { inner, events, instance_slug }
+    }
+}
+
+impl ToolDyn for ObservableTool {
+    fn name(&self) -> String {
+        self.inner.name()
+    }
+
+    fn definition(&self, prompt: String) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + '_>> {
+        self.inner.definition(prompt)
+    }
+
+    fn call(&self, args: String) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
+        let tool_name = self.inner.name();
+        let summary = tool_summary(&tool_name, &args);
+        let _ = self.events.send(ServerEvent::ToolActivity {
+            instance_slug: self.instance_slug.clone(),
+            tool_name,
+            summary,
+        });
+        self.inner.call(args)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1767,6 +1842,8 @@ pub struct RunCommandArgs {
     pub command: String,
     /// Working directory for the command. Absolute path (e.g. "/Users/timur/projects/app"). Default: instance directory.
     pub cwd: Option<String>,
+    /// Timeout in seconds. Choose based on what the command does: quick commands (ls, cat, echo) use 5-10, builds/installs use 60-120, long tasks up to 300. Default: 30.
+    pub timeout_secs: Option<u64>,
 }
 
 impl Tool for RunCommandTool {
@@ -1798,20 +1875,25 @@ impl Tool for RunCommandTool {
             .map(PathBuf::from)
             .unwrap_or_else(|| self.instance_dir.clone());
 
-        let output = tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(&command)
-            .current_dir(&work_dir)
-            .output()
-            .await
-            .map_err(|e| ToolExecError(format!("failed to execute command: {e}")))?;
+        let timeout = args.timeout_secs.unwrap_or(30).min(300);
+        let output = tokio::time::timeout(
+            std::time::Duration::from_secs(timeout),
+            tokio::process::Command::new("sh")
+                .arg("-c")
+                .arg(&command)
+                .current_dir(&work_dir)
+                .stdin(std::process::Stdio::null())
+                .output(),
+        )
+        .await
+        .map_err(|_| ToolExecError(format!("command timed out after {timeout}s: {command}")))?
+        .map_err(|e| ToolExecError(format!("failed to execute command: {e}")))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
         let mut result = String::new();
         if !stdout.is_empty() {
-            // Truncate long output
             let truncated: String = stdout.chars().take(4000).collect();
             result.push_str(&truncated);
             if stdout.len() > 4000 {
@@ -1831,6 +1913,70 @@ impl Tool for RunCommandTool {
         }
 
         Ok(result)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// clear_context — clears compacted context and optionally chat history
+// ---------------------------------------------------------------------------
+
+pub struct ClearContextTool {
+    instance_dir: PathBuf,
+}
+
+impl ClearContextTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ClearContextArgs {
+    /// If true, also clears chat message history. Default: false (only clears compacted summary).
+    #[serde(default)]
+    pub clear_messages: bool,
+}
+
+impl Tool for ClearContextTool {
+    const NAME: &'static str = "clear_context";
+    type Error = ToolExecError;
+    type Args = ClearContextArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "clear_context".into(),
+            description: "Clear your compacted conversation context. \
+                Use this when the conversation has drifted and old context is stale or confusing. \
+                With clear_messages=true, also wipes chat history for a fresh start."
+                .into(),
+            parameters: openai_schema::<ClearContextArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let compact_path = self.instance_dir.join("chat").join("compact.md");
+        if compact_path.exists() {
+            fs::remove_file(&compact_path)
+                .map_err(|e| ToolExecError(format!("failed to clear compact context: {e}")))?;
+        }
+
+        if args.clear_messages {
+            let messages_path = self.instance_dir.join("chat").join("messages.json");
+            if messages_path.exists() {
+                fs::write(&messages_path, "[]")
+                    .map_err(|e| ToolExecError(format!("failed to clear messages: {e}")))?;
+            }
+        }
+
+        let what = if args.clear_messages {
+            "compacted context and chat history cleared"
+        } else {
+            "compacted context cleared — chat history preserved"
+        };
+        Ok(what.to_string())
     }
 }
 

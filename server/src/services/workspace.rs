@@ -29,13 +29,23 @@ pub fn summarize_instance(path: &Path) -> Option<InstanceSummary> {
     let drops_dir = path.join("drops");
     let memory_dir = path.join("memory");
 
+    let companion_name = read_companion_name(path).unwrap_or_default();
+
     Some(InstanceSummary {
         slug,
+        companion_name,
         soul_exists: path.join("soul.md").exists(),
         drops_count: count_markdown_files(&drops_dir).unwrap_or(0),
         has_memory: memory_dir.join("facts.md").exists(),
         has_skin: has_skin_file(path),
     })
+}
+
+fn read_companion_name(path: &Path) -> Option<String> {
+    let raw = fs::read_to_string(path.join("project_state.json")).ok()?;
+    let state: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let name = state.get("identity")?.get("name")?.as_str()?;
+    if name.is_empty() { None } else { Some(name.to_string()) }
 }
 
 fn count_markdown_files(path: &Path) -> io::Result<usize> {

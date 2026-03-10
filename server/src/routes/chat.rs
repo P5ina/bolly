@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::{Path, State},
     http::StatusCode,
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use std::io::ErrorKind;
 use tokio_util::sync::CancellationToken;
@@ -11,7 +11,7 @@ use crate::{
     app::state::AppState,
     config,
     domain::{
-        chat::{ChatRequest, ChatResponse},
+        chat::{ChatRequest, ChatResponse, ChatRole, ChatSummary},
         events::ServerEvent,
     },
     services::chat,
@@ -20,8 +20,18 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/chat", post(post_chat))
-        .route("/api/chat/{instance_slug}/messages", get(get_messages))
-        .route("/api/chat/{instance_slug}/stop", post(stop_agent))
+        .route("/api/chat/{instance_slug}/chats", get(list_chats))
+        .route("/api/chat/{instance_slug}/messages", get(get_messages_default))
+        .route("/api/chat/{instance_slug}/{chat_id}/messages", get(get_messages))
+        .route("/api/chat/{instance_slug}/{chat_id}/stop", post(stop_agent))
+        .route("/api/chat/{instance_slug}/{chat_id}/context", delete(clear_context))
+        // Legacy routes (use default chat_id)
+        .route("/api/chat/{instance_slug}/stop", post(stop_agent_default))
+        .route("/api/chat/{instance_slug}/context", delete(clear_context_default))
+}
+
+fn task_key(slug: &str, chat_id: &str) -> String {
+    format!("{slug}/{chat_id}")
 }
 
 async fn post_chat(
@@ -29,6 +39,7 @@ async fn post_chat(
     Json(request): Json<ChatRequest>,
 ) -> Result<Json<ChatResponse>, (StatusCode, String)> {
     let instance_slug = request.instance_slug.clone();
+    let chat_id = request.chat_id.clone();
     let content = request.content.trim().to_string();
 
     if instance_slug.is_empty() || content.is_empty() {
@@ -36,7 +47,7 @@ async fn post_chat(
     }
 
     // Save user message immediately
-    let user_message = chat::save_user_message(&state.workspace_dir, &instance_slug, &content)
+    let user_message = chat::save_user_message(&state.workspace_dir, &instance_slug, &chat_id, &content)
         .map_err(map_chat_error)?;
 
     // Broadcast user message
@@ -52,58 +63,64 @@ async fn post_chat(
             .send(ServerEvent::InstanceDiscovered { instance });
     }
 
-    // Cancel any existing agent task for this instance
-    {
-        let mut tasks = state.agent_tasks.lock().await;
-        if let Some(token) = tasks.remove(&instance_slug) {
-            token.cancel();
+    let key = task_key(&instance_slug, &chat_id);
+
+    // If an agent is already running for this chat, don't start another one.
+    // The running agent will pick up the new message on its next turn
+    // (it re-reads messages from disk each iteration).
+    let already_running = {
+        let tasks = state.agent_tasks.lock().await;
+        tasks.contains_key(&key)
+    };
+
+    if !already_running {
+        let cancel = CancellationToken::new();
+        {
+            let mut tasks = state.agent_tasks.lock().await;
+            // Double-check after re-acquiring lock
+            if !tasks.contains_key(&key) {
+                tasks.insert(key.clone(), cancel.clone());
+            }
         }
-    }
 
-    // Create cancellation token for the new agent loop
-    let cancel = CancellationToken::new();
-    {
-        let mut tasks = state.agent_tasks.lock().await;
-        tasks.insert(instance_slug.clone(), cancel.clone());
+        let bg_state = state.clone();
+        let bg_chat_id = chat_id.clone();
+        tokio::spawn(async move {
+            run_agent_loop(bg_state, instance_slug, bg_chat_id, cancel).await;
+        });
     }
-
-    // Start agent loop in background
-    let bg_state = state.clone();
-    tokio::spawn(async move {
-        run_agent_loop(bg_state, instance_slug, cancel).await;
-    });
 
     // Return immediately with the user message
     Ok(Json(ChatResponse {
         instance_slug: request.instance_slug,
+        chat_id: request.chat_id,
         messages: vec![user_message],
     }))
 }
 
 /// Agent loop: keeps calling the LLM until it responds without tool use or is cancelled.
-async fn run_agent_loop(state: AppState, instance_slug: String, cancel: CancellationToken) {
+/// New user messages are automatically picked up because each turn re-reads from disk.
+async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String, cancel: CancellationToken) {
     let _ = state.events.send(ServerEvent::AgentRunning {
         instance_slug: instance_slug.clone(),
     });
 
-    // Max outer iterations to prevent infinite loops
     const MAX_ITERATIONS: usize = 20;
     let mut iteration = 0;
 
     loop {
         if cancel.is_cancelled() {
-            log::info!("[agent] {instance_slug} — cancelled by user");
+            log::info!("[agent] {instance_slug}/{chat_id} — cancelled by user");
             break;
         }
 
         if iteration >= MAX_ITERATIONS {
-            log::info!("[agent] {instance_slug} — reached max iterations");
+            log::info!("[agent] {instance_slug}/{chat_id} — reached max iterations");
             break;
         }
 
         iteration += 1;
 
-        // Get current LLM/config state
         let config_path = config::config_path();
         let brave_key = {
             let cfg = state.config.read().await;
@@ -114,7 +131,7 @@ async fn run_agent_loop(state: AppState, instance_slug: String, cancel: Cancella
         let llm_ref = match llm_guard.as_ref() {
             Some(l) => l.clone(),
             None => {
-                log::warn!("[agent] {instance_slug} — no LLM configured");
+                log::warn!("[agent] {instance_slug}/{chat_id} — no LLM configured");
                 break;
             }
         };
@@ -124,11 +141,11 @@ async fn run_agent_loop(state: AppState, instance_slug: String, cancel: Cancella
         let emb_clone = emb_guard.clone();
         drop(emb_guard);
 
-        // Run one LLM turn (rig handles internal tool loop up to 8 sub-turns)
         let result = chat::run_single_turn(
             &state.workspace_dir,
             &config_path,
             &instance_slug,
+            &chat_id,
             &llm_ref,
             emb_clone.as_ref(),
             if brave_key.is_empty() { None } else { Some(brave_key.as_str()) },
@@ -141,7 +158,6 @@ async fn run_agent_loop(state: AppState, instance_slug: String, cancel: Cancella
 
         match result {
             Ok(assistant_messages) => {
-                // Broadcast each message chunk separately
                 for msg in &assistant_messages {
                     let _ = state.events.send(ServerEvent::ChatMessageCreated {
                         instance_slug: instance_slug.clone(),
@@ -149,44 +165,50 @@ async fn run_agent_loop(state: AppState, instance_slug: String, cancel: Cancella
                     });
                 }
 
-                // Check if the last message suggests more work is needed
                 let last_content = assistant_messages
                     .last()
                     .map(|m| m.content.as_str())
                     .unwrap_or("");
+
                 if !should_continue(last_content) {
+                    // Before exiting, check if new user messages arrived while we were thinking.
+                    // If so, do another turn to respond to them.
+                    if has_pending_user_message(&state, &instance_slug, &chat_id).await {
+                        log::info!("[agent] {instance_slug}/{chat_id} — new user message arrived, continuing");
+                        continue;
+                    }
                     break;
                 }
 
                 log::info!(
-                    "[agent] {instance_slug} — iteration {iteration}, continuing"
+                    "[agent] {instance_slug}/{chat_id} — iteration {iteration}, continuing"
                 );
 
-                // Inject a synthetic "continue" prompt so the LLM keeps going
                 let continue_msg = chat::save_user_message(
                     &state.workspace_dir,
                     &instance_slug,
+                    &chat_id,
                     "[continue — the user is waiting for you to finish]",
                 )
                 .ok();
 
-                // Don't broadcast the synthetic continue message to the UI
                 if continue_msg.is_none() {
-                    log::warn!("[agent] {instance_slug} — failed to save continue message");
+                    log::warn!("[agent] {instance_slug}/{chat_id} — failed to save continue message");
                     break;
                 }
             }
             Err(e) => {
-                log::warn!("[agent] {instance_slug} — error: {e}");
+                log::warn!("[agent] {instance_slug}/{chat_id} — error: {e}");
                 break;
             }
         }
     }
 
     // Clean up
+    let key = task_key(&instance_slug, &chat_id);
     {
         let mut tasks = state.agent_tasks.lock().await;
-        tasks.remove(&instance_slug);
+        tasks.remove(&key);
     }
 
     let _ = state.events.send(ServerEvent::AgentStopped {
@@ -194,11 +216,19 @@ async fn run_agent_loop(state: AppState, instance_slug: String, cancel: Cancella
     });
 }
 
-/// Heuristic: should the agent continue with another iteration?
-/// Returns true if the response indicates more work is needed.
+/// Check if the last message in the chat is from the user (meaning they sent something
+/// while the agent was processing and we should do another turn).
+async fn has_pending_user_message(state: &AppState, instance_slug: &str, chat_id: &str) -> bool {
+    match chat::load_messages(&state.workspace_dir, instance_slug, chat_id) {
+        Ok(response) => {
+            response.messages.last().is_some_and(|m| m.role == ChatRole::User)
+        }
+        Err(_) => false,
+    }
+}
+
 fn should_continue(response: &str) -> bool {
     let lower = response.to_lowercase();
-    // Explicit continuation signals
     let continue_phrases = [
         "let me continue",
         "i'll continue",
@@ -221,12 +251,40 @@ fn should_continue(response: &str) -> bool {
     false
 }
 
-async fn stop_agent(
+async fn list_chats(
     State(state): State<AppState>,
     Path(instance_slug): Path<String>,
+) -> Result<Json<Vec<ChatSummary>>, (StatusCode, String)> {
+    let chats = chat::list_chats(&state.workspace_dir, &instance_slug)
+        .map_err(map_chat_error)?;
+    Ok(Json(chats))
+}
+
+async fn get_messages_default(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> Result<Json<ChatResponse>, (StatusCode, String)> {
+    let response =
+        chat::load_messages(&state.workspace_dir, &instance_slug, "default").map_err(map_chat_error)?;
+    Ok(Json(response))
+}
+
+async fn get_messages(
+    State(state): State<AppState>,
+    Path((instance_slug, chat_id)): Path<(String, String)>,
+) -> Result<Json<ChatResponse>, (StatusCode, String)> {
+    let response =
+        chat::load_messages(&state.workspace_dir, &instance_slug, &chat_id).map_err(map_chat_error)?;
+    Ok(Json(response))
+}
+
+async fn stop_agent(
+    State(state): State<AppState>,
+    Path((instance_slug, chat_id)): Path<(String, String)>,
 ) -> StatusCode {
+    let key = task_key(&instance_slug, &chat_id);
     let mut tasks = state.agent_tasks.lock().await;
-    if let Some(token) = tasks.remove(&instance_slug) {
+    if let Some(token) = tasks.remove(&key) {
         token.cancel();
         StatusCode::OK
     } else {
@@ -234,13 +292,34 @@ async fn stop_agent(
     }
 }
 
-async fn get_messages(
+async fn stop_agent_default(
     State(state): State<AppState>,
     Path(instance_slug): Path<String>,
-) -> Result<Json<ChatResponse>, (StatusCode, String)> {
-    let response =
-        chat::load_messages(&state.workspace_dir, &instance_slug).map_err(map_chat_error)?;
-    Ok(Json(response))
+) -> StatusCode {
+    let key = task_key(&instance_slug, "default");
+    let mut tasks = state.agent_tasks.lock().await;
+    if let Some(token) = tasks.remove(&key) {
+        token.cancel();
+        StatusCode::OK
+    } else {
+        StatusCode::NOT_FOUND
+    }
+}
+
+async fn clear_context(
+    State(state): State<AppState>,
+    Path((instance_slug, chat_id)): Path<(String, String)>,
+) -> StatusCode {
+    chat::clear_context(&state.workspace_dir, &instance_slug, &chat_id);
+    StatusCode::OK
+}
+
+async fn clear_context_default(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> StatusCode {
+    chat::clear_context(&state.workspace_dir, &instance_slug, "default");
+    StatusCode::OK
 }
 
 fn map_chat_error(error: std::io::Error) -> (StatusCode, String) {

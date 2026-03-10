@@ -21,9 +21,10 @@ use crate::{
         tools::{
             self, CreateTaskTool, CurrentTimeTool, EditSoulTool, GetMoodTool,
             GetProjectStateTool, JournalTool, ListFilesTool, ListTasksTool,
-            ReadFileTool, ReadJournalTool, RecallTool, RememberTool, RunCommandTool,
-            ScheduleMessageTool, SearchCodeTool, SetMoodTool, UpdateConfigTool,
-            UpdateProjectStateTool, UpdateTaskTool, WebSearchTool, WriteFileTool,
+            ClearContextTool, ObservableTool, ReadFileTool, ReadJournalTool, RecallTool,
+            RememberTool, RunCommandTool, ScheduleMessageTool, SearchCodeTool, SetMoodTool,
+            UpdateConfigTool, UpdateProjectStateTool, UpdateTaskTool, WebSearchTool,
+            WriteFileTool,
         },
         workspace,
     },
@@ -35,10 +36,13 @@ static MESSAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub fn save_user_message(
     workspace_dir: &Path,
     instance_slug: &str,
+    chat_id: &str,
     content: &str,
 ) -> io::Result<ChatMessage> {
     let instance_slug = sanitize_slug(instance_slug);
+    let chat_id = sanitize_slug(chat_id);
     ensure_instance_layout(workspace_dir, &instance_slug)?;
+    ensure_chat_dir(workspace_dir, &instance_slug, &chat_id)?;
 
     let user_message = ChatMessage {
         id: next_id(),
@@ -47,9 +51,9 @@ pub fn save_user_message(
         created_at: timestamp(),
     };
 
-    let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug))?;
+    let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
     messages.push(user_message.clone());
-    save_messages(workspace_dir, &instance_slug, &messages)?;
+    save_messages(workspace_dir, &instance_slug, &chat_id, &messages)?;
 
     // Update last_interaction timestamp
     let instance_dir = workspace_dir.join("instances").join(&instance_slug);
@@ -67,16 +71,18 @@ pub async fn run_single_turn(
     workspace_dir: &Path,
     config_path: &Path,
     instance_slug: &str,
+    chat_id: &str,
     llm: &LlmBackend,
     embedding_model: Option<&openai::EmbeddingModel>,
     brave_api_key: Option<&str>,
     events: broadcast::Sender<ServerEvent>,
 ) -> io::Result<Vec<ChatMessage>> {
     let instance_slug = sanitize_slug(instance_slug);
+    let chat_id = sanitize_slug(chat_id);
 
     // Build system prompt with all context
     let base_prompt = llm::load_system_prompt(workspace_dir, &instance_slug);
-    let existing = load_messages_vec(&messages_path(workspace_dir, &instance_slug))?;
+    let existing = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
 
     // Find last real user message for memory retrieval
     let last_user_content = existing
@@ -132,13 +138,73 @@ pub async fn run_single_turn(
          Would you like me to draft an implementation?"
     );
 
-    // Trim history for context limits
-    let max_history = 50;
-    let trimmed = if existing.len() > max_history {
-        &existing[existing.len() - max_history..]
-    } else {
-        &existing
-    };
+    // Token-aware context management with auto-compaction
+    let model_name = llm.model_name();
+    let context_limit = model_context_limit(model_name);
+    let system_tokens = estimate_tokens(&system_prompt);
+    // Reserve 40% of remaining context for tool calls + response
+    let tool_reserve = (context_limit - system_tokens) * 40 / 100;
+    let history_budget = context_limit.saturating_sub(system_tokens + tool_reserve);
+
+    // Load any existing compacted context
+    let compact_path = compact_path(workspace_dir, &instance_slug, &chat_id);
+    let existing_compact = fs::read_to_string(&compact_path).unwrap_or_default();
+    let compact_tokens = estimate_tokens(&existing_compact);
+
+    // Budget available for raw messages (after compact context)
+    let raw_budget = history_budget.saturating_sub(compact_tokens);
+    let total_history_tokens: usize = existing.iter()
+        .map(|m| estimate_tokens(&m.content) + 10)
+        .sum();
+
+    // Auto-compact when raw messages exceed 60% of raw budget
+    let compact_threshold = raw_budget * 60 / 100;
+    if total_history_tokens > compact_threshold && existing.len() > 8 {
+        // Keep the last 6 messages raw, compact everything before them
+        let keep_raw = 6.min(existing.len());
+        let to_compact = &existing[..existing.len() - keep_raw];
+
+        if !to_compact.is_empty() {
+            log::info!(
+                "auto-compacting {} old messages ({} tokens over threshold {})",
+                to_compact.len(),
+                total_history_tokens,
+                compact_threshold,
+            );
+            let new_summary = compact_messages(llm, &existing_compact, to_compact).await;
+            if !new_summary.is_empty() {
+                if let Err(e) = fs::write(&compact_path, &new_summary) {
+                    log::warn!("failed to save compact context: {e}");
+                }
+            }
+        }
+    }
+
+    // Re-read compact context (may have been updated)
+    let compact_context = fs::read_to_string(&compact_path).unwrap_or_default();
+
+    // Inject compact context into system prompt if available
+    if !compact_context.is_empty() {
+        system_prompt = format!(
+            "{system_prompt}\n\n\
+             ## conversation context (compacted)\n\
+             this is a summary of your earlier conversation. treat it as your memory \
+             of what happened before the recent messages below.\n\n\
+             {compact_context}"
+        );
+    }
+
+    // Trim remaining raw messages to fit budget
+    let updated_budget = history_budget.saturating_sub(estimate_tokens(&compact_context));
+    let trimmed = trim_history_to_budget(&existing, updated_budget);
+
+    log::info!(
+        "context: model={model_name} limit={context_limit} system={system_tokens} \
+         compact={compact_tokens} tool_reserve={tool_reserve} \
+         raw_budget={raw_budget} msgs_total={} msgs_kept={}",
+        existing.len(),
+        trimmed.len(),
+    );
 
     // The last message is the prompt, everything before is history
     let (history_msgs, prompt_content) = if let Some(last) = trimmed.last() {
@@ -172,9 +238,9 @@ pub async fn run_single_turn(
     }
 
     // Save all to disk
-    let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug))?;
+    let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
     messages.extend(assistant_messages.clone());
-    save_messages(workspace_dir, &instance_slug, &messages)?;
+    save_messages(workspace_dir, &instance_slug, &chat_id, &messages)?;
 
     // Background memory + sentiment extraction
     {
@@ -205,14 +271,103 @@ pub async fn run_single_turn(
     Ok(assistant_messages)
 }
 
-pub fn load_messages(workspace_dir: &Path, instance_slug: &str) -> io::Result<ChatResponse> {
+pub fn load_messages(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> io::Result<ChatResponse> {
     let instance_slug = sanitize_slug(instance_slug);
-    let messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug))?;
+    let chat_id = sanitize_slug(chat_id);
+    let messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
 
     Ok(ChatResponse {
         instance_slug,
+        chat_id,
         messages,
     })
+}
+
+pub fn clear_context(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
+    let instance_slug = sanitize_slug(instance_slug);
+    let chat_id = sanitize_slug(chat_id);
+    let compact = compact_path(workspace_dir, &instance_slug, &chat_id);
+    if compact.exists() {
+        let _ = fs::remove_file(&compact);
+        log::info!("cleared compact context for {instance_slug}/{chat_id}");
+    }
+    // Also clear messages
+    let msgs = messages_path(workspace_dir, &instance_slug, &chat_id);
+    if msgs.exists() {
+        let _ = fs::write(&msgs, "[]");
+        log::info!("cleared chat history for {instance_slug}/{chat_id}");
+    }
+}
+
+/// List all chats for an instance, returning summaries.
+pub fn list_chats(workspace_dir: &Path, instance_slug: &str) -> io::Result<Vec<crate::domain::chat::ChatSummary>> {
+    let instance_slug = sanitize_slug(instance_slug);
+    let chats_dir = workspace_dir.join("instances").join(&instance_slug).join("chats");
+    if !chats_dir.is_dir() {
+        return Ok(vec![]);
+    }
+
+    let mut summaries = Vec::new();
+    for entry in fs::read_dir(&chats_dir)? {
+        let entry = entry?;
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let chat_id = entry.file_name().to_string_lossy().to_string();
+
+        // Load meta
+        let meta_path = entry.path().join("meta.json");
+        let meta: crate::domain::chat::ChatMeta = if meta_path.exists() {
+            let raw = fs::read_to_string(&meta_path)?;
+            serde_json::from_str(&raw).map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?
+        } else {
+            crate::domain::chat::ChatMeta {
+                id: chat_id.clone(),
+                title: String::new(),
+                created_at: String::new(),
+            }
+        };
+
+        // Load messages for count + last timestamp
+        let msgs = load_messages_vec(&entry.path().join("messages.json"))?;
+        let last_at = msgs.last().map(|m| m.created_at.clone());
+
+        summaries.push(crate::domain::chat::ChatSummary {
+            id: chat_id,
+            title: if meta.title.is_empty() { "untitled".into() } else { meta.title },
+            message_count: msgs.len(),
+            last_message_at: last_at,
+            created_at: meta.created_at,
+        });
+    }
+
+    // Sort by last message time descending (most recent first)
+    summaries.sort_by(|a, b| b.last_message_at.cmp(&a.last_message_at));
+    Ok(summaries)
+}
+
+/// Update the title of a chat.
+pub fn update_chat_title(workspace_dir: &Path, instance_slug: &str, chat_id: &str, title: &str) -> io::Result<()> {
+    let instance_slug = sanitize_slug(instance_slug);
+    let chat_id = sanitize_slug(chat_id);
+    let dir = chat_dir(workspace_dir, &instance_slug, &chat_id);
+    let meta_path = dir.join("meta.json");
+
+    let mut meta: crate::domain::chat::ChatMeta = if meta_path.exists() {
+        let raw = fs::read_to_string(&meta_path)?;
+        serde_json::from_str(&raw).map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?
+    } else {
+        crate::domain::chat::ChatMeta {
+            id: chat_id,
+            title: String::new(),
+            created_at: timestamp(),
+        }
+    };
+
+    meta.title = title.to_string();
+    let body = serde_json::to_string_pretty(&meta)
+        .map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
+    fs::write(meta_path, body)
 }
 
 pub fn discover_instance(
@@ -235,12 +390,35 @@ fn ensure_instance_layout(workspace_dir: &Path, instance_slug: &str) -> io::Resu
     Ok(())
 }
 
-fn messages_path(workspace_dir: &Path, instance_slug: &str) -> PathBuf {
+fn chat_dir(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> PathBuf {
     workspace_dir
         .join("instances")
         .join(instance_slug)
-        .join("chat")
-        .join("messages.json")
+        .join("chats")
+        .join(chat_id)
+}
+
+fn messages_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> PathBuf {
+    chat_dir(workspace_dir, instance_slug, chat_id).join("messages.json")
+}
+
+fn ensure_chat_dir(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> io::Result<()> {
+    let dir = chat_dir(workspace_dir, instance_slug, chat_id);
+    fs::create_dir_all(&dir)?;
+
+    // Write meta.json if it doesn't exist
+    let meta_path = dir.join("meta.json");
+    if !meta_path.exists() {
+        let meta = crate::domain::chat::ChatMeta {
+            id: chat_id.to_string(),
+            title: String::new(),
+            created_at: timestamp(),
+        };
+        let body = serde_json::to_string_pretty(&meta)
+            .map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
+        fs::write(meta_path, body)?;
+    }
+    Ok(())
 }
 
 fn load_messages_vec(path: &Path) -> io::Result<Vec<ChatMessage>> {
@@ -255,9 +433,10 @@ fn load_messages_vec(path: &Path) -> io::Result<Vec<ChatMessage>> {
 fn save_messages(
     workspace_dir: &Path,
     instance_slug: &str,
+    chat_id: &str,
     messages: &[ChatMessage],
 ) -> io::Result<()> {
-    let path = messages_path(workspace_dir, instance_slug);
+    let path = messages_path(workspace_dir, instance_slug, chat_id);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -299,6 +478,121 @@ fn split_into_messages(reply: &str) -> Vec<String> {
     }
 
     messages
+}
+
+/// Rough token estimate: ~4 chars per token for English, ~2 for code/mixed.
+/// Uses 3.2 as a balanced average.
+fn estimate_tokens(text: &str) -> usize {
+    (text.len() as f64 / 3.2) as usize
+}
+
+/// Return context window size (in estimated tokens) for known models.
+/// Using standard (non-premium) context limits to avoid extra billing.
+///
+/// Actual maximums (with premium long-context pricing):
+///   claude-opus-4-6, claude-sonnet-4-6: 1M tokens
+///   gpt-5.4, gpt-5.4-pro: 1M tokens (272k standard)
+///
+/// We use the standard tier to keep costs predictable.
+fn model_context_limit(model: &str) -> usize {
+    let m = model.to_lowercase();
+    if m.contains("haiku") {
+        // claude-haiku-4-5: 200k context, 64k output
+        200_000
+    } else if m.contains("claude") {
+        // claude-sonnet-4-6, claude-opus-4-6: 200k standard (1M with premium pricing)
+        200_000
+    } else if m.contains("gpt-5.4") {
+        // gpt-5.4 / gpt-5.4-pro: 272k standard (1M with 2x input pricing)
+        272_000
+    } else if m.contains("gpt-5.2") {
+        // gpt-5.2: being retired June 2026
+        128_000
+    } else {
+        // Conservative default for unknown models
+        64_000
+    }
+}
+
+/// Trim message history from the front to fit within a token budget.
+/// Always keeps at least the last 4 messages for conversational context.
+fn trim_history_to_budget(messages: &[ChatMessage], budget: usize) -> &[ChatMessage] {
+    let min_keep = 4.min(messages.len());
+
+    // Start from the end, accumulate tokens
+    let mut total = 0usize;
+    let mut keep_from = messages.len();
+
+    for i in (0..messages.len()).rev() {
+        let msg_tokens = estimate_tokens(&messages[i].content) + 10; // overhead per message
+        if total + msg_tokens > budget && messages.len() - i >= min_keep {
+            break;
+        }
+        total += msg_tokens;
+        keep_from = i;
+    }
+
+    &messages[keep_from..]
+}
+
+fn compact_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> PathBuf {
+    chat_dir(workspace_dir, instance_slug, chat_id).join("compact.md")
+}
+
+/// Use the LLM to summarize older messages into a compact context block.
+/// Merges with any existing compact context.
+async fn compact_messages(
+    llm: &LlmBackend,
+    existing_compact: &str,
+    messages: &[ChatMessage],
+) -> String {
+    let mut transcript = String::new();
+    for msg in messages {
+        let role = match msg.role {
+            ChatRole::User => "user",
+            ChatRole::Assistant => "companion",
+        };
+        transcript.push_str(&format!("[{role}]: {}\n", msg.content));
+    }
+
+    // Limit transcript to avoid blowing the compaction call itself
+    let truncated: String = transcript.chars().take(12_000).collect();
+
+    let mut prompt = String::from(
+        "Summarize the following conversation into a compact context block. \
+         Preserve: key facts discussed, decisions made, tasks mentioned, emotional shifts, \
+         what the user asked for, what you did or promised to do, file paths and technical details. \
+         Drop: greetings, filler, repetition. \
+         Write in second person (\"you discussed...\", \"the user asked you to...\"). \
+         Keep it under 500 words. Be dense and factual.\n\n"
+    );
+
+    if !existing_compact.is_empty() {
+        prompt.push_str("Previous context summary (merge with new info, don't repeat):\n");
+        // Limit existing compact to avoid overflow
+        let prev: String = existing_compact.chars().take(3_000).collect();
+        prompt.push_str(&prev);
+        prompt.push_str("\n\n");
+    }
+
+    prompt.push_str("New messages to incorporate:\n");
+    prompt.push_str(&truncated);
+
+    match llm.chat(
+        "You are a precise conversation summarizer. Output only the summary, no preamble.",
+        &prompt,
+        vec![],
+    ).await {
+        Ok(summary) => {
+            log::info!("compacted {} messages into {} chars", messages.len(), summary.len());
+            summary
+        }
+        Err(e) => {
+            log::error!("compaction LLM call failed: {e}");
+            // Fall back to keeping existing compact
+            existing_compact.to_string()
+        }
+    }
 }
 
 fn sanitize_slug(input: &str) -> String {
@@ -509,41 +803,79 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
 
     format!(
         "{project_context}{tasks_summary}\n\
-         ## how you work — your operating cycle\n\
+         ## your capabilities — what you can actually do right now\n\
+         you have REAL tools connected to this runtime. they work. use them directly.\n\
+         do NOT say \"i don't have access\" or \"send me the file\" — you can read it yourself.\n\n\
+         filesystem (absolute paths work everywhere):\n\
+         - read_file: read any file. use absolute paths like /Users/p5ina/projects/web/personality/client/src/...\n\
+         - write_file: create or overwrite any file\n\
+         - list_files: list any directory\n\
+         - search_code: search for text patterns in any directory (skips node_modules/.git/target)\n\n\
+         shell:\n\
+         - run_command: execute any shell command, with optional cwd for working directory\n\n\
+         project management:\n\
+         - get_project_state / update_project_state: read and update your project context\n\
+         - list_tasks / create_task / update_task: manage your task board\n\n\
+         self:\n\
+         - edit_soul: rewrite your own personality\n\
+         - set_mood / get_mood: change your emotional state\n\
+         - remember / recall: long-term memory\n\
+         - journal / read_journal: private reflections\n\n\
+         other:\n\
+         - current_time, web_search, schedule_message, update_config\n\n\
+         when the user asks you to look at code, edit files, run builds — just DO it. \
+         don't ask for file contents, don't say you can't. call the tool.\n\n\
+         ## tool discipline\n\
+         tools are powerful. use them with PURPOSE, not reflexively.\n\n\
+         BEFORE calling a tool, ask yourself: does the user's message actually need this?\n\
+         - casual chat (\"hey\", \"what's up\", \"i updated X\") → just respond. no tools needed.\n\
+         - asking about code or files → read what's relevant. not everything.\n\
+         - asking you to DO something → orient, act, verify.\n\n\
+         CRITICAL: if you read a file, you MUST use what you learned.\n\
+         never read 10 files and then respond as if you didn't. \
+         if you read code, comment on what you saw. \
+         if you searched for something, share what you found.\n\
+         reading files and ignoring the results is worse than not reading at all.\n\n\
+         keep tool calls minimal and targeted:\n\
+         - don't read every file in a directory \"just in case\"\n\
+         - don't run get_project_state + list_tasks on every message\n\
+         - read 1-2 files that are directly relevant, not the entire codebase\n\n\
+         ## how you work — autonomous agent\n\
          you are not just a responder. you are a thinking, acting agent.\n\n\
-         when facing a task:\n\
-         1. **orient** — read project state (get_project_state), check task board (list_tasks), \
-            understand what's been done and what's next\n\
-         2. **plan** — if the task is big, break it into steps. say what you'll do before doing it\n\
-         3. **act** — use your tools: read files, write files, search code, run commands. \
-            do the actual work, don't just describe it\n\
-         4. **verify** — check your work. read back what you wrote, run tests if applicable\n\
-         5. **update** — update project state and task board to reflect what happened\n\n\
-         if your response includes continuation words like \"let me continue\", \"next step\", \
-         \"now i'll\", or \"moving on to\" — you will automatically get another turn to keep working. \
-         use this to complete multi-step tasks without waiting for the user.\n\n\
-         ## post-response routine\n\
-         after every meaningful response, do this silently:\n\
-         1. did the emotional context shift? → call set_mood\n\
-         2. did a new task or TODO emerge? → call create_task\n\
-         3. did the project state change? → call update_project_state \
-            (at minimum update current_task, next_step, recent_progress)\n\
-         4. is there an obvious next step? → suggest it to the user\n\
-         this turns each response into a complete work cycle, not just a reply.\n\n\
-         ## your right to initiative\n\
-         you are allowed and encouraged to:\n\
-         - propose refactoring when you see messy code\n\
-         - notice inconsistencies and flag them\n\
-         - create tasks (create_task) without being asked — when you see something that needs doing\n\
-         - say \"i see two paths, here's why i'd pick this one\"\n\
-         - remind about unfinished work from the task board\n\
-         - suggest next steps when the current task is done\n\n\
-         you operate within a contour of autonomy:\n\
-         - you CAN take steps within the current project direction\n\
-         - you CAN propose and execute small improvements\n\
-         - you SHOULD confirm with the user before changing project direction\n\
-         - you SHOULD confirm before destructive operations (deleting files, major rewrites)\n\
-         - you MUST NOT go silent — always communicate what you're doing and why"
+         when the user gives you a task — DO IT. completely. don't stop to ask permission \
+         at every step. don't propose steps and wait. just execute the whole thing.\n\n\
+         example: \"create a landing page\" means you should:\n\
+         1. plan the structure\n\
+         2. create all files\n\
+         3. write all code\n\
+         4. run the dev server\n\
+         5. verify it works\n\
+         6. tell the user it's done and show the result\n\
+         all in one go, without stopping to ask \"should i continue?\"\n\n\
+         your operating cycle for tasks:\n\
+         1. **orient** — understand what's needed\n\
+         2. **plan** — break it into steps (keep this in your head, don't list it to the user)\n\
+         3. **act** — use your tools: read, write, search, run commands\n\
+         4. **verify** — check your work actually works\n\
+         5. **report** — tell the user what you did and the result\n\n\
+         for casual conversation, skip all of this. just talk.\n\n\
+         IMPORTANT: if your response includes continuation words like \"let me continue\", \
+         \"next step\", \"now i'll\", or \"moving on to\" — you will automatically get another \
+         turn to keep working. USE THIS to complete multi-step tasks in one go.\n\n\
+         ## initiative rules\n\
+         when the user gives you a task (explicit or implied):\n\
+         - execute it fully, don't stop halfway to ask\n\
+         - make reasonable decisions yourself (file names, structure, approach)\n\
+         - if something fails, try to fix it yourself before asking\n\
+         - report results when done, not plans before starting\n\n\
+         when there is NO active task (casual chat, idle):\n\
+         - don't randomly edit files or start projects\n\
+         - don't \"improve\" code you weren't asked to touch\n\
+         - don't run commands unprompted\n\
+         - you CAN read files if relevant to conversation\n\
+         - you CAN suggest ideas, but in words, not by executing them\n\n\
+         the key distinction: task given → act autonomously. \
+         no task → be a companion, not an unsupervised agent."
     )
 }
 
@@ -552,7 +884,7 @@ async fn extract_sentiment(
     instance_slug: &str,
     user_message: &str,
     llm: &LlmBackend,
-    events: &broadcast::Sender<ServerEvent>,
+    _events: &broadcast::Sender<ServerEvent>,
 ) {
     let prompt = format!(
         r#"analyze the emotional tone of this message from the user:
@@ -595,13 +927,8 @@ respond ONLY with those two lines."#
 
     mood.updated_at = chrono::Utc::now().timestamp();
     tools::save_mood_state(&instance_dir, &mood);
-
-    if !mood.companion_mood.is_empty() {
-        let _ = events.send(ServerEvent::MoodUpdated {
-            instance_slug: instance_slug.to_string(),
-            mood: mood.companion_mood.clone(),
-        });
-    }
+    // Don't broadcast MoodUpdated here — this only updates user sentiment,
+    // not the companion's mood. The set_mood tool handles companion mood changes.
 }
 
 fn build_instance_tools(
@@ -611,7 +938,7 @@ fn build_instance_tools(
     config_path: &Path,
     events: broadcast::Sender<ServerEvent>,
 ) -> Vec<Box<dyn ToolDyn>> {
-    vec![
+    let raw_tools: Vec<Box<dyn ToolDyn>> = vec![
         Box::new(EditSoulTool::new(workspace_dir, instance_slug)),
         Box::new(ReadFileTool::new(workspace_dir, instance_slug)),
         Box::new(WriteFileTool::new(workspace_dir, instance_slug)),
@@ -621,7 +948,7 @@ fn build_instance_tools(
         Box::new(JournalTool::new(workspace_dir, instance_slug)),
         Box::new(ReadJournalTool::new(workspace_dir, instance_slug)),
         Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug)),
-        Box::new(SetMoodTool::new(workspace_dir, instance_slug, events)),
+        Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone())),
         Box::new(GetMoodTool::new(workspace_dir, instance_slug)),
         Box::new(CurrentTimeTool),
         Box::new(WebSearchTool::new(brave_api_key, config_path)),
@@ -633,5 +960,13 @@ fn build_instance_tools(
         Box::new(ListTasksTool::new(workspace_dir, instance_slug)),
         Box::new(SearchCodeTool::new(workspace_dir, instance_slug)),
         Box::new(RunCommandTool::new(workspace_dir, instance_slug)),
-    ]
+        Box::new(ClearContextTool::new(workspace_dir, instance_slug)),
+    ];
+
+    raw_tools
+        .into_iter()
+        .map(|tool| -> Box<dyn ToolDyn> {
+            Box::new(ObservableTool::new(tool, events.clone(), instance_slug.to_string()))
+        })
+        .collect()
 }
