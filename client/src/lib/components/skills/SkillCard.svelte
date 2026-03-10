@@ -37,6 +37,17 @@
 		</div>
 	{/if}
 
+	{#if expanded && skill.resources && skill.resources.length > 0}
+		<div class="skill-card-instructions">
+			<span class="skill-card-instructions-label">resources</span>
+			<ul class="skill-card-resources">
+				{#each skill.resources as resource}
+					<li class="skill-card-resource">{resource}</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
+
 	{#if expanded && !skill.builtin}
 		<span
 			role="button"
@@ -162,6 +173,21 @@
 		color: oklch(0.78 0.12 75 / 40%);
 		line-height: 1.55;
 		white-space: pre-wrap;
+	}
+
+	.skill-card-resources {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.skill-card-resource {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: oklch(0.78 0.12 75 / 35%);
 	}
 
 	.skill-card-badge-community {

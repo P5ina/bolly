@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -11,12 +13,15 @@ pub struct Skill {
     pub builtin: bool,
     #[serde(default)]
     pub enabled: bool,
-    /// System prompt fragment injected when this skill is active.
+    /// System prompt fragment injected when this skill is active (SKILL.md body).
     #[serde(default)]
     pub instructions: String,
     /// Where this skill was installed from (None = user-created).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<SkillSource>,
+    /// Bundled resource files (references/, scripts/, assets/).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resources: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,6 +30,23 @@ pub struct SkillSource {
     pub repo: String,
     /// Git ref that was installed (branch, tag, or commit SHA).
     pub version: String,
+}
+
+/// YAML frontmatter parsed from a SKILL.md file (Agent Skills spec).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SkillFrontmatter {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub license: Option<String>,
+    #[serde(default)]
+    pub compatibility: Option<String>,
+    #[serde(default)]
+    pub metadata: HashMap<String, String>,
+    #[serde(default, rename = "allowed-tools")]
+    pub allowed_tools: Option<String>,
 }
 
 /// An entry in the remote skills registry index.
@@ -50,4 +72,26 @@ pub struct RegistryEntry {
 
 fn default_git_ref() -> String {
     "main".into()
+}
+
+/// Parse SKILL.md content into frontmatter + body.
+pub fn parse_skill_md(content: &str) -> (SkillFrontmatter, String) {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return (SkillFrontmatter::default(), content.to_string());
+    }
+
+    // Find closing ---
+    let after_open = &trimmed[3..];
+    if let Some(close_pos) = after_open.find("\n---") {
+        let yaml_str = &after_open[..close_pos];
+        let body = after_open[close_pos + 4..].trim_start().to_string();
+
+        let frontmatter: SkillFrontmatter =
+            serde_yaml::from_str(yaml_str).unwrap_or_default();
+
+        (frontmatter, body)
+    } else {
+        (SkillFrontmatter::default(), content.to_string())
+    }
 }

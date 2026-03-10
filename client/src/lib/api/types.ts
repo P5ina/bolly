@@ -115,6 +115,7 @@ export interface Skill {
 	enabled: boolean;
 	instructions: string;
 	source?: SkillSource;
+	resources?: string[];
 }
 
 export interface RegistryEntry {
