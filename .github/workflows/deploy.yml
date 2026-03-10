@@ -27,7 +27,7 @@ permissions:
 env:
   FLY_IMAGE: registry.fly.io/bolly:latest
   FLY_NIGHTLY: registry.fly.io/bolly:nightly
-  DOCKERHUB_IMAGE: ${{ github.repository }}
+  DOCKERHUB_IMAGE: p5ina/bolly
 
 jobs:
   build:
