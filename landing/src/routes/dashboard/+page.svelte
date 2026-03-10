@@ -33,11 +33,6 @@
 		}
 	}
 
-	async function logout() {
-		await fetch('/api/auth/logout', { method: 'POST' });
-		location.href = '/';
-	}
-
 	function companionUrl(flyAppId: string | null) {
 		return flyAppId ? `https://${flyAppId}.fly.dev` : '#';
 	}
@@ -55,9 +50,11 @@
 			</a>
 			<div class="flex items-center gap-4">
 				<span class="text-xs text-text-ghost">{data.user.email}</span>
-				<button onclick={logout} class="text-xs text-text-ghost hover:text-text-dim transition-colors">
-					Log out
-				</button>
+				<form method="POST" action="?/logout">
+					<button type="submit" class="text-xs text-text-ghost hover:text-text-dim transition-colors">
+						Log out
+					</button>
+				</form>
 			</div>
 		</div>
 	</header>

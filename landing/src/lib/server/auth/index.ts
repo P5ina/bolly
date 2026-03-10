@@ -1,8 +1,9 @@
 import { db } from '../db/index.js';
-import { sessions, users, type User } from '../db/schema.js';
+import { passwordResetTokens, sessions, users, type User } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { sha256 } from '@oslojs/crypto/sha2';
 import { encodeHexLowerCase } from '@oslojs/encoding';
+import { dev } from '$app/environment';
 import type { Cookies } from '@sveltejs/kit';
 
 const SESSION_COOKIE = 'bolly_session';
@@ -60,7 +61,7 @@ export function setSessionCookie(cookies: Cookies, sessionId: string) {
 	cookies.set(SESSION_COOKIE, sessionId, {
 		path: '/',
 		httpOnly: true,
-		secure: true,
+		secure: !dev,
 		sameSite: 'lax',
 		maxAge: SESSION_DURATION / 1000,
 	});
@@ -72,4 +73,55 @@ export function deleteSessionCookie(cookies: Cookies) {
 
 export function getSessionId(cookies: Cookies): string | undefined {
 	return cookies.get(SESSION_COOKIE);
+}
+
+// ─── Password Reset ──────────────────────────────────────────────────────────
+
+const RESET_TOKEN_DURATION = 60 * 60 * 1000; // 1 hour
+
+export async function createPasswordResetToken(email: string): Promise<string | null> {
+	const result = await db().select().from(users).where(eq(users.email, email)).limit(1);
+	if (result.length === 0) return null;
+
+	const user = result[0];
+	const token = generateId(40);
+	const expiresAt = new Date(Date.now() + RESET_TOKEN_DURATION);
+
+	// Delete any existing tokens for this user
+	await db().delete(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
+
+	await db().insert(passwordResetTokens).values({ id: token, userId: user.id, expiresAt });
+	return token;
+}
+
+export async function validatePasswordResetToken(token: string): Promise<{ userId: string } | null> {
+	const result = await db()
+		.select()
+		.from(passwordResetTokens)
+		.where(eq(passwordResetTokens.id, token))
+		.limit(1);
+
+	if (result.length === 0) return null;
+
+	const row = result[0];
+	if (row.expiresAt < new Date()) {
+		await db().delete(passwordResetTokens).where(eq(passwordResetTokens.id, token));
+		return null;
+	}
+
+	return { userId: row.userId };
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<boolean> {
+	const valid = await validatePasswordResetToken(token);
+	if (!valid) return false;
+
+	const hash = hashPassword(newPassword);
+	await db().update(users).set({ passwordHash: hash }).where(eq(users.id, valid.userId));
+	await db().delete(passwordResetTokens).where(eq(passwordResetTokens.id, token));
+
+	// Invalidate all sessions for this user
+	await db().delete(sessions).where(eq(sessions.userId, valid.userId));
+
+	return true;
 }

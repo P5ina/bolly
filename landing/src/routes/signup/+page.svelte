@@ -1,39 +1,8 @@
 <script lang="ts">
-	let email = $state('');
-	let password = $state('');
-	let name = $state('');
-	let errorMsg = $state('');
+	import { enhance } from '$app/forms';
+
+	let { form } = $props();
 	let loading = $state(false);
-
-	async function submit() {
-		if (!email || !password) return;
-		loading = true;
-		errorMsg = '';
-
-		try {
-			const res = await fetch('/api/auth/signup', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ email, password, name }),
-			});
-
-			if (!res.ok) {
-				const err = await res.json().catch(() => ({ message: res.statusText }));
-				errorMsg = err.message ?? 'Signup failed';
-				return;
-			}
-
-			location.href = '/dashboard';
-		} catch {
-			errorMsg = 'Network error';
-		} finally {
-			loading = false;
-		}
-	}
-
-	function onkeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter') submit();
-	}
 </script>
 
 <div class="min-h-dvh bg-bg flex items-center justify-center px-6">
@@ -48,31 +17,30 @@
 			<h1 class="font-display italic text-2xl text-text">create your account</h1>
 		</div>
 
-		<div class="space-y-4">
+		<form method="POST" use:enhance={() => { loading = true; return async ({ update }) => { loading = false; await update(); }; }} class="space-y-4">
 			<div>
 				<input
-					bind:value={name}
-					{onkeydown}
+					name="name"
 					type="text"
 					placeholder="Name (optional)"
+					value={form?.name ?? ''}
 					class="w-full py-3 px-4 rounded-lg text-sm text-text outline-none transition-all duration-300"
 					style="background: var(--color-bg-raised); border: 1px solid var(--color-border);"
 				/>
 			</div>
 			<div>
 				<input
-					bind:value={email}
-					{onkeydown}
+					name="email"
 					type="email"
 					placeholder="Email"
+					value={form?.email ?? ''}
 					class="w-full py-3 px-4 rounded-lg text-sm text-text outline-none transition-all duration-300"
 					style="background: var(--color-bg-raised); border: 1px solid var(--color-border);"
 				/>
 			</div>
 			<div>
 				<input
-					bind:value={password}
-					{onkeydown}
+					name="password"
 					type="password"
 					placeholder="Password (8+ characters)"
 					class="w-full py-3 px-4 rounded-lg text-sm text-text outline-none transition-all duration-300"
@@ -80,19 +48,19 @@
 				/>
 			</div>
 
-			{#if errorMsg}
-				<p class="text-xs text-red-400/70 italic">{errorMsg}</p>
+			{#if form?.message}
+				<p class="text-xs text-red-400/70 italic">{form.message}</p>
 			{/if}
 
 			<button
-				onclick={submit}
-				disabled={loading || !email || !password}
+				type="submit"
+				disabled={loading}
 				class="w-full py-3 rounded-lg text-sm font-medium text-warm transition-all duration-300 disabled:opacity-40"
 				style="background: oklch(0.78 0.12 75 / 12%); border: 1px solid oklch(0.78 0.12 75 / 20%);"
 			>
 				{loading ? 'Creating account...' : 'Create account'}
 			</button>
-		</div>
+		</form>
 
 		<p class="text-center mt-6 text-xs text-text-ghost">
 			Already have an account? <a href="/login" class="text-warm-dim hover:text-warm transition-colors">Sign in</a>

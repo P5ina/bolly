@@ -22,6 +22,14 @@ export const sessions = pgTable('sessions', {
 	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 });
 
+// ─── Password Reset Tokens ───────────────────────────────────────────────────
+
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+	id: text('id').primaryKey(), // random token
+	userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
+
 // ─── Tenants (one per companion instance) ────────────────────────────────────
 
 export const tenants = pgTable('tenants', {
@@ -58,3 +66,4 @@ export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type Tenant = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;

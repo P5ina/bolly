@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types.js';
+import type { Actions, PageServerLoad } from './$types.js';
 import { getTenantsByUser } from '$lib/server/tenants.js';
+import { invalidateSession, deleteSessionCookie } from '$lib/server/auth/index.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	if (!locals.user) redirect(302, '/login');
@@ -22,4 +23,14 @@ export const load: PageServerLoad = async ({ locals }) => {
 			createdAt: t.createdAt.toISOString(),
 		})),
 	};
+};
+
+export const actions: Actions = {
+	logout: async ({ locals, cookies }) => {
+		if (locals.sessionId) {
+			await invalidateSession(locals.sessionId);
+		}
+		deleteSessionCookie(cookies);
+		redirect(302, '/');
+	},
 };
