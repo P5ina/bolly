@@ -28,3 +28,4 @@ lettre = { version = "0.11", features = ["tokio1-native-tls", "smtp-transport", 
 async-imap = "0.10"
 async-native-tls = "0.5"
 futures = "0.3"
+base64 = "0.22"

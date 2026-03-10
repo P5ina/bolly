@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::time::Duration;
 
+use base64::Engine as _;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, Message, Prompt};
 use rig::completion::message::{UserContent, ImageMediaType, DocumentMediaType, MimeType};
@@ -187,11 +188,13 @@ impl LlmBackend {
         // Build multimodal user message with text + image/document
         let text_content = UserContent::text(prompt);
 
+        let b64 = base64::engine::general_purpose::STANDARD.encode(file_bytes);
+
         let file_content = if mime_type.starts_with("image/") {
             let media = ImageMediaType::from_mime_type(mime_type);
-            UserContent::image_raw(file_bytes.to_vec(), media, None)
+            UserContent::image_base64(b64, media, None)
         } else if mime_type == "application/pdf" {
-            UserContent::document_raw(file_bytes.to_vec(), Some(DocumentMediaType::PDF))
+            UserContent::document(b64, Some(DocumentMediaType::PDF))
         } else {
             // Fallback: treat as text if possible
             let text = String::from_utf8_lossy(file_bytes);
