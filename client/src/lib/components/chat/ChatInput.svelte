@@ -18,8 +18,6 @@
 	let attachments = $state<File[]>([]);
 	let fileInput: HTMLInputElement | undefined = $state();
 
-	// Accept everything — server validates and blocks dangerous types
-	const ALLOWED = "*/*";
 
 	function handleSubmit() {
 		const trimmed = value.trim();
@@ -67,7 +65,6 @@
 	type="file"
 	bind:this={fileInput}
 	onchange={handleFiles}
-	accept={ALLOWED}
 	multiple
 	hidden
 />
