@@ -43,6 +43,9 @@ pub struct RegistryEntry {
     /// Author display name.
     #[serde(default)]
     pub author: String,
+    /// Subdirectory path within the repo (e.g. "skills/slidev").
+    #[serde(default)]
+    pub path: String,
 }
 
 fn default_git_ref() -> String {

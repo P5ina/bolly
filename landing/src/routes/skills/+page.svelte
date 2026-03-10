@@ -209,7 +209,7 @@
 				<h2 class="publish-title">publish a skill</h2>
 				<p class="publish-desc">
 					Create a GitHub repo with a <code>skill.json</code> manifest and
-					<code>instructions.md</code>, then open a PR to the registry.
+					<code>SKILL.md</code>, then open a PR to the registry.
 				</p>
 				<a
 					href="https://github.com/triangle-int/bolly-skills"

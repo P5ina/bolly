@@ -125,6 +125,7 @@ export interface RegistryEntry {
 	repo: string;
 	git_ref: string;
 	author: string;
+	path: string;
 	installed: boolean;
 }
 

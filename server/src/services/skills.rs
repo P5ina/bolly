@@ -53,10 +53,11 @@ fn read_skill_dir(path: &Path) -> Option<Skill> {
         skill.id = path.file_name()?.to_string_lossy().to_string();
     }
 
-    // Read instructions from instructions.md if present and not inline
+    // Read instructions from SKILL.md (preferred) or instructions.md (legacy)
     if skill.instructions.is_empty() {
-        let instructions_file = path.join("instructions.md");
-        if let Ok(content) = fs::read_to_string(&instructions_file) {
+        let skill_md = path.join("SKILL.md");
+        let legacy = path.join("instructions.md");
+        if let Ok(content) = fs::read_to_string(&skill_md).or_else(|_| fs::read_to_string(&legacy)) {
             skill.instructions = content;
         }
     }
@@ -81,7 +82,7 @@ pub fn create_skill(workspace_dir: &Path, skill: &Skill) -> io::Result<()> {
     fs::write(skill_dir.join("skill.json"), manifest)?;
 
     if !skill.instructions.is_empty() {
-        fs::write(skill_dir.join("instructions.md"), &skill.instructions)?;
+        fs::write(skill_dir.join("SKILL.md"), &skill.instructions)?;
     }
 
     Ok(())
@@ -134,16 +135,27 @@ pub async fn install_from_registry(
         .timeout(std::time::Duration::from_secs(15))
         .build()?;
 
-    let base_url = format!(
-        "https://raw.githubusercontent.com/{}/{}",
-        entry.repo, entry.git_ref
-    );
+    let base_url = if entry.path.is_empty() {
+        format!(
+            "https://raw.githubusercontent.com/{}/{}",
+            entry.repo, entry.git_ref
+        )
+    } else {
+        format!(
+            "https://raw.githubusercontent.com/{}/{}/{}",
+            entry.repo, entry.git_ref, entry.path
+        )
+    };
 
-    // Try to fetch instructions.md
-    let instructions_url = format!("{}/instructions.md", base_url);
-    let instructions = match client.get(&instructions_url).send().await {
+    // Try to fetch SKILL.md (preferred), fall back to instructions.md (legacy)
+    let skill_md_url = format!("{}/SKILL.md", base_url);
+    let legacy_url = format!("{}/instructions.md", base_url);
+    let instructions = match client.get(&skill_md_url).send().await {
         Ok(resp) if resp.status().is_success() => resp.text().await.unwrap_or_default(),
-        _ => String::new(),
+        _ => match client.get(&legacy_url).send().await {
+            Ok(resp) if resp.status().is_success() => resp.text().await.unwrap_or_default(),
+            _ => String::new(),
+        },
     };
 
     let skill = Skill {
