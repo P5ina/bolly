@@ -836,7 +836,10 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          ## behavior\n\
          task given → act fully: orient, execute, verify, report. use continuation words to get more turns.\n\
          no task → just talk. don't run tools unprompted.\n\
-         use tools with purpose. read only what's relevant. always use what you read."
+         use tools with purpose. read only what's relevant. always use what you read.\n\
+         never narrate what you're about to do — just do it. no \"сейчас сделаю\", \"сейчас проверю\", \"let me check\". \
+         act first, then share results or thoughts.\n\
+         if a tool fails, always tell the user what went wrong and what you tried. never fail silently."
     )
 }
 

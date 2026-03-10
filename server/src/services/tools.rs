@@ -2558,10 +2558,10 @@ impl Tool for InstallPackageTool {
             || std::env::var("EUID").map(|e| e == "0").unwrap_or(false);
 
         // Detect package manager
-        let (cmd, install_args) = detect_package_manager(is_root)
+        let install_cmd = detect_package_manager(is_root)
             .ok_or_else(|| ToolExecError("no supported package manager found (tried apt-get, dnf, yum, pacman, brew, apk)".into()))?;
 
-        let full_cmd = format!("{cmd} {install_args} {packages}");
+        let full_cmd = format!("{install_cmd} {packages}");
         log::info!("[install_package] running: {full_cmd}");
 
         let output = tokio::process::Command::new("sh")
@@ -2690,7 +2690,7 @@ impl Tool for SendFileTool {
     }
 }
 
-fn detect_package_manager(is_root: bool) -> Option<(String, String)> {
+fn detect_package_manager(is_root: bool) -> Option<String> {
     let sudo = if is_root { "" } else { "sudo " };
 
     let managers = [
@@ -2709,7 +2709,7 @@ fn detect_package_manager(is_root: bool) -> Option<(String, String)> {
             .map(|o| o.status.success())
             .unwrap_or(false)
         {
-            return Some((cmd.split_whitespace().next().unwrap().to_string(), cmd.clone()));
+            return Some(cmd.clone());
         }
     }
     None

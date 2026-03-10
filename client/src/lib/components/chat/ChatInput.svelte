@@ -19,7 +19,15 @@
 	let focused = $state(false);
 	let attachments = $state<File[]>([]);
 	let fileInput: HTMLInputElement | undefined = $state();
+	let textareaEl: HTMLTextAreaElement | undefined = $state();
 
+	$effect(() => {
+		// Refocus textarea when it re-enables after sending
+		const isDisabled = disabled && !agentRunning;
+		if (!isDisabled && textareaEl) {
+			textareaEl.focus();
+		}
+	});
 
 	function handleSubmit() {
 		const trimmed = value.trim();
@@ -97,7 +105,7 @@
 						{/if}
 						<span class="attachment-name">{file.name}</span>
 						<span class="attachment-size">{formatSize(file.size)}</span>
-						<button class="attachment-remove" onclick={() => removeAttachment(i)} aria-label="Remove">
+						<button class="attachment-remove" onclick={() => removeAttachment(i)} onmousedown={(e) => e.preventDefault()} aria-label="Remove">
 							<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" class="w-2.5 h-2.5">
 								<path d="M2 2l8 8M10 2l-8 8" stroke-linecap="round"/>
 							</svg>
@@ -108,12 +116,13 @@
 		{/if}
 
 		<div class="whisper-row">
-			<button onclick={openFilePicker} class="whisper-attach" aria-label="Attach file" disabled={disabled && !agentRunning}>
+			<button onclick={openFilePicker} onmousedown={(e) => e.preventDefault()} class="whisper-attach" aria-label="Attach file" disabled={disabled && !agentRunning}>
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-4 h-4">
 					<path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-linecap="round" stroke-linejoin="round"/>
 				</svg>
 			</button>
 			<textarea
+				bind:this={textareaEl}
 				bind:value
 				onkeydown={handleKeydown}
 				onfocus={() => focused = true}
@@ -124,13 +133,13 @@
 				disabled={disabled && !agentRunning}
 			></textarea>
 			{#if agentRunning}
-				<button onclick={onStop} class="whisper-stop" aria-label="Stop">
+				<button onclick={onStop} onmousedown={(e) => e.preventDefault()} class="whisper-stop" aria-label="Stop">
 					<svg viewBox="0 0 24 24" fill="currentColor" class="w-3 h-3">
 						<rect x="6" y="6" width="12" height="12" rx="2" />
 					</svg>
 				</button>
 			{:else if (value.trim() || attachments.length > 0) && !disabled}
-				<button onclick={handleSubmit} class="whisper-send" aria-label="Send">
+				<button onclick={handleSubmit} onmousedown={(e) => e.preventDefault()} class="whisper-send" aria-label="Send">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-4 h-4">
 						<path d="M5 12h14" stroke-linecap="round"/><path d="m12 5 7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/>
 					</svg>

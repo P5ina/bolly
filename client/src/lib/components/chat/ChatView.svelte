@@ -216,17 +216,17 @@
 			{:else}
 				<span class="bar-status">{messages.length} msgs</span>
 			{/if}
-			<button onclick={() => showChatList = !showChatList} class="bar-btn" title="Chats">
+			<button onclick={() => showChatList = !showChatList} onmousedown={(e) => e.preventDefault()} class="bar-btn" title="Chats">
 				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
 					<path d="M2 3h12M2 7h8M2 11h10" stroke-linecap="round"/>
 				</svg>
 			</button>
-			<button onclick={newChat} class="bar-btn" title="New chat">
+			<button onclick={newChat} onmousedown={(e) => e.preventDefault()} class="bar-btn" title="New chat">
 				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
 					<path d="M8 3v10M3 8h10" stroke-linecap="round"/>
 				</svg>
 			</button>
-			<button onclick={handleClear} class="bar-btn bar-clear" title="Clear context">
+			<button onclick={handleClear} onmousedown={(e) => e.preventDefault()} class="bar-btn bar-clear" title="Clear context">
 				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
 					<path d="M2 4h12M5.5 4V2.5h5V4M6 7v5M10 7v5M3.5 4l.75 9.5h7.5L12.5 4" stroke-linecap="round" stroke-linejoin="round"/>
 				</svg>
