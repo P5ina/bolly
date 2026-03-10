@@ -18,7 +18,8 @@
 	let attachments = $state<File[]>([]);
 	let fileInput: HTMLInputElement | undefined = $state();
 
-	const ALLOWED = ".jpg,.jpeg,.png,.gif,.webp,.svg,.md,.txt,.pdf,.json,.csv";
+	// Accept everything — server validates and blocks dangerous types
+	const ALLOWED = "*/*";
 
 	function handleSubmit() {
 		const trimmed = value.trim();

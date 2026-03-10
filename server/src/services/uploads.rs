@@ -9,10 +9,9 @@ use crate::domain::upload::UploadMeta;
 
 const MAX_FILE_SIZE: u64 = 20 * 1024 * 1024; // 20 MB
 
-const ALLOWED_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "gif", "webp", "svg",
-    "md", "txt", "pdf",
-    "json", "csv",
+const BLOCKED_EXTENSIONS: &[&str] = &[
+    "exe", "dll", "so", "dylib", "bin", "msi", "dmg", "iso",
+    "bat", "cmd", "com", "scr", "vbs", "wsh",
 ];
 
 pub fn validate_upload(name: &str, size: u64) -> Result<String, String> {
@@ -26,11 +25,12 @@ pub fn validate_upload(name: &str, size: u64) -> Result<String, String> {
         .unwrap_or("")
         .to_lowercase();
 
-    if !ALLOWED_EXTENSIONS.contains(&ext.as_str()) {
-        return Err(format!(
-            "unsupported file type '.{ext}'. allowed: {}",
-            ALLOWED_EXTENSIONS.join(", ")
-        ));
+    if ext.is_empty() {
+        return Err("file must have an extension".into());
+    }
+
+    if BLOCKED_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(format!("file type '.{ext}' is not allowed"));
     }
 
     Ok(ext)
@@ -43,11 +43,24 @@ fn mime_from_ext(ext: &str) -> &'static str {
         "gif" => "image/gif",
         "webp" => "image/webp",
         "svg" => "image/svg+xml",
-        "md" => "text/markdown",
-        "txt" => "text/plain",
         "pdf" => "application/pdf",
         "json" => "application/json",
         "csv" => "text/csv",
+        "md" => "text/markdown",
+        "html" | "htm" => "text/html",
+        "css" => "text/css",
+        "xml" => "text/xml",
+        "yaml" | "yml" => "text/yaml",
+        "toml" => "text/plain",
+        "txt" | "log" | "ini" | "cfg" | "conf" | "env" => "text/plain",
+        "py" | "rs" | "js" | "ts" | "jsx" | "tsx" | "go" | "rb" | "java"
+        | "c" | "cpp" | "h" | "hpp" | "cs" | "swift" | "kt" | "scala"
+        | "sh" | "bash" | "zsh" | "fish" | "ps1"
+        | "sql" | "graphql" | "proto"
+        | "svelte" | "vue" | "astro"
+        | "dockerfile" | "makefile" | "cmake"
+        | "r" | "lua" | "php" | "pl" | "ex" | "exs" | "zig" | "nim"
+        | "dart" | "elm" | "clj" | "hs" | "ml" | "fs" | "erl" => "text/plain",
         _ => "application/octet-stream",
     }
 }
@@ -180,10 +193,7 @@ pub fn read_upload_text(workspace_dir: &Path, instance_slug: &str, upload_id: &s
         None => return Err(io::Error::new(ErrorKind::NotFound, "upload not found")),
     };
 
-    let is_text = matches!(
-        meta.mime_type.as_str(),
-        "text/markdown" | "text/plain" | "text/csv" | "application/json"
-    );
+    let is_text = meta.mime_type.starts_with("text/") || meta.mime_type == "application/json";
 
     if !is_text {
         return Ok(None);
