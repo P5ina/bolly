@@ -64,6 +64,7 @@ fn tool_summary(name: &str, args: &str) -> String {
         "send_email" => format!("sending email to {}", v["to"].as_str().unwrap_or("?")),
         "read_email" => format!("reading {} emails", v["count"].as_u64().unwrap_or(5)),
         "install_package" => format!("installing {}", v["packages"].as_str().unwrap_or("?")),
+        "send_file" => format!("sharing {}", v["path"].as_str().unwrap_or("?")),
         _ => format!("calling {name}"),
     }
 }
@@ -2593,6 +2594,91 @@ impl Tool for InstallPackageTool {
                 output.status.code().unwrap_or(-1)
             )))
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// send_file — attach a workspace file to the chat so the user can see/download it
+// ---------------------------------------------------------------------------
+
+pub struct SendFileTool {
+    workspace_dir: PathBuf,
+    instance_slug: String,
+}
+
+impl SendFileTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct SendFileArgs {
+    /// Path to the file relative to the instance workspace (e.g. "output.png", "reports/summary.pdf").
+    pub path: String,
+}
+
+impl Tool for SendFileTool {
+    const NAME: &'static str = "send_file";
+    type Error = ToolExecError;
+    type Args = SendFileArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "send_file".into(),
+            description: "Send a file from the workspace to the chat so the user can see or download it. \
+                Images will be displayed inline, other files will appear as download links. \
+                Use this after creating or finding a file you want to share with the user."
+                .into(),
+            parameters: openai_schema::<SendFileArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let rel = args.path.trim().trim_start_matches('/');
+        if rel.is_empty() {
+            return Err(ToolExecError("path cannot be empty".into()));
+        }
+
+        let instance_dir = self.workspace_dir
+            .join("instances")
+            .join(&self.instance_slug);
+        let file_path = instance_dir.join(rel);
+
+        // Safety: must stay within instance dir
+        let canonical = file_path.canonicalize()
+            .map_err(|e| ToolExecError(format!("file not found: {e}")))?;
+        let canonical_instance = instance_dir.canonicalize()
+            .map_err(|e| ToolExecError(format!("instance dir error: {e}")))?;
+        if !canonical.starts_with(&canonical_instance) {
+            return Err(ToolExecError("path must be within the instance workspace".into()));
+        }
+
+        if !canonical.is_file() {
+            return Err(ToolExecError(format!("'{}' is not a file", rel)));
+        }
+
+        let bytes = fs::read(&canonical)
+            .map_err(|e| ToolExecError(format!("failed to read file: {e}")))?;
+
+        let original_name = canonical
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| rel.to_string());
+
+        let meta = super::uploads::save_upload(
+            &self.workspace_dir,
+            &self.instance_slug,
+            &original_name,
+            &bytes,
+        )
+        .map_err(|e| ToolExecError(format!("failed to save upload: {e}")))?;
+
+        Ok(format!("[attached: {} ({})]", original_name, meta.id))
     }
 }
 
