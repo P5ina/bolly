@@ -24,9 +24,10 @@ RUN cargo chef cook --release --recipe-path recipe.json -p server
 
 # Stage 4: Build server (only recompiles when src changes)
 FROM deps AS server-build
+ARG GIT_HASH=dev
 COPY Cargo.toml Cargo.lock ./
 COPY server/ server/
-RUN cargo build --release -p server
+RUN GIT_HASH=${GIT_HASH} cargo build --release -p server
 
 # Stage 5: Runtime
 FROM debian:bookworm-slim

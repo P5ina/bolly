@@ -1,9 +1,22 @@
 <script lang="ts">
 	import { goto } from "$app/navigation";
+	import { onMount } from "svelte";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
+	import { fetchMeta } from "$lib/api/client.js";
 	import Onboarding from "$lib/components/onboarding/Onboarding.svelte";
 
 	const instances = getInstances();
+
+	let version = $state("");
+	let commit = $state("");
+
+	onMount(async () => {
+		try {
+			const meta = await fetchMeta();
+			version = meta.version;
+			commit = meta.commit;
+		} catch {}
+	});
 
 	const showOnboarding = $derived(!instances.loading && instances.list.length === 0);
 
@@ -128,6 +141,12 @@
 				</div>
 			{/if}
 		</div>
+
+		{#if version}
+			<div class="home-version">
+				v{version}{commit && commit !== "dev" ? ` · ${commit.slice(0, 7)}` : ""}
+			</div>
+		{/if}
 	</div>
 {/if}
 
@@ -397,5 +416,19 @@
 	@keyframes pulse-alive {
 		0%, 100% { opacity: 1; }
 		50% { opacity: 0.3; }
+	}
+
+	.home-version {
+		position: absolute;
+		bottom: 1.5rem;
+		left: 50%;
+		transform: translateX(-50%);
+		font-family: var(--font-body);
+		font-size: 0.65rem;
+		letter-spacing: 0.05em;
+		color: oklch(0.78 0.12 75 / 20%);
+		pointer-events: none;
+		animation: page-fade-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: 1s;
 	}
 </style>

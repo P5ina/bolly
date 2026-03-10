@@ -74,6 +74,8 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            GIT_HASH=${{ github.sha }}
           tags: |
             ${{ env.FLY_IMAGE }}
             ${{ !startsWith(github.ref, 'refs/tags/v') && env.FLY_NIGHTLY || '' }}

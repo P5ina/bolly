@@ -10,6 +10,8 @@ pub struct HealthResponse {
 #[derive(Serialize)]
 pub struct ServerMetaResponse {
     pub app: &'static str,
+    pub version: &'static str,
+    pub commit: &'static str,
     pub port: u16,
     pub workspace_dir: String,
     pub instances_count: usize,

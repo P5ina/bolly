@@ -17,6 +17,8 @@ async fn server_meta(State(state): State<AppState>) -> Json<ServerMetaResponse> 
 
     Json(ServerMetaResponse {
         app: "bolly",
+        version: env!("CARGO_PKG_VERSION"),
+        commit: option_env!("GIT_HASH").unwrap_or("dev"),
         port: cfg.port,
         workspace_dir: state.workspace_dir.display().to_string(),
         instances_count: workspace::count_directories(&instances_dir).unwrap_or(0),

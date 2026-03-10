@@ -45,6 +45,8 @@ export interface LlmSummary {
 
 export interface ServerMeta {
 	app: string;
+	version: string;
+	commit: string;
 	port: number;
 	workspace_dir: string;
 	instances_count: number;
