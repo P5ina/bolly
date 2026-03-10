@@ -83,6 +83,11 @@ impl LlmBackend {
         history: Vec<Message>,
         tools: Vec<Box<dyn ToolDyn>>,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        log::info!("chat_with_tools: {} tools registered", tools.len());
+        for t in &tools {
+            log::debug!("  tool: {}", t.name());
+        }
+
         if tools.is_empty() {
             return self.chat(system_prompt, prompt, history).await;
         }
@@ -111,7 +116,8 @@ impl LlmBackend {
         match result {
             Ok(response) => Ok(response),
             Err(e) => {
-                log::warn!("Tool agent failed ({e}), retrying without tools");
+                log::error!("Tool agent failed: {e:?}");
+                log::warn!("Retrying without tools");
                 self.chat(system_prompt, prompt, history).await
             }
         }

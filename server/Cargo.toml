@@ -20,5 +20,5 @@ dirs = "6.0"
 toml = "1.0"
 uuid = { version = "1.0", features = ["v4"] }
 chrono = "0.4"
-schemars = "0.8"
+schemars = "1"
 tokio-util = { version = "0.7.18", features = ["rt"] }

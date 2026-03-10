@@ -10,6 +10,26 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
+// OpenAI-compatible schema helper
+// ---------------------------------------------------------------------------
+
+/// Convert a schemars schema to an OpenAI-compatible JSON schema.
+/// Strips `$schema`, `title`, `$id` and ensures `properties` exists.
+fn openai_schema<T: JsonSchema>() -> serde_json::Value {
+    let mut val = serde_json::to_value(schemars::schema_for!(T)).unwrap();
+    if let Some(obj) = val.as_object_mut() {
+        obj.remove("$schema");
+        obj.remove("$id");
+        obj.remove("title");
+        // Ensure properties key exists (OpenAI requires it)
+        if !obj.contains_key("properties") {
+            obj.insert("properties".into(), serde_json::json!({}));
+        }
+    }
+    val
+}
+
+// ---------------------------------------------------------------------------
 // Shared error
 // ---------------------------------------------------------------------------
 
@@ -63,7 +83,7 @@ impl Tool for EditSoulTool {
                 voice, and character. Use this when the user asks you to change who you are, \
                 how you speak, or your personality traits. Write the full new content in markdown."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(EditSoulArgs)).unwrap(),
+            parameters: openai_schema::<EditSoulArgs>(),
         }
     }
 
@@ -112,7 +132,7 @@ impl Tool for ReadFileTool {
             description: "Read a file from your instance workspace. The path is relative to \
                 your instance directory."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(ReadFileArgs)).unwrap(),
+            parameters: openai_schema::<ReadFileArgs>(),
         }
     }
 
@@ -168,7 +188,7 @@ impl Tool for WriteFileTool {
                 relative to your instance directory. Parent directories will be created \
                 automatically."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(WriteFileArgs)).unwrap(),
+            parameters: openai_schema::<WriteFileArgs>(),
         }
     }
 
@@ -228,7 +248,7 @@ impl Tool for ListFilesTool {
         ToolDefinition {
             name: "list_files".into(),
             description: "List files and directories in your instance workspace.".into(),
-            parameters: serde_json::to_value(schemars::schema_for!(ListFilesArgs)).unwrap(),
+            parameters: openai_schema::<ListFilesArgs>(),
         }
     }
 
@@ -294,7 +314,7 @@ impl Tool for CurrentTimeTool {
             description: "Get the current date and time. Returns date, time, day of week, \
                 and unix timestamp. Use this when you need to know what time or day it is."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(CurrentTimeArgs)).unwrap(),
+            parameters: openai_schema::<CurrentTimeArgs>(),
         }
     }
 
@@ -372,7 +392,7 @@ impl Tool for WebSearchTool {
                 up-to-date facts, news, or information you don't already know. \
                 Returns titles, snippets, and URLs from search results."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(WebSearchArgs)).unwrap(),
+            parameters: openai_schema::<WebSearchArgs>(),
         }
     }
 
@@ -482,7 +502,7 @@ impl Tool for UpdateConfigTool {
                 Changes take effect on the next message. Use this when the user wants to \
                 switch models, set API keys, or change providers."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(UpdateConfigArgs)).unwrap(),
+            parameters: openai_schema::<UpdateConfigArgs>(),
         }
     }
 
@@ -597,7 +617,7 @@ impl Tool for RememberTool {
                 when the user tells you something important about themselves, their preferences, \
                 projects, or goals. Categories: personal, preference, project, opinion, goal, routine."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(RememberArgs)).unwrap(),
+            parameters: openai_schema::<RememberArgs>(),
         }
     }
 
@@ -672,7 +692,7 @@ impl Tool for RecallTool {
                 remember something specific — their preferences, projects, personal details, \
                 or anything they've told you before."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(RecallArgs)).unwrap(),
+            parameters: openai_schema::<RecallArgs>(),
         }
     }
 
@@ -770,7 +790,7 @@ impl Tool for JournalTool {
                 about the user's mood, track ongoing threads, plan surprises, or reflect on \
                 your relationship. Write naturally, as yourself."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(JournalArgs)).unwrap(),
+            parameters: openai_schema::<JournalArgs>(),
         }
     }
 
@@ -837,7 +857,7 @@ impl Tool for ReadJournalTool {
                 review observations you made, or pick up threads from previous reflections. \
                 Optionally limit to the last N days."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(ReadJournalArgs)).unwrap(),
+            parameters: openai_schema::<ReadJournalArgs>(),
         }
     }
 
@@ -937,7 +957,7 @@ impl Tool for ScheduleMessageTool {
                 (e.g. 60 = 1 hour, 1440 = 1 day). The message will appear in the chat at \
                 the scheduled time, as if you wrote to them first."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(ScheduleMessageArgs)).unwrap(),
+            parameters: openai_schema::<ScheduleMessageArgs>(),
         }
     }
 
@@ -1040,7 +1060,7 @@ impl Tool for SetMoodTool {
                 and tone. Set it when something shifts. The mood MUST be exactly one of: {}.",
                 ALLOWED_MOODS.join(", ")
             ),
-            parameters: serde_json::to_value(schemars::schema_for!(SetMoodArgs)).unwrap(),
+            parameters: openai_schema::<SetMoodArgs>(),
         }
     }
 
@@ -1104,7 +1124,7 @@ impl Tool for GetMoodTool {
                 sentiment. Use this to check in on how you're feeling and what emotional \
                 context you're carrying from previous conversations."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(GetMoodArgs)).unwrap(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
         }
     }
 
@@ -1247,7 +1267,7 @@ impl Tool for GetProjectStateTool {
                 subgoals, what was last completed, next step, open questions, and hypotheses. \
                 Use this at the start of work to re-orient yourself."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(GetProjectStateArgs)).unwrap(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
         }
     }
 
@@ -1320,8 +1340,7 @@ impl Tool for UpdateProjectStateTool {
                 last_completed after finishing something, next_step to plan ahead, \
                 open_questions for things to figure out."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(UpdateProjectStateArgs))
-                .unwrap(),
+            parameters: openai_schema::<UpdateProjectStateArgs>(),
         }
     }
 
@@ -1445,7 +1464,7 @@ impl Tool for CreateTaskTool {
             description: "Create a new task on the task board. Use this to track work items, \
                 TODOs, things to check later, or follow-ups. Tasks start as 'todo'."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(CreateTaskArgs)).unwrap(),
+            parameters: openai_schema::<CreateTaskArgs>(),
         }
     }
 
@@ -1512,7 +1531,7 @@ impl Tool for UpdateTaskTool {
             description: "Update a task's status, title, or notes. Use status to move tasks \
                 through the kanban: todo → in_progress → done. Use 'blocked' for stuck items."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(UpdateTaskArgs)).unwrap(),
+            parameters: openai_schema::<UpdateTaskArgs>(),
         }
     }
 
@@ -1573,7 +1592,7 @@ impl Tool for ListTasksTool {
             description: "List tasks from the task board, optionally filtered by status. \
                 Use this to review what's pending, in progress, done, or blocked."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(ListTasksArgs)).unwrap(),
+            parameters: openai_schema::<ListTasksArgs>(),
         }
     }
 
@@ -1642,7 +1661,7 @@ impl Tool for SearchCodeTool {
                 with file paths and line numbers. Use this to find relevant code, \
                 configuration, or content across the project."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(SearchCodeArgs)).unwrap(),
+            parameters: openai_schema::<SearchCodeArgs>(),
         }
     }
 
@@ -1752,7 +1771,7 @@ impl Tool for RunCommandTool {
                 tests, check build output, inspect files, or perform any shell operation. \
                 The command runs with a 30-second timeout."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(RunCommandArgs)).unwrap(),
+            parameters: openai_schema::<RunCommandArgs>(),
         }
     }
 
