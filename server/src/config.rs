@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     #[serde(default = "default_port")]
     pub port: u16,
@@ -20,7 +20,7 @@ pub enum LlmProvider {
     OpenAI,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LlmConfig {
     #[serde(default)]
     pub provider: Option<LlmProvider>,
@@ -30,12 +30,14 @@ pub struct LlmConfig {
     pub tokens: LlmTokens,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LlmTokens {
     #[serde(default, rename = "OPEN_AI", alias = "open_ai", alias = "openai")]
     pub open_ai: String,
     #[serde(default, rename = "ANTHROPIC", alias = "anthropic")]
     pub anthropic: String,
+    #[serde(default, rename = "BRAVE_SEARCH", alias = "brave_search", alias = "brave")]
+    pub brave_search: String,
 }
 
 fn default_port() -> u16 {
@@ -66,6 +68,7 @@ impl Default for LlmTokens {
         Self {
             open_ai: String::new(),
             anthropic: String::new(),
+            brave_search: String::new(),
         }
     }
 }

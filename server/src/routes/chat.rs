@@ -8,6 +8,7 @@ use std::io::ErrorKind;
 
 use crate::{
     app::state::AppState,
+    config,
     domain::{
         chat::{ChatRequest, ChatResponse},
         events::ServerEvent,
@@ -25,13 +26,28 @@ async fn post_chat(
     State(state): State<AppState>,
     Json(request): Json<ChatRequest>,
 ) -> Result<Json<ChatResponse>, (StatusCode, String)> {
+    let config_path = config::config_path();
+    let brave_key = {
+        let cfg = state.config.read().await;
+        cfg.llm.tokens.brave_search.clone()
+    };
+    let brave_ref = if brave_key.is_empty() { None } else { Some(brave_key.as_str()) };
+
     let llm_guard = state.llm.read().await;
     let llm_ref = llm_guard.as_ref();
     let emb_guard = state.embedding_model.read().await;
     let emb_ref = emb_guard.as_ref();
-    let response = chat::append_chat_turn(&state.workspace_dir, request, llm_ref, emb_ref)
+
+    let response = chat::append_chat_turn(&state.workspace_dir, &config_path, request, llm_ref, emb_ref, brave_ref)
         .await
         .map_err(map_chat_error)?;
+
+    // Drop locks before reload
+    drop(llm_guard);
+    drop(emb_guard);
+
+    // Reload config from disk in case the LLM saved new API keys via set_api_key tool
+    state.reload_config().await;
 
     for message in &response.messages {
         let _ = state.events.send(ServerEvent::ChatMessageCreated {

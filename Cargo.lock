@@ -2000,6 +2000,7 @@ dependencies = [
  "dirs",
  "env_logger",
  "log",
+ "reqwest",
  "rig-core",
  "rig-sqlite",
  "rusqlite",

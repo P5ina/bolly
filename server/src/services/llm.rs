@@ -87,22 +87,32 @@ impl LlmBackend {
             return self.chat(system_prompt, prompt, history).await;
         }
 
-        match self {
+        let result = match self {
             LlmBackend::Anthropic { client, model } => {
                 let agent = client
                     .agent(model)
                     .preamble(system_prompt)
+                    .default_max_turns(8)
                     .tools(tools)
                     .build();
-                Ok(agent.chat(prompt, history).await?)
+                agent.chat(prompt, history.clone()).await
             }
             LlmBackend::OpenAI { client, model } => {
                 let agent = client
                     .agent(model)
                     .preamble(system_prompt)
+                    .default_max_turns(8)
                     .tools(tools)
                     .build();
-                Ok(agent.chat(prompt, history).await?)
+                agent.chat(prompt, history.clone()).await
+            }
+        };
+
+        match result {
+            Ok(response) => Ok(response),
+            Err(e) => {
+                log::warn!("Tool agent failed ({e}), retrying without tools");
+                self.chat(system_prompt, prompt, history).await
             }
         }
     }

@@ -187,11 +187,17 @@ topics = ["game dev", "rust", "shaders", "your current projects"]
 
 - [x] Core architecture
 - [x] Basic chat with persistent memory
-- [ ] Soul + personality system
+- [x] Soul + personality system (soul.md, templates, companion self-editing via tool use)
+- [x] Web UI (SvelteKit, organic immersive dark theme)
+- [x] Multiple instances (per-instance soul, memory, chat)
+- [x] LLM tool use (edit_soul, read_file, write_file, list_files)
+- [x] Memory extraction + semantic search (SQLite + vec embeddings)
+- [x] Real-time WebSocket updates
+- [x] Onboarding flow (provider/model/language/name/soul selection)
+- [x] Multi-provider LLM support (Anthropic + OpenAI via Rig)
 - [ ] Drops engine
-- [ ] Web UI + PWA
+- [ ] PWA + push notifications
 - [ ] Tamagotchi (Three.js + ASCII)
-- [ ] Multiple instances
 - [ ] OpenClaw skill compatibility
 - [ ] Skills UI in settings
 - [ ] Skins system

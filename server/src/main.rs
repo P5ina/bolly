@@ -19,8 +19,20 @@ async fn main() {
         )
     });
 
+    let port = config.port;
     let state = app::state::AppState::new(config);
-    let addr = SocketAddr::from(([127, 0, 0, 1], state.config.port));
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+
+    // Start background scheduler for scheduled messages
+    services::scheduler::start(&state.workspace_dir, state.events.clone());
+
+    // Start heartbeat — companion's autonomous inner life
+    services::heartbeat::start(
+        &state.workspace_dir,
+        state.llm.clone(),
+        state.events.clone(),
+    );
+
     let app = app::router::build_router(state);
 
     info!("Starting server on http://{addr}");

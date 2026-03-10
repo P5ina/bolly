@@ -32,7 +32,7 @@
 
 {#if checking}
 	<div class="flex h-full items-center justify-center">
-		<div class="h-5 w-5 animate-spin rounded-full border-2 border-warm/30 border-t-warm"></div>
+		<div class="companion-waking-dot"></div>
 	</div>
 {:else if isNew}
 	{#key slug}
@@ -43,3 +43,17 @@
 		<ChatView {slug} />
 	{/key}
 {/if}
+
+<style>
+	.companion-waking-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: oklch(0.78 0.12 75 / 30%);
+		animation: waking 2s ease-in-out infinite;
+	}
+	@keyframes waking {
+		0%, 100% { opacity: 1; transform: scale(1); }
+		50% { opacity: 0.3; transform: scale(0.7); }
+	}
+</style>

@@ -94,6 +94,7 @@ async fn update_llm(
         )
     })?;
     state.rebuild_llm(&new_config).await;
+    *state.config.write().await = new_config.clone();
 
     let model = new_config
         .llm

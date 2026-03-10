@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { sendMessage } from "$lib/api/client.js";
+	import {
+		sendMessage,
+		fetchSoulTemplates,
+		applySoulTemplate,
+		fetchSoul,
+	} from "$lib/api/client.js";
+	import type { SoulTemplate } from "$lib/api/types.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 
 	let { slug, oncomplete }: { slug: string; oncomplete: () => void } = $props();
@@ -9,6 +15,7 @@
 	type Stage =
 		| "intro"
 		| "picking-language"
+		| "picking-soul"
 		| "waiting-first"
 		| "sending"
 		| "departing";
@@ -16,8 +23,11 @@
 	let stage = $state<Stage>("intro");
 	let firstMessage = $state("");
 	let messageInput: HTMLTextAreaElement | undefined = $state();
-	let chosenLanguage = $state(localStorage.getItem("personality:language") ?? "english");
+	let chosenLanguage = $state(
+		localStorage.getItem("personality:language") ?? "english",
+	);
 	let lines = $state<{ text: string; revealed: string; done: boolean }[]>([]);
+	let soulTemplates = $state<SoulTemplate[]>([]);
 
 	const LANGUAGES = [
 		{ id: "english", label: "English" },
@@ -84,6 +94,53 @@
 		const lang = LANGUAGES.find((l) => l.id === langId);
 		await typewrite(`${lang?.label ?? langId}.`);
 		await pause(400);
+
+		let hasSoul = false;
+		try {
+			const soul = await fetchSoul(slug);
+			hasSoul = soul.exists && soul.content.trim().length > 0;
+		} catch {
+			// no soul
+		}
+
+		if (hasSoul) {
+			await askFirstMessage();
+		} else {
+			try {
+				soulTemplates = await fetchSoulTemplates();
+			} catch {
+				soulTemplates = [];
+			}
+
+			if (soulTemplates.length > 0) {
+				await typewrite("who should i be for you?");
+				stage = "picking-soul";
+			} else {
+				await askFirstMessage();
+			}
+		}
+	}
+
+	async function pickSoul(template: SoulTemplate) {
+		stage = "intro";
+		await pause(200);
+
+		if (template.id !== "custom") {
+			try {
+				await applySoulTemplate(slug, template.id);
+			} catch {
+				// will use default
+			}
+			await typewrite(`${template.name}. i can be that.`);
+		} else {
+			await typewrite("a blank canvas. you can shape me later.");
+		}
+
+		await pause(400);
+		await askFirstMessage();
+	}
+
+	async function askFirstMessage() {
 		await typewrite("tell me something.");
 		stage = "waiting-first";
 		await pause(100);
@@ -96,17 +153,16 @@
 
 		stage = "sending";
 
-		// Send language setup + user message
-		const preferredName = localStorage.getItem("personality:preferredName") ?? "";
-		const langLabel = LANGUAGES.find((l) => l.id === chosenLanguage)?.label ?? chosenLanguage;
+		const preferredName =
+			localStorage.getItem("personality:preferredName") ?? "";
+		const langLabel =
+			LANGUAGES.find((l) => l.id === chosenLanguage)?.label ?? chosenLanguage;
 		const setupParts: string[] = [];
 		if (preferredName) setupParts.push(`my name is ${preferredName}`);
 		setupParts.push(`please speak to me in ${langLabel}`);
 
 		try {
-			// Send setup context
 			await sendMessage(slug, setupParts.join(". ") + ".");
-			// Send actual first message
 			await sendMessage(slug, content);
 			await instances.refresh();
 		} catch {
@@ -131,17 +187,26 @@
 </script>
 
 <div
-	class="relative flex h-full items-center justify-center overflow-hidden"
+	class="instance-space"
 	class:instance-depart={stage === "departing"}
 >
-	<!-- subtle glow -->
+	<!-- living glow -->
 	<div class="instance-glow"></div>
+	<div class="instance-glow-secondary"></div>
+
+	<!-- particles -->
+	<div class="instance-particles">
+		{#each Array(6) as _, i}
+			<div class="instance-particle" style="--i:{i}; --x:{12 + (i * 13) % 76}; --y:{15 + (i * 19) % 65}"></div>
+		{/each}
+	</div>
 
 	<div class="relative z-10 w-full max-w-md px-6">
-		<!-- companion initial -->
+		<!-- companion core -->
 		<div class="mb-10 flex justify-center">
-			<div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-warm/10 font-display text-2xl font-bold text-warm instance-avatar">
-				{slug[0]?.toUpperCase() ?? "?"}
+			<div class="instance-core">
+				<span class="instance-initial">{slug[0]?.toUpperCase() ?? "?"}</span>
+				<div class="instance-halo"></div>
 			</div>
 		</div>
 
@@ -150,21 +215,13 @@
 			{#each lines as line, i}
 				<div class="instance-line" style="animation-delay: {i * 50}ms">
 					{#if i === 0 && line.done}
-						<p class="font-display text-2xl font-bold tracking-tight text-foreground text-center">
-							{line.revealed}
-						</p>
+						<p class="instance-title">{line.revealed}</p>
 					{:else if i === 0}
-						<p class="font-display text-2xl font-bold tracking-tight text-foreground text-center">
-							{line.revealed}<span class="instance-cursor"></span>
-						</p>
+						<p class="instance-title">{line.revealed}<span class="instance-cursor"></span></p>
 					{:else if !line.done}
-						<p class="text-sm leading-relaxed text-muted-foreground text-center">
-							{line.revealed}<span class="instance-cursor"></span>
-						</p>
+						<p class="instance-text">{line.revealed}<span class="instance-cursor"></span></p>
 					{:else}
-						<p class="text-sm leading-relaxed text-muted-foreground text-center">
-							{line.revealed}
-						</p>
+						<p class="instance-text">{line.revealed}</p>
 					{/if}
 				</div>
 			{/each}
@@ -177,10 +234,27 @@
 					{#each LANGUAGES as lang}
 						<button
 							onclick={() => pickLanguage(lang.id)}
-							class="instance-pill text-xs"
+							class="instance-pill"
 							class:instance-pill-active={chosenLanguage === lang.id}
 						>
 							{lang.label}
+						</button>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<!-- soul picker -->
+		{#if stage === "picking-soul"}
+			<div class="instance-input-enter">
+				<div class="grid grid-cols-2 gap-2.5">
+					{#each soulTemplates as template (template.id)}
+						<button
+							onclick={() => pickSoul(template)}
+							class="instance-pill instance-pill-soul"
+						>
+							<span class="instance-pill-name">{template.name}</span>
+							<span class="instance-pill-desc">{template.description}</span>
 						</button>
 					{/each}
 				</div>
@@ -197,15 +271,13 @@
 						onkeydown={handleMessageKeydown}
 						placeholder="what's on your mind?"
 						rows={3}
-						class="w-full resize-none rounded-xl border border-warm/20 bg-warm/5 px-5 py-3.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/25 outline-none transition-all duration-300 focus:border-warm/40 focus:shadow-[0_0_30px_-5px] focus:shadow-warm/15"
+						class="instance-textarea"
 					></textarea>
 					{#if firstMessage.trim()}
-						<button
-							onclick={submitFirst}
-							aria-label="Send"
-							class="absolute right-2 bottom-2 flex h-8 w-8 items-center justify-center rounded-lg bg-warm text-warm-foreground transition-all hover:bg-warm/90"
-						>
-							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+						<button onclick={submitFirst} aria-label="Send" class="instance-send">
+							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
+							</svg>
 						</button>
 					{/if}
 				</div>
@@ -214,43 +286,157 @@
 
 		<!-- sending -->
 		{#if stage === "sending"}
-			<div class="instance-input-enter flex items-center justify-center gap-2.5 text-sm text-warm/60">
+			<div class="instance-input-enter flex items-center justify-center gap-3">
 				<div class="instance-spinner"></div>
-				<span class="font-mono text-xs">setting up</span>
+				<span class="font-display text-xs italic text-warm/40">waking up</span>
 			</div>
 		{/if}
 	</div>
 </div>
 
 <style>
+	.instance-space {
+		position: relative;
+		display: flex;
+		height: 100%;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+	}
+
 	.instance-glow {
 		position: absolute;
-		top: 35%;
+		top: 30%;
 		left: 50%;
-		width: 400px;
-		height: 400px;
+		width: 500px;
+		height: 500px;
 		transform: translate(-50%, -50%);
 		border-radius: 50%;
 		background: radial-gradient(
 			circle,
 			oklch(0.78 0.12 75 / 5%) 0%,
 			oklch(0.78 0.12 75 / 2%) 30%,
-			transparent 70%
+			transparent 65%
 		);
 		animation: glow-breathe 6s ease-in-out infinite;
 		pointer-events: none;
 	}
+	.instance-glow-secondary {
+		position: absolute;
+		top: 35%;
+		left: 48%;
+		width: 300px;
+		height: 300px;
+		transform: translate(-50%, -50%);
+		border-radius: 50%;
+		background: radial-gradient(
+			circle,
+			oklch(0.70 0.08 300 / 2%) 0%,
+			transparent 60%
+		);
+		animation: glow-breathe 10s ease-in-out infinite;
+		animation-delay: -3s;
+		pointer-events: none;
+	}
 	@keyframes glow-breathe {
 		0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-		50% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.05); }
+		50% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.08); }
 	}
 
-	.instance-avatar {
-		animation: avatar-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+	/* particles */
+	.instance-particles {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		overflow: hidden;
 	}
-	@keyframes avatar-enter {
-		from { opacity: 0; transform: scale(0.8) translateY(10px); }
-		to { opacity: 1; transform: scale(1) translateY(0); }
+	.instance-particle {
+		position: absolute;
+		width: 2px;
+		height: 2px;
+		border-radius: 50%;
+		background: oklch(0.78 0.12 75 / 20%);
+		left: calc(var(--x) * 1%);
+		top: calc(var(--y) * 1%);
+		animation: particle-drift 14s ease-in-out infinite;
+		animation-delay: calc(var(--i) * -2.3s);
+	}
+	@keyframes particle-drift {
+		0%, 100% { transform: translate(0, 0); opacity: 0.2; }
+		25% { transform: translate(12px, -18px); opacity: 0.6; }
+		50% { transform: translate(-8px, -30px); opacity: 0.3; }
+		75% { transform: translate(16px, -12px); opacity: 0.5; }
+	}
+
+	/* companion core */
+	.instance-core {
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 64px;
+		height: 64px;
+		border-radius: 50%;
+		background: oklch(0.78 0.12 75 / 8%);
+		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		animation: core-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+	@keyframes core-enter {
+		from { opacity: 0; transform: scale(0.6); }
+		to { opacity: 1; transform: scale(1); }
+	}
+
+	.instance-initial {
+		font-family: var(--font-display);
+		font-size: 1.5rem;
+		font-weight: 500;
+		font-style: italic;
+		color: oklch(0.78 0.12 75 / 60%);
+	}
+
+	.instance-halo {
+		position: absolute;
+		inset: -8px;
+		border-radius: 50%;
+		border: 1px solid oklch(0.78 0.12 75 / 6%);
+		animation: halo-pulse 5s ease-in-out infinite;
+	}
+	@keyframes halo-pulse {
+		0%, 100% { transform: scale(1); opacity: 0.6; }
+		50% { transform: scale(1.12); opacity: 0.2; }
+	}
+
+	/* text styles */
+	.instance-title {
+		font-family: var(--font-display);
+		font-size: 1.5rem;
+		font-weight: 400;
+		font-style: italic;
+		letter-spacing: -0.01em;
+		color: oklch(0.88 0.03 75 / 90%);
+		text-align: center;
+	}
+
+	.instance-text {
+		font-family: var(--font-body);
+		font-size: 0.875rem;
+		line-height: 1.6;
+		color: oklch(0.88 0.03 75 / 50%);
+		text-align: center;
+	}
+
+	.instance-cursor {
+		display: inline-block;
+		width: 1.5px;
+		height: 1.1em;
+		margin-left: 1px;
+		vertical-align: text-bottom;
+		background: oklch(0.78 0.12 75 / 50%);
+		animation: cursor-blink 0.8s steps(2) infinite;
+	}
+	@keyframes cursor-blink {
+		0% { opacity: 1; }
+		100% { opacity: 0; }
 	}
 
 	.instance-line {
@@ -270,58 +456,113 @@
 		to { opacity: 1; transform: translateY(0); }
 	}
 
-	.instance-cursor {
-		display: inline-block;
-		width: 2px;
-		height: 1.1em;
-		margin-left: 1px;
-		vertical-align: text-bottom;
-		background: oklch(0.78 0.12 75 / 70%);
-		animation: cursor-blink 0.8s steps(2) infinite;
-	}
-	@keyframes cursor-blink {
-		0% { opacity: 1; }
-		100% { opacity: 0; }
-	}
-
-	.instance-depart {
-		animation: depart 0.4s cubic-bezier(0.55, 0, 1, 0.45) forwards;
-	}
-	@keyframes depart {
-		to { opacity: 0; transform: scale(0.98); }
-	}
-
+	/* pills */
 	.instance-pill {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		border-radius: 0.75rem;
-		border: 1px solid oklch(0.78 0.12 75 / 15%);
-		background: oklch(0.78 0.12 75 / 4%);
+		border-radius: 2rem;
+		border: 1px solid oklch(0.78 0.12 75 / 10%);
+		background: oklch(0.78 0.12 75 / 3%);
 		padding: 0.5rem 0.5rem;
-		color: var(--foreground);
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		color: oklch(0.88 0.03 75 / 60%);
 		transition: all 0.3s ease;
 		cursor: pointer;
 	}
 	.instance-pill:hover {
-		border-color: oklch(0.78 0.12 75 / 35%);
-		background: oklch(0.78 0.12 75 / 10%);
-		box-shadow: 0 0 20px -5px oklch(0.78 0.12 75 / 10%);
+		border-color: oklch(0.78 0.12 75 / 25%);
+		background: oklch(0.78 0.12 75 / 8%);
+		color: oklch(0.88 0.03 75 / 85%);
+		box-shadow: 0 0 20px oklch(0.78 0.12 75 / 6%);
 	}
 	.instance-pill-active {
-		border-color: oklch(0.78 0.12 75 / 50%);
-		background: oklch(0.78 0.12 75 / 15%);
+		border-color: oklch(0.78 0.12 75 / 35%);
+		background: oklch(0.78 0.12 75 / 12%);
+		color: oklch(0.88 0.03 75 / 90%);
 	}
 
+	.instance-pill-soul {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.25rem;
+		padding: 0.75rem 1rem;
+		border-radius: 1rem;
+	}
+	.instance-pill-name {
+		font-family: var(--font-display);
+		font-size: 0.8rem;
+		font-style: italic;
+		color: oklch(0.88 0.03 75 / 70%);
+	}
+	.instance-pill-desc {
+		font-size: 0.625rem;
+		color: oklch(0.88 0.03 75 / 30%);
+		line-height: 1.3;
+	}
+
+	/* textarea */
+	.instance-textarea {
+		width: 100%;
+		resize: none;
+		border-radius: 1rem;
+		border: 1px solid oklch(0.78 0.12 75 / 12%);
+		background: oklch(0.78 0.12 75 / 3%);
+		padding: 0.875rem 1.25rem;
+		font-family: var(--font-body);
+		font-size: 0.875rem;
+		line-height: 1.6;
+		color: oklch(0.88 0.03 75 / 80%);
+		outline: none;
+		transition: all 0.4s ease;
+	}
+	.instance-textarea::placeholder {
+		color: oklch(0.78 0.12 75 / 15%);
+		font-family: var(--font-display);
+		font-style: italic;
+	}
+	.instance-textarea:focus {
+		border-color: oklch(0.78 0.12 75 / 25%);
+		box-shadow: 0 0 40px oklch(0.78 0.12 75 / 6%);
+	}
+
+	.instance-send {
+		position: absolute;
+		right: 0.5rem;
+		bottom: 0.5rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		border-radius: 50%;
+		color: oklch(0.78 0.12 75 / 50%);
+		transition: all 0.3s ease;
+	}
+	.instance-send:hover {
+		color: oklch(0.78 0.12 75 / 80%);
+		background: oklch(0.78 0.12 75 / 8%);
+	}
+
+	/* spinner */
 	.instance-spinner {
-		width: 14px;
-		height: 14px;
-		border: 2px solid oklch(0.78 0.12 75 / 20%);
-		border-top-color: oklch(0.78 0.12 75 / 70%);
+		width: 12px;
+		height: 12px;
+		border: 1.5px solid oklch(0.78 0.12 75 / 15%);
+		border-top-color: oklch(0.78 0.12 75 / 50%);
 		border-radius: 50%;
 		animation: spin 0.7s linear infinite;
 	}
 	@keyframes spin {
 		to { transform: rotate(360deg); }
+	}
+
+	/* depart */
+	.instance-depart {
+		animation: depart 0.4s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+	}
+	@keyframes depart {
+		to { opacity: 0; transform: scale(0.98); filter: blur(4px); }
 	}
 </style>
