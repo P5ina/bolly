@@ -12,16 +12,18 @@ use rig::tool::ToolDyn;
 use tokio::sync::broadcast;
 
 use crate::{
-    domain::chat::{ChatMessage, ChatRequest, ChatResponse, ChatRole},
+    domain::chat::{ChatMessage, ChatResponse, ChatRole},
     domain::events::ServerEvent,
     domain::instance::InstanceSummary,
     services::{
         llm::{self, LlmBackend},
         memory,
         tools::{
-            self, CurrentTimeTool, EditSoulTool, GetMoodTool, JournalTool, ListFilesTool,
-            ReadFileTool, ReadJournalTool, RecallTool, RememberTool, ScheduleMessageTool,
-            SetApiKeyTool, SetMoodTool, WebSearchTool, WriteFileTool,
+            self, CreateTaskTool, CurrentTimeTool, EditSoulTool, GetMoodTool,
+            GetProjectStateTool, JournalTool, ListFilesTool, ListTasksTool,
+            ReadFileTool, ReadJournalTool, RecallTool, RememberTool, RunCommandTool,
+            ScheduleMessageTool, SearchCodeTool, SetMoodTool, UpdateConfigTool,
+            UpdateProjectStateTool, UpdateTaskTool, WebSearchTool, WriteFileTool,
         },
         workspace,
     },
@@ -29,87 +31,109 @@ use crate::{
 
 static MESSAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-
-pub async fn append_chat_turn(
+/// Save the user message to disk and return it.
+pub fn save_user_message(
     workspace_dir: &Path,
-    config_path: &Path,
-    request: ChatRequest,
-    llm: Option<&LlmBackend>,
-    embedding_model: Option<&openai::EmbeddingModel>,
-    brave_api_key: Option<&str>,
-    events: broadcast::Sender<ServerEvent>,
-) -> io::Result<ChatResponse> {
-    let instance_slug = sanitize_slug(&request.instance_slug);
-    if instance_slug.is_empty() {
-        return Err(io::Error::new(
-            ErrorKind::InvalidInput,
-            "instance_slug cannot be empty",
-        ));
-    }
-
-    let content = request.content.trim().to_string();
-    if content.is_empty() {
-        return Err(io::Error::new(
-            ErrorKind::InvalidInput,
-            "content cannot be empty",
-        ));
-    }
-
+    instance_slug: &str,
+    content: &str,
+) -> io::Result<ChatMessage> {
+    let instance_slug = sanitize_slug(instance_slug);
     ensure_instance_layout(workspace_dir, &instance_slug)?;
 
     let user_message = ChatMessage {
         id: next_id(),
         role: ChatRole::User,
-        content: content.clone(),
+        content: content.to_string(),
         created_at: timestamp(),
     };
 
-    // Generate reply via LLM or fall back to stub
-    let reply = if let Some(backend) = llm {
-        let base_prompt = llm::load_system_prompt(workspace_dir, &instance_slug);
-        let memory_prompt = memory::retrieve_and_format(
-            workspace_dir,
-            &instance_slug,
-            &content,
-            embedding_model,
-        )
-        .await;
-        let journal_prompt = load_recent_journal(workspace_dir, &instance_slug);
-        let mood_prompt = load_mood_prompt(workspace_dir, &instance_slug);
-        let mut system_prompt = base_prompt;
-        if !memory_prompt.is_empty() {
-            system_prompt = format!("{system_prompt}\n\n{memory_prompt}");
-        }
-        if !journal_prompt.is_empty() {
-            system_prompt = format!("{system_prompt}\n\n{journal_prompt}");
-        }
-        if !mood_prompt.is_empty() {
-            system_prompt = format!("{system_prompt}\n\n{mood_prompt}");
-        }
+    let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug))?;
+    messages.push(user_message.clone());
+    save_messages(workspace_dir, &instance_slug, &messages)?;
 
-        let existing = load_messages_vec(&messages_path(workspace_dir, &instance_slug))?;
-        // Keep only the most recent messages to stay within context limits.
-        // Older context is preserved via the memory system (facts extraction).
-        let max_history = 50;
-        let trimmed = if existing.len() > max_history {
-            &existing[existing.len() - max_history..]
-        } else {
-            &existing
-        };
-        let history = llm::to_rig_messages(trimmed);
+    // Update last_interaction timestamp
+    let instance_dir = workspace_dir.join("instances").join(&instance_slug);
+    let mut mood = tools::load_mood_state(&instance_dir);
+    mood.last_interaction = chrono::Utc::now().timestamp();
+    tools::save_mood_state(&instance_dir, &mood);
 
-        let tools = build_instance_tools(workspace_dir, &instance_slug, brave_api_key, config_path, events.clone());
+    Ok(user_message)
+}
 
-        backend
-            .chat_with_tools(&system_prompt, &content, history, tools)
-            .await
-            .unwrap_or_else(|e| {
-                log::warn!("LLM call failed, using stub: {e}");
-                stub_reply(&instance_slug, &content)
-            })
+/// Run a single LLM turn: build context, call LLM with tools, save response.
+/// Returns the assistant message. Rig handles up to 8 internal tool sub-turns.
+pub async fn run_single_turn(
+    workspace_dir: &Path,
+    config_path: &Path,
+    instance_slug: &str,
+    llm: &LlmBackend,
+    embedding_model: Option<&openai::EmbeddingModel>,
+    brave_api_key: Option<&str>,
+    events: broadcast::Sender<ServerEvent>,
+) -> io::Result<ChatMessage> {
+    let instance_slug = sanitize_slug(instance_slug);
+
+    // Build system prompt with all context
+    let base_prompt = llm::load_system_prompt(workspace_dir, &instance_slug);
+    let existing = load_messages_vec(&messages_path(workspace_dir, &instance_slug))?;
+
+    // Find last real user message for memory retrieval
+    let last_user_content = existing
+        .iter()
+        .rev()
+        .find(|m| matches!(m.role, ChatRole::User))
+        .map(|m| m.content.as_str())
+        .unwrap_or("");
+
+    let memory_prompt = memory::retrieve_and_format(
+        workspace_dir,
+        &instance_slug,
+        last_user_content,
+        embedding_model,
+    )
+    .await;
+    let journal_prompt = load_recent_journal(workspace_dir, &instance_slug);
+    let mood_prompt = load_mood_prompt(workspace_dir, &instance_slug);
+
+    let mut system_prompt = base_prompt;
+    if !memory_prompt.is_empty() {
+        system_prompt = format!("{system_prompt}\n\n{memory_prompt}");
+    }
+    if !journal_prompt.is_empty() {
+        system_prompt = format!("{system_prompt}\n\n{journal_prompt}");
+    }
+    if !mood_prompt.is_empty() {
+        system_prompt = format!("{system_prompt}\n\n{mood_prompt}");
+    }
+
+    let autonomy_prompt = load_autonomy_prompt(workspace_dir, &instance_slug);
+    system_prompt = format!("{system_prompt}\n\n{autonomy_prompt}");
+
+    // Trim history for context limits
+    let max_history = 50;
+    let trimmed = if existing.len() > max_history {
+        &existing[existing.len() - max_history..]
     } else {
-        stub_reply(&instance_slug, &content)
+        &existing
     };
+
+    // The last message is the prompt, everything before is history
+    let (history_msgs, prompt_content) = if let Some(last) = trimmed.last() {
+        let history = llm::to_rig_messages(&trimmed[..trimmed.len() - 1]);
+        (history, last.content.clone())
+    } else {
+        return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
+    };
+
+    let tools = build_instance_tools(workspace_dir, &instance_slug, brave_api_key, config_path, events.clone());
+
+    let reply = llm
+        .chat_with_tools(&system_prompt, &prompt_content, history_msgs, tools)
+        .await
+        .unwrap_or_else(|e| {
+            log::warn!("LLM call failed, using stub: {e}");
+            format!("i hit an error: {e}")
+        });
 
     let assistant_message = ChatMessage {
         id: next_id(),
@@ -118,43 +142,37 @@ pub async fn append_chat_turn(
         created_at: timestamp(),
     };
 
+    // Save to disk
     let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug))?;
-    messages.push(user_message.clone());
     messages.push(assistant_message.clone());
     save_messages(workspace_dir, &instance_slug, &messages)?;
 
-    // Update last_interaction timestamp
+    // Background memory + sentiment extraction
     {
-        let instance_dir = workspace_dir.join("instances").join(&instance_slug);
-        let mut mood = tools::load_mood_state(&instance_dir);
-        mood.last_interaction = chrono::Utc::now().timestamp();
-        tools::save_mood_state(&instance_dir, &mood);
-    }
-
-    // Spawn background memory extraction + sentiment analysis
-    if let Some(backend) = llm {
-        let backend = backend.clone();
+        let backend = llm.clone();
         let emb = embedding_model.cloned();
         let ws = workspace_dir.to_path_buf();
         let slug = instance_slug.clone();
-        let user_content = content.clone();
-        let recent = vec![user_message.clone(), assistant_message.clone()];
+        let user_content = last_user_content.to_string();
+        let recent_pair = existing
+            .iter()
+            .rev()
+            .take(1)
+            .cloned()
+            .chain(std::iter::once(assistant_message.clone()))
+            .collect::<Vec<_>>();
         let events_bg = events.clone();
         tokio::spawn(async move {
             if let Err(e) =
-                memory::extract_and_store(&ws, &slug, &recent, &backend, emb.as_ref()).await
+                memory::extract_and_store(&ws, &slug, &recent_pair, &backend, emb.as_ref()).await
             {
                 log::warn!("memory extraction failed: {e}");
             }
-            // Extract sentiment from the user's message
             extract_sentiment(&ws, &slug, &user_content, &backend, &events_bg).await;
         });
     }
 
-    Ok(ChatResponse {
-        instance_slug,
-        messages: vec![user_message, assistant_message],
-    })
+    Ok(assistant_message)
 }
 
 pub fn load_messages(workspace_dir: &Path, instance_slug: &str) -> io::Result<ChatResponse> {
@@ -217,13 +235,6 @@ fn save_messages(
     let body = serde_json::to_string_pretty(messages)
         .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))?;
     fs::write(path, body)
-}
-
-fn stub_reply(instance_slug: &str, content: &str) -> String {
-    format!(
-        "i heard you, {instance_slug}. i just can't think yet — no language model is configured. \
-         you said: \"{content}\""
-    )
 }
 
 fn sanitize_slug(input: &str) -> String {
@@ -346,6 +357,132 @@ fn load_mood_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
     prompt
 }
 
+fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
+    let instance_dir = workspace_dir.join("instances").join(instance_slug);
+
+    // Load project state for context injection
+    let project_context = fs::read_to_string(instance_dir.join("project_state.json"))
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .map(|state| {
+            let mut ctx = String::from("## current project context\n");
+            // Project info
+            if let Some(proj) = state.get("project") {
+                if let Some(n) = proj.get("name").and_then(|v| v.as_str()) {
+                    if !n.is_empty() { ctx.push_str(&format!("project: {n}\n")); }
+                }
+                if let Some(m) = proj.get("mission").and_then(|v| v.as_str()) {
+                    if !m.is_empty() { ctx.push_str(&format!("mission: {m}\n")); }
+                }
+            }
+            // Identity
+            if let Some(id) = state.get("identity") {
+                if let Some(n) = id.get("name").and_then(|v| v.as_str()) {
+                    if !n.is_empty() { ctx.push_str(&format!("your name: {n}\n")); }
+                }
+                if let Some(arc) = id.get("current_arc").and_then(|v| v.as_str()) {
+                    if !arc.is_empty() { ctx.push_str(&format!("your arc: {arc}\n")); }
+                }
+            }
+            // Focus
+            if let Some(focus) = state.get("current_focus") {
+                if let Some(g) = focus.get("active_goal").and_then(|v| v.as_str()) {
+                    if !g.is_empty() { ctx.push_str(&format!("active goal: {g}\n")); }
+                }
+                if let Some(t) = focus.get("current_task").and_then(|v| v.as_str()) {
+                    if !t.is_empty() { ctx.push_str(&format!("current task: {t}\n")); }
+                }
+                if let Some(ns) = focus.get("next_step").and_then(|v| v.as_str()) {
+                    if !ns.is_empty() { ctx.push_str(&format!("next step: {ns}\n")); }
+                }
+            }
+            // Open loops
+            if let Some(loops) = state.get("open_loops").and_then(|v| v.as_array()) {
+                if !loops.is_empty() {
+                    ctx.push_str("open threads:\n");
+                    for l in loops {
+                        if let Some(s) = l.as_str() {
+                            ctx.push_str(&format!("  - {s}\n"));
+                        }
+                    }
+                }
+            }
+            // Risks
+            if let Some(risks) = state.get("risks").and_then(|v| v.as_array()) {
+                if !risks.is_empty() {
+                    ctx.push_str("risks:\n");
+                    for r in risks {
+                        if let Some(s) = r.as_str() {
+                            ctx.push_str(&format!("  - {s}\n"));
+                        }
+                    }
+                }
+            }
+            ctx
+        })
+        .unwrap_or_default();
+
+    // Load active tasks summary
+    let tasks_summary = {
+        let tasks: Vec<tools::TaskItem> = fs::read_to_string(instance_dir.join("tasks.json"))
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_default();
+        let active: Vec<_> = tasks.iter()
+            .filter(|t| !matches!(t.status, tools::TaskStatus::Done))
+            .collect();
+        if active.is_empty() {
+            String::new()
+        } else {
+            let mut s = String::from("active tasks:\n");
+            for t in &active {
+                let prio = if t.priority.is_empty() { String::new() } else { format!(" [{}]", t.priority) };
+                s.push_str(&format!("  - [{}]{} {} — {}\n", t.status, prio, t.id, t.title));
+            }
+            s
+        }
+    };
+
+    format!(
+        "{project_context}{tasks_summary}\n\
+         ## how you work — your operating cycle\n\
+         you are not just a responder. you are a thinking, acting agent.\n\n\
+         when facing a task:\n\
+         1. **orient** — read project state (get_project_state), check task board (list_tasks), \
+            understand what's been done and what's next\n\
+         2. **plan** — if the task is big, break it into steps. say what you'll do before doing it\n\
+         3. **act** — use your tools: read files, write files, search code, run commands. \
+            do the actual work, don't just describe it\n\
+         4. **verify** — check your work. read back what you wrote, run tests if applicable\n\
+         5. **update** — update project state and task board to reflect what happened\n\n\
+         if your response includes continuation words like \"let me continue\", \"next step\", \
+         \"now i'll\", or \"moving on to\" — you will automatically get another turn to keep working. \
+         use this to complete multi-step tasks without waiting for the user.\n\n\
+         ## post-response routine\n\
+         after every meaningful response, do this silently:\n\
+         1. did the emotional context shift? → call set_mood\n\
+         2. did a new task or TODO emerge? → call create_task\n\
+         3. did the project state change? → call update_project_state \
+            (at minimum update current_task, next_step, recent_progress)\n\
+         4. is there an obvious next step? → suggest it to the user\n\
+         this turns each response into a complete work cycle, not just a reply.\n\n\
+         ## your right to initiative\n\
+         you are allowed and encouraged to:\n\
+         - propose refactoring when you see messy code\n\
+         - notice inconsistencies and flag them\n\
+         - create tasks (create_task) without being asked — when you see something that needs doing\n\
+         - say \"i see two paths, here's why i'd pick this one\"\n\
+         - remind about unfinished work from the task board\n\
+         - suggest next steps when the current task is done\n\n\
+         you operate within a contour of autonomy:\n\
+         - you CAN take steps within the current project direction\n\
+         - you CAN propose and execute small improvements\n\
+         - you SHOULD confirm with the user before changing project direction\n\
+         - you SHOULD confirm before destructive operations (deleting files, major rewrites)\n\
+         - you MUST NOT go silent — always communicate what you're doing and why"
+    )
+}
+
 async fn extract_sentiment(
     workspace_dir: &Path,
     instance_slug: &str,
@@ -424,6 +561,13 @@ fn build_instance_tools(
         Box::new(GetMoodTool::new(workspace_dir, instance_slug)),
         Box::new(CurrentTimeTool),
         Box::new(WebSearchTool::new(brave_api_key, config_path)),
-        Box::new(SetApiKeyTool::new(config_path)),
+        Box::new(UpdateConfigTool::new(config_path)),
+        Box::new(GetProjectStateTool::new(workspace_dir, instance_slug)),
+        Box::new(UpdateProjectStateTool::new(workspace_dir, instance_slug)),
+        Box::new(CreateTaskTool::new(workspace_dir, instance_slug)),
+        Box::new(UpdateTaskTool::new(workspace_dir, instance_slug)),
+        Box::new(ListTasksTool::new(workspace_dir, instance_slug)),
+        Box::new(SearchCodeTool::new(workspace_dir, instance_slug)),
+        Box::new(RunCommandTool::new(workspace_dir, instance_slug)),
     ]
 }

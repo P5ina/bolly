@@ -16,4 +16,10 @@ pub enum ServerEvent {
         instance_slug: String,
         mood: String,
     },
+    AgentRunning {
+        instance_slug: String,
+    },
+    AgentStopped {
+        instance_slug: String,
+    },
 }

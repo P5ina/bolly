@@ -438,14 +438,14 @@ impl Tool for WebSearchTool {
 }
 
 // ---------------------------------------------------------------------------
-// set_api_key — save an API key to the global config
+// update_config — safely edit the server config (keys, provider, model)
 // ---------------------------------------------------------------------------
 
-pub struct SetApiKeyTool {
+pub struct UpdateConfigTool {
     config_path: PathBuf,
 }
 
-impl SetApiKeyTool {
+impl UpdateConfigTool {
     pub fn new(config_path: &Path) -> Self {
         Self {
             config_path: config_path.to_path_buf(),
@@ -453,84 +453,109 @@ impl SetApiKeyTool {
     }
 }
 
-/// Arguments for set_api_key tool.
+/// Arguments for update_config tool.
 #[derive(Deserialize, JsonSchema)]
-pub struct SetApiKeyArgs {
-    /// Which provider to set the key for: "anthropic", "openai", or "brave_search".
-    pub provider: String,
-    /// The API key value.
-    pub key: String,
+pub struct UpdateConfigArgs {
+    /// LLM provider to use: "openai" or "anthropic". Leave null to keep current.
+    pub provider: Option<String>,
+    /// Model name to use (e.g. "gpt-4o", "gpt-5.4", "claude-sonnet-4-20250514"). Leave null to keep current.
+    pub model: Option<String>,
+    /// OpenAI API key. Leave null to keep current.
+    pub openai_key: Option<String>,
+    /// Anthropic API key. Leave null to keep current.
+    pub anthropic_key: Option<String>,
+    /// Brave Search API key. Leave null to keep current.
+    pub brave_search_key: Option<String>,
 }
 
-impl Tool for SetApiKeyTool {
-    const NAME: &'static str = "set_api_key";
+impl Tool for UpdateConfigTool {
+    const NAME: &'static str = "update_config";
     type Error = ToolExecError;
-    type Args = SetApiKeyArgs;
+    type Args = UpdateConfigArgs;
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: "set_api_key".into(),
-            description: "Save an API key to the global config file. Supported providers: \
-                \"anthropic\", \"openai\", \"brave_search\". Use this when the user gives you \
-                an API key to configure. The key will be saved and available on the next message."
+            name: "update_config".into(),
+            description: "Update server configuration: LLM provider, model, and API keys. \
+                Only provided fields are changed; null fields keep their current value. \
+                Changes take effect on the next message. Use this when the user wants to \
+                switch models, set API keys, or change providers."
                 .into(),
-            parameters: serde_json::to_value(schemars::schema_for!(SetApiKeyArgs)).unwrap(),
+            parameters: serde_json::to_value(schemars::schema_for!(UpdateConfigArgs)).unwrap(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let provider = args.provider.trim().to_lowercase();
-        let key = args.key.trim().to_string();
-
-        if key.is_empty() {
-            return Err(ToolExecError("key cannot be empty".into()));
-        }
-
-        let toml_field = match provider.as_str() {
-            "anthropic" => "ANTHROPIC",
-            "openai" | "open_ai" => "OPEN_AI",
-            "brave_search" | "brave" => "BRAVE_SEARCH",
-            other => {
-                return Err(ToolExecError(format!(
-                    "unknown provider \"{other}\". supported: anthropic, openai, brave_search"
-                )));
-            }
-        };
-
-        // Read existing config
+        // Load current config as typed struct for validation
         let raw = fs::read_to_string(&self.config_path)
             .map_err(|e| ToolExecError(format!("failed to read config: {e}")))?;
-
-        let mut doc: toml::Table = raw
-            .parse()
+        let mut config: crate::config::Config = toml::from_str(&raw)
             .map_err(|e| ToolExecError(format!("failed to parse config: {e}")))?;
 
-        // Ensure [llm.tokens] section exists
-        let llm = doc
-            .entry("llm")
-            .or_insert_with(|| toml::Value::Table(toml::Table::new()))
-            .as_table_mut()
-            .ok_or_else(|| ToolExecError("llm config is not a table".into()))?;
+        let mut changes = Vec::new();
 
-        let tokens = llm
-            .entry("tokens")
-            .or_insert_with(|| toml::Value::Table(toml::Table::new()))
-            .as_table_mut()
-            .ok_or_else(|| ToolExecError("llm.tokens is not a table".into()))?;
+        if let Some(provider) = &args.provider {
+            let p = provider.trim().to_lowercase();
+            match p.as_str() {
+                "openai" => config.llm.provider = Some(crate::config::LlmProvider::OpenAI),
+                "anthropic" => config.llm.provider = Some(crate::config::LlmProvider::Anthropic),
+                other => {
+                    return Err(ToolExecError(format!(
+                        "unknown provider \"{other}\". supported: openai, anthropic"
+                    )));
+                }
+            }
+            changes.push(format!("provider → {p}"));
+        }
 
-        tokens.insert(
-            toml_field.to_string(),
-            toml::Value::String(key),
-        );
+        if let Some(model) = &args.model {
+            let m = model.trim().to_string();
+            if m.is_empty() {
+                return Err(ToolExecError("model cannot be empty".into()));
+            }
+            config.llm.model = Some(m.clone());
+            changes.push(format!("model → {m}"));
+        }
 
-        let output = doc.to_string();
+        if let Some(key) = &args.openai_key {
+            let k = key.trim().to_string();
+            if k.is_empty() {
+                return Err(ToolExecError("openai_key cannot be empty".into()));
+            }
+            config.llm.tokens.open_ai = k;
+            changes.push("openai key updated".into());
+        }
+
+        if let Some(key) = &args.anthropic_key {
+            let k = key.trim().to_string();
+            if k.is_empty() {
+                return Err(ToolExecError("anthropic_key cannot be empty".into()));
+            }
+            config.llm.tokens.anthropic = k;
+            changes.push("anthropic key updated".into());
+        }
+
+        if let Some(key) = &args.brave_search_key {
+            let k = key.trim().to_string();
+            if k.is_empty() {
+                return Err(ToolExecError("brave_search_key cannot be empty".into()));
+            }
+            config.llm.tokens.brave_search = k;
+            changes.push("brave search key updated".into());
+        }
+
+        if changes.is_empty() {
+            return Ok("nothing to change — all fields were null".into());
+        }
+
+        // Serialize back and write
+        let output = toml::to_string_pretty(&config)
+            .map_err(|e| ToolExecError(format!("failed to serialize config: {e}")))?;
         fs::write(&self.config_path, &output)
             .map_err(|e| ToolExecError(format!("failed to write config: {e}")))?;
 
-        Ok(format!(
-            "{provider} API key saved to config. you can now use tools that require this key immediately."
-        ))
+        Ok(format!("config updated: {}. changes take effect on next message.", changes.join(", ")))
     }
 }
 
@@ -1137,6 +1162,639 @@ pub fn save_mood_state(instance_dir: &Path, state: &MoodState) {
     let path = instance_dir.join("mood.json");
     if let Ok(json) = serde_json::to_string_pretty(state) {
         let _ = fs::write(&path, json);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// project_state — persistent project context that survives across sessions
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProjectInfo {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub mission: String,
+    #[serde(default)]
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct IdentityInfo {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub core_traits: Vec<String>,
+    #[serde(default)]
+    pub current_arc: String,
+    #[serde(default)]
+    pub important_events: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CurrentFocus {
+    #[serde(default)]
+    pub active_goal: String,
+    #[serde(default)]
+    pub current_task: String,
+    #[serde(default)]
+    pub next_step: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProjectState {
+    #[serde(default)]
+    pub project: ProjectInfo,
+    #[serde(default)]
+    pub identity: IdentityInfo,
+    #[serde(default)]
+    pub current_focus: CurrentFocus,
+    #[serde(default)]
+    pub open_loops: Vec<String>,
+    #[serde(default)]
+    pub recent_progress: Vec<String>,
+    #[serde(default)]
+    pub next_candidates: Vec<String>,
+    #[serde(default)]
+    pub risks: Vec<String>,
+}
+
+pub struct GetProjectStateTool {
+    instance_dir: PathBuf,
+}
+
+impl GetProjectStateTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetProjectStateArgs {}
+
+impl Tool for GetProjectStateTool {
+    const NAME: &'static str = "get_project_state";
+    type Error = ToolExecError;
+    type Args = GetProjectStateArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "get_project_state".into(),
+            description: "Read the current project state — what we're building, the active goal, \
+                subgoals, what was last completed, next step, open questions, and hypotheses. \
+                Use this at the start of work to re-orient yourself."
+                .into(),
+            parameters: serde_json::to_value(schemars::schema_for!(GetProjectStateArgs)).unwrap(),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let path = self.instance_dir.join("project_state.json");
+        let state: ProjectState = fs::read_to_string(&path)
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_default();
+        serde_json::to_string_pretty(&state)
+            .map_err(|e| ToolExecError(format!("failed to serialize project state: {e}")))
+    }
+}
+
+pub struct UpdateProjectStateTool {
+    instance_dir: PathBuf,
+}
+
+impl UpdateProjectStateTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct UpdateProjectStateArgs {
+    /// Project name. Null to keep current.
+    pub project_name: Option<String>,
+    /// Project mission statement. Null to keep current.
+    pub project_mission: Option<String>,
+    /// Project status (e.g. "active", "paused"). Null to keep current.
+    pub project_status: Option<String>,
+    /// Your name. Null to keep current.
+    pub identity_name: Option<String>,
+    /// Your core traits as a list. Null to keep current.
+    pub core_traits: Option<Vec<String>>,
+    /// Your current arc / growth trajectory. Null to keep current.
+    pub current_arc: Option<String>,
+    /// Important events in your history. Null to keep current.
+    pub important_events: Option<Vec<String>>,
+    /// Current high-level goal. Null to keep current.
+    pub active_goal: Option<String>,
+    /// What you're currently working on. Null to keep current.
+    pub current_task: Option<String>,
+    /// What should be done next. Null to keep current.
+    pub next_step: Option<String>,
+    /// Open threads and unfinished work. Null to keep current.
+    pub open_loops: Option<Vec<String>>,
+    /// Recent completed items. Null to keep current.
+    pub recent_progress: Option<Vec<String>>,
+    /// Candidate next steps to consider. Null to keep current.
+    pub next_candidates: Option<Vec<String>>,
+    /// Known risks and concerns. Null to keep current.
+    pub risks: Option<Vec<String>>,
+}
+
+impl Tool for UpdateProjectStateTool {
+    const NAME: &'static str = "update_project_state";
+    type Error = ToolExecError;
+    type Args = UpdateProjectStateArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "update_project_state".into(),
+            description: "Update the project state. Only provided fields are changed. \
+                Use this to track progress: update current_goal when direction shifts, \
+                last_completed after finishing something, next_step to plan ahead, \
+                open_questions for things to figure out."
+                .into(),
+            parameters: serde_json::to_value(schemars::schema_for!(UpdateProjectStateArgs))
+                .unwrap(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let path = self.instance_dir.join("project_state.json");
+        let mut state: ProjectState = fs::read_to_string(&path)
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_default();
+
+        if let Some(v) = args.project_name { state.project.name = v; }
+        if let Some(v) = args.project_mission { state.project.mission = v; }
+        if let Some(v) = args.project_status { state.project.status = v; }
+        if let Some(v) = args.identity_name { state.identity.name = v; }
+        if let Some(v) = args.core_traits { state.identity.core_traits = v; }
+        if let Some(v) = args.current_arc { state.identity.current_arc = v; }
+        if let Some(v) = args.important_events { state.identity.important_events = v; }
+        if let Some(v) = args.active_goal { state.current_focus.active_goal = v; }
+        if let Some(v) = args.current_task { state.current_focus.current_task = v; }
+        if let Some(v) = args.next_step { state.current_focus.next_step = v; }
+        if let Some(v) = args.open_loops { state.open_loops = v; }
+        if let Some(v) = args.recent_progress { state.recent_progress = v; }
+        if let Some(v) = args.next_candidates { state.next_candidates = v; }
+        if let Some(v) = args.risks { state.risks = v; }
+
+        let json = serde_json::to_string_pretty(&state)
+            .map_err(|e| ToolExecError(format!("failed to serialize: {e}")))?;
+        fs::write(&path, &json)
+            .map_err(|e| ToolExecError(format!("failed to write project state: {e}")))?;
+
+        Ok(format!("project state updated"))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// task_board — kanban-style task tracking
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskItem {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub status: TaskStatus,
+    #[serde(default)]
+    pub priority: String,
+    #[serde(default)]
+    pub notes: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatus {
+    #[default]
+    Todo,
+    InProgress,
+    Done,
+    Blocked,
+}
+
+impl std::fmt::Display for TaskStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TaskStatus::Todo => write!(f, "todo"),
+            TaskStatus::InProgress => write!(f, "in_progress"),
+            TaskStatus::Done => write!(f, "done"),
+            TaskStatus::Blocked => write!(f, "blocked"),
+        }
+    }
+}
+
+fn load_tasks(instance_dir: &Path) -> Vec<TaskItem> {
+    let path = instance_dir.join("tasks.json");
+    fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn save_tasks(instance_dir: &Path, tasks: &[TaskItem]) {
+    let path = instance_dir.join("tasks.json");
+    if let Ok(json) = serde_json::to_string_pretty(tasks) {
+        let _ = fs::write(&path, json);
+    }
+}
+
+pub struct CreateTaskTool {
+    instance_dir: PathBuf,
+}
+
+impl CreateTaskTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct CreateTaskArgs {
+    /// Short title describing the task.
+    pub title: String,
+    /// Priority: "high", "medium", or "low". Default: "medium".
+    pub priority: Option<String>,
+    /// Optional notes, context, or details.
+    pub notes: Option<String>,
+}
+
+impl Tool for CreateTaskTool {
+    const NAME: &'static str = "create_task";
+    type Error = ToolExecError;
+    type Args = CreateTaskArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "create_task".into(),
+            description: "Create a new task on the task board. Use this to track work items, \
+                TODOs, things to check later, or follow-ups. Tasks start as 'todo'."
+                .into(),
+            parameters: serde_json::to_value(schemars::schema_for!(CreateTaskArgs)).unwrap(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let title = args.title.trim().to_string();
+        if title.is_empty() {
+            return Err(ToolExecError("title cannot be empty".into()));
+        }
+
+        let mut tasks = load_tasks(&self.instance_dir);
+        let id = format!("task_{}", tasks.len() + 1);
+        let now = Utc::now().format("%Y-%m-%d %H:%M").to_string();
+
+        tasks.push(TaskItem {
+            id: id.clone(),
+            title: title.clone(),
+            status: TaskStatus::Todo,
+            priority: args.priority.unwrap_or_else(|| "medium".into()),
+            notes: args.notes.unwrap_or_default(),
+            created_at: now.clone(),
+            updated_at: now,
+        });
+
+        save_tasks(&self.instance_dir, &tasks);
+        Ok(format!("created task {id}: {title}"))
+    }
+}
+
+pub struct UpdateTaskTool {
+    instance_dir: PathBuf,
+}
+
+impl UpdateTaskTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct UpdateTaskArgs {
+    /// Task ID (e.g. "task_1").
+    pub id: String,
+    /// New status: "todo", "in_progress", "done", or "blocked". Null to keep current.
+    pub status: Option<String>,
+    /// Priority: "high", "medium", or "low". Null to keep current.
+    pub priority: Option<String>,
+    /// Update notes. Null to keep current.
+    pub notes: Option<String>,
+    /// Update title. Null to keep current.
+    pub title: Option<String>,
+}
+
+impl Tool for UpdateTaskTool {
+    const NAME: &'static str = "update_task";
+    type Error = ToolExecError;
+    type Args = UpdateTaskArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "update_task".into(),
+            description: "Update a task's status, title, or notes. Use status to move tasks \
+                through the kanban: todo → in_progress → done. Use 'blocked' for stuck items."
+                .into(),
+            parameters: serde_json::to_value(schemars::schema_for!(UpdateTaskArgs)).unwrap(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let mut tasks = load_tasks(&self.instance_dir);
+        let task = tasks.iter_mut().find(|t| t.id == args.id)
+            .ok_or_else(|| ToolExecError(format!("task '{}' not found", args.id)))?;
+
+        if let Some(status) = &args.status {
+            task.status = match status.to_lowercase().as_str() {
+                "todo" => TaskStatus::Todo,
+                "in_progress" => TaskStatus::InProgress,
+                "done" => TaskStatus::Done,
+                "blocked" => TaskStatus::Blocked,
+                other => return Err(ToolExecError(format!(
+                    "invalid status '{other}'. use: todo, in_progress, done, blocked"
+                ))),
+            };
+        }
+        if let Some(title) = args.title { task.title = title; }
+        if let Some(priority) = args.priority { task.priority = priority; }
+        if let Some(notes) = args.notes { task.notes = notes; }
+        task.updated_at = Utc::now().format("%Y-%m-%d %H:%M").to_string();
+
+        let summary = format!("{} → {}", task.id, task.status);
+        save_tasks(&self.instance_dir, &tasks);
+        Ok(summary)
+    }
+}
+
+pub struct ListTasksTool {
+    instance_dir: PathBuf,
+}
+
+impl ListTasksTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListTasksArgs {
+    /// Filter by status: "todo", "in_progress", "done", "blocked", or "all". Default: "all".
+    pub status: Option<String>,
+}
+
+impl Tool for ListTasksTool {
+    const NAME: &'static str = "list_tasks";
+    type Error = ToolExecError;
+    type Args = ListTasksArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "list_tasks".into(),
+            description: "List tasks from the task board, optionally filtered by status. \
+                Use this to review what's pending, in progress, done, or blocked."
+                .into(),
+            parameters: serde_json::to_value(schemars::schema_for!(ListTasksArgs)).unwrap(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let tasks = load_tasks(&self.instance_dir);
+        if tasks.is_empty() {
+            return Ok("no tasks yet".into());
+        }
+
+        let filter = args.status.as_deref().unwrap_or("all").to_lowercase();
+        let filtered: Vec<_> = tasks.iter().filter(|t| {
+            filter == "all" || t.status.to_string() == filter
+        }).collect();
+
+        if filtered.is_empty() {
+            return Ok(format!("no tasks with status '{filter}'"));
+        }
+
+        let mut out = String::new();
+        for t in &filtered {
+            let prio = if t.priority.is_empty() { String::new() } else { format!(" [{}]", t.priority) };
+            let notes = if t.notes.is_empty() { String::new() } else { format!(" — {}", t.notes) };
+            out.push_str(&format!(
+                "[{}]{} {} — {}{}\n",
+                t.status, prio, t.id, t.title, notes
+            ));
+        }
+        Ok(out)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// search_code — search through files by content pattern
+// ---------------------------------------------------------------------------
+
+pub struct SearchCodeTool {
+    instance_dir: PathBuf,
+}
+
+impl SearchCodeTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct SearchCodeArgs {
+    /// Text or pattern to search for (case-insensitive substring match).
+    pub query: String,
+    /// Optional subdirectory to search in (relative to instance root). Default: search all files.
+    pub path: Option<String>,
+}
+
+impl Tool for SearchCodeTool {
+    const NAME: &'static str = "search_code";
+    type Error = ToolExecError;
+    type Args = SearchCodeArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "search_code".into(),
+            description: "Search through files for a text pattern. Returns matching lines \
+                with file paths and line numbers. Use this to find relevant code, \
+                configuration, or content across the project."
+                .into(),
+            parameters: serde_json::to_value(schemars::schema_for!(SearchCodeArgs)).unwrap(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let query = args.query.trim().to_lowercase();
+        if query.is_empty() {
+            return Err(ToolExecError("query cannot be empty".into()));
+        }
+
+        let search_dir = if let Some(ref p) = args.path {
+            self.instance_dir.join(p)
+        } else {
+            self.instance_dir.clone()
+        };
+
+        if !search_dir.exists() {
+            return Err(ToolExecError(format!("path does not exist: {}", search_dir.display())));
+        }
+
+        let mut results = Vec::new();
+        search_files_recursive(&search_dir, &query, &self.instance_dir, &mut results, 0);
+
+        if results.is_empty() {
+            return Ok(format!("no matches for '{}'", args.query));
+        }
+
+        // Limit results
+        let truncated = results.len() > 50;
+        let output: String = results.iter().take(50).cloned().collect::<Vec<_>>().join("\n");
+        if truncated {
+            Ok(format!("{output}\n... ({} total matches, showing first 50)", results.len()))
+        } else {
+            Ok(output)
+        }
+    }
+}
+
+fn search_files_recursive(
+    dir: &Path,
+    query: &str,
+    base: &Path,
+    results: &mut Vec<String>,
+    depth: usize,
+) {
+    if depth > 5 || results.len() > 200 {
+        return;
+    }
+
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        if path.is_dir() {
+            search_files_recursive(&path, query, base, results, depth + 1);
+        } else if path.is_file() {
+            // Skip binary/large files
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if matches!(ext, "json" | "md" | "txt" | "toml" | "yaml" | "yml" | "rs" | "ts" | "js" | "svelte" | "css" | "html" | "py" | "sh" | "") {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    let rel = path.strip_prefix(base).unwrap_or(&path);
+                    for (i, line) in content.lines().enumerate() {
+                        if line.to_lowercase().contains(query) {
+                            results.push(format!("{}:{}: {}", rel.display(), i + 1, line.trim()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// run_command — execute shell commands (sandboxed to instance dir)
+// ---------------------------------------------------------------------------
+
+pub struct RunCommandTool {
+    instance_dir: PathBuf,
+}
+
+impl RunCommandTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct RunCommandArgs {
+    /// The shell command to execute. Runs in the instance directory.
+    pub command: String,
+}
+
+impl Tool for RunCommandTool {
+    const NAME: &'static str = "run_command";
+    type Error = ToolExecError;
+    type Args = RunCommandArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "run_command".into(),
+            description: "Execute a shell command in the instance directory. Use this to run \
+                tests, check build output, inspect files, or perform any shell operation. \
+                The command runs with a 30-second timeout."
+                .into(),
+            parameters: serde_json::to_value(schemars::schema_for!(RunCommandArgs)).unwrap(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let command = args.command.trim().to_string();
+        if command.is_empty() {
+            return Err(ToolExecError("command cannot be empty".into()));
+        }
+
+        let output = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&command)
+            .current_dir(&self.instance_dir)
+            .output()
+            .await
+            .map_err(|e| ToolExecError(format!("failed to execute command: {e}")))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        let mut result = String::new();
+        if !stdout.is_empty() {
+            // Truncate long output
+            let truncated: String = stdout.chars().take(4000).collect();
+            result.push_str(&truncated);
+            if stdout.len() > 4000 {
+                result.push_str("\n...(output truncated)");
+            }
+        }
+        if !stderr.is_empty() {
+            if !result.is_empty() {
+                result.push('\n');
+            }
+            let truncated: String = stderr.chars().take(2000).collect();
+            result.push_str(&format!("stderr: {truncated}"));
+        }
+
+        if result.is_empty() {
+            result = format!("command completed with exit code {}", output.status.code().unwrap_or(-1));
+        }
+
+        Ok(result)
     }
 }
 

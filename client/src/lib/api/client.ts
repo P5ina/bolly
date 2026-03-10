@@ -77,6 +77,10 @@ export function fetchSoulTemplates(): Promise<SoulTemplate[]> {
 	return json("/api/soul/templates");
 }
 
+export async function stopAgent(slug: string): Promise<void> {
+	await fetch(`/api/chat/${encodeURIComponent(slug)}/stop`, { method: "POST" });
+}
+
 export function fetchMood(slug: string): Promise<{ mood: string }> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/mood`);
 }

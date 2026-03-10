@@ -73,4 +73,12 @@ export type ServerEvent =
 			type: "mood_updated";
 			instance_slug: string;
 			mood: string;
+	  }
+	| {
+			type: "agent_running";
+			instance_slug: string;
+	  }
+	| {
+			type: "agent_stopped";
+			instance_slug: string;
 	  };

@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use rig::client::EmbeddingsClient;
 use rig::providers::openai;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{broadcast, Mutex, RwLock};
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     config::{self, Config},
@@ -18,6 +20,8 @@ pub struct AppState {
     pub events: broadcast::Sender<ServerEvent>,
     pub llm: Arc<RwLock<Option<LlmBackend>>>,
     pub embedding_model: Arc<RwLock<Option<openai::EmbeddingModel>>>,
+    /// Active agent tasks per instance slug — cancellation tokens.
+    pub agent_tasks: Arc<Mutex<HashMap<String, CancellationToken>>>,
 }
 
 impl AppState {
@@ -32,6 +36,7 @@ impl AppState {
             events,
             llm: Arc::new(RwLock::new(llm)),
             embedding_model: Arc::new(RwLock::new(embedding_model)),
+            agent_tasks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 

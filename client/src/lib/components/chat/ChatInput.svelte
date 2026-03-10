@@ -1,10 +1,14 @@
 <script lang="ts">
 	let {
 		onSend,
+		onStop,
 		disabled = false,
+		agentRunning = false,
 	}: {
 		onSend: (content: string) => void;
+		onStop: () => void;
 		disabled?: boolean;
+		agentRunning?: boolean;
 	} = $props();
 
 	let value = $state("");
@@ -36,9 +40,15 @@
 			placeholder="..."
 			rows={1}
 			class="whisper-input"
-			{disabled}
+			disabled={disabled && !agentRunning}
 		></textarea>
-		{#if value.trim() && !disabled}
+		{#if agentRunning}
+			<button onclick={onStop} class="whisper-stop" aria-label="Stop">
+				<svg viewBox="0 0 24 24" fill="currentColor" class="w-3 h-3">
+					<rect x="6" y="6" width="12" height="12" rx="2" />
+				</svg>
+			</button>
+		{:else if value.trim() && !disabled}
 			<button onclick={handleSubmit} class="whisper-send" aria-label="Send">
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-4 h-4">
 					<path d="M5 12h14" stroke-linecap="round"/><path d="m12 5 7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/>
@@ -125,6 +135,25 @@
 	.whisper-send:hover {
 		color: oklch(0.78 0.12 75 / 80%);
 		background: oklch(0.78 0.12 75 / 8%);
+	}
+
+	.whisper-stop {
+		position: absolute;
+		right: 0;
+		bottom: 0.5rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		border-radius: 50%;
+		color: oklch(0.70 0.15 25 / 70%);
+		transition: all 0.3s ease;
+		animation: send-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+	.whisper-stop:hover {
+		color: oklch(0.70 0.15 25 / 100%);
+		background: oklch(0.70 0.15 25 / 12%);
 	}
 
 	@keyframes send-enter {

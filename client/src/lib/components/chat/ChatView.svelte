@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from "svelte";
-	import { fetchMessages, fetchMood, sendMessage } from "$lib/api/client.js";
+	import { fetchMessages, fetchMood, sendMessage, stopAgent } from "$lib/api/client.js";
 	import type { ChatMessage, ServerEvent } from "$lib/api/types.js";
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
 	import MessageBubble from "./MessageBubble.svelte";
@@ -12,6 +12,7 @@
 	let messages = $state<ChatMessage[]>([]);
 	let loading = $state(true);
 	let sending = $state(false);
+	let agentRunning = $state(false);
 	let mood = $state("calm");
 	let scrollContainer: HTMLDivElement | undefined = $state();
 
@@ -62,10 +63,18 @@
 		});
 
 		const unsub = ws.subscribe((event: ServerEvent) => {
-			if (event.type === "chat_message_created" && event.instance_slug === currentSlug) {
+			if (event.type === "instance_discovered") return;
+			if (event.instance_slug !== currentSlug) return;
+
+			if (event.type === "chat_message_created") {
 				addMessage(event.message);
-			} else if (event.type === "mood_updated" && event.instance_slug === currentSlug) {
+			} else if (event.type === "mood_updated") {
 				mood = event.mood;
+			} else if (event.type === "agent_running") {
+				agentRunning = true;
+			} else if (event.type === "agent_stopped") {
+				agentRunning = false;
+				sending = false;
 			}
 		});
 
@@ -76,26 +85,33 @@
 		sending = true;
 		try {
 			const res = await sendMessage(slug, content);
+			// User message comes back immediately; assistant messages arrive via WebSocket
 			for (const msg of res.messages) {
 				addMessage(msg);
 			}
-		} finally {
+		} catch {
 			sending = false;
 		}
+		// sending stays true until agent_stopped event arrives
+	}
+
+	async function handleStop() {
+		await stopAgent(slug);
+		// agent_stopped event will set agentRunning = false
 	}
 </script>
 
 <div class="companion-space">
 	<!-- living atmosphere -->
-	<div class="companion-atmosphere" class:companion-thinking={sending}></div>
-	<div class="companion-atmosphere-inner" class:companion-thinking={sending}></div>
+	<div class="companion-atmosphere" class:companion-thinking={sending || agentRunning}></div>
+	<div class="companion-atmosphere-inner" class:companion-thinking={sending || agentRunning}></div>
 
 	<!-- ambient particles -->
 	<div class="companion-particles">
 		{#each Array(10) as _, i}
 			<div
 				class="companion-particle"
-				class:companion-particle-thinking={sending}
+				class:companion-particle-thinking={sending || agentRunning}
 				style="--i:{i}; --x:{8 + (i * 13) % 84}; --y:{5 + (i * 19) % 85}"
 			></div>
 		{/each}
@@ -103,7 +119,7 @@
 
 	<!-- companion presence — ASCII creature -->
 	<div class="companion-presence">
-		<AsciiRenderer thinking={sending} {mood} />
+		<AsciiRenderer thinking={sending || agentRunning} {mood} />
 	</div>
 
 	<!-- messages — flowing from the companion -->
@@ -125,7 +141,7 @@
 				{/each}
 			{/if}
 
-			{#if sending}
+			{#if sending || agentRunning}
 				<div class="companion-thinking-indicator">
 					<div class="thinking-dot" style="animation-delay: 0ms"></div>
 					<div class="thinking-dot" style="animation-delay: 200ms"></div>
@@ -136,7 +152,7 @@
 	</div>
 
 	<!-- whisper input -->
-	<ChatInput onSend={handleSend} disabled={sending} />
+	<ChatInput onSend={handleSend} onStop={handleStop} disabled={sending || agentRunning} {agentRunning} />
 </div>
 
 <style>

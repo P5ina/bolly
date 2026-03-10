@@ -2010,6 +2010,7 @@ dependencies = [
  "sqlite-vec",
  "tokio",
  "tokio-rusqlite",
+ "tokio-util",
  "toml",
  "uuid",
 ]
@@ -2286,6 +2287,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]
