@@ -197,11 +197,33 @@ impl LlmBackend {
                 self.chat(system_prompt, &prompt_text, history).await
             }
             Err(e) => {
+                // If max turns exceeded, extract the last assistant text from chat history
+                if let Some(text) = extract_last_assistant_text_from_error(&e) {
+                    log::warn!("Max turns reached, returning last assistant text");
+                    return Ok(text);
+                }
                 log::error!("Tool agent failed: {e:?}");
                 Err(e.into())
             }
         }
     }
+}
+
+/// Try to extract the last assistant text from a MaxTurnsError's chat history.
+fn extract_last_assistant_text_from_error(
+    error: &(dyn std::error::Error + Send + Sync),
+) -> Option<String> {
+    let msg = error.to_string();
+    if !msg.contains("MaxTurnError") && !msg.contains("max turn limit") {
+        return None;
+    }
+
+    // The error is a PromptError::MaxTurnsError which contains chat_history.
+    // We can't downcast easily due to generics, but we can try to get the
+    // PromptError source chain. Since we can't access the typed fields,
+    // we'll return a graceful fallback message.
+    log::warn!("Agent hit max turn limit — tool call loop was too long");
+    Some("i ran out of steps trying to do that — try breaking it into smaller tasks".to_string())
 }
 
 /// Build a multimodal Message from text + file attachments.

@@ -233,6 +233,9 @@ pub async fn run_single_turn(
             format!("i hit an error: {e}")
         });
 
+    // Strip any leaked tool-call JSON the model may have output as text
+    let reply = strip_leaked_tool_calls(&reply);
+
     // Split reply into chat-like chunks (by double newline)
     let mut chunks: Vec<String> = split_into_messages(&reply);
 
@@ -483,6 +486,18 @@ fn save_messages(
 
 /// Split a single LLM reply into multiple chat-like messages.
 /// Splits on double-newlines, merges very short fragments, and drops empty ones.
+/// Strip tool-call JSON that the model may have leaked into its text response
+/// instead of using the tool_use API properly.
+fn strip_leaked_tool_calls(reply: &str) -> String {
+    let re = regex::Regex::new(
+        r#"\{["\s]*"?name"?\s*:\s*"[a-z_]+".*?"parameters"\s*:\s*\{[^}]*\}\s*\}"#
+    ).unwrap();
+    let cleaned = re.replace_all(reply, "");
+    // Collapse leftover blank lines
+    let collapsed = regex::Regex::new(r"\n{3,}").unwrap().replace_all(&cleaned, "\n\n");
+    collapsed.trim().to_string()
+}
+
 fn split_into_messages(reply: &str) -> Vec<String> {
     let parts: Vec<&str> = reply.split("\n\n").collect();
     let mut messages: Vec<String> = Vec::new();
@@ -839,7 +854,9 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          use tools with purpose. read only what's relevant. always use what you read.\n\
          never narrate what you're about to do — just do it. no \"сейчас сделаю\", \"сейчас проверю\", \"let me check\". \
          act first, then share results or thoughts.\n\
-         if a tool fails, always tell the user what went wrong and what you tried. never fail silently."
+         if a tool fails, always tell the user what went wrong and what you tried. never fail silently.\n\
+         NEVER output tool calls as text or JSON in your messages. use the tool_use API to call tools. \
+         your text output should only contain natural language for the user — no {{\"name\":...}} blocks."
     )
 }
 
