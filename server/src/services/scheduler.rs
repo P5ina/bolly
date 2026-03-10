@@ -107,11 +107,13 @@ fn check_and_deliver(workspace_dir: &Path, events: &broadcast::Sender<ServerEven
 }
 
 fn append_scheduled_message(workspace_dir: &Path, instance_slug: &str, message: &ChatMessage) {
-    let messages_path = workspace_dir
+    let chat_dir = workspace_dir
         .join("instances")
         .join(instance_slug)
-        .join("chat")
-        .join("messages.json");
+        .join("chats")
+        .join("default");
+    let _ = fs::create_dir_all(&chat_dir);
+    let messages_path = chat_dir.join("messages.json");
 
     let mut messages: Vec<ChatMessage> = match fs::read_to_string(&messages_path) {
         Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),

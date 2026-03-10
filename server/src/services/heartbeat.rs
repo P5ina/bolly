@@ -4,7 +4,7 @@
 //! decide whether to act: reach out, journal, update mood, create drops.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -110,8 +110,13 @@ async fn heartbeat_instance(
         -1 // Never interacted
     };
 
-    // Load last few messages for context
-    let messages_path = instance_dir.join("chat").join("messages.json");
+    // Load last few messages for context (from the default chat thread)
+    let messages_path = workspace_dir
+        .join("instances")
+        .join(slug)
+        .join("chats")
+        .join("default")
+        .join("messages.json");
     let last_messages = load_tail_messages(&messages_path, 6);
 
     // Build the reflection prompt
@@ -367,12 +372,14 @@ fn deliver_spontaneous_message(
         created_at: unix_millis().to_string(),
     };
 
-    // Append to chat history
-    let messages_path = workspace_dir
+    // Append to the default chat thread (same path the client reads from)
+    let chat_dir = workspace_dir
         .join("instances")
         .join(slug)
-        .join("chat")
-        .join("messages.json");
+        .join("chats")
+        .join("default");
+    let _ = fs::create_dir_all(&chat_dir);
+    let messages_path = chat_dir.join("messages.json");
 
     let mut messages: Vec<ChatMessage> = fs::read_to_string(&messages_path)
         .ok()
@@ -392,7 +399,7 @@ fn deliver_spontaneous_message(
     });
 }
 
-fn load_tail_messages(messages_path: &PathBuf, count: usize) -> String {
+fn load_tail_messages(messages_path: &Path, count: usize) -> String {
     let raw = match fs::read_to_string(messages_path) {
         Ok(r) => r,
         Err(_) => return String::new(),
