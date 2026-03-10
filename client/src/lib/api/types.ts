@@ -70,6 +70,27 @@ export interface SoulTemplate {
 	content: string;
 }
 
+export type DropKind =
+	| "thought"
+	| "idea"
+	| "poem"
+	| "observation"
+	| "reflection"
+	| "recommendation"
+	| "story"
+	| "question"
+	| "sketch"
+	| "note";
+
+export interface Drop {
+	id: string;
+	kind: DropKind;
+	title: string;
+	content: string;
+	mood: string;
+	created_at: string;
+}
+
 export type ServerEvent =
 	| {
 			type: "chat_message_created";
@@ -98,4 +119,9 @@ export type ServerEvent =
 			instance_slug: string;
 			tool_name: string;
 			summary: string;
+	  }
+	| {
+			type: "drop_created";
+			instance_slug: string;
+			drop: Drop;
 	  };

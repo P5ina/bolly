@@ -140,6 +140,8 @@
 				// Skip tool_activity for set_mood — the dedicated mood_updated event handles it
 				if (event.summary.startsWith("mood →")) return;
 				pushActivity("tool", event.summary);
+			} else if (event.type === "drop_created") {
+				pushActivity("tool", `dropped: ${event.drop.title}`);
 			}
 		});
 		return unsub;

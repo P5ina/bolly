@@ -1,5 +1,6 @@
 pub mod chat;
 pub mod config;
+pub mod drop;
 pub mod events;
 pub mod instance;
 pub mod memory;

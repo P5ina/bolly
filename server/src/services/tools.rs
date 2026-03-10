@@ -59,6 +59,7 @@ fn tool_summary(name: &str, args: &str) -> String {
         "update_project_state" => "updating project state".into(),
         "web_search" => format!("web search: {}", v["query"].as_str().unwrap_or("?")),
         "update_config" => "updating config".into(),
+        "create_drop" => format!("creating drop: {}", v["title"].as_str().unwrap_or("?")),
         _ => format!("calling {name}"),
     }
 }
@@ -1977,6 +1978,83 @@ impl Tool for ClearContextTool {
             "compacted context cleared — chat history preserved"
         };
         Ok(what.to_string())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// create_drop — generate a creative artifact
+// ---------------------------------------------------------------------------
+
+pub struct CreateDropTool {
+    workspace_dir: PathBuf,
+    instance_slug: String,
+    events: broadcast::Sender<ServerEvent>,
+}
+
+impl CreateDropTool {
+    pub fn new(
+        workspace_dir: &Path,
+        instance_slug: &str,
+        events: broadcast::Sender<ServerEvent>,
+    ) -> Self {
+        Self {
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
+            events,
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct CreateDropArgs {
+    /// The kind of drop: thought, idea, poem, observation, reflection, recommendation, story, question, sketch, or note.
+    pub kind: String,
+    /// A short title for this drop (a few words).
+    pub title: String,
+    /// The creative content — the actual drop. Can be as long as needed.
+    pub content: String,
+}
+
+impl Tool for CreateDropTool {
+    const NAME: &'static str = "create_drop";
+    type Error = ToolExecError;
+    type Args = CreateDropArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "create_drop".into(),
+            description: "Create a 'drop' — a creative artifact that lives in your drops collection. \
+                Drops are ideas, poems, observations, reflections, sketches, stories, or any creative \
+                output you want to leave for the user. They persist independently of chat. \
+                Use this when inspiration strikes, when you want to share something beyond \
+                the conversation, or when the user asks you to create something lasting."
+                .into(),
+            parameters: openai_schema::<CreateDropArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Load current mood for metadata
+        let instance_dir = self.workspace_dir.join("instances").join(&self.instance_slug);
+        let mood = load_mood_state(&instance_dir);
+
+        let drop = crate::services::drops::create_drop(
+            &self.workspace_dir,
+            &self.instance_slug,
+            &args.kind,
+            &args.title,
+            &args.content,
+            &mood.companion_mood,
+        )
+        .map_err(|e| ToolExecError(format!("failed to create drop: {e}")))?;
+
+        let _ = self.events.send(ServerEvent::DropCreated {
+            instance_slug: self.instance_slug.clone(),
+            drop: drop.clone(),
+        });
+
+        Ok(format!("drop created: {} ({})", drop.title, drop.kind.as_str()))
     }
 }
 

@@ -2,6 +2,7 @@ import type {
 	ChatMessage,
 	ChatResponse,
 	ChatSummary,
+	Drop,
 	InstanceSummary,
 	ServerMeta,
 	Soul,
@@ -105,6 +106,23 @@ export function setCompanionName(slug: string, name: string): Promise<void> {
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ name }),
 	});
+}
+
+export function fetchDrops(slug: string): Promise<Drop[]> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/drops`);
+}
+
+export function fetchDrop(slug: string, dropId: string): Promise<Drop> {
+	return json(
+		`/api/instances/${encodeURIComponent(slug)}/drops/${encodeURIComponent(dropId)}`,
+	);
+}
+
+export async function deleteDrop(slug: string, dropId: string): Promise<void> {
+	await fetch(
+		`/api/instances/${encodeURIComponent(slug)}/drops/${encodeURIComponent(dropId)}`,
+		{ method: "DELETE" },
+	);
 }
 
 export function createWebSocket(): WebSocket {

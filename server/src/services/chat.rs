@@ -19,7 +19,7 @@ use crate::{
         llm::{self, LlmBackend},
         memory,
         tools::{
-            self, CreateTaskTool, CurrentTimeTool, EditSoulTool, GetMoodTool,
+            self, CreateDropTool, CreateTaskTool, CurrentTimeTool, EditSoulTool, GetMoodTool,
             GetProjectStateTool, JournalTool, ListFilesTool, ListTasksTool,
             ClearContextTool, ObservableTool, ReadFileTool, ReadJournalTool, RecallTool,
             RememberTool, RunCommandTool, ScheduleMessageTool, SearchCodeTool, SetMoodTool,
@@ -821,6 +821,9 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          - set_mood / get_mood: change your emotional state\n\
          - remember / recall: long-term memory\n\
          - journal / read_journal: private reflections\n\n\
+         drops (creative artifacts):\n\
+         - create_drop: leave a creative artifact — idea, poem, thought, observation, reflection, story, sketch, etc.\n\
+           drops persist independently of chat. use them when inspiration strikes.\n\n\
          other:\n\
          - current_time, web_search, schedule_message, update_config\n\n\
          when the user asks you to look at code, edit files, run builds — just DO it. \
@@ -961,6 +964,7 @@ fn build_instance_tools(
         Box::new(SearchCodeTool::new(workspace_dir, instance_slug)),
         Box::new(RunCommandTool::new(workspace_dir, instance_slug)),
         Box::new(ClearContextTool::new(workspace_dir, instance_slug)),
+        Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
     ];
 
     raw_tools

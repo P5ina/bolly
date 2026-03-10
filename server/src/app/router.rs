@@ -8,6 +8,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::meta::router())
         .merge(routes::instances::router())
         .merge(routes::chat::router())
+        .merge(routes::drops::router())
         .merge(routes::config::router())
         .merge(routes::soul::router())
         .merge(routes::ws::router())

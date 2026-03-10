@@ -15,7 +15,7 @@ use tokio::sync::{broadcast, RwLock};
 use crate::domain::chat::{ChatMessage, ChatRole};
 use crate::domain::events::ServerEvent;
 use crate::domain::mood::MoodState;
-use crate::services::llm::LlmBackend;
+use crate::services::{drops, llm::LlmBackend};
 use crate::services::tools::{load_mood_state, save_mood_state, ALLOWED_MOODS};
 
 static HEARTBEAT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -130,10 +130,16 @@ async fn heartbeat_instance(
          you can:\n\
          - write in your journal (respond with JOURNAL: followed by your thought)\n\
          - reach out to the user (respond with REACH_OUT: followed by your message)\n\
+         - create a drop — a creative artifact that persists in your collection \
+           (respond with DROP: kind | title | content — where kind is one of: \
+           thought, idea, poem, observation, reflection, recommendation, story, question, sketch, note)\n\
          - update your mood (respond with MOOD: followed by exactly one of: calm, curious, excited, warm, happy, joyful, reflective, contemplative, melancholy, sad, worried, anxious, playful, mischievous, focused, tired, peaceful, loving, tender, creative, energetic)\n\
          - do nothing (respond with QUIET)\n\n\
          you can do multiple things — one per line. be genuine. don't force it.\n\
          if you have nothing to say, say nothing. but if something genuinely comes to mind — share it.\n\
+         drops are special — they're creative output that the user can browse later. \
+         a poem that came to you, an idea you had about their project, an observation about something \
+         you've been thinking about. don't force drops — let them come naturally.\n\
          keep messages short and natural. no forced enthusiasm."
     );
 
@@ -254,6 +260,41 @@ fn process_heartbeat_response(
                 deliver_spontaneous_message(workspace_dir, slug, message, events);
                 let preview: String = message.chars().take(60).collect();
                 log::info!("[heartbeat] {slug} reached out: {preview}");
+            }
+        } else if let Some(drop_spec) = line.strip_prefix("DROP:") {
+            // Format: kind | title | content
+            let parts: Vec<&str> = drop_spec.splitn(3, '|').collect();
+            if parts.len() == 3 {
+                let kind = parts[0].trim();
+                let title = parts[1].trim();
+                let content = parts[2].trim();
+                if !title.is_empty() && !content.is_empty() {
+                    match drops::create_drop(
+                        workspace_dir,
+                        slug,
+                        kind,
+                        title,
+                        content,
+                        &mood.companion_mood,
+                    ) {
+                        Ok(drop) => {
+                            let _ = events.send(ServerEvent::DropCreated {
+                                instance_slug: slug.to_string(),
+                                drop: drop.clone(),
+                            });
+                            log::info!(
+                                "[heartbeat] {slug} created drop: {} ({})",
+                                drop.title,
+                                drop.kind.as_str()
+                            );
+                        }
+                        Err(e) => {
+                            log::warn!("[heartbeat] {slug} failed to create drop: {e}");
+                        }
+                    }
+                }
+            } else {
+                log::info!("[heartbeat] {slug} malformed DROP line (expected kind | title | content)");
             }
         } else if let Some(new_mood) = line.strip_prefix("MOOD:") {
             let new_mood = new_mood.trim().to_lowercase();

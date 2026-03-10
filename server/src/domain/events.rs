@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::domain::{chat::ChatMessage, instance::InstanceSummary};
+use crate::domain::{chat::ChatMessage, drop::Drop, instance::InstanceSummary};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -26,5 +26,9 @@ pub enum ServerEvent {
         instance_slug: String,
         tool_name: String,
         summary: String,
+    },
+    DropCreated {
+        instance_slug: String,
+        drop: Drop,
     },
 }
