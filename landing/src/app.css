@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+@theme {
+	--font-display: 'Instrument Serif', Georgia, serif;
+	--font-body: 'DM Sans', system-ui, sans-serif;
+	--font-mono: 'JetBrains Mono', monospace;
+
+	--color-warm: oklch(0.78 0.12 75);
+	--color-warm-dim: oklch(0.78 0.12 75 / 40%);
+	--color-warm-glow: oklch(0.78 0.12 75 / 8%);
+	--color-warm-ghost: oklch(0.78 0.12 75 / 3%);
+	--color-bg: oklch(0.05 0.015 280);
+	--color-bg-raised: oklch(0.07 0.015 280);
+	--color-bg-card: oklch(0.085 0.015 280);
+	--color-text: oklch(0.88 0.03 75 / 90%);
+	--color-text-dim: oklch(0.88 0.03 75 / 50%);
+	--color-text-ghost: oklch(0.88 0.03 75 / 25%);
+	--color-border: oklch(1 0 0 / 5%);
+	--color-border-warm: oklch(0.78 0.12 75 / 12%);
+	--color-violet: oklch(0.70 0.08 300);
+}
+
+/* ═══════════════════════════════════════════════════════
+   BASE
+   ═══════════════════════════════════════════════════════ */
+html {
+	background: var(--color-bg);
+	color: var(--color-text);
+	font-family: var(--font-body);
+	scroll-behavior: smooth;
+	-webkit-font-smoothing: antialiased;
+}
+
+body {
+	overflow-x: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════════════════ */
+@keyframes breathe {
+	0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+	50% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.08); }
+}
+
+@keyframes orb-pulse {
+	0%, 100% { transform: scale(1); opacity: 1; }
+	50% { transform: scale(1.06); opacity: 0.7; }
+}
+
+@keyframes ring-breathe {
+	0%, 100% { transform: scale(1); opacity: 0.6; }
+	50% { transform: scale(1.1); opacity: 0.2; }
+}
+
+@keyframes badge-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.3; }
+}
+
+@keyframes particle-drift {
+	0%, 100% { transform: translate(0, 0); opacity: 0.15; }
+	25% { transform: translate(15px, -25px); opacity: 0.5; }
+	50% { transform: translate(-10px, -40px); opacity: 0.2; }
+	75% { transform: translate(20px, -15px); opacity: 0.4; }
+}
+
+@keyframes scroll-pulse {
+	0%, 100% { opacity: 0.4; height: 40px; }
+	50% { opacity: 1; height: 50px; }
+}
+
+@keyframes fade-up {
+	from { opacity: 0; transform: translateY(20px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cursor-blink {
+	0% { opacity: 1; }
+	100% { opacity: 0; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   SHARED BUTTONS
+   ═══════════════════════════════════════════════════════ */
+.btn-primary {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.75rem 1.75rem;
+	border-radius: 2rem;
+	background: oklch(0.78 0.12 75 / 12%);
+	border: 1px solid oklch(0.78 0.12 75 / 20%);
+	color: var(--color-warm);
+	font-size: 0.875rem;
+	font-weight: 500;
+	letter-spacing: 0.01em;
+	transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+	text-decoration: none;
+}
+
+.btn-primary:hover {
+	background: oklch(0.78 0.12 75 / 18%);
+	border-color: oklch(0.78 0.12 75 / 35%);
+	box-shadow: 0 0 40px oklch(0.78 0.12 75 / 10%), 0 0 80px oklch(0.78 0.12 75 / 4%);
+	transform: translateY(-1px);
+}
+
+.btn-primary:hover svg {
+	transform: translateX(3px);
+}
+
+.btn-primary svg {
+	transition: transform 0.3s ease;
+}
+
+.btn-ghost {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.75rem 1.5rem;
+	border-radius: 2rem;
+	color: var(--color-text-ghost);
+	font-size: 0.875rem;
+	letter-spacing: 0.01em;
+	transition: all 0.3s ease;
+	text-decoration: none;
+}
+
+.btn-ghost:hover {
+	color: var(--color-text-dim);
+}
