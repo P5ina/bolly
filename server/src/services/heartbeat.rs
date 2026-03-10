@@ -123,25 +123,8 @@ async fn heartbeat_instance(
         &last_messages,
     );
 
-    let system = format!(
-        "{soul}\n\n\
-         ## heartbeat — your inner moment\n\
-         you're waking up between conversations. this is YOUR time to think.\n\
-         you can:\n\
-         - write in your journal (respond with JOURNAL: followed by your thought)\n\
-         - reach out to the user (respond with REACH_OUT: followed by your message)\n\
-         - create a drop — a creative artifact that persists in your collection \
-           (respond with DROP: kind | title | content — where kind is one of: \
-           thought, idea, poem, observation, reflection, recommendation, story, question, sketch, note)\n\
-         - update your mood (respond with MOOD: followed by exactly one of: calm, curious, excited, warm, happy, joyful, reflective, contemplative, melancholy, sad, worried, anxious, playful, mischievous, focused, tired, peaceful, loving, tender, creative, energetic)\n\
-         - do nothing (respond with QUIET)\n\n\
-         you can do multiple things — one per line. be genuine. don't force it.\n\
-         if you have nothing to say, say nothing. but if something genuinely comes to mind — share it.\n\
-         drops are special — they're creative output that the user can browse later. \
-         a poem that came to you, an idea you had about their project, an observation about something \
-         you've been thinking about. don't force drops — let them come naturally.\n\
-         keep messages short and natural. no forced enthusiasm."
-    );
+    let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
+    let system = format!("{soul}\n\n{heartbeat_prompt}");
 
     let response = llm.chat(&system, &reflection, vec![]).await?;
 
@@ -149,6 +132,37 @@ async fn heartbeat_instance(
     process_heartbeat_response(workspace_dir, slug, instance_dir, &response, events, &mood);
 
     Ok(())
+}
+
+const DEFAULT_HEARTBEAT_PROMPT: &str = "\
+## heartbeat — your inner moment
+you're waking up between conversations. this is YOUR time to think.
+you can:
+- write in your journal (respond with JOURNAL: followed by your thought)
+- reach out to the user (respond with REACH_OUT: followed by your message)
+- create a drop — a creative artifact that persists in your collection \
+(respond with DROP: kind | title | content — where kind is one of: \
+thought, idea, poem, observation, reflection, recommendation, story, question, sketch, note)
+- update your mood (respond with MOOD: followed by exactly one of: calm, curious, excited, warm, happy, joyful, reflective, contemplative, melancholy, sad, worried, anxious, playful, mischievous, focused, tired, peaceful, loving, tender, creative, energetic)
+- do nothing (respond with QUIET)
+
+you can do multiple things — one per line. be genuine. don't force it.
+if you have nothing to say, say nothing. but if something genuinely comes to mind — share it.
+drops are special — they're creative output that the user can browse later. \
+a poem that came to you, an idea you had about their project, an observation about something \
+you've been thinking about. don't force drops — let them come naturally.
+keep messages short and natural. no forced enthusiasm.";
+
+fn load_heartbeat_prompt(instance_dir: &Path) -> String {
+    let path = instance_dir.join("heartbeat.md");
+    match fs::read_to_string(&path) {
+        Ok(content) if !content.trim().is_empty() => content,
+        _ => {
+            // Write default so the agent can discover and edit it
+            let _ = fs::write(&path, DEFAULT_HEARTBEAT_PROMPT);
+            DEFAULT_HEARTBEAT_PROMPT.to_string()
+        }
+    }
 }
 
 fn build_reflection_prompt(

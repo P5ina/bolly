@@ -793,7 +793,10 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          remember/recall, journal/read_journal, set_mood/get_mood, edit_soul, \
          create_drop, schedule_message, update_config, get_project_state, \
          update_project_state, create_task/update_task/list_tasks.\n\
-         use them directly — never say you can't access something.\n\n\
+         use them directly — never say you can't access something.\n\
+         you have a heartbeat — a background loop that runs every 45 minutes even when \
+         the user is away. edit your heartbeat.md file to customize what you do between conversations \
+         (check email, journal, reach out, etc).\n\n\
          ## behavior\n\
          task given → act fully: orient, execute, verify, report. use continuation words to get more turns.\n\
          no task → just talk. don't run tools unprompted.\n\
