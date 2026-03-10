@@ -586,10 +586,13 @@
 
 	@media (max-width: 720px) {
 		.stream-inner {
-			padding-inline: 0.85rem;
+			padding-inline: 0.75rem;
 		}
 		header.chat-bar {
-			padding-inline: 0.85rem;
+			padding: 0.5rem 0.75rem;
+		}
+		.bar-right {
+			max-width: 50%;
 		}
 	}
 </style>

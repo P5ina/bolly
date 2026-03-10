@@ -291,12 +291,13 @@
 
 	.whisper-input {
 		flex: 1;
+		min-width: 0;
 		min-height: 44px;
 		max-height: 120px;
 		resize: none;
-		padding: 0.75rem 2.5rem 0.75rem 1rem;
+		padding: 0.75rem 1rem;
 		font-family: var(--font-body);
-		font-size: 0.875rem;
+		font-size: 1rem;
 		line-height: 1.6;
 		color: oklch(0.90 0.02 75 / 90%);
 		background: oklch(0.10 0.01 280 / 40%);
@@ -321,18 +322,17 @@
 	}
 
 	.whisper-send {
-		position: absolute;
-		right: 0.5rem;
-		bottom: 0.45rem;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		width: 2rem;
 		height: 2rem;
+		flex-shrink: 0;
 		border-radius: 50%;
 		color: oklch(0.78 0.12 75 / 50%);
 		transition: all 0.3s ease;
 		animation: send-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+		margin-bottom: 0.375rem;
 	}
 	.whisper-send:hover {
 		color: oklch(0.78 0.12 75 / 80%);
@@ -340,18 +340,17 @@
 	}
 
 	.whisper-stop {
-		position: absolute;
-		right: 0.5rem;
-		bottom: 0.45rem;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		width: 2rem;
 		height: 2rem;
+		flex-shrink: 0;
 		border-radius: 50%;
 		color: oklch(0.70 0.15 25 / 70%);
 		transition: all 0.3s ease;
 		animation: send-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+		margin-bottom: 0.375rem;
 	}
 	.whisper-stop:hover {
 		color: oklch(0.70 0.15 25 / 100%);
@@ -361,5 +360,11 @@
 	@keyframes send-enter {
 		from { opacity: 0; transform: scale(0.8); }
 		to { opacity: 1; transform: scale(1); }
+	}
+
+	@media (max-width: 720px) {
+		.whisper-container {
+			padding: 0.5rem 0.75rem 0.75rem;
+		}
 	}
 </style>

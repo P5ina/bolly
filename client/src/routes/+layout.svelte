@@ -135,6 +135,16 @@
 		animation-delay: 0.8s;
 	}
 
+	@media (max-width: 720px) {
+		.companion-nav {
+			bottom: auto;
+			top: 0.5rem;
+			right: 0.5rem;
+			padding: 0.35rem 0.5rem;
+			gap: 0.35rem;
+		}
+	}
+
 	@keyframes nav-enter {
 		from { opacity: 0; transform: translateY(12px) scale(0.95); }
 		to { opacity: 1; transform: translateY(0) scale(1); }
