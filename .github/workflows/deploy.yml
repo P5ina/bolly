@@ -9,13 +9,20 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'Dockerfile'
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      update_machines:
+        description: 'Update all tenant machines'
+        type: boolean
+        default: false
 
 env:
   IMAGE: registry.fly.io/bolly:latest
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest-16core
     timeout-minutes: 30
 
@@ -43,6 +50,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Update all tenant machines
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.update_machines)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: ./scripts/update-machines.sh "$IMAGE"
