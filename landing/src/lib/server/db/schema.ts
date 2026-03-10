@@ -1,0 +1,60 @@
+import { pgTable, text, timestamp, integer, pgEnum } from 'drizzle-orm/pg-core';
+
+export const planEnum = pgEnum('plan', ['starter', 'companion', 'unlimited']);
+export const tenantStatusEnum = pgEnum('tenant_status', ['provisioning', 'running', 'stopped', 'error', 'destroyed']);
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+
+export const users = pgTable('users', {
+	id: text('id').primaryKey(), // nanoid
+	email: text('email').notNull().unique(),
+	passwordHash: text('password_hash').notNull(),
+	name: text('name'),
+	stripeCustomerId: text('stripe_customer_id'),
+	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─── Sessions ────────────────────────────────────────────────────────────────
+
+export const sessions = pgTable('sessions', {
+	id: text('id').primaryKey(),
+	userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
+
+// ─── Tenants (one per companion instance) ────────────────────────────────────
+
+export const tenants = pgTable('tenants', {
+	id: text('id').primaryKey(), // nanoid
+	userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+	slug: text('slug').notNull().unique(), // subdomain: {slug}.bollyai.dev
+	plan: planEnum('plan').notNull().default('starter'),
+	status: tenantStatusEnum('status').notNull().default('provisioning'),
+
+	// Fly.io
+	flyAppId: text('fly_app_id'),
+	flyMachineId: text('fly_machine_id'),
+	flyVolumeId: text('fly_volume_id'),
+	flyIp: text('fly_ip'),
+
+	// Bolly instance config
+	authToken: text('auth_token'), // auto-generated, used to proxy to the instance
+
+	// Stripe
+	stripeSubscriptionId: text('stripe_subscription_id'),
+
+	// Limits
+	storageLimit: integer('storage_limit').notNull().default(1024), // MB
+	maxInstances: integer('max_instances').notNull().default(1),
+
+	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─── Type exports ────────────────────────────────────────────────────────────
+
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+export type Session = typeof sessions.$inferSelect;
+export type Tenant = typeof tenants.$inferSelect;
+export type NewTenant = typeof tenants.$inferInsert;

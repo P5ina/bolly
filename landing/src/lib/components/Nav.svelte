@@ -30,9 +30,10 @@
 			<li><a href="#how" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">How it works</a></li>
 			<li><a href="#pricing" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Pricing</a></li>
 			<li><a href="https://github.com/P5ina/bolly" target="_blank" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">GitHub</a></li>
+			<li><a href="/login" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Log in</a></li>
 			<li>
 				<a
-					href="#pricing"
+					href="/signup"
 					class="text-[0.8125rem] py-2 px-5 rounded-full text-warm transition-all duration-300 hover:shadow-[0_0_30px_oklch(0.78_0.12_75/8%)]"
 					style="background: var(--color-warm-glow); border: 1px solid var(--color-border-warm);"
 				>

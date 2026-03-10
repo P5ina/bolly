@@ -1,1 +1,1 @@
-export const prerender = true;
+// per-route prerender, not global

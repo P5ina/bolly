@@ -69,7 +69,7 @@
 						</ul>
 
 						<a
-							href="#"
+							href="/signup"
 							class="block w-full py-3 rounded-lg text-[0.8125rem] font-medium tracking-wide text-center transition-all duration-300"
 							class:price-btn-primary={plan.featured}
 							class:price-btn-default={!plan.featured}

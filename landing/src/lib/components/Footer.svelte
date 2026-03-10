@@ -5,9 +5,9 @@
 		</div>
 		<ul class="flex gap-6 list-none">
 			<li><a href="https://github.com/P5ina/bolly" target="_blank" class="text-xs text-text-ghost hover:text-text-dim transition-colors">GitHub</a></li>
-			<li><a href="#" class="text-xs text-text-ghost hover:text-text-dim transition-colors">Docs</a></li>
-			<li><a href="#" class="text-xs text-text-ghost hover:text-text-dim transition-colors">Privacy</a></li>
-			<li><a href="#" class="text-xs text-text-ghost hover:text-text-dim transition-colors">Terms</a></li>
+			<li><a href="/docs" class="text-xs text-text-ghost hover:text-text-dim transition-colors">Docs</a></li>
+			<li><a href="/privacy" class="text-xs text-text-ghost hover:text-text-dim transition-colors">Privacy</a></li>
+			<li><a href="/terms" class="text-xs text-text-ghost hover:text-text-dim transition-colors">Terms</a></li>
 		</ul>
 	</div>
 </footer>

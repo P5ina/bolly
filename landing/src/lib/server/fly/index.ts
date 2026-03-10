@@ -1,0 +1,143 @@
+import { env } from '$env/dynamic/private';
+
+const FLY_API = 'https://api.machines.dev/v1';
+
+function headers() {
+	return {
+		Authorization: `Bearer ${env.FLY_API_TOKEN}`,
+		'Content-Type': 'application/json',
+	};
+}
+
+// ─── Apps ────────────────────────────────────────────────────────────────────
+
+export async function createApp(name: string): Promise<{ id: string; name: string }> {
+	const res = await fetch(`${FLY_API}/apps`, {
+		method: 'POST',
+		headers: headers(),
+		body: JSON.stringify({
+			app_name: name,
+			org_slug: env.FLY_ORG ?? 'personal',
+		}),
+	});
+	if (!res.ok) throw new Error(`Fly createApp failed: ${res.status} ${await res.text()}`);
+	return res.json();
+}
+
+export async function deleteApp(name: string): Promise<void> {
+	const res = await fetch(`${FLY_API}/apps/${name}`, {
+		method: 'DELETE',
+		headers: headers(),
+	});
+	if (!res.ok && res.status !== 404) {
+		throw new Error(`Fly deleteApp failed: ${res.status} ${await res.text()}`);
+	}
+}
+
+// ─── Volumes ─────────────────────────────────────────────────────────────────
+
+export async function createVolume(
+	appName: string,
+	opts: { name?: string; sizeGb?: number; region?: string } = {}
+): Promise<{ id: string; name: string }> {
+	const res = await fetch(`${FLY_API}/apps/${appName}/volumes`, {
+		method: 'POST',
+		headers: headers(),
+		body: JSON.stringify({
+			name: opts.name ?? 'data',
+			size_gb: opts.sizeGb ?? 1,
+			region: opts.region ?? env.FLY_REGION ?? 'iad',
+		}),
+	});
+	if (!res.ok) throw new Error(`Fly createVolume failed: ${res.status} ${await res.text()}`);
+	return res.json();
+}
+
+// ─── Machines ────────────────────────────────────────────────────────────────
+
+export interface CreateMachineOpts {
+	appName: string;
+	volumeId: string;
+	authToken: string;
+	region?: string;
+	cpus?: number;
+	memoryMb?: number;
+}
+
+export async function createMachine(opts: CreateMachineOpts): Promise<{
+	id: string;
+	instance_id: string;
+	private_ip: string;
+}> {
+	const res = await fetch(`${FLY_API}/apps/${opts.appName}/machines`, {
+		method: 'POST',
+		headers: headers(),
+		body: JSON.stringify({
+			region: opts.region ?? env.FLY_REGION ?? 'iad',
+			config: {
+				image: env.BOLLY_IMAGE ?? 'registry.fly.io/bolly:latest',
+				env: {
+					BOLLY_HOME: '/data',
+					RUST_LOG: 'info',
+				},
+				guest: {
+					cpus: opts.cpus ?? 1,
+					memory_mb: opts.memoryMb ?? 256,
+					cpu_kind: 'shared',
+				},
+				mounts: [
+					{
+						volume: opts.volumeId,
+						path: '/data',
+					},
+				],
+				services: [
+					{
+						ports: [
+							{ port: 443, handlers: ['tls', 'http'] },
+							{ port: 80, handlers: ['http'] },
+						],
+						protocol: 'tcp',
+						internal_port: 8080,
+					},
+				],
+			},
+		}),
+	});
+	if (!res.ok) throw new Error(`Fly createMachine failed: ${res.status} ${await res.text()}`);
+	return res.json();
+}
+
+export async function startMachine(appName: string, machineId: string): Promise<void> {
+	const res = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}/start`, {
+		method: 'POST',
+		headers: headers(),
+	});
+	if (!res.ok) throw new Error(`Fly startMachine failed: ${res.status} ${await res.text()}`);
+}
+
+export async function stopMachine(appName: string, machineId: string): Promise<void> {
+	const res = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}/stop`, {
+		method: 'POST',
+		headers: headers(),
+	});
+	if (!res.ok) throw new Error(`Fly stopMachine failed: ${res.status} ${await res.text()}`);
+}
+
+export async function destroyMachine(appName: string, machineId: string): Promise<void> {
+	const res = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}?force=true`, {
+		method: 'DELETE',
+		headers: headers(),
+	});
+	if (!res.ok && res.status !== 404) {
+		throw new Error(`Fly destroyMachine failed: ${res.status} ${await res.text()}`);
+	}
+}
+
+export async function getMachine(appName: string, machineId: string): Promise<{ id: string; state: string; private_ip: string }> {
+	const res = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}`, {
+		headers: headers(),
+	});
+	if (!res.ok) throw new Error(`Fly getMachine failed: ${res.status} ${await res.text()}`);
+	return res.json();
+}
