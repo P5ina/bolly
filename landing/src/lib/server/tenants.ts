@@ -1,12 +1,13 @@
 import { db } from './db/index.js';
-import { tenants, type NewTenant, type Tenant } from './db/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { tenants, type Tenant } from './db/schema.js';
+import { eq, and, ne } from 'drizzle-orm';
 import { generateId } from './auth/index.js';
 import * as fly from './fly/index.js';
+import * as cf from './cloudflare/index.js';
 import { PLANS, type PlanId } from './stripe/index.js';
 
-function appName(tenantId: string): string {
-	return `bolly-${tenantId}`;
+function appName(slug: string): string {
+	return `bolly-${slug}`;
 }
 
 export async function provisionTenant(opts: {
@@ -15,11 +16,28 @@ export async function provisionTenant(opts: {
 	plan: PlanId;
 	stripeSubscriptionId?: string;
 }): Promise<Tenant> {
+	const planConfig = PLANS[opts.plan];
+	const flyApp = appName(opts.slug);
+
+	// Clean up any previous failed attempt with the same slug
+	const [existing] = await db()
+		.select()
+		.from(tenants)
+		.where(and(eq(tenants.slug, opts.slug), eq(tenants.userId, opts.userId)))
+		.limit(1);
+
+	if (existing) {
+		if (existing.status === 'running') return existing;
+		if (existing.flyAppId) {
+			try { await fly.deleteApp(existing.flyAppId); } catch { /* ignore */ }
+		}
+		try { await cf.deleteDnsRecords(opts.slug); } catch { /* ignore */ }
+		await db().delete(tenants).where(eq(tenants.id, existing.id));
+	}
+
 	const id = generateId();
 	const authToken = generateId(32);
-	const planConfig = PLANS[opts.plan];
 
-	// Insert tenant record
 	const [tenant] = await db()
 		.insert(tenants)
 		.values({
@@ -36,24 +54,34 @@ export async function provisionTenant(opts: {
 		.returning();
 
 	try {
-		// Create Fly app
-		const app = await fly.createApp(appName(id));
+		// 1. Create dedicated Fly app
+		const app = await fly.createApp(flyApp);
 
-		// Create volume
+		// 2. Allocate IPs
+		const [ipv4, ipv6] = await Promise.all([
+			fly.allocateIpv4(app.name),
+			fly.allocateIpv6(app.name),
+		]);
+
+		// 3. Create DNS records on Cloudflare + TLS certificate on Fly (in parallel)
+		const hostname = cf.tenantHostname(opts.slug);
+		await Promise.all([
+			cf.createDnsRecord({ slug: opts.slug, ipv4, ipv6 }),
+			fly.addCertificate(app.name, hostname),
+		]);
+
+		// 4. Create volume
 		const sizeGb = Math.max(1, Math.ceil(planConfig.storageLimit / 1024));
 		const volume = await fly.createVolume(app.name, { sizeGb });
 
-		// Allocate shared IPv4
-		await fly.allocateSharedIp(app.name);
-
-		// Create machine
+		// 5. Create machine
 		const machine = await fly.createMachine({
 			appName: app.name,
 			volumeId: volume.id,
 			authToken,
 		});
 
-		// Update tenant with Fly details
+		// 6. Update tenant
 		const [updated] = await db()
 			.update(tenants)
 			.set({
@@ -69,16 +97,16 @@ export async function provisionTenant(opts: {
 
 		return updated;
 	} catch (err) {
-		// Mark as error
+		const message = err instanceof Error ? err.message : 'Unknown provisioning error';
+
 		await db()
 			.update(tenants)
-			.set({ status: 'error', updatedAt: new Date() })
+			.set({ status: 'error', errorMessage: message, updatedAt: new Date() })
 			.where(eq(tenants.id, id));
 
-		// Try to clean up
-		try {
-			await fly.deleteApp(appName(id));
-		} catch { /* ignore */ }
+		// Clean up
+		try { await fly.deleteApp(flyApp); } catch { /* ignore */ }
+		try { await cf.deleteDnsRecords(opts.slug); } catch { /* ignore */ }
 
 		throw err;
 	}
@@ -94,10 +122,9 @@ export async function destroyTenant(tenantId: string): Promise<void> {
 	if (!tenant) return;
 
 	if (tenant.flyAppId) {
-		try {
-			await fly.deleteApp(tenant.flyAppId);
-		} catch { /* best effort */ }
+		try { await fly.deleteApp(tenant.flyAppId); } catch { /* best effort */ }
 	}
+	try { await cf.deleteDnsRecords(tenant.slug); } catch { /* best effort */ }
 
 	await db()
 		.update(tenants)
@@ -109,7 +136,7 @@ export async function getTenantsByUser(userId: string): Promise<Tenant[]> {
 	return db()
 		.select()
 		.from(tenants)
-		.where(and(eq(tenants.userId, userId), eq(tenants.status, 'running')));
+		.where(and(eq(tenants.userId, userId), ne(tenants.status, 'destroyed')));
 }
 
 export async function getTenantBySlug(slug: string): Promise<Tenant | undefined> {
@@ -122,8 +149,5 @@ export async function getTenantBySlug(slug: string): Promise<Tenant | undefined>
 }
 
 export async function getTenantUrl(tenant: Tenant): Promise<string> {
-	if (tenant.flyAppId) {
-		return `https://${tenant.flyAppId}.fly.dev`;
-	}
-	throw new Error('Tenant has no Fly app');
+	return `https://${cf.tenantHostname(tenant.slug)}`;
 }

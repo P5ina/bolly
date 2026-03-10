@@ -15,6 +15,13 @@
       "when": 1773144436825,
       "tag": "0001_wet_jane_foster",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773151714480,
+      "tag": "0002_polite_night_thrasher",
+      "breakpoints": true
     }
   ]
 }

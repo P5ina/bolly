@@ -47,6 +47,7 @@ export const tenants = pgTable('tenants', {
 
 	// Bolly instance config
 	authToken: text('auth_token'), // auto-generated, used to proxy to the instance
+	errorMessage: text('error_message'),
 
 	// Stripe
 	stripeSubscriptionId: text('stripe_subscription_id'),

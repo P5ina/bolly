@@ -40,7 +40,8 @@ export const POST: RequestHandler = async ({ request }) => {
 				});
 				console.log(`Provisioned tenant ${slug} for user ${user_id}`);
 			} catch (err) {
-				console.error(`Failed to provision tenant ${slug}:`, err);
+				// Error is stored on the tenant record — user sees it on dashboard
+				console.error(`Provisioning failed for ${slug}:`, err);
 			}
 			break;
 		}

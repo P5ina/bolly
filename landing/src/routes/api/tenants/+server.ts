@@ -1,6 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { getTenantsByUser } from '$lib/server/tenants.js';
+import { getTenantsByUser, getTenantBySlug } from '$lib/server/tenants.js';
 import { createCheckoutSession, priceIdForPlan, type PlanId } from '$lib/server/stripe/index.js';
 import { env } from '$env/dynamic/private';
 
@@ -23,6 +23,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	if (!['starter', 'companion', 'unlimited'].includes(plan)) {
 		error(400, 'Invalid plan');
+	}
+
+	const existing = await getTenantBySlug(slug);
+	if (existing && existing.userId !== locals.user.id) {
+		error(409, 'That name is already taken. Please choose another.');
 	}
 
 	if (!locals.user.stripeCustomerId) {

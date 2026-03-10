@@ -565,6 +565,24 @@ pub struct UpdateConfigArgs {
     pub anthropic_key: Option<String>,
     /// Brave Search API key. Leave null to keep current.
     pub brave_search_key: Option<String>,
+    /// SMTP server hostname (e.g. "smtp.gmail.com"). Leave null to keep current.
+    pub smtp_host: Option<String>,
+    /// SMTP server port (e.g. 587). Leave null to keep current.
+    pub smtp_port: Option<u16>,
+    /// SMTP username / email address. Leave null to keep current.
+    pub smtp_user: Option<String>,
+    /// SMTP password or app password. Leave null to keep current.
+    pub smtp_password: Option<String>,
+    /// Email address to send from. Defaults to smtp_user if not set. Leave null to keep current.
+    pub smtp_from: Option<String>,
+    /// IMAP server hostname (e.g. "imap.gmail.com"). Leave null to keep current.
+    pub imap_host: Option<String>,
+    /// IMAP server port (e.g. 993). Leave null to keep current.
+    pub imap_port: Option<u16>,
+    /// IMAP username / email address. Leave null to keep current.
+    pub imap_user: Option<String>,
+    /// IMAP password or app password. Leave null to keep current.
+    pub imap_password: Option<String>,
 }
 
 impl Tool for UpdateConfigTool {
@@ -576,10 +594,10 @@ impl Tool for UpdateConfigTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "update_config".into(),
-            description: "Update server configuration: LLM provider, model, and API keys. \
+            description: "Update server configuration: LLM provider, model, API keys, and email (SMTP/IMAP) settings. \
                 Only provided fields are changed; null fields keep their current value. \
                 Changes take effect on the next message. Use this when the user wants to \
-                switch models, set API keys, or change providers."
+                switch models, set API keys, change providers, or configure email."
                 .into(),
             parameters: openai_schema::<UpdateConfigArgs>(),
         }
@@ -642,6 +660,46 @@ impl Tool for UpdateConfigTool {
             }
             config.llm.tokens.brave_search = k;
             changes.push("brave search key updated".into());
+        }
+
+        // Email — SMTP
+        if let Some(v) = &args.smtp_host {
+            config.email.smtp_host = v.trim().to_string();
+            changes.push(format!("smtp_host → {}", v.trim()));
+        }
+        if let Some(v) = args.smtp_port {
+            config.email.smtp_port = v;
+            changes.push(format!("smtp_port → {v}"));
+        }
+        if let Some(v) = &args.smtp_user {
+            config.email.smtp_user = v.trim().to_string();
+            changes.push("smtp_user updated".into());
+        }
+        if let Some(v) = &args.smtp_password {
+            config.email.smtp_password = v.trim().to_string();
+            changes.push("smtp_password updated".into());
+        }
+        if let Some(v) = &args.smtp_from {
+            config.email.smtp_from = v.trim().to_string();
+            changes.push(format!("smtp_from → {}", v.trim()));
+        }
+
+        // Email — IMAP
+        if let Some(v) = &args.imap_host {
+            config.email.imap_host = v.trim().to_string();
+            changes.push(format!("imap_host → {}", v.trim()));
+        }
+        if let Some(v) = args.imap_port {
+            config.email.imap_port = v;
+            changes.push(format!("imap_port → {v}"));
+        }
+        if let Some(v) = &args.imap_user {
+            config.email.imap_user = v.trim().to_string();
+            changes.push("imap_user updated".into());
+        }
+        if let Some(v) = &args.imap_password {
+            config.email.imap_password = v.trim().to_string();
+            changes.push("imap_password updated".into());
         }
 
         if changes.is_empty() {

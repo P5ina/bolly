@@ -20,6 +20,7 @@
 		"@oslojs/crypto": "^1.0.0",
 		"@oslojs/encoding": "^1.0.0",
 		"drizzle-orm": "^0.44.0",
+		"lucide-svelte": "^0.577.0",
 		"resend": "^6.9.3",
 		"stripe": "^17.0.0"
 	},

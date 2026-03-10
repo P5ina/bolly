@@ -1,8 +1,20 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { invalidateAll } from '$app/navigation';
+	import { ExternalLink, AlertTriangle, Loader, Mail, CreditCard, CalendarClock, XCircle, RotateCw } from 'lucide-svelte';
+	import { enhance } from '$app/forms';
+
+	function formatPrice(cents: number) {
+		return `$${(cents / 100).toFixed(0)}`;
+	}
+
+	function formatDate(iso: string) {
+		return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+	}
 
 	let { data } = $props();
+	let retrying = $state<string | null>(null);
+	let cancelling = $state<string | null>(null);
 	let creating = $state(false);
 	let slugInput = $state('');
 	let selectedPlan = $state<'starter' | 'companion' | 'unlimited'>('starter');
@@ -10,12 +22,13 @@
 	let showCreate = $state(false);
 	let provisioning = $state(page.url.searchParams.get('checkout') === 'success');
 
-	// Poll for new tenant after checkout
+	// Poll for tenant status after checkout
 	$effect(() => {
 		if (!provisioning) return;
 		const interval = setInterval(async () => {
 			await invalidateAll();
-			if (data.tenants.length > 0) {
+			const hasReady = data.tenants.some((t) => t.status === 'running' || t.status === 'error');
+			if (hasReady) {
 				provisioning = false;
 				clearInterval(interval);
 			}
@@ -154,39 +167,215 @@
 		{:else}
 			<div class="grid gap-3">
 				{#each data.tenants as tenant}
-					<a
-						href={connectUrl(tenant.slug)}
-						target="_blank"
-						class="group flex items-center justify-between p-5 rounded-xl border transition-all duration-300 hover:-translate-y-0.5"
-						style="background: var(--color-bg); border-color: var(--color-border);"
-					>
-						<div class="flex items-center gap-4">
-							<div class="w-10 h-10 rounded-lg flex items-center justify-center font-display italic text-warm"
-								style="background: var(--color-warm-glow); border: 1px solid var(--color-border-warm);"
-							>
-								{tenant.slug[0]?.toUpperCase()}
+					{#if tenant.status === 'error'}
+						<div
+							class="p-5 rounded-xl border"
+							style="background: var(--color-bg); border-color: oklch(0.65 0.15 25 / 30%);"
+						>
+							<div class="flex items-center justify-between mb-3">
+								<div class="flex items-center gap-4">
+									<div class="w-10 h-10 rounded-lg flex items-center justify-center text-red-400/80"
+										style="background: oklch(0.65 0.15 25 / 10%); border: 1px solid oklch(0.65 0.15 25 / 20%);"
+									>
+										<AlertTriangle size={18} />
+									</div>
+									<div>
+										<div class="text-text font-medium text-sm">{tenant.slug}<span class="text-text-ghost">.bollyai.dev</span></div>
+										<div class="text-xs text-red-400/70 mt-0.5">provisioning failed</div>
+									</div>
+								</div>
+								<form method="POST" action="?/retryProvision" use:enhance={() => {
+									retrying = tenant.slug;
+									return async ({ update }) => {
+										retrying = null;
+										await update();
+									};
+								}}>
+									<input type="hidden" name="slug" value={tenant.slug} />
+									<button
+										type="submit"
+										disabled={retrying === tenant.slug}
+										class="inline-flex items-center gap-1.5 text-xs py-2 px-4 rounded-lg text-warm transition-all duration-300 disabled:opacity-40"
+										style="background: var(--color-warm-glow); border: 1px solid var(--color-border-warm);"
+									>
+										<RotateCw size={13} class={retrying === tenant.slug ? 'animate-spin' : ''} />
+										{retrying === tenant.slug ? 'Retrying...' : 'Retry'}
+									</button>
+								</form>
 							</div>
-							<div>
-								<div class="text-text font-medium text-sm">{tenant.slug}<span class="text-text-ghost">.bollyai.dev</span></div>
-								<div class="text-xs text-text-ghost mt-0.5">{tenant.plan} plan</div>
+							<p class="text-xs text-text-ghost leading-relaxed">
+								Something went wrong while setting up your companion. You can retry or contact
+								<a href="mailto:support@bollyai.dev" class="inline-flex items-center gap-1 text-warm underline underline-offset-2">
+									<Mail size={11} />support@bollyai.dev</a>
+								for help.
+							</p>
+						</div>
+					{:else if tenant.status === 'provisioning'}
+						<div
+							class="p-5 rounded-xl border"
+							style="background: var(--color-bg); border-color: var(--color-border-warm);"
+						>
+							<div class="flex items-center gap-4">
+								<div class="w-10 h-10 rounded-lg flex items-center justify-center text-warm animate-spin"
+									style="background: var(--color-warm-glow); border: 1px solid var(--color-border-warm);"
+								>
+									<Loader size={18} />
+								</div>
+								<div>
+									<div class="text-text font-medium text-sm">{tenant.slug}<span class="text-text-ghost">.bollyai.dev</span></div>
+									<div class="text-xs text-text-ghost mt-0.5">provisioning...</div>
+								</div>
 							</div>
 						</div>
-						<div class="flex items-center gap-3">
-							<span class="inline-flex items-center gap-1.5 text-xs">
-								<span
-									class="w-1.5 h-1.5 rounded-full"
-									class:bg-emerald-400={tenant.status === 'running'}
-									class:bg-amber-400={tenant.status === 'provisioning'}
-									class:bg-red-400={tenant.status === 'error'}
-								></span>
-								<span class="text-text-ghost">{tenant.status}</span>
-							</span>
-							<svg class="w-4 h-4 text-text-ghost group-hover:text-warm transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-								<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
-							</svg>
+					{:else}
+						<div
+							class="p-5 rounded-xl border"
+							style="background: var(--color-bg); border-color: var(--color-border);"
+						>
+							<div class="flex items-center justify-between">
+								<div class="flex items-center gap-4">
+									<div class="w-10 h-10 rounded-lg flex items-center justify-center font-display italic text-warm"
+										style="background: var(--color-warm-glow); border: 1px solid var(--color-border-warm);"
+									>
+										{tenant.slug[0]?.toUpperCase()}
+									</div>
+									<div>
+										<div class="text-text font-medium text-sm">{tenant.slug}<span class="text-text-ghost">.bollyai.dev</span></div>
+										<div class="flex items-center gap-2 mt-0.5">
+											<span class="inline-flex items-center gap-1.5 text-xs">
+												<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+												<span class="text-text-ghost">running</span>
+											</span>
+										</div>
+									</div>
+								</div>
+								<a
+									href={connectUrl(tenant.slug)}
+									target="_blank"
+									class="group inline-flex items-center gap-1.5 text-xs py-2 px-4 rounded-lg text-warm transition-all duration-300 hover:-translate-y-0.5"
+									style="background: var(--color-warm-glow); border: 1px solid var(--color-border-warm);"
+								>
+									Open <ExternalLink size={13} />
+								</a>
+							</div>
+
+							<!-- Subscription details -->
+							{#if tenant.subscription}
+								<div class="mt-4 pt-4 flex items-center justify-between" style="border-top: 1px solid var(--color-border);">
+									<div class="flex items-center gap-4 text-xs text-text-ghost">
+										<span class="inline-flex items-center gap-1.5">
+											<CreditCard size={13} class="text-text-ghost" />
+											{tenant.planName} — {formatPrice(tenant.priceMonthly)}/mo
+										</span>
+										<span class="inline-flex items-center gap-1.5">
+											<CalendarClock size={13} class="text-text-ghost" />
+											{#if tenant.subscription.cancelAtPeriodEnd}
+												<span class="text-amber-400">cancels {formatDate(tenant.subscription.currentPeriodEnd)}</span>
+											{:else}
+												renews {formatDate(tenant.subscription.currentPeriodEnd)}
+											{/if}
+										</span>
+									</div>
+									<div class="flex items-center gap-3">
+										{#if !tenant.subscription.cancelAtPeriodEnd}
+											<form method="POST" action="?/cancelSubscription" use:enhance={() => {
+												cancelling = tenant.subscription!.id;
+												return async ({ update }) => {
+													cancelling = null;
+													await update();
+												};
+											}}>
+												<input type="hidden" name="subscriptionId" value={tenant.subscription.id} />
+												<button
+													type="submit"
+													disabled={cancelling === tenant.subscription.id}
+													class="text-xs text-red-400/60 hover:text-red-400 transition-colors underline underline-offset-2 disabled:opacity-40"
+												>
+													{cancelling === tenant.subscription.id ? 'cancelling...' : 'cancel'}
+												</button>
+											</form>
+										{/if}
+										<form method="POST" action="?/billing" use:enhance>
+											<button
+												type="submit"
+												class="text-xs text-text-ghost hover:text-text-dim transition-colors underline underline-offset-2"
+											>
+												manage billing
+											</button>
+										</form>
+									</div>
+								</div>
+							{/if}
 						</div>
-					</a>
+					{/if}
 				{/each}
+			</div>
+		{/if}
+
+		<!-- Orphaned subscriptions -->
+		{#if data.orphanedSubscriptions.length > 0}
+			<div class="mt-10">
+				<h2 class="font-display italic text-lg text-text mb-4">unused subscriptions</h2>
+				<p class="text-xs text-text-ghost mb-4">
+					These subscriptions are active but not linked to any companion. This can happen if provisioning failed. You can cancel them to stop being charged.
+				</p>
+				<div class="grid gap-3">
+					{#each data.orphanedSubscriptions as sub}
+						<div
+							class="p-5 rounded-xl border flex items-center justify-between"
+							style="background: var(--color-bg); border-color: oklch(0.65 0.15 25 / 30%);"
+						>
+							<div class="flex items-center gap-4">
+								<div class="w-10 h-10 rounded-lg flex items-center justify-center text-amber-400/80"
+									style="background: oklch(0.78 0.12 75 / 8%); border: 1px solid oklch(0.78 0.12 75 / 15%);"
+								>
+									<CreditCard size={18} />
+								</div>
+								<div>
+									<div class="text-text font-medium text-sm">
+										{sub.productName ?? 'Bolly subscription'}
+										{#if sub.metadata?.slug}
+											<span class="text-text-ghost"> — {sub.metadata.slug}</span>
+										{/if}
+									</div>
+									<div class="flex items-center gap-3 mt-0.5 text-xs text-text-ghost">
+										<span>{formatPrice(sub.amount)}/mo</span>
+										<span class="inline-flex items-center gap-1">
+											<CalendarClock size={11} />
+											{#if sub.cancelAtPeriodEnd}
+												<span class="text-amber-400">cancels {formatDate(sub.currentPeriodEnd)}</span>
+											{:else}
+												renews {formatDate(sub.currentPeriodEnd)}
+											{/if}
+										</span>
+									</div>
+								</div>
+							</div>
+							{#if !sub.cancelAtPeriodEnd}
+								<form method="POST" action="?/cancelSubscription" use:enhance={() => {
+									cancelling = sub.id;
+									return async ({ update }) => {
+										cancelling = null;
+										await update();
+									};
+								}}>
+									<input type="hidden" name="subscriptionId" value={sub.id} />
+									<button
+										type="submit"
+										disabled={cancelling === sub.id}
+										class="inline-flex items-center gap-1.5 text-xs py-2 px-4 rounded-lg transition-all duration-300 text-red-400/80 hover:text-red-400 disabled:opacity-40"
+										style="background: oklch(0.65 0.15 25 / 10%); border: 1px solid oklch(0.65 0.15 25 / 20%);"
+									>
+										<XCircle size={13} />
+										{cancelling === sub.id ? 'Cancelling...' : 'Cancel'}
+									</button>
+								</form>
+							{:else}
+								<span class="text-xs text-amber-400/70 italic">cancellation pending</span>
+							{/if}
+						</div>
+					{/each}
+				</div>
 			</div>
 		{/if}
 	</div>

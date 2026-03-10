@@ -2,6 +2,11 @@ import { env } from '$env/dynamic/private';
 
 const FLY_API = 'https://api.machines.dev/v1';
 
+/** The registry app that holds the Docker image */
+export function registryApp(): string {
+	return env.FLY_REGISTRY_APP ?? 'bolly';
+}
+
 function headers() {
 	const raw = env.FLY_API_TOKEN ?? '';
 	const auth = raw.startsWith('FlyV1') ? raw : `Bearer ${raw}`;
@@ -24,7 +29,6 @@ export async function createApp(name: string): Promise<{ id: string; name: strin
 	});
 	if (!res.ok) throw new Error(`Fly createApp failed: ${res.status} ${await res.text()}`);
 	const data = await res.json();
-	// API returns { id, created_at } — name isn't in the response
 	return { id: data.id, name };
 }
 
@@ -40,7 +44,7 @@ export async function deleteApp(name: string): Promise<void> {
 
 // ─── IPs ─────────────────────────────────────────────────────────────────────
 
-export async function allocateSharedIp(appName: string): Promise<string> {
+export async function allocateIpv4(appName: string): Promise<string> {
 	const res = await fetch(`https://api.fly.io/graphql`, {
 		method: 'POST',
 		headers: headers(),
@@ -49,15 +53,50 @@ export async function allocateSharedIp(appName: string): Promise<string> {
 			variables: {
 				input: {
 					appId: appName,
-					type: 'shared_v4',
+					type: 'v4',
 				},
 			},
 		}),
 	});
 	if (!res.ok) throw new Error(`Fly allocateIp failed: ${res.status} ${await res.text()}`);
 	const data = await res.json();
-	if (data.errors) throw new Error(`Fly allocateIp: ${data.errors[0].message}`);
-	return data.data.allocateIpAddress.ipAddress.address;
+	if (data.errors?.length) throw new Error(`Fly allocateIp: ${data.errors[0].message}`);
+	const ip = data.data?.allocateIpAddress?.ipAddress?.address;
+	if (!ip) throw new Error(`Fly allocateIp: unexpected response: ${JSON.stringify(data)}`);
+	return ip;
+}
+
+export async function allocateIpv6(appName: string): Promise<string> {
+	const res = await fetch(`https://api.fly.io/graphql`, {
+		method: 'POST',
+		headers: headers(),
+		body: JSON.stringify({
+			query: `mutation($input: AllocateIPAddressInput!) { allocateIpAddress(input: $input) { ipAddress { id address type } } }`,
+			variables: {
+				input: {
+					appId: appName,
+					type: 'v6',
+				},
+			},
+		}),
+	});
+	if (!res.ok) throw new Error(`Fly allocateIpv6 failed: ${res.status} ${await res.text()}`);
+	const data = await res.json();
+	if (data.errors?.length) throw new Error(`Fly allocateIpv6: ${data.errors[0].message}`);
+	const ip = data.data?.allocateIpAddress?.ipAddress?.address;
+	if (!ip) throw new Error(`Fly allocateIpv6: unexpected response: ${JSON.stringify(data)}`);
+	return ip;
+}
+
+// ─── Certificates ────────────────────────────────────────────────────────────
+
+export async function addCertificate(appName: string, hostname: string): Promise<void> {
+	const res = await fetch(`${FLY_API}/apps/${appName}/certificates/acme`, {
+		method: 'POST',
+		headers: headers(),
+		body: JSON.stringify({ hostname }),
+	});
+	if (!res.ok) throw new Error(`Fly addCertificate failed: ${res.status} ${await res.text()}`);
 }
 
 // ─── Volumes ─────────────────────────────────────────────────────────────────
@@ -101,7 +140,7 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 		body: JSON.stringify({
 			region: opts.region ?? env.FLY_REGION ?? 'iad',
 			config: {
-				image: env.BOLLY_IMAGE ?? 'registry.fly.io/bolly:latest',
+				image: env.BOLLY_IMAGE ?? `registry.fly.io/${registryApp()}:latest`,
 				env: {
 					BOLLY_HOME: '/data',
 					RUST_LOG: 'info',
@@ -133,22 +172,6 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 	});
 	if (!res.ok) throw new Error(`Fly createMachine failed: ${res.status} ${await res.text()}`);
 	return res.json();
-}
-
-export async function startMachine(appName: string, machineId: string): Promise<void> {
-	const res = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}/start`, {
-		method: 'POST',
-		headers: headers(),
-	});
-	if (!res.ok) throw new Error(`Fly startMachine failed: ${res.status} ${await res.text()}`);
-}
-
-export async function stopMachine(appName: string, machineId: string): Promise<void> {
-	const res = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}/stop`, {
-		method: 'POST',
-		headers: headers(),
-	});
-	if (!res.ok) throw new Error(`Fly stopMachine failed: ${res.status} ${await res.text()}`);
 }
 
 export async function destroyMachine(appName: string, machineId: string): Promise<void> {
