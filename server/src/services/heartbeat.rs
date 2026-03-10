@@ -125,6 +125,9 @@ async fn heartbeat_instance(
     rhythm::save_rhythm(instance_dir, &rhythm_data);
     let rhythm_insights = rhythm::build_rhythm_insights(workspace_dir, slug, &rhythm_data);
 
+    // Load recent drops so we don't repeat ourselves
+    let recent_drops = load_recent_drops_context(workspace_dir, slug);
+
     // Build the reflection prompt
     let reflection = build_reflection_prompt(
         &mood,
@@ -133,6 +136,7 @@ async fn heartbeat_instance(
         &facts,
         &last_messages,
         &rhythm_insights,
+        &recent_drops,
     );
 
     let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
@@ -202,6 +206,7 @@ fn build_reflection_prompt(
     facts: &str,
     last_messages: &str,
     rhythm_insights: &str,
+    recent_drops: &str,
 ) -> String {
     let now = Utc::now().format("%Y-%m-%d %H:%M UTC").to_string();
     let mut prompt = format!("current time: {now}\n\n");
@@ -277,6 +282,13 @@ fn build_reflection_prompt(
     // Rhythm insights
     if !rhythm_insights.is_empty() {
         prompt.push_str(rhythm_insights);
+        prompt.push('\n');
+    }
+
+    // Recent drops — so we don't repeat ourselves
+    if !recent_drops.is_empty() {
+        prompt.push_str("your recent drops (DO NOT repeat these — create something new or stay quiet):\n");
+        prompt.push_str(recent_drops);
         prompt.push('\n');
     }
 
@@ -485,6 +497,29 @@ fn load_recent_journal_context(instance_dir: &Path) -> String {
         }
     }
     out
+}
+
+fn load_recent_drops_context(workspace_dir: &Path, slug: &str) -> String {
+    let recent = match drops::list_drops(workspace_dir, slug) {
+        Ok(mut all) => {
+            all.truncate(10); // newest first, take last 10
+            all
+        }
+        Err(_) => return String::new(),
+    };
+
+    if recent.is_empty() {
+        return String::new();
+    }
+
+    recent
+        .iter()
+        .map(|d| format!("- [{:?}] {}: {}", d.kind, d.title, {
+            let preview: String = d.content.chars().take(80).collect();
+            preview
+        }))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn unix_millis() -> u128 {
