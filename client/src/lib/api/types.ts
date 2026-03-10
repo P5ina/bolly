@@ -93,6 +93,14 @@ export interface Drop {
 	created_at: string;
 }
 
+export interface Thought {
+	id: string;
+	raw: string;
+	actions: string[];
+	mood: string;
+	created_at: string;
+}
+
 export interface UploadMeta {
 	id: string;
 	original_name: string;
@@ -135,4 +143,9 @@ export type ServerEvent =
 			type: "drop_created";
 			instance_slug: string;
 			drop: Drop;
+	  }
+	| {
+			type: "heartbeat_thought";
+			instance_slug: string;
+			thought: Thought;
 	  };

@@ -7,6 +7,7 @@ import type {
 	ServerMeta,
 	Soul,
 	SoulTemplate,
+	Thought,
 	UpdateLlmRequest,
 	UploadMeta,
 } from "./types.js";
@@ -187,6 +188,10 @@ export function setCompanionName(slug: string, name: string): Promise<void> {
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ name }),
 	});
+}
+
+export function fetchThoughts(slug: string): Promise<Thought[]> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/thoughts`);
 }
 
 export function fetchDrops(slug: string): Promise<Drop[]> {

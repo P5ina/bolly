@@ -6,5 +6,6 @@ pub mod health;
 pub mod instances;
 pub mod meta;
 pub mod soul;
+pub mod thoughts;
 pub mod uploads;
 pub mod ws;

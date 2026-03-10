@@ -15,7 +15,8 @@ use tokio::sync::{broadcast, RwLock};
 use crate::domain::chat::{ChatMessage, ChatRole};
 use crate::domain::events::ServerEvent;
 use crate::domain::mood::MoodState;
-use crate::services::{drops, llm::LlmBackend};
+use crate::domain::thought::Thought;
+use crate::services::{drops, llm::LlmBackend, thoughts};
 use crate::services::tools::{load_mood_state, save_mood_state, ALLOWED_MOODS};
 
 static HEARTBEAT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -134,7 +135,25 @@ async fn heartbeat_instance(
     let response = llm.chat(&system, &reflection, vec![]).await?;
 
     // Parse the response and execute actions
-    process_heartbeat_response(workspace_dir, slug, instance_dir, &response, events, &mood);
+    let actions = process_heartbeat_response(workspace_dir, slug, instance_dir, &response, events, &mood);
+
+    // Save and broadcast the thought
+    let thought = Thought {
+        id: format!("thought_{}", unix_millis()),
+        raw: response.clone(),
+        actions,
+        mood: mood.companion_mood.clone(),
+        created_at: unix_millis().to_string(),
+    };
+
+    if let Err(e) = thoughts::save_thought(workspace_dir, slug, &thought) {
+        log::warn!("[heartbeat] {slug} failed to save thought: {e}");
+    }
+
+    let _ = events.send(ServerEvent::HeartbeatThought {
+        instance_slug: slug.to_string(),
+        thought,
+    });
 
     Ok(())
 }
@@ -259,9 +278,10 @@ fn process_heartbeat_response(
     response: &str,
     events: &broadcast::Sender<ServerEvent>,
     current_mood: &MoodState,
-) {
+) -> Vec<String> {
     let mut mood = current_mood.clone();
     let now = Utc::now();
+    let mut actions = Vec::new();
 
     for line in response.lines() {
         let line = line.trim();
@@ -272,6 +292,7 @@ fn process_heartbeat_response(
                 write_journal_entry(instance_dir, thought);
                 let preview: String = thought.chars().take(60).collect();
                 log::info!("[heartbeat] {slug} journaled: {preview}");
+                actions.push(format!("journal: {preview}"));
             }
         } else if let Some(message) = line.strip_prefix("REACH_OUT:") {
             let message = message.trim();
@@ -279,6 +300,7 @@ fn process_heartbeat_response(
                 deliver_spontaneous_message(workspace_dir, slug, message, events);
                 let preview: String = message.chars().take(60).collect();
                 log::info!("[heartbeat] {slug} reached out: {preview}");
+                actions.push(format!("reach_out: {preview}"));
             }
         } else if let Some(drop_spec) = line.strip_prefix("DROP:") {
             // Format: kind | title | content
@@ -306,6 +328,7 @@ fn process_heartbeat_response(
                                 drop.title,
                                 drop.kind.as_str()
                             );
+                            actions.push(format!("drop: {} ({})", drop.title, drop.kind.as_str()));
                         }
                         Err(e) => {
                             log::warn!("[heartbeat] {slug} failed to create drop: {e}");
@@ -321,11 +344,13 @@ fn process_heartbeat_response(
                 mood.companion_mood = new_mood.clone();
                 mood.updated_at = now.timestamp();
                 log::info!("[heartbeat] {slug} mood → {new_mood}");
+                actions.push(format!("mood: {new_mood}"));
             } else {
                 log::info!("[heartbeat] {slug} ignored invalid mood: {new_mood}");
             }
+        } else if line.eq_ignore_ascii_case("QUIET") {
+            actions.push("quiet".to_string());
         }
-        // QUIET or anything else = do nothing
     }
 
     save_mood_state(instance_dir, &mood);
@@ -336,6 +361,8 @@ fn process_heartbeat_response(
             mood: mood.companion_mood,
         });
     }
+
+    actions
 }
 
 fn write_journal_entry(instance_dir: &Path, thought: &str) {

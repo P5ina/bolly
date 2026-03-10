@@ -3,13 +3,14 @@
 	import { fetchMessages } from "$lib/api/client.js";
 	import ChatView from "$lib/components/chat/ChatView.svelte";
 	import DropsView from "$lib/components/drops/DropsView.svelte";
+	import ThoughtsView from "$lib/components/thoughts/ThoughtsView.svelte";
 	import InstanceOnboarding from "$lib/components/onboarding/InstanceOnboarding.svelte";
 
 	const slug = $derived(page.params.slug!);
 
 	let isNew = $state(false);
 	let checking = $state(true);
-	let activeTab = $state<"chat" | "drops">("chat");
+	let activeTab = $state<"chat" | "drops" | "thoughts">("chat");
 
 	$effect(() => {
 		checking = true;
@@ -58,6 +59,13 @@
 			>
 				drops
 			</button>
+			<button
+				class="instance-tab"
+				class:instance-tab-active={activeTab === "thoughts"}
+				onclick={() => (activeTab = "thoughts")}
+			>
+				thoughts
+			</button>
 		</nav>
 
 		<div class="instance-content">
@@ -65,9 +73,13 @@
 				{#key slug}
 					<ChatView {slug} />
 				{/key}
-			{:else}
+			{:else if activeTab === "drops"}
 				{#key slug}
 					<DropsView {slug} />
+				{/key}
+			{:else}
+				{#key slug}
+					<ThoughtsView {slug} />
 				{/key}
 			{/if}
 		</div>
