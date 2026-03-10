@@ -99,7 +99,7 @@ fn default_imap_port() -> u16 {
 }
 
 fn default_registry_url() -> String {
-    "https://raw.githubusercontent.com/p5ina/personality-skills/main/registry.json".into()
+    "https://raw.githubusercontent.com/triangle-int/bolly-skills/main/registry.json".into()
 }
 
 impl Default for Config {

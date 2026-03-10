@@ -14,7 +14,7 @@
 	}
 
 	const REGISTRY_URL =
-		'https://raw.githubusercontent.com/p5ina/personality-skills/main/registry.json';
+		'https://raw.githubusercontent.com/triangle-int/bolly-skills/main/registry.json';
 
 	let skills = $state<RegistrySkill[]>([]);
 	let loading = $state(true);
@@ -75,7 +75,7 @@
 			<p class="section-desc">
 				Skills teach your companion new abilities. Browse what the community has
 				built, or
-				<a href="https://github.com/p5ina/personality-skills" target="_blank" class="text-warm hover:underline">
+				<a href="https://github.com/triangle-int/bolly-skills" target="_blank" class="text-warm hover:underline">
 					publish your own
 				</a>.
 			</p>
@@ -212,7 +212,7 @@
 					<code>instructions.md</code>, then open a PR to the registry.
 				</p>
 				<a
-					href="https://github.com/p5ina/personality-skills"
+					href="https://github.com/triangle-int/bolly-skills"
 					target="_blank"
 					class="btn-primary"
 				>
