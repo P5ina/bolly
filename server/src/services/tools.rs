@@ -2601,16 +2601,21 @@ impl Tool for InstallPackageTool {
 // send_file — attach a workspace file to the chat so the user can see/download it
 // ---------------------------------------------------------------------------
 
+/// Shared collector for file attachments produced by send_file during a turn.
+pub type SentFiles = std::sync::Arc<std::sync::Mutex<Vec<String>>>;
+
 pub struct SendFileTool {
     workspace_dir: PathBuf,
     instance_slug: String,
+    sent_files: SentFiles,
 }
 
 impl SendFileTool {
-    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+    pub fn new(workspace_dir: &Path, instance_slug: &str, sent_files: SentFiles) -> Self {
         Self {
             workspace_dir: workspace_dir.to_path_buf(),
             instance_slug: instance_slug.to_string(),
+            sent_files,
         }
     }
 }
@@ -2678,7 +2683,10 @@ impl Tool for SendFileTool {
         )
         .map_err(|e| ToolExecError(format!("failed to save upload: {e}")))?;
 
-        Ok(format!("[attached: {} ({})]", original_name, meta.id))
+        let marker = format!("[attached: {} ({})]", original_name, meta.id);
+        self.sent_files.lock().unwrap().push(marker.clone());
+
+        Ok(format!("file '{}' attached to chat. the user will see it.", original_name))
     }
 }
 

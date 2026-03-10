@@ -222,7 +222,8 @@ pub async fn run_single_turn(
         return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
     };
 
-    let tools = build_instance_tools(workspace_dir, &instance_slug, brave_api_key, config_path, events.clone());
+    let sent_files = tools::SentFiles::default();
+    let (tools, sent_files) = build_instance_tools(workspace_dir, &instance_slug, brave_api_key, config_path, events.clone(), sent_files);
 
     let reply = llm
         .chat_with_tools(&system_prompt, prompt_msg, history_msgs, tools, memory_index)
@@ -233,7 +234,19 @@ pub async fn run_single_turn(
         });
 
     // Split reply into chat-like chunks (by double newline)
-    let chunks: Vec<String> = split_into_messages(&reply);
+    let mut chunks: Vec<String> = split_into_messages(&reply);
+
+    // Append any file attachments produced by send_file tool to the last chunk
+    let file_markers = sent_files.lock().unwrap().drain(..).collect::<Vec<_>>();
+    if !file_markers.is_empty() {
+        let suffix = file_markers.join("\n");
+        if let Some(last) = chunks.last_mut() {
+            last.push('\n');
+            last.push_str(&suffix);
+        } else {
+            chunks.push(suffix);
+        }
+    }
 
     let mut assistant_messages = Vec::new();
     for chunk in &chunks {
@@ -937,7 +950,8 @@ fn build_instance_tools(
     brave_api_key: Option<&str>,
     config_path: &Path,
     events: broadcast::Sender<ServerEvent>,
-) -> Vec<Box<dyn ToolDyn>> {
+    sent_files: tools::SentFiles,
+) -> (Vec<Box<dyn ToolDyn>>, tools::SentFiles) {
     let raw_tools: Vec<Box<dyn ToolDyn>> = vec![
         Box::new(EditSoulTool::new(workspace_dir, instance_slug)),
         Box::new(ReadFileTool::new(workspace_dir, instance_slug)),
@@ -963,16 +977,17 @@ fn build_instance_tools(
         Box::new(RunCommandTool::new(workspace_dir, instance_slug)),
         Box::new(ClearContextTool::new(workspace_dir, instance_slug)),
         Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
-        Box::new(SendFileTool::new(workspace_dir, instance_slug)),
+        Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone())),
         Box::new(SendEmailTool::new(workspace_dir, instance_slug)),
         Box::new(ReadEmailTool::new(workspace_dir, instance_slug)),
         Box::new(InstallPackageTool),
     ];
 
-    raw_tools
+    let wrapped: Vec<Box<dyn ToolDyn>> = raw_tools
         .into_iter()
         .map(|tool| -> Box<dyn ToolDyn> {
             Box::new(ObservableTool::new(tool, events.clone(), instance_slug.to_string()))
         })
-        .collect()
+        .collect();
+    (wrapped, sent_files)
 }
