@@ -2570,13 +2570,15 @@ impl Tool for ListUploadsTool {
 pub struct ReadUploadTool {
     workspace_dir: PathBuf,
     instance_slug: String,
+    llm: super::llm::LlmBackend,
 }
 
 impl ReadUploadTool {
-    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+    pub fn new(workspace_dir: &Path, instance_slug: &str, llm: super::llm::LlmBackend) -> Self {
         Self {
             workspace_dir: workspace_dir.to_path_buf(),
             instance_slug: instance_slug.to_string(),
+            llm,
         }
     }
 }
@@ -2585,6 +2587,10 @@ impl ReadUploadTool {
 pub struct ReadUploadArgs {
     /// The upload ID (e.g. "upload_1710000000000").
     pub upload_id: String,
+    /// Optional prompt for analyzing images/PDFs (e.g. "describe this image", "extract all text").
+    /// Defaults to a general description.
+    #[serde(default)]
+    pub prompt: Option<String>,
 }
 
 impl Tool for ReadUploadTool {
@@ -2596,8 +2602,9 @@ impl Tool for ReadUploadTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "read_upload".into(),
-            description: "Read the content of an uploaded file. Works with text files (md, txt, csv, json). \
-                For images and PDFs, returns metadata description.".into(),
+            description: "Read the content of an uploaded file. Text files return content directly. \
+                Images are analyzed with vision. PDFs are sent as documents for extraction. \
+                Use the optional 'prompt' field to ask specific questions about the file.".into(),
             parameters: openai_schema::<ReadUploadArgs>(),
         }
     }
@@ -2607,22 +2614,32 @@ impl Tool for ReadUploadTool {
             .map_err(|e| ToolExecError(format!("failed to get upload: {e}")))?
             .ok_or_else(|| ToolExecError(format!("upload '{}' not found", args.upload_id)))?;
 
-        // For text files, return content
-        match super::uploads::read_upload_text(&self.workspace_dir, &self.instance_slug, &args.upload_id) {
-            Ok(Some(content)) => {
-                Ok(format!("# {} ({})\n\n{content}", meta.original_name, meta.mime_type))
-            }
-            Ok(None) => {
-                // Binary file — return metadata
-                let size_kb = meta.size / 1024;
-                Ok(format!(
-                    "Binary file: {} ({}, {}KB). Cannot read content directly — \
-                     this is an image/PDF. The user can view it in the chat UI.",
-                    meta.original_name, meta.mime_type, size_kb
-                ))
-            }
-            Err(e) => Err(ToolExecError(format!("failed to read upload: {e}"))),
+        // For text files, return content directly
+        if let Ok(Some(content)) = super::uploads::read_upload_text(&self.workspace_dir, &self.instance_slug, &args.upload_id) {
+            return Ok(format!("# {} ({})\n\n{content}", meta.original_name, meta.mime_type));
         }
+
+        // For images and PDFs, use vision/document understanding
+        let file_path = super::uploads::get_upload_file_path(&self.workspace_dir, &self.instance_slug, &args.upload_id)
+            .ok_or_else(|| ToolExecError("file not found on disk".into()))?;
+
+        let bytes = fs::read(&file_path)
+            .map_err(|e| ToolExecError(format!("failed to read file: {e}")))?;
+
+        let user_prompt = args.prompt.unwrap_or_else(|| {
+            if meta.mime_type.starts_with("image/") {
+                format!("Describe this image ({}) in detail. What do you see?", meta.original_name)
+            } else {
+                format!("Extract and summarize the content of this document ({}).", meta.original_name)
+            }
+        });
+
+        self.llm.chat_with_vision(
+            "You analyze files. Be thorough but concise.",
+            &user_prompt,
+            &bytes,
+            &meta.mime_type,
+        ).await.map_err(|e| ToolExecError(format!("vision analysis failed: {e}")))
     }
 }
 

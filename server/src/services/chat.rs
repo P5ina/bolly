@@ -200,7 +200,7 @@ pub async fn run_single_turn(
         return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
     };
 
-    let tools = build_instance_tools(workspace_dir, &instance_slug, brave_api_key, config_path, events.clone());
+    let tools = build_instance_tools(workspace_dir, &instance_slug, brave_api_key, config_path, events.clone(), llm);
 
     let reply = llm
         .chat_with_tools(&system_prompt, &prompt_content, history_msgs, tools)
@@ -863,6 +863,7 @@ fn build_instance_tools(
     brave_api_key: Option<&str>,
     config_path: &Path,
     events: broadcast::Sender<ServerEvent>,
+    llm: &llm::LlmBackend,
 ) -> Vec<Box<dyn ToolDyn>> {
     let raw_tools: Vec<Box<dyn ToolDyn>> = vec![
         Box::new(EditSoulTool::new(workspace_dir, instance_slug)),
@@ -891,7 +892,7 @@ fn build_instance_tools(
         Box::new(SendEmailTool::new(workspace_dir, instance_slug)),
         Box::new(ReadEmailTool::new(workspace_dir, instance_slug)),
         Box::new(ListUploadsTool::new(workspace_dir, instance_slug)),
-        Box::new(ReadUploadTool::new(workspace_dir, instance_slug)),
+        Box::new(ReadUploadTool::new(workspace_dir, instance_slug, llm.clone())),
         Box::new(InstallPackageTool),
     ];
 

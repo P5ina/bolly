@@ -2,7 +2,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use rig::client::CompletionClient;
-use rig::completion::{Chat, Message};
+use rig::completion::{Chat, Message, Prompt};
+use rig::completion::message::{UserContent, ImageMediaType, DocumentMediaType, MimeType};
+use rig::one_or_many::OneOrMany;
 use rig::providers::{anthropic, openai};
 use rig::tool::ToolDyn;
 
@@ -173,6 +175,52 @@ impl LlmBackend {
                 self.chat(system_prompt, prompt, history).await
             }
         }
+    }
+
+    pub async fn chat_with_vision(
+        &self,
+        system_prompt: &str,
+        prompt: &str,
+        file_bytes: &[u8],
+        mime_type: &str,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        // Build multimodal user message with text + image/document
+        let text_content = UserContent::text(prompt);
+
+        let file_content = if mime_type.starts_with("image/") {
+            let media = ImageMediaType::from_mime_type(mime_type);
+            UserContent::image_raw(file_bytes.to_vec(), media, None)
+        } else if mime_type == "application/pdf" {
+            UserContent::document_raw(file_bytes.to_vec(), Some(DocumentMediaType::PDF))
+        } else {
+            // Fallback: treat as text if possible
+            let text = String::from_utf8_lossy(file_bytes);
+            return self.chat(system_prompt, &format!("{prompt}\n\nFile content:\n{text}"), vec![]).await;
+        };
+
+        let content = OneOrMany::many(vec![text_content, file_content])?;
+        let message = Message::User { content };
+
+        let backend = self.clone();
+        let system = system_prompt.to_string();
+        retry_on_rate_limit(|| {
+            let backend = backend.clone();
+            let system = system.clone();
+            let message = message.clone();
+            async move {
+                match &backend {
+                    LlmBackend::Anthropic { client, model } => {
+                        let agent = client.agent(model).preamble(&system).build();
+                        Ok(agent.prompt(message).await?)
+                    }
+                    LlmBackend::OpenAI { client, model } => {
+                        let agent = client.agent(model).preamble(&system).build();
+                        Ok(agent.prompt(message).await?)
+                    }
+                }
+            }
+        })
+        .await
     }
 }
 
