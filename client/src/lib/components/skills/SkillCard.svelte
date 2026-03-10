@@ -23,6 +23,8 @@
 		<span class="skill-card-name">{skill.name}</span>
 		{#if skill.builtin}
 			<span class="skill-card-badge">built-in</span>
+		{:else if skill.source}
+			<span class="skill-card-badge skill-card-badge-community">community</span>
 		{/if}
 	</div>
 
@@ -160,6 +162,11 @@
 		color: oklch(0.78 0.12 75 / 40%);
 		line-height: 1.55;
 		white-space: pre-wrap;
+	}
+
+	.skill-card-badge-community {
+		color: oklch(0.7 0.08 200 / 50%);
+		background: oklch(0.7 0.08 200 / 8%);
 	}
 
 	.skill-card-delete {

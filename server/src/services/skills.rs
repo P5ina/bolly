@@ -1,6 +1,6 @@
 use std::{fs, io, path::Path};
 
-use crate::domain::skill::Skill;
+use crate::domain::skill::{RegistryEntry, Skill, SkillSource};
 
 /// The built-in "skill_creator" skill that is always present.
 fn builtin_skill_creator() -> Skill {
@@ -12,6 +12,7 @@ fn builtin_skill_creator() -> Skill {
         builtin: true,
         enabled: true,
         instructions: String::new(),
+        source: None,
     }
 }
 
@@ -100,4 +101,65 @@ pub fn delete_skill(workspace_dir: &Path, skill_id: &str) -> io::Result<bool> {
     } else {
         Ok(false)
     }
+}
+
+/// Check whether a skill is already installed locally.
+pub fn is_installed(workspace_dir: &Path, skill_id: &str) -> bool {
+    workspace_dir.join("skills").join(skill_id).is_dir()
+}
+
+/// Fetch the remote skills registry index.
+pub async fn fetch_registry(
+    registry_url: &str,
+) -> Result<Vec<RegistryEntry>, Box<dyn std::error::Error + Send + Sync>> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+
+    let resp = client.get(registry_url).send().await?;
+    if !resp.status().is_success() {
+        return Err(format!("registry returned {}", resp.status()).into());
+    }
+
+    let entries: Vec<RegistryEntry> = resp.json().await?;
+    Ok(entries)
+}
+
+/// Install a skill from a registry entry by downloading its instructions from GitHub.
+pub async fn install_from_registry(
+    workspace_dir: &Path,
+    entry: &RegistryEntry,
+) -> Result<Skill, Box<dyn std::error::Error + Send + Sync>> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()?;
+
+    let base_url = format!(
+        "https://raw.githubusercontent.com/{}/{}",
+        entry.repo, entry.git_ref
+    );
+
+    // Try to fetch instructions.md
+    let instructions_url = format!("{}/instructions.md", base_url);
+    let instructions = match client.get(&instructions_url).send().await {
+        Ok(resp) if resp.status().is_success() => resp.text().await.unwrap_or_default(),
+        _ => String::new(),
+    };
+
+    let skill = Skill {
+        id: entry.id.clone(),
+        name: entry.name.clone(),
+        description: entry.description.clone(),
+        icon: entry.icon.clone(),
+        builtin: false,
+        enabled: true,
+        instructions,
+        source: Some(SkillSource {
+            repo: entry.repo.clone(),
+            version: entry.git_ref.clone(),
+        }),
+    };
+
+    create_skill(workspace_dir, &skill)?;
+    Ok(skill)
 }

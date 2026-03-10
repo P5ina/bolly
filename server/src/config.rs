@@ -19,6 +19,8 @@ pub struct Config {
     pub llm: LlmConfig,
     #[serde(default)]
     pub email: EmailConfig,
+    #[serde(default = "default_registry_url")]
+    pub registry_url: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -96,6 +98,10 @@ fn default_imap_port() -> u16 {
     993
 }
 
+fn default_registry_url() -> String {
+    "https://raw.githubusercontent.com/p5ina/personality-skills/main/registry.json".into()
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -105,6 +111,7 @@ impl Default for Config {
             static_dir: String::new(),
             llm: LlmConfig::default(),
             email: EmailConfig::default(),
+            registry_url: default_registry_url(),
         }
     }
 }

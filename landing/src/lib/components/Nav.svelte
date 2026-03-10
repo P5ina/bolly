@@ -29,6 +29,7 @@
 			<li><a href="#features" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Features</a></li>
 			<li><a href="#how" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">How it works</a></li>
 			<li><a href="#pricing" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Pricing</a></li>
+			<li><a href="/skills" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Skills</a></li>
 			<li><a href="https://github.com/P5ina/bolly" target="_blank" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">GitHub</a></li>
 			<li><a href="/login" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Log in</a></li>
 			<li>

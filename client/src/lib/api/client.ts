@@ -4,6 +4,7 @@ import type {
 	ChatSummary,
 	Drop,
 	InstanceSummary,
+	RegistryEntry,
 	ServerMeta,
 	Skill,
 	Soul,
@@ -264,6 +265,18 @@ export function createSkill(skill: Skill): Promise<Skill> {
 export async function deleteSkill(skillId: string): Promise<void> {
 	await authedFetch(`/api/skills/${encodeURIComponent(skillId)}`, {
 		method: "DELETE",
+	});
+}
+
+export function fetchRegistry(): Promise<RegistryEntry[]> {
+	return json("/api/skills/registry");
+}
+
+export function installRegistrySkill(id: string): Promise<Skill> {
+	return json("/api/skills/registry/install", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ id }),
 	});
 }
 

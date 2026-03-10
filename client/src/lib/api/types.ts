@@ -101,6 +101,11 @@ export interface Thought {
 	created_at: string;
 }
 
+export interface SkillSource {
+	repo: string;
+	version: string;
+}
+
 export interface Skill {
 	id: string;
 	name: string;
@@ -109,6 +114,18 @@ export interface Skill {
 	builtin: boolean;
 	enabled: boolean;
 	instructions: string;
+	source?: SkillSource;
+}
+
+export interface RegistryEntry {
+	id: string;
+	name: string;
+	description: string;
+	icon: string;
+	repo: string;
+	git_ref: string;
+	author: string;
+	installed: boolean;
 }
 
 export interface UploadMeta {
