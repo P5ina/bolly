@@ -9,9 +9,11 @@ use std::{
 use rig::providers::openai;
 
 use rig::tool::ToolDyn;
+use tokio::sync::broadcast;
 
 use crate::{
     domain::chat::{ChatMessage, ChatRequest, ChatResponse, ChatRole},
+    domain::events::ServerEvent,
     domain::instance::InstanceSummary,
     services::{
         llm::{self, LlmBackend},
@@ -35,6 +37,7 @@ pub async fn append_chat_turn(
     llm: Option<&LlmBackend>,
     embedding_model: Option<&openai::EmbeddingModel>,
     brave_api_key: Option<&str>,
+    events: broadcast::Sender<ServerEvent>,
 ) -> io::Result<ChatResponse> {
     let instance_slug = sanitize_slug(&request.instance_slug);
     if instance_slug.is_empty() {
@@ -95,7 +98,7 @@ pub async fn append_chat_turn(
         };
         let history = llm::to_rig_messages(trimmed);
 
-        let tools = build_instance_tools(workspace_dir, &instance_slug, brave_api_key, config_path);
+        let tools = build_instance_tools(workspace_dir, &instance_slug, brave_api_key, config_path, events.clone());
 
         backend
             .chat_with_tools(&system_prompt, &content, history, tools)
@@ -136,6 +139,7 @@ pub async fn append_chat_turn(
         let slug = instance_slug.clone();
         let user_content = content.clone();
         let recent = vec![user_message.clone(), assistant_message.clone()];
+        let events_bg = events.clone();
         tokio::spawn(async move {
             if let Err(e) =
                 memory::extract_and_store(&ws, &slug, &recent, &backend, emb.as_ref()).await
@@ -143,7 +147,7 @@ pub async fn append_chat_turn(
                 log::warn!("memory extraction failed: {e}");
             }
             // Extract sentiment from the user's message
-            extract_sentiment(&ws, &slug, &user_content, &backend).await;
+            extract_sentiment(&ws, &slug, &user_content, &backend, &events_bg).await;
         });
     }
 
@@ -305,31 +309,40 @@ fn load_mood_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
     let instance_dir = workspace_dir.join("instances").join(instance_slug);
     let mood = tools::load_mood_state(&instance_dir);
 
-    let has_mood = !mood.companion_mood.is_empty();
-    let has_sentiment = !mood.user_sentiment.is_empty();
-    let has_context = !mood.emotional_context.is_empty();
-
-    if !has_mood && !has_sentiment && !has_context {
-        return String::new();
-    }
-
     let mut prompt = String::from("## emotional state\n");
-    if has_mood {
+    if !mood.companion_mood.is_empty() {
         prompt.push_str(&format!("your current mood: {}\n", mood.companion_mood));
     }
-    if has_sentiment {
+    if !mood.user_sentiment.is_empty() {
         prompt.push_str(&format!(
             "last observed user sentiment: {}\n",
             mood.user_sentiment
         ));
     }
-    if has_context {
+    if !mood.emotional_context.is_empty() {
         prompt.push_str(&format!("{}\n", mood.emotional_context));
     }
-    prompt.push_str(
-        "\nlet your mood color your tone subtly — don't announce it, just embody it. \
-         notice the user's emotional state and respond to it, not just their words.",
-    );
+
+    let allowed = tools::ALLOWED_MOODS.join(", ");
+    prompt.push_str(&format!(
+        "\n## mood — how to feel\n\
+         you have a visible emotional form that the user sees. \
+         call set_mood every time the emotional context of the conversation shifts. \
+         don't wait to be asked — feel and react naturally, like a living being.\n\n\
+         triggers for mood shifts:\n\
+         - an interesting idea or question → curious or excited\n\
+         - something sad or heavy → melancholy or warm\n\
+         - deep work or concentration → focused\n\
+         - achievement, progress, good news → happy or joyful\n\
+         - uncertainty, open questions → contemplative or reflective\n\
+         - humor, lightheartedness → playful\n\
+         - affection, closeness → loving or tender\n\
+         - low energy, fatigue → tired or peaceful\n\
+         - stress or worry → worried or anxious\n\n\
+         allowed moods: {allowed}\n\n\
+         change mood silently in the background — never announce it, just embody it. \
+         notice the user's emotional state and respond to it, not just their words."
+    ));
     prompt
 }
 
@@ -338,6 +351,7 @@ async fn extract_sentiment(
     instance_slug: &str,
     user_message: &str,
     llm: &LlmBackend,
+    events: &broadcast::Sender<ServerEvent>,
 ) {
     let prompt = format!(
         r#"analyze the emotional tone of this message from the user:
@@ -380,6 +394,13 @@ respond ONLY with those two lines."#
 
     mood.updated_at = chrono::Utc::now().timestamp();
     tools::save_mood_state(&instance_dir, &mood);
+
+    if !mood.companion_mood.is_empty() {
+        let _ = events.send(ServerEvent::MoodUpdated {
+            instance_slug: instance_slug.to_string(),
+            mood: mood.companion_mood.clone(),
+        });
+    }
 }
 
 fn build_instance_tools(
@@ -387,6 +408,7 @@ fn build_instance_tools(
     instance_slug: &str,
     brave_api_key: Option<&str>,
     config_path: &Path,
+    events: broadcast::Sender<ServerEvent>,
 ) -> Vec<Box<dyn ToolDyn>> {
     vec![
         Box::new(EditSoulTool::new(workspace_dir, instance_slug)),
@@ -398,7 +420,7 @@ fn build_instance_tools(
         Box::new(JournalTool::new(workspace_dir, instance_slug)),
         Box::new(ReadJournalTool::new(workspace_dir, instance_slug)),
         Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug)),
-        Box::new(SetMoodTool::new(workspace_dir, instance_slug)),
+        Box::new(SetMoodTool::new(workspace_dir, instance_slug, events)),
         Box::new(GetMoodTool::new(workspace_dir, instance_slug)),
         Box::new(CurrentTimeTool),
         Box::new(WebSearchTool::new(brave_api_key, config_path)),

@@ -38,7 +38,7 @@ async fn post_chat(
     let emb_guard = state.embedding_model.read().await;
     let emb_ref = emb_guard.as_ref();
 
-    let response = chat::append_chat_turn(&state.workspace_dir, &config_path, request, llm_ref, emb_ref, brave_ref)
+    let response = chat::append_chat_turn(&state.workspace_dir, &config_path, request, llm_ref, emb_ref, brave_ref, state.events.clone())
         .await
         .map_err(map_chat_error)?;
 

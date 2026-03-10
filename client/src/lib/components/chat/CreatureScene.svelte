@@ -14,13 +14,63 @@
 		curious: "#a8d8ea",
 		excited: "#f8c471",
 		warm: "#f0b27a",
+		happy: "#f7dc6f",
+		joyful: "#f9e154",
 		reflective: "#bb8fce",
 		contemplative: "#a993c7",
+		melancholy: "#7f8c9a",
+		sad: "#6b7b8d",
 		worried: "#85929e",
+		anxious: "#95a0ab",
 		playful: "#82e0aa",
+		mischievous: "#58d68d",
+		focused: "#76d7c4",
+		tired: "#a0937d",
+		peaceful: "#aed6f1",
+		loving: "#f1948a",
+		tender: "#f5b7b1",
+		creative: "#d2b4de",
+		energetic: "#fad7a0",
 	};
 
-	const baseColor = $derived(moodColors[mood] ?? moodColors.calm);
+	// Fuzzy mood matcher — handles "a bit sad", "excited and curious", etc.
+	function matchMood(raw: string): string {
+		const m = raw.toLowerCase();
+		// Exact match first
+		if (moodColors[m]) return m;
+		// Check if any known mood is contained in the string (longest match wins)
+		const keys = Object.keys(moodColors).sort((a, b) => b.length - a.length);
+		for (const key of keys) {
+			if (m.includes(key)) return key;
+		}
+		return "calm";
+	}
+
+	const resolvedMood = $derived(matchMood(mood));
+	const baseColor = $derived(moodColors[resolvedMood]);
+
+	// Mood-based animation energy
+	type MoodEnergy = { speed: number; intensity: number; breatheRate: number; breatheDepth: number; rotSpeed: number };
+	const moodEnergies: Record<string, MoodEnergy> = {
+		calm:          { speed: 0.8,  intensity: 0.12, breatheRate: 1.2, breatheDepth: 0.04, rotSpeed: 0.15 },
+		excited:       { speed: 2.0,  intensity: 0.20, breatheRate: 2.0, breatheDepth: 0.06, rotSpeed: 0.35 },
+		energetic:     { speed: 2.2,  intensity: 0.22, breatheRate: 2.2, breatheDepth: 0.07, rotSpeed: 0.40 },
+		playful:       { speed: 1.8,  intensity: 0.18, breatheRate: 1.8, breatheDepth: 0.05, rotSpeed: 0.30 },
+		mischievous:   { speed: 1.9,  intensity: 0.19, breatheRate: 1.9, breatheDepth: 0.05, rotSpeed: 0.32 },
+		curious:       { speed: 1.2,  intensity: 0.15, breatheRate: 1.5, breatheDepth: 0.05, rotSpeed: 0.22 },
+		reflective:    { speed: 0.5,  intensity: 0.08, breatheRate: 0.8, breatheDepth: 0.03, rotSpeed: 0.08 },
+		contemplative: { speed: 0.5,  intensity: 0.08, breatheRate: 0.8, breatheDepth: 0.03, rotSpeed: 0.08 },
+		melancholy:    { speed: 0.4,  intensity: 0.06, breatheRate: 0.6, breatheDepth: 0.02, rotSpeed: 0.05 },
+		sad:           { speed: 0.3,  intensity: 0.05, breatheRate: 0.5, breatheDepth: 0.02, rotSpeed: 0.04 },
+		tired:         { speed: 0.3,  intensity: 0.05, breatheRate: 0.5, breatheDepth: 0.02, rotSpeed: 0.04 },
+		worried:       { speed: 1.3,  intensity: 0.16, breatheRate: 1.6, breatheDepth: 0.03, rotSpeed: 0.20 },
+		anxious:       { speed: 1.5,  intensity: 0.18, breatheRate: 1.8, breatheDepth: 0.03, rotSpeed: 0.25 },
+		peaceful:      { speed: 0.6,  intensity: 0.10, breatheRate: 1.0, breatheDepth: 0.04, rotSpeed: 0.10 },
+		loving:        { speed: 0.9,  intensity: 0.13, breatheRate: 1.3, breatheDepth: 0.05, rotSpeed: 0.18 },
+		warm:          { speed: 0.9,  intensity: 0.13, breatheRate: 1.3, breatheDepth: 0.05, rotSpeed: 0.18 },
+	};
+	const defaultEnergy: MoodEnergy = { speed: 0.8, intensity: 0.12, breatheRate: 1.2, breatheDepth: 0.04, rotSpeed: 0.15 };
+	const energy = $derived(moodEnergies[resolvedMood] ?? defaultEnergy);
 
 	// Cache base geometry positions
 	const baseGeo = new IcosahedronGeometry(1, 4);
@@ -36,9 +86,9 @@
 		const geo = meshRef.geometry;
 		const pos = geo.getAttribute("position");
 
-		const speed = thinking ? 3.0 : 0.8;
-		const intensity = thinking ? 0.25 : 0.12;
-		const breathe = 1.0 + Math.sin(time * (thinking ? 2.5 : 1.2)) * 0.04;
+		const speed = thinking ? 3.0 : energy.speed;
+		const intensity = thinking ? 0.25 : energy.intensity;
+		const breathe = 1.0 + Math.sin(time * (thinking ? 2.5 : energy.breatheRate)) * (thinking ? 0.06 : energy.breatheDepth);
 
 		for (let i = 0; i < pos.count; i++) {
 			const bx = basePositions[i * 3];
@@ -60,7 +110,7 @@
 		geo.computeVertexNormals();
 
 		// Gentle rotation
-		meshRef.rotation.y += delta * (thinking ? 0.4 : 0.15);
+		meshRef.rotation.y += delta * (thinking ? 0.4 : energy.rotSpeed);
 		meshRef.rotation.x = Math.sin(time * 0.3) * 0.1;
 	});
 </script>
@@ -68,16 +118,16 @@
 <!-- Camera -->
 <T.PerspectiveCamera makeDefault position={[0, 0, 3.2]} fov={45} />
 
-<!-- Lighting -->
-<T.AmbientLight intensity={0.3} color="#b8c9e8" />
+<!-- Lighting — neutral base so mood color dominates -->
+<T.AmbientLight intensity={0.15} color="#e0e0e0" />
 <T.PointLight
 	position={[2, 2, 3]}
-	intensity={thinking ? 2.5 : 1.5}
+	intensity={thinking ? 2.5 : 1.8}
 	color={baseColor}
 	castShadow={false}
 />
-<T.PointLight position={[-2, -1, 2]} intensity={0.6} color="#4a6fa5" />
-<T.PointLight position={[0, 3, 0]} intensity={thinking ? 1.2 : 0.4} color="#e8d5b7" />
+<T.PointLight position={[-2, -1, 2]} intensity={0.3} color={baseColor} />
+<T.PointLight position={[0, 3, 0]} intensity={thinking ? 0.8 : 0.3} color="#e0e0e0" />
 
 <!-- The creature -->
 <T.Mesh bind:ref={meshRef}>

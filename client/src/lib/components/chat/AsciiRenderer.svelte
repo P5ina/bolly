@@ -4,6 +4,42 @@
 
 	let { thinking = false, mood = "calm" }: { thinking?: boolean; mood?: string } = $props();
 
+	const moodColors: Record<string, string> = {
+		calm: "#8ab4f8",
+		curious: "#a8d8ea",
+		excited: "#f8c471",
+		warm: "#f0b27a",
+		happy: "#f7dc6f",
+		joyful: "#f9e154",
+		reflective: "#bb8fce",
+		contemplative: "#a993c7",
+		melancholy: "#7f8c9a",
+		sad: "#6b7b8d",
+		worried: "#85929e",
+		anxious: "#95a0ab",
+		playful: "#82e0aa",
+		mischievous: "#58d68d",
+		focused: "#76d7c4",
+		tired: "#a0937d",
+		peaceful: "#aed6f1",
+		loving: "#f1948a",
+		tender: "#f5b7b1",
+		creative: "#d2b4de",
+		energetic: "#fad7a0",
+	};
+
+	function matchMood(raw: string): string {
+		const m = raw.toLowerCase();
+		if (moodColors[m]) return m;
+		const keys = Object.keys(moodColors).sort((a, b) => b.length - a.length);
+		for (const key of keys) {
+			if (m.includes(key)) return key;
+		}
+		return "calm";
+	}
+
+	const moodColor = $derived(moodColors[matchMood(mood)]);
+
 	let containerRef = $state<HTMLDivElement | undefined>();
 	let canvasRef = $state<HTMLCanvasElement | undefined>();
 	let asciiOutput = $state("");
@@ -83,7 +119,11 @@
 	<canvas bind:this={canvasRef} class="sample-canvas"></canvas>
 
 	<!-- ASCII output -->
-	<pre class="ascii-display" class:ascii-thinking={thinking}>{asciiOutput}</pre>
+	<pre
+		class="ascii-display"
+		class:ascii-thinking={thinking}
+		style="color: {moodColor}; {thinking ? `text-shadow: 0 0 8px ${moodColor}40, 0 0 20px ${moodColor}20;` : ''}"
+	>{asciiOutput}</pre>
 </div>
 
 <style>
@@ -112,18 +152,15 @@
 		font-size: 5.5px;
 		line-height: 7px;
 		letter-spacing: 1.5px;
-		color: oklch(0.78 0.12 75 / 55%);
 		text-align: center;
 		margin: 0;
 		user-select: none;
-		transition: color 0.6s ease, text-shadow 0.6s ease;
+		opacity: 0.6;
+		transition: color 0.8s ease, text-shadow 0.8s ease, opacity 0.8s ease;
 		white-space: pre;
 	}
 
 	.ascii-thinking {
-		color: oklch(0.82 0.14 75 / 75%);
-		text-shadow:
-			0 0 8px oklch(0.78 0.12 75 / 20%),
-			0 0 20px oklch(0.78 0.12 75 / 8%);
+		opacity: 0.85;
 	}
 </style>

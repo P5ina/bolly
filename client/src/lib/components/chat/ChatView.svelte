@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from "svelte";
-	import { fetchMessages, sendMessage } from "$lib/api/client.js";
+	import { fetchMessages, fetchMood, sendMessage } from "$lib/api/client.js";
 	import type { ChatMessage, ServerEvent } from "$lib/api/types.js";
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
 	import MessageBubble from "./MessageBubble.svelte";
@@ -12,6 +12,7 @@
 	let messages = $state<ChatMessage[]>([]);
 	let loading = $state(true);
 	let sending = $state(false);
+	let mood = $state("calm");
 	let scrollContainer: HTMLDivElement | undefined = $state();
 
 	const ws = getWebSocket();
@@ -52,14 +53,19 @@
 				.finally(() => {
 					loading = false;
 				});
+
+			fetchMood(currentSlug)
+				.then((res) => {
+					if (res.mood) mood = res.mood;
+				})
+				.catch(() => {});
 		});
 
 		const unsub = ws.subscribe((event: ServerEvent) => {
-			if (
-				event.type === "chat_message_created" &&
-				event.instance_slug === currentSlug
-			) {
+			if (event.type === "chat_message_created" && event.instance_slug === currentSlug) {
 				addMessage(event.message);
+			} else if (event.type === "mood_updated" && event.instance_slug === currentSlug) {
+				mood = event.mood;
 			}
 		});
 
@@ -97,7 +103,7 @@
 
 	<!-- companion presence — ASCII creature -->
 	<div class="companion-presence">
-		<AsciiRenderer thinking={sending} />
+		<AsciiRenderer thinking={sending} {mood} />
 	</div>
 
 	<!-- messages — flowing from the companion -->

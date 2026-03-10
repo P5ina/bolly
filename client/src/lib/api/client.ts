@@ -77,6 +77,10 @@ export function fetchSoulTemplates(): Promise<SoulTemplate[]> {
 	return json("/api/soul/templates");
 }
 
+export function fetchMood(slug: string): Promise<{ mood: string }> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/mood`);
+}
+
 export function createWebSocket(): WebSocket {
 	const proto = location.protocol === "https:" ? "wss:" : "ws:";
 	return new WebSocket(`${proto}//${location.host}/api/ws`);

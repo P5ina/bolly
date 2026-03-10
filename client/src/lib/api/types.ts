@@ -68,4 +68,9 @@ export type ServerEvent =
 	| {
 			type: "instance_discovered";
 			instance: InstanceSummary;
+	  }
+	| {
+			type: "mood_updated";
+			instance_slug: string;
+			mood: string;
 	  };

@@ -16,7 +16,7 @@ use crate::domain::chat::{ChatMessage, ChatRole};
 use crate::domain::events::ServerEvent;
 use crate::domain::mood::MoodState;
 use crate::services::llm::LlmBackend;
-use crate::services::tools::{load_mood_state, save_mood_state};
+use crate::services::tools::{load_mood_state, save_mood_state, ALLOWED_MOODS};
 
 static HEARTBEAT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -130,7 +130,7 @@ async fn heartbeat_instance(
          you can:\n\
          - write in your journal (respond with JOURNAL: followed by your thought)\n\
          - reach out to the user (respond with REACH_OUT: followed by your message)\n\
-         - update your mood (respond with MOOD: followed by your mood)\n\
+         - update your mood (respond with MOOD: followed by exactly one of: calm, curious, excited, warm, happy, joyful, reflective, contemplative, melancholy, sad, worried, anxious, playful, mischievous, focused, tired, peaceful, loving, tender, creative, energetic)\n\
          - do nothing (respond with QUIET)\n\n\
          you can do multiple things — one per line. be genuine. don't force it.\n\
          if you have nothing to say, say nothing. but if something genuinely comes to mind — share it.\n\
@@ -257,16 +257,25 @@ fn process_heartbeat_response(
             }
         } else if let Some(new_mood) = line.strip_prefix("MOOD:") {
             let new_mood = new_mood.trim().to_lowercase();
-            if !new_mood.is_empty() {
+            if ALLOWED_MOODS.contains(&new_mood.as_str()) {
                 mood.companion_mood = new_mood.clone();
                 mood.updated_at = now.timestamp();
                 log::info!("[heartbeat] {slug} mood → {new_mood}");
+            } else {
+                log::info!("[heartbeat] {slug} ignored invalid mood: {new_mood}");
             }
         }
         // QUIET or anything else = do nothing
     }
 
     save_mood_state(instance_dir, &mood);
+
+    if !mood.companion_mood.is_empty() {
+        let _ = events.send(ServerEvent::MoodUpdated {
+            instance_slug: slug.to_string(),
+            mood: mood.companion_mood,
+        });
+    }
 }
 
 fn write_journal_entry(instance_dir: &Path, thought: &str) {

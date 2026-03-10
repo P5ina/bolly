@@ -12,4 +12,8 @@ pub enum ServerEvent {
     InstanceDiscovered {
         instance: InstanceSummary,
     },
+    MoodUpdated {
+        instance_slug: String,
+        mood: String,
+    },
 }
