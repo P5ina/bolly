@@ -92,13 +92,22 @@ pub async fn run_single_turn(
         .map(|m| m.content.as_str())
         .unwrap_or("");
 
-    let memory_prompt = memory::retrieve_and_format(
-        workspace_dir,
-        &instance_slug,
-        last_user_content,
-        embedding_model,
-    )
-    .await;
+    // Build RAG memory index if embedding model is available,
+    // otherwise fall back to injecting facts.md into system prompt
+    let memory_index = if let Some(model) = embedding_model {
+        memory::build_memory_index(workspace_dir, &instance_slug, model).await
+    } else {
+        None
+    };
+
+    let memory_prompt = if memory_index.is_none() {
+        // No RAG — inject all facts into system prompt as fallback
+        memory::build_facts_md_prompt(workspace_dir, &instance_slug)
+    } else {
+        // RAG will handle memory retrieval via dynamic_context
+        String::from("## memory\nyou have persistent memory. relevant memories are loaded automatically based on the conversation.")
+    };
+
     let journal_prompt = load_recent_journal(workspace_dir, &instance_slug);
     let mood_prompt = load_mood_prompt(workspace_dir, &instance_slug);
 
@@ -205,7 +214,7 @@ pub async fn run_single_turn(
     let tools = build_instance_tools(workspace_dir, &instance_slug, brave_api_key, config_path, events.clone());
 
     let reply = llm
-        .chat_with_tools(&system_prompt, prompt_msg, history_msgs, tools)
+        .chat_with_tools(&system_prompt, prompt_msg, history_msgs, tools, memory_index)
         .await
         .unwrap_or_else(|e| {
             log::warn!("LLM call failed, using stub: {e}");

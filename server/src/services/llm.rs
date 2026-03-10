@@ -8,6 +8,7 @@ use rig::completion::message::{UserContent, ImageMediaType, DocumentMediaType, M
 use rig::one_or_many::OneOrMany;
 use rig::providers::{anthropic, openai};
 use rig::tool::ToolDyn;
+use rig::vector_store::VectorStoreIndexDyn;
 
 use crate::config::{Config, LlmProvider};
 use crate::domain::chat::{ChatMessage, ChatRole};
@@ -126,14 +127,18 @@ impl LlmBackend {
         .await
     }
 
-    pub async fn chat_with_tools(
+    pub async fn chat_with_tools<I>(
         &self,
         system_prompt: &str,
         prompt: Message,
         history: Vec<Message>,
         tools: Vec<Box<dyn ToolDyn>>,
-    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        log::info!("chat_with_tools: {} tools registered", tools.len());
+        memory_index: Option<I>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>>
+    where
+        I: VectorStoreIndexDyn + Send + Sync + 'static,
+    {
+        log::info!("chat_with_tools: {} tools registered, memory_rag={}", tools.len(), memory_index.is_some());
         for t in &tools {
             log::debug!("  tool: {}", t.name());
         }
@@ -153,21 +158,27 @@ impl LlmBackend {
 
         let result = match self {
             LlmBackend::Anthropic { client, model } => {
-                let agent = client
+                let mut builder = client
                     .agent(model)
                     .preamble(system_prompt)
                     .default_max_turns(8)
-                    .tools(tools)
-                    .build();
+                    .tools(tools);
+                if let Some(index) = memory_index {
+                    builder = builder.dynamic_context(8, index);
+                }
+                let agent = builder.build();
                 agent.chat(prompt, history.clone()).await
             }
             LlmBackend::OpenAI { client, model } => {
-                let agent = client
+                let mut builder = client
                     .agent(model)
                     .preamble(system_prompt)
                     .default_max_turns(8)
-                    .tools(tools)
-                    .build();
+                    .tools(tools);
+                if let Some(index) = memory_index {
+                    builder = builder.dynamic_context(8, index);
+                }
+                let agent = builder.build();
                 agent.chat(prompt, history.clone()).await
             }
         };

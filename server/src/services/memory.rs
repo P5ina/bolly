@@ -2,9 +2,7 @@ use std::path::Path;
 
 use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::openai;
-use rig::vector_store::request::VectorSearchRequest;
-use rig::vector_store::VectorStoreIndex;
-use rig_sqlite::SqliteVectorStore;
+use rig_sqlite::{SqliteVectorIndex, SqliteVectorStore};
 use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use sqlite_vec::sqlite3_vec_init;
 use std::sync::Once;
@@ -43,48 +41,30 @@ async fn open_db(workspace_dir: &Path, instance_slug: &str) -> Result<Connection
     Ok(conn)
 }
 
-/// Retrieve relevant memories and format them as a prompt section.
-/// If an embedding model is available, uses semantic search.
-/// Otherwise falls back to reading all facts from facts.md.
-pub async fn retrieve_and_format(
+/// Create a vector store index for dynamic_context RAG.
+/// Returns None if no embedding model is available or DB doesn't exist.
+pub async fn build_memory_index(
     workspace_dir: &Path,
     instance_slug: &str,
-    query: &str,
-    embedding_model: Option<&openai::EmbeddingModel>,
-) -> String {
-    let facts = if let Some(model) = embedding_model {
-        match retrieve_semantic(workspace_dir, instance_slug, query, model).await {
-            Ok(facts) if !facts.is_empty() => facts,
-            Ok(_) => retrieve_from_facts_md(workspace_dir, instance_slug),
-            Err(e) => {
-                log::warn!("semantic retrieval failed, falling back to facts.md: {e}");
-                retrieve_from_facts_md(workspace_dir, instance_slug)
-            }
-        }
-    } else {
-        retrieve_from_facts_md(workspace_dir, instance_slug)
-    };
+    embedding_model: &openai::EmbeddingModel,
+) -> Option<SqliteVectorIndex<openai::EmbeddingModel, MemoryFact>> {
+    let db_path = memory_dir(workspace_dir, instance_slug).join("memory.db");
+    if !db_path.exists() {
+        return None;
+    }
 
-    build_memory_prompt(&facts)
+    let conn = open_db(workspace_dir, instance_slug).await.ok()?;
+    let store = SqliteVectorStore::<openai::EmbeddingModel, MemoryFact>::new(conn, embedding_model)
+        .await
+        .ok()?;
+    Some(store.index(embedding_model.clone()))
 }
 
-async fn retrieve_semantic(
-    workspace_dir: &Path,
-    instance_slug: &str,
-    query: &str,
-    model: &openai::EmbeddingModel,
-) -> Result<Vec<MemoryFact>, Box<dyn std::error::Error + Send + Sync>> {
-    let conn = open_db(workspace_dir, instance_slug).await?;
-    let store = SqliteVectorStore::<openai::EmbeddingModel, MemoryFact>::new(conn, model).await?;
-    let index = store.index(model.clone());
-
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(8)
-        .build()?;
-
-    let results: Vec<(f64, String, MemoryFact)> = index.top_n(req).await?;
-    Ok(results.into_iter().map(|(_, _, fact)| fact).collect())
+/// Build a memory prompt from facts.md for when no embedding model is available.
+/// This is the fallback — dumps all facts into the system prompt.
+pub fn build_facts_md_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
+    let facts = retrieve_from_facts_md(workspace_dir, instance_slug);
+    build_memory_prompt(&facts)
 }
 
 fn retrieve_from_facts_md(workspace_dir: &Path, instance_slug: &str) -> Vec<MemoryFact> {
@@ -94,7 +74,6 @@ fn retrieve_from_facts_md(workspace_dir: &Path, instance_slug: &str) -> Vec<Memo
         Err(_) => return Vec::new(),
     };
 
-    // Parse bullet points from facts.md as simple MemoryFact entries
     content
         .lines()
         .filter(|line| line.starts_with("- "))
@@ -108,12 +87,14 @@ fn retrieve_from_facts_md(workspace_dir: &Path, instance_slug: &str) -> Vec<Memo
 }
 
 fn build_memory_prompt(facts: &[MemoryFact]) -> String {
+    if facts.is_empty() {
+        return String::new();
+    }
+
     let mut prompt = String::from("## memory\nyou have persistent memory across conversations. you quietly remember things the user tells you.\n");
-    if !facts.is_empty() {
-        prompt.push_str("\nwhat you know about me:\n");
-        for fact in facts {
-            prompt.push_str(&format!("- {}\n", fact.content));
-        }
+    prompt.push_str("\nwhat you know about me:\n");
+    for fact in facts {
+        prompt.push_str(&format!("- {}\n", fact.content));
     }
     prompt.push_str("\nuse these memories naturally. don't announce that you remember — just know.");
     prompt
@@ -199,7 +180,6 @@ respond ONLY with the JSON array, no other text."#
     let all_facts = if embedding_model.is_some() {
         load_all_facts_from_db(workspace_dir, instance_slug).await.unwrap_or_default()
     } else {
-        // Without embeddings, append to existing parsed facts
         let mut all = load_all_facts_from_db_or_md(workspace_dir, instance_slug).await;
         all.extend(new_facts);
         all
@@ -301,7 +281,6 @@ fn regenerate_facts_md(workspace_dir: &Path, instance_slug: &str, facts: &[Memor
         content.push('\n');
     }
 
-    // Any facts with unrecognized categories
     let other_facts: Vec<_> = facts
         .iter()
         .filter(|f| !categories.contains(&f.category.as_str()))
@@ -326,12 +305,10 @@ struct ExtractedFact {
 }
 
 fn parse_extracted_facts(response: &str) -> Vec<ExtractedFact> {
-    // Try parsing the response as JSON directly
     if let Ok(facts) = serde_json::from_str::<Vec<ExtractedFact>>(response) {
         return facts;
     }
 
-    // Try extracting JSON array from markdown code block
     let trimmed = response.trim();
     let json_str = if trimmed.starts_with("```") {
         trimmed
