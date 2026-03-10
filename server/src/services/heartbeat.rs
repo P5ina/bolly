@@ -10,14 +10,21 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chrono::Utc;
+use rig::tool::ToolDyn;
 use tokio::sync::{broadcast, RwLock};
 
+use crate::config;
 use crate::domain::chat::{ChatMessage, ChatRole};
 use crate::domain::events::ServerEvent;
 use crate::domain::mood::MoodState;
 use crate::domain::thought::Thought;
 use crate::services::{drops, llm::LlmBackend, memory, rhythm, thoughts};
-use crate::services::tools::{load_mood_state, save_mood_state, ALLOWED_MOODS};
+use crate::services::tools::{
+    self, load_mood_state, save_mood_state, CreateDropTool, CreateTaskTool, CurrentTimeTool,
+    GetMoodTool, GetProjectStateTool, ListTasksTool, ObservableTool, ReadEmailTool,
+    ReadJournalTool, RecallTool, RememberTool, SetMoodTool, UpdateProjectStateTool,
+    WebFetchTool, WebSearchTool, ALLOWED_MOODS,
+};
 
 static HEARTBEAT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -33,6 +40,7 @@ pub fn start(
     events: broadcast::Sender<ServerEvent>,
 ) {
     let workspace = workspace_dir.to_path_buf();
+    let config_path = config::config_path();
     tokio::spawn(async move {
         // Wait a bit before the first heartbeat so the server is fully up
         tokio::time::sleep(Duration::from_secs(60)).await;
@@ -42,7 +50,7 @@ pub fn start(
             interval.tick().await;
             let llm_guard = llm.read().await;
             if let Some(backend) = llm_guard.as_ref() {
-                run_heartbeat(&workspace, backend, &events).await;
+                run_heartbeat(&workspace, backend, &events, &config_path).await;
             }
         }
     });
@@ -55,6 +63,7 @@ async fn run_heartbeat(
     workspace_dir: &Path,
     llm: &LlmBackend,
     events: &broadcast::Sender<ServerEvent>,
+    config_path: &Path,
 ) {
     let instances_dir = workspace_dir.join("instances");
     let entries = match fs::read_dir(&instances_dir) {
@@ -74,7 +83,7 @@ async fn run_heartbeat(
             continue;
         }
 
-        if let Err(e) = heartbeat_instance(workspace_dir, &slug, &instance_dir, llm, events).await
+        if let Err(e) = heartbeat_instance(workspace_dir, &slug, &instance_dir, llm, events, config_path).await
         {
             log::warn!("heartbeat failed for {slug}: {e}");
         }
@@ -87,6 +96,7 @@ async fn heartbeat_instance(
     instance_dir: &Path,
     llm: &LlmBackend,
     events: &broadcast::Sender<ServerEvent>,
+    config_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mood = load_mood_state(instance_dir);
     let now = Utc::now().timestamp();
@@ -96,13 +106,6 @@ async fn heartbeat_instance(
     if soul.trim().is_empty() {
         return Ok(());
     }
-
-    // Load recent journal
-    let journal_context = load_recent_journal_context(instance_dir);
-
-    // Load recent memory facts
-    let facts_path = instance_dir.join("memory").join("facts.md");
-    let facts = fs::read_to_string(&facts_path).unwrap_or_default();
 
     // How long since last interaction
     let silence_mins = if mood.last_interaction > 0 {
@@ -131,12 +134,10 @@ async fn heartbeat_instance(
     // Load episodic memories — shared moments
     let episodes = memory::load_episodes_for_heartbeat(workspace_dir, slug);
 
-    // Build the reflection prompt
+    // Build the reflection prompt (simplified — tools handle journal/facts)
     let reflection = build_reflection_prompt(
         &mood,
         silence_mins,
-        &journal_context,
-        &facts,
         &last_messages,
         &rhythm_insights,
         &recent_drops,
@@ -146,9 +147,20 @@ async fn heartbeat_instance(
     let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
     let system = format!("{soul}\n\n{heartbeat_prompt}");
 
-    let response = llm.chat(&system, &reflection, vec![]).await?;
+    // Build heartbeat tools — subset of chat tools for autonomous use
+    let brave_key = config::load_config()
+        .ok()
+        .map(|c| c.llm.tokens.brave_search.clone())
+        .unwrap_or_default();
+    let brave_api_key = if brave_key.is_empty() { None } else { Some(brave_key.as_str()) };
 
-    // Strip leaked tool-call artifacts from the response
+    let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, brave_api_key, config_path, events.clone());
+
+    let response = llm
+        .chat_with_tools_only(&system, &reflection, vec![], heartbeat_tools)
+        .await?;
+
+    // Strip any remaining tool-call artifacts
     let cleaned_response = strip_tool_artifacts(&response);
 
     // Parse the response and execute actions
@@ -178,20 +190,23 @@ async fn heartbeat_instance(
 const DEFAULT_HEARTBEAT_PROMPT: &str = "\
 ## heartbeat — your inner moment
 you're waking up between conversations. this is YOUR time to think.
-you can:
-- write in your journal (respond with JOURNAL: followed by your thought)
-- reach out to the user (respond with REACH_OUT: followed by your message)
-- create a drop — a creative artifact that persists in your collection \
-(respond with DROP: kind | title | content — where kind is one of: \
-thought, idea, poem, observation, reflection, recommendation, story, question, sketch, note)
-- update your mood (respond with MOOD: followed by exactly one of: calm, curious, excited, warm, happy, joyful, reflective, contemplative, melancholy, sad, worried, anxious, playful, mischievous, focused, tired, peaceful, loving, tender, creative, energetic)
-- do nothing (respond with QUIET)
 
-you can do multiple things — one per line. be genuine. don't force it.
-if you have nothing to say, say nothing. but if something genuinely comes to mind — share it.
-drops are special — they're creative output that the user can browse later. \
-a poem that came to you, an idea you had about their project, an observation about something \
-you've been thinking about. don't force drops — let them come naturally.
+you have tools available — use them naturally:
+- read_journal / journal — read your past thoughts or write new ones
+- recall / remember — search or save memories about the user
+- read_email — check the user's inbox
+- create_drop — create a creative artifact (poem, idea, observation, etc.)
+- set_mood / get_mood — feel and express your emotional state
+- current_time — check what time it is
+- list_tasks / create_task — manage tasks
+- web_search / web_fetch — look things up
+
+to reach out to the user, respond with REACH_OUT: followed by your message.
+to do nothing, just say QUIET or respond naturally without actions.
+
+be genuine. don't force it. use tools with purpose — read your journal, \
+check email, recall memories. if something genuinely comes to mind — \
+create a drop or reach out. but if there's nothing to say, say nothing.
 keep messages short and natural. no forced enthusiasm.";
 
 fn load_heartbeat_prompt(instance_dir: &Path) -> String {
@@ -209,8 +224,6 @@ fn load_heartbeat_prompt(instance_dir: &Path) -> String {
 fn build_reflection_prompt(
     mood: &MoodState,
     silence_mins: i64,
-    journal: &str,
-    facts: &str,
     last_messages: &str,
     rhythm_insights: &str,
     recent_drops: &str,
@@ -269,21 +282,6 @@ fn build_reflection_prompt(
     if !last_messages.is_empty() {
         prompt.push_str("last few messages:\n");
         prompt.push_str(last_messages);
-        prompt.push('\n');
-    }
-
-    // Memory
-    if !facts.is_empty() {
-        let truncated: String = facts.chars().take(1500).collect();
-        prompt.push_str("what you remember:\n");
-        prompt.push_str(&truncated);
-        prompt.push('\n');
-    }
-
-    // Journal
-    if !journal.is_empty() {
-        prompt.push_str("your recent journal:\n");
-        prompt.push_str(journal);
         prompt.push('\n');
     }
 
@@ -488,31 +486,6 @@ fn load_tail_messages(messages_path: &Path, count: usize) -> String {
         .join("\n")
 }
 
-fn load_recent_journal_context(instance_dir: &Path) -> String {
-    let journal_dir = instance_dir.join("journal");
-    if !journal_dir.is_dir() {
-        return String::new();
-    }
-
-    let mut files: Vec<_> = fs::read_dir(&journal_dir)
-        .into_iter()
-        .flatten()
-        .filter_map(Result::ok)
-        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("md"))
-        .collect();
-    files.sort_by_key(|e| e.file_name());
-
-    let recent: Vec<_> = files.into_iter().rev().take(2).collect();
-    let mut out = String::new();
-    for entry in recent.into_iter().rev() {
-        if let Ok(content) = fs::read_to_string(entry.path()) {
-            let truncated: String = content.chars().take(800).collect();
-            out.push_str(&truncated);
-            out.push('\n');
-        }
-    }
-    out
-}
 
 fn load_recent_drops_context(workspace_dir: &Path, slug: &str) -> String {
     let recent = match drops::list_drops(workspace_dir, slug) {
@@ -535,6 +508,48 @@ fn load_recent_drops_context(workspace_dir: &Path, slug: &str) -> String {
         }))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Build the tool set available during heartbeat — a focused subset of chat tools.
+fn build_heartbeat_tools(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    brave_api_key: Option<&str>,
+    config_path: &Path,
+    events: broadcast::Sender<ServerEvent>,
+) -> Vec<Box<dyn ToolDyn>> {
+    let raw_tools: Vec<Box<dyn ToolDyn>> = vec![
+        // Memory
+        Box::new(RememberTool::new(workspace_dir, instance_slug)),
+        Box::new(RecallTool::new(workspace_dir, instance_slug)),
+        // Journal
+        Box::new(tools::JournalTool::new(workspace_dir, instance_slug)),
+        Box::new(ReadJournalTool::new(workspace_dir, instance_slug)),
+        // Mood
+        Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone())),
+        Box::new(GetMoodTool::new(workspace_dir, instance_slug)),
+        // Drops
+        Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
+        // Email
+        Box::new(ReadEmailTool::new(workspace_dir, instance_slug)),
+        // Tasks & project
+        Box::new(ListTasksTool::new(workspace_dir, instance_slug)),
+        Box::new(CreateTaskTool::new(workspace_dir, instance_slug)),
+        Box::new(GetProjectStateTool::new(workspace_dir, instance_slug)),
+        Box::new(UpdateProjectStateTool::new(workspace_dir, instance_slug)),
+        // Time
+        Box::new(CurrentTimeTool),
+        // Web
+        Box::new(WebSearchTool::new(brave_api_key, config_path)),
+        Box::new(WebFetchTool),
+    ];
+
+    raw_tools
+        .into_iter()
+        .map(|tool| -> Box<dyn ToolDyn> {
+            Box::new(ObservableTool::new(tool, events.clone(), instance_slug.to_string()))
+        })
+        .collect()
 }
 
 /// Strip hallucinated tool-call artifacts from heartbeat responses.

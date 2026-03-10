@@ -237,6 +237,57 @@ impl LlmBackend {
             }
         }
     }
+
+    /// Simplified tool call without memory RAG index.
+    /// Used by heartbeat and other contexts that don't need vector search.
+    pub async fn chat_with_tools_only(
+        &self,
+        system_prompt: &str,
+        prompt: &str,
+        history: Vec<Message>,
+        tools: Vec<Box<dyn ToolDyn>>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        if tools.is_empty() {
+            return self.chat(system_prompt, prompt, history).await;
+        }
+
+        let result = match self {
+            LlmBackend::Anthropic { client, model } => {
+                let agent = client
+                    .agent(model)
+                    .preamble(system_prompt)
+                    .tools(tools)
+                    .build();
+                let mut chat_history = history.clone();
+                agent.prompt(prompt)
+                    .with_history(&mut chat_history)
+                    .max_turns(16)
+                    .await
+            }
+            LlmBackend::OpenAI { client, model } => {
+                let agent = client
+                    .agent(model)
+                    .preamble(system_prompt)
+                    .tools(tools)
+                    .build();
+                let mut chat_history = history.clone();
+                agent.prompt(prompt)
+                    .with_history(&mut chat_history)
+                    .max_turns(16)
+                    .await
+            }
+        };
+
+        match result {
+            Ok(response) => Ok(response),
+            Err(e) => {
+                if let Some(text) = extract_last_assistant_text_from_error(&e) {
+                    return Ok(text);
+                }
+                Err(e.into())
+            }
+        }
+    }
 }
 
 /// Try to extract the last assistant text from a MaxTurnsError's chat history.
