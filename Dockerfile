@@ -7,14 +7,28 @@ RUN pnpm install --frozen-lockfile
 COPY client/ .
 RUN pnpm build
 
-# Stage 2: Build server
-FROM rust:bookworm AS server-build
+# Stage 2: Prepare Rust dependency cache
+FROM rust:bookworm AS chef
+RUN cargo install cargo-chef
 WORKDIR /app
+
+FROM chef AS planner
+COPY Cargo.toml Cargo.lock ./
+COPY server/ server/
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Stage 3: Build dependencies (cached layer)
+FROM chef AS deps
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json -p server
+
+# Stage 4: Build server (only recompiles when src changes)
+FROM deps AS server-build
 COPY Cargo.toml Cargo.lock ./
 COPY server/ server/
 RUN cargo build --release -p server
 
-# Stage 3: Runtime
+# Stage 5: Runtime
 FROM debian:bookworm-slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl sudo && \
