@@ -165,30 +165,11 @@
 
 							{#if selectedSkill?.id === skill.id}
 								<div class="skill-details">
-									<div class="skill-install-section">
-										<p class="skill-install-label">install</p>
-										<div class="skill-install-cmd">
-											<code
-												>skills install {skill.repo}</code
-											>
-											<button
-												class="skill-copy"
-												onclick={(e) => {
-													e.stopPropagation();
-													navigator.clipboard.writeText(
-														`skills install ${skill.repo}`
-													);
-												}}
-											>
-												<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
-													<rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-													<path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-												</svg>
-											</button>
-										</div>
-									</div>
+									<p class="skill-install-hint">
+										Install from the <strong>Skills</strong> tab in your Bolly instance, or browse the source:
+									</p>
 									<a
-										href="https://github.com/{skill.repo}"
+										href="https://github.com/{skill.repo}{skill.path ? `/tree/${skill.git_ref}/${skill.path}` : ''}"
 										target="_blank"
 										class="skill-github-link"
 										onclick={(e) => e.stopPropagation()}
@@ -514,50 +495,14 @@
 		animation: fade-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-	.skill-install-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.35rem;
+	.skill-install-hint {
+		font-size: 0.78rem;
+		color: var(--color-text-dim);
+		line-height: 1.5;
 	}
 
-	.skill-install-label {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		color: var(--color-text-ghost);
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-	}
-
-	.skill-install-cmd {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: 0.5rem;
-		padding: 0.5rem 0.75rem;
-	}
-
-	.skill-install-cmd code {
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: var(--color-warm);
-		flex: 1;
-	}
-
-	.skill-copy {
-		color: var(--color-text-ghost);
-		background: none;
-		border: none;
-		cursor: pointer;
-		padding: 0.15rem;
-		display: flex;
-		transition: color 0.2s;
-		flex-shrink: 0;
-	}
-
-	.skill-copy:hover {
-		color: var(--color-warm);
+	.skill-install-hint strong {
+		color: var(--color-warm-dim);
 	}
 
 	.skill-github-link {
