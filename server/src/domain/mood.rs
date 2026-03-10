@@ -18,4 +18,7 @@ pub struct MoodState {
     /// Unix timestamp of last user message.
     #[serde(default)]
     pub last_interaction: i64,
+    /// Unix timestamp of last autonomous reach-out (to prevent spam).
+    #[serde(default)]
+    pub last_reach_out: i64,
 }

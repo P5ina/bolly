@@ -335,10 +335,26 @@ fn process_heartbeat_response(
         } else if let Some(message) = line.strip_prefix("REACH_OUT:") {
             let message = message.trim();
             if !message.is_empty() {
-                deliver_spontaneous_message(workspace_dir, slug, message, events);
-                let preview: String = message.chars().take(60).collect();
-                log::info!("[heartbeat] {slug} reached out: {preview}");
-                actions.push(format!("reach_out: {preview}"));
+                // Rate limit: minimum 2 hours between autonomous reach-outs
+                let hours_since_reach_out = if mood.last_reach_out > 0 {
+                    (now.timestamp() - mood.last_reach_out) / 3600
+                } else {
+                    i64::MAX // Never reached out before
+                };
+
+                if hours_since_reach_out < 2 {
+                    log::info!(
+                        "[heartbeat] {slug} suppressed reach-out (last was {}h ago, min 2h)",
+                        hours_since_reach_out
+                    );
+                    actions.push("reach_out: suppressed (too recent)".to_string());
+                } else {
+                    deliver_spontaneous_message(workspace_dir, slug, message, events);
+                    mood.last_reach_out = now.timestamp();
+                    let preview: String = message.chars().take(60).collect();
+                    log::info!("[heartbeat] {slug} reached out: {preview}");
+                    actions.push(format!("reach_out: {preview}"));
+                }
             }
         } else if let Some(drop_spec) = line.strip_prefix("DROP:") {
             // Format: kind | title | content

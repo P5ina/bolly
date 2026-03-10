@@ -2098,6 +2098,7 @@ impl Tool for RunCommandTool {
             .unwrap_or_else(|| self.instance_dir.clone());
 
         let timeout = args.timeout_secs.unwrap_or(30).min(300);
+        log::info!("[run_command] executing: {} (cwd: {})", command, work_dir.display());
         let output = tokio::time::timeout(
             std::time::Duration::from_secs(timeout),
             tokio::process::Command::new("sh")
@@ -2575,6 +2576,16 @@ impl Tool for InstallPackageTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let packages = args.packages.trim();
+
+        // Validate package names — reject shell metacharacters
+        let safe_pkg_re = regex::Regex::new(r"^[a-zA-Z0-9][a-zA-Z0-9._+:@/-]*$").unwrap();
+        for pkg in packages.split_whitespace() {
+            if !safe_pkg_re.is_match(pkg) {
+                return Err(ToolExecError(format!(
+                    "invalid package name: \"{pkg}\" — only alphanumeric, hyphens, dots, underscores, and plus signs are allowed"
+                )));
+            }
+        }
         if packages.is_empty() {
             return Err(ToolExecError("no packages specified".into()));
         }

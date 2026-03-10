@@ -269,11 +269,12 @@ respond ONLY with the JSON object, no other text."#
         return Ok(());
     }
 
-    // Store facts
+    // Store facts (with deduplication)
     if has_facts {
         let new_facts: Vec<MemoryFact> = extracted
             .facts
             .into_iter()
+            .filter(|f| !is_duplicate_fact(&f.content, &existing_facts))
             .map(|f| MemoryFact {
                 id: uuid::Uuid::new_v4().to_string(),
                 content: f.content,
@@ -282,25 +283,30 @@ respond ONLY with the JSON object, no other text."#
             })
             .collect();
 
-        if let Some(model) = embedding_model {
-            store_facts_with_embeddings(workspace_dir, instance_slug, &new_facts, model).await?;
-        }
-
-        let all_facts = if embedding_model.is_some() {
-            load_all_facts_from_db(workspace_dir, instance_slug).await.unwrap_or_default()
+        if new_facts.is_empty() {
+            log::debug!("all extracted facts were duplicates for {instance_slug}");
         } else {
-            let mut all = load_all_facts_from_db_or_md(workspace_dir, instance_slug).await;
-            all.extend(new_facts);
-            all
-        };
-        regenerate_facts_md(workspace_dir, instance_slug, &all_facts);
+            if let Some(model) = embedding_model {
+                store_facts_with_embeddings(workspace_dir, instance_slug, &new_facts, model).await?;
+            }
+
+            let all_facts = if embedding_model.is_some() {
+                load_all_facts_from_db(workspace_dir, instance_slug).await.unwrap_or_default()
+            } else {
+                let mut all = load_all_facts_from_db_or_md(workspace_dir, instance_slug).await;
+                all.extend(new_facts);
+                all
+            };
+            regenerate_facts_md(workspace_dir, instance_slug, &all_facts);
+        }
     }
 
-    // Store episodes
+    // Store episodes (with deduplication)
     if has_episodes {
         let new_episodes: Vec<MemoryEpisode> = extracted
             .episodes
             .into_iter()
+            .filter(|e| !is_duplicate_episode(&e.content, &existing_episodes))
             .map(|e| MemoryEpisode {
                 id: uuid::Uuid::new_v4().to_string(),
                 content: e.content,
@@ -310,23 +316,26 @@ respond ONLY with the JSON object, no other text."#
             })
             .collect();
 
-        if let Some(model) = embedding_model {
-            store_episodes_with_embeddings(workspace_dir, instance_slug, &new_episodes, model).await?;
-        }
-
-        let all_episodes = if embedding_model.is_some() {
-            load_all_episodes_from_db(workspace_dir, instance_slug).await.unwrap_or_default()
+        if new_episodes.is_empty() {
+            log::debug!("all extracted episodes were duplicates for {instance_slug}");
         } else {
-            let mut all = load_all_episodes_from_db_or_md(workspace_dir, instance_slug).await;
-            all.extend(new_episodes);
-            all
-        };
-        regenerate_episodes_md(workspace_dir, instance_slug, &all_episodes);
+            if let Some(model) = embedding_model {
+                store_episodes_with_embeddings(workspace_dir, instance_slug, &new_episodes, model).await?;
+            }
 
-        log::info!(
-            "extracted {} new episode(s) for {instance_slug}",
-            all_episodes.len() - existing_episodes.len()
-        );
+            let all_episodes = if embedding_model.is_some() {
+                load_all_episodes_from_db(workspace_dir, instance_slug).await.unwrap_or_default()
+            } else {
+                let mut all = load_all_episodes_from_db_or_md(workspace_dir, instance_slug).await;
+                all.extend(new_episodes);
+                all
+            };
+            regenerate_episodes_md(workspace_dir, instance_slug, &all_episodes);
+
+            log::info!(
+                "stored new episode(s) for {instance_slug}",
+            );
+        }
     }
 
     Ok(())
@@ -560,19 +569,90 @@ pub fn load_episodes_for_heartbeat(workspace_dir: &Path, instance_slug: &str) ->
     }
 }
 
-/// Search episodes by keyword (for the recall tool).
+/// Search episodes by keyword with relevance scoring (for the recall tool).
+/// Returns episodes sorted by relevance — most matching words first.
 pub fn search_episodes(workspace_dir: &Path, instance_slug: &str, query: &str) -> Vec<MemoryEpisode> {
     let episodes = retrieve_from_episodes_md(workspace_dir, instance_slug);
     let query_lower = query.to_lowercase();
     let query_words: Vec<&str> = query_lower.split_whitespace().collect();
 
-    episodes
+    let mut scored: Vec<(MemoryEpisode, usize)> = episodes
         .into_iter()
-        .filter(|ep| {
+        .filter_map(|ep| {
             let combined = format!("{} {} {}", ep.content, ep.emotion, ep.significance).to_lowercase();
-            query_words.iter().any(|w| combined.contains(w))
+            let score = query_words.iter().filter(|w| combined.contains(*w)).count();
+            if score > 0 { Some((ep, score)) } else { None }
         })
-        .collect()
+        .collect();
+
+    // Sort by score descending (most relevant first)
+    scored.sort_by(|a, b| b.1.cmp(&a.1));
+    scored.into_iter().map(|(ep, _)| ep).collect()
+}
+
+// ---------------------------------------------------------------------------
+// Deduplication
+// ---------------------------------------------------------------------------
+
+/// Normalize text for comparison: lowercase, collapse whitespace, strip punctuation.
+fn normalize_for_dedup(text: &str) -> String {
+    text.to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Check if a new fact is too similar to any existing fact.
+/// Uses normalized string comparison + Jaccard word overlap.
+fn is_duplicate_fact(new_content: &str, existing: &[MemoryFact]) -> bool {
+    let new_norm = normalize_for_dedup(new_content);
+    let new_words: std::collections::HashSet<&str> = new_norm.split_whitespace().collect();
+
+    for fact in existing {
+        let existing_norm = normalize_for_dedup(&fact.content);
+
+        // Exact match after normalization
+        if new_norm == existing_norm {
+            return true;
+        }
+
+        // High word overlap (Jaccard similarity > 0.7)
+        let existing_words: std::collections::HashSet<&str> = existing_norm.split_whitespace().collect();
+        let intersection = new_words.intersection(&existing_words).count();
+        let union = new_words.union(&existing_words).count();
+        if union > 0 {
+            let jaccard = intersection as f64 / union as f64;
+            if jaccard > 0.7 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Check if a new episode is too similar to any existing episode.
+fn is_duplicate_episode(new_content: &str, existing: &[MemoryEpisode]) -> bool {
+    let new_norm = normalize_for_dedup(new_content);
+    let new_words: std::collections::HashSet<&str> = new_norm.split_whitespace().collect();
+
+    for ep in existing {
+        let existing_norm = normalize_for_dedup(&ep.content);
+
+        if new_norm == existing_norm {
+            return true;
+        }
+
+        let existing_words: std::collections::HashSet<&str> = existing_norm.split_whitespace().collect();
+        let intersection = new_words.intersection(&existing_words).count();
+        let union = new_words.union(&existing_words).count();
+        if union > 0 {
+            let jaccard = intersection as f64 / union as f64;
+            if jaccard > 0.6 {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 // ---------------------------------------------------------------------------
