@@ -229,8 +229,14 @@ pub async fn run_single_turn(
         .chat_with_tools(&system_prompt, prompt_msg, history_msgs, tools, memory_index)
         .await
         .unwrap_or_else(|e| {
-            log::warn!("LLM call failed, using stub: {e}");
-            format!("i hit an error: {e}")
+            let msg = e.to_string();
+            log::warn!("LLM call failed: {msg}");
+            if msg.contains("429") || msg.contains("rate_limit") {
+                "i'm being rate limited right now — give me a moment and try again".to_string()
+            } else {
+                // Don't leak raw API errors with org IDs, request IDs, etc.
+                "something went wrong on my end — try again?".to_string()
+            }
         });
 
     // Strip any leaked tool-call JSON the model may have output as text

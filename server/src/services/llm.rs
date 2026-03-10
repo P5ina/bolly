@@ -192,9 +192,39 @@ impl LlmBackend {
         match result {
             Ok(response) => Ok(response),
             Err(e) if is_rate_limit_error(&e.to_string()) => {
-                log::warn!("Rate limited during tool agent, retrying without tools after backoff");
-                tokio::time::sleep(Duration::from_millis(INITIAL_BACKOFF_MS)).await;
-                self.chat(system_prompt, &prompt_text, history).await
+                // Retry with exponential backoff, keeping tools
+                log::warn!("Rate limited during tool agent, retrying with backoff");
+                for attempt in 1..=MAX_RETRIES {
+                    let delay = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1);
+                    log::info!("Rate limit retry {attempt}/{MAX_RETRIES}, waiting {delay}ms");
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+
+                    let retry_result = match self {
+                        LlmBackend::Anthropic { client, model } => {
+                            let agent = client
+                                .agent(model)
+                                .preamble(system_prompt)
+                                .build();
+                            agent.chat(&prompt_text, history.clone()).await
+                                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
+                        }
+                        LlmBackend::OpenAI { client, model } => {
+                            let agent = client
+                                .agent(model)
+                                .preamble(system_prompt)
+                                .build();
+                            agent.chat(&prompt_text, history.clone()).await
+                                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
+                        }
+                    };
+
+                    match retry_result {
+                        Ok(response) => return Ok(response),
+                        Err(e) if is_rate_limit_error(&e.to_string()) => continue,
+                        Err(e) => return Err(e),
+                    }
+                }
+                Err("rate limited — try again in a moment".into())
             }
             Err(e) => {
                 // If max turns exceeded, extract the last assistant text from chat history
