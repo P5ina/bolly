@@ -51,7 +51,7 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	<title>personality</title>
+	<title>bolly</title>
 </svelte:head>
 
 <div class="relative h-dvh overflow-hidden">

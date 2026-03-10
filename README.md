@@ -1,4 +1,4 @@
-# Personality
+# Bolly
 
 > A self-hosted AI companion that lives on your server — not a chatbot, but a persistent being with memory, mood, creative output, and full system access.
 
@@ -9,9 +9,9 @@
 
 ---
 
-## What is Personality?
+## What is Bolly?
 
-Most AI assistants wait for you to ask something. Personality is different.
+Most AI assistants wait for you to ask something. Bolly is different.
 
 It lives on your server, remembers everything about you, and acts like a real companion — it writes to you first, generates ideas while you sleep, and drops creative artifacts with thoughts it had about your projects. It has its own character, mood, and creative energy.
 
@@ -26,7 +26,7 @@ It also has full system access — it can read and write files, run commands, in
 ```bash
 docker run -d \
   -p 8080:8080 \
-  -v personality-data:/data \
+  -v bolly-data:/data \
   p5ina/bolly:latest
 ```
 
@@ -92,7 +92,7 @@ The dev server proxies API requests to `localhost:8080`.
 
 ## Configuration
 
-Config lives at `~/.personality/config.toml` (or `/data/config.toml` in Docker).
+Config lives at `~/.bolly/config.toml` (or `/data/config.toml` in Docker).
 
 ```toml
 host = "0.0.0.0"
@@ -125,7 +125,7 @@ LLM provider and API key can also be configured through the web UI on first laun
 
 ### Environment variables
 
-- `PERSONALITY_HOME` — override workspace directory (default `~/.personality`)
+- `BOLLY_HOME` — override workspace directory (default `~/.bolly`)
 - `RUST_LOG` — logging level (default `info`)
 
 ---
@@ -142,7 +142,7 @@ client/     SvelteKit 5 — static SPA, dark organic theme
 Everything is a file. No black boxes.
 
 ```
-~/.personality/
+~/.bolly/
 ├── config.toml
 ├── instances/
 │   └── {slug}/
@@ -201,18 +201,18 @@ Leave `auth_token` empty to disable auth (fine for local use).
 
 ```yaml
 services:
-  personality:
+  bolly:
     image: p5ina/bolly:latest
     ports:
       - "8080:8080"
     volumes:
-      - personality-data:/data
+      - bolly-data:/data
     environment:
       - RUST_LOG=info
     restart: unless-stopped
 
 volumes:
-  personality-data:
+  bolly-data:
 ```
 
 ### Behind a reverse proxy (Caddy)

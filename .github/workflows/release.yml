@@ -81,7 +81,7 @@ jobs:
             echo '```bash'
             echo "docker run -d \\"
             echo "  -p 8080:8080 \\"
-            echo "  -v personality-data:/data \\"
+            echo "  -v bolly-data:/data \\"
             echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}"
             echo '```'
             echo "EOF"

@@ -16,7 +16,7 @@ async fn server_meta(State(state): State<AppState>) -> Json<ServerMetaResponse> 
     let cfg = state.config.read().await;
 
     Json(ServerMetaResponse {
-        app: "personality",
+        app: "bolly",
         port: cfg.port,
         workspace_dir: state.workspace_dir.display().to_string(),
         instances_count: workspace::count_directories(&instances_dir).unwrap_or(0),

@@ -199,7 +199,7 @@
 
 	async function pickLanguage(langId: string) {
 		chosenLanguage = langId;
-		localStorage.setItem("personality:language", langId);
+		localStorage.setItem("bolly:language", langId);
 		stage = "greeting";
 		await pause(300);
 		const lang = LANGUAGES.find((l) => l.id === langId);
@@ -218,7 +218,7 @@
 		if (!name) return;
 		chosenSlug = slugify(name);
 		if (!chosenSlug) return;
-		localStorage.setItem("personality:preferredName", name);
+		localStorage.setItem("bolly:preferredName", name);
 
 		stage = "greeting";
 		await pause(300);

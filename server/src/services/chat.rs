@@ -807,7 +807,7 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          you have REAL tools connected to this runtime. they work. use them directly.\n\
          do NOT say \"i don't have access\" or \"send me the file\" — you can read it yourself.\n\n\
          filesystem (absolute paths work everywhere):\n\
-         - read_file: read any file. use absolute paths like /Users/p5ina/projects/web/personality/client/src/...\n\
+         - read_file: read any file. use absolute paths.\n\
          - write_file: create or overwrite any file\n\
          - list_files: list any directory\n\
          - search_code: search for text patterns in any directory (skips node_modules/.git/target)\n\n\

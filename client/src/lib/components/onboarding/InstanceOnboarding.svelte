@@ -28,7 +28,7 @@
 	let messageInput: HTMLTextAreaElement | undefined = $state();
 	let nameInputEl: HTMLInputElement | undefined = $state();
 	let chosenLanguage = $state(
-		localStorage.getItem("personality:language") ?? "english",
+		localStorage.getItem("bolly:language") ?? "english",
 	);
 	let lines = $state<{ text: string; revealed: string; done: boolean }[]>([]);
 	let soulTemplates = $state<SoulTemplate[]>([]);
@@ -92,7 +92,7 @@
 
 	async function pickLanguage(langId: string) {
 		chosenLanguage = langId;
-		localStorage.setItem("personality:language", langId);
+		localStorage.setItem("bolly:language", langId);
 		stage = "intro";
 		await pause(300);
 		const lang = LANGUAGES.find((l) => l.id === langId);
@@ -187,7 +187,7 @@
 		stage = "sending";
 
 		const preferredName =
-			localStorage.getItem("personality:preferredName") ?? "";
+			localStorage.getItem("bolly:preferredName") ?? "";
 		const langLabel =
 			LANGUAGES.find((l) => l.id === chosenLanguage)?.label ?? chosenLanguage;
 		const setupParts: string[] = [];

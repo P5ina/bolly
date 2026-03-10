@@ -16,7 +16,7 @@ const BASE = "";
 // Auth token management
 // ---------------------------------------------------------------------------
 
-const TOKEN_KEY = "personality_auth_token";
+const TOKEN_KEY = "bolly_auth_token";
 
 export function getAuthToken(): string | null {
 	if (typeof localStorage === "undefined") return null;

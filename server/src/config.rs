@@ -146,13 +146,13 @@ impl Default for EmailConfig {
 }
 
 pub fn workspace_root() -> PathBuf {
-    if let Some(path) = env::var_os("PERSONALITY_HOME") {
+    if let Some(path) = env::var_os("BOLLY_HOME") {
         return PathBuf::from(path);
     }
 
     dirs::home_dir()
         .expect("failed to resolve home directory")
-        .join(".personality")
+        .join(".bolly")
 }
 
 pub fn config_path() -> PathBuf {

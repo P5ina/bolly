@@ -37,10 +37,10 @@
 <aside class="flex h-full w-60 flex-col border-r border-sidebar-border bg-sidebar">
 	<div class="flex items-center gap-2.5 px-5 py-5">
 		<div class="flex h-8 w-8 items-center justify-center rounded-lg bg-warm/15">
-			<span class="text-sm font-bold text-warm">P</span>
+			<span class="text-sm font-bold text-warm">B</span>
 		</div>
 		<span class="font-display text-base font-bold tracking-tight text-sidebar-foreground">
-			personality
+			bolly
 		</span>
 		<div class="ml-auto">
 			<div

@@ -20,13 +20,13 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl sudo && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=server-build /app/target/release/server /usr/local/bin/personality
-COPY --from=client-build /app/client/build /opt/personality/static
+COPY --from=server-build /app/target/release/server /usr/local/bin/bolly
+COPY --from=client-build /app/client/build /opt/bolly/static
 
-ENV PERSONALITY_HOME=/data
+ENV BOLLY_HOME=/data
 ENV RUST_LOG=info
 
 EXPOSE 8080
 VOLUME /data
 
-CMD ["personality"]
+CMD ["bolly"]
