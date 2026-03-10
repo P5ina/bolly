@@ -9,6 +9,8 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'Dockerfile'
+      - 'scripts/**'
+      - '.github/workflows/**'
     tags:
       - 'v*'
   workflow_dispatch:
