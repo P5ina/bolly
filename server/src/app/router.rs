@@ -16,6 +16,7 @@ pub fn build_router(state: AppState, static_dir: Option<PathBuf>) -> Router {
         .merge(routes::drops::router())
         .merge(routes::config::router())
         .merge(routes::soul::router())
+        .merge(routes::uploads::router())
         .merge(routes::ws::router())
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 

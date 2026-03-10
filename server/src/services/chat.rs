@@ -21,10 +21,10 @@ use crate::{
         tools::{
             self, CreateDropTool, CreateTaskTool, CurrentTimeTool, EditSoulTool, GetMoodTool,
             GetProjectStateTool, InstallPackageTool, JournalTool, ListFilesTool, ListTasksTool,
-            ClearContextTool, ObservableTool, ReadEmailTool, ReadFileTool, ReadJournalTool,
-            RecallTool, RememberTool, RunCommandTool, ScheduleMessageTool, SearchCodeTool,
-            SendEmailTool, SetMoodTool, UpdateConfigTool, UpdateProjectStateTool, UpdateTaskTool,
-            WebSearchTool, WriteFileTool,
+            ListUploadsTool, ClearContextTool, ObservableTool, ReadEmailTool, ReadFileTool,
+            ReadJournalTool, ReadUploadTool, RecallTool, RememberTool, RunCommandTool,
+            ScheduleMessageTool, SearchCodeTool, SendEmailTool, SetMoodTool, UpdateConfigTool,
+            UpdateProjectStateTool, UpdateTaskTool, WebSearchTool, WriteFileTool,
         },
         workspace,
     },
@@ -792,7 +792,8 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          install_package, web_search, current_time, send_email, read_email, \
          remember/recall, journal/read_journal, set_mood/get_mood, edit_soul, \
          create_drop, schedule_message, update_config, get_project_state, \
-         update_project_state, create_task/update_task/list_tasks.\n\
+         update_project_state, create_task/update_task/list_tasks, \
+         list_uploads, read_upload.\n\
          use them directly — never say you can't access something.\n\
          you have a heartbeat — a background loop that runs every 45 minutes even when \
          the user is away. edit your heartbeat.md file to customize what you do between conversations \
@@ -889,6 +890,8 @@ fn build_instance_tools(
         Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
         Box::new(SendEmailTool::new(workspace_dir, instance_slug)),
         Box::new(ReadEmailTool::new(workspace_dir, instance_slug)),
+        Box::new(ListUploadsTool::new(workspace_dir, instance_slug)),
+        Box::new(ReadUploadTool::new(workspace_dir, instance_slug)),
         Box::new(InstallPackageTool),
     ];
 

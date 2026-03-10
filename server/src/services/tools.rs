@@ -63,6 +63,8 @@ fn tool_summary(name: &str, args: &str) -> String {
         "send_email" => format!("sending email to {}", v["to"].as_str().unwrap_or("?")),
         "read_email" => format!("reading {} emails", v["count"].as_u64().unwrap_or(5)),
         "install_package" => format!("installing {}", v["packages"].as_str().unwrap_or("?")),
+        "list_uploads" => "listing uploaded files".into(),
+        "read_upload" => format!("reading upload {}", v["upload_id"].as_str().unwrap_or("?")),
         _ => format!("calling {name}"),
     }
 }
@@ -2504,6 +2506,124 @@ fn detect_package_manager(is_root: bool) -> Option<(String, String)> {
         }
     }
     None
+}
+
+// ---------------------------------------------------------------------------
+// list_uploads — list uploaded files for the instance
+// ---------------------------------------------------------------------------
+
+pub struct ListUploadsTool {
+    workspace_dir: PathBuf,
+    instance_slug: String,
+}
+
+impl ListUploadsTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ListUploadsArgs {}
+
+impl Tool for ListUploadsTool {
+    const NAME: &'static str = "list_uploads";
+    type Error = ToolExecError;
+    type Args = ListUploadsArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "list_uploads".into(),
+            description: "List files the user has uploaded. Returns id, name, type, and size for each.".into(),
+            parameters: openai_schema::<ListUploadsArgs>(),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let uploads = super::uploads::list_uploads(&self.workspace_dir, &self.instance_slug)
+            .map_err(|e| ToolExecError(format!("failed to list uploads: {e}")))?;
+
+        if uploads.is_empty() {
+            return Ok("no uploaded files".into());
+        }
+
+        let mut result = String::new();
+        for u in &uploads {
+            let size_kb = u.size / 1024;
+            result.push_str(&format!(
+                "- {} | {} | {} | {}KB\n",
+                u.id, u.original_name, u.mime_type, size_kb
+            ));
+        }
+        Ok(result)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// read_upload — read content of an uploaded file
+// ---------------------------------------------------------------------------
+
+pub struct ReadUploadTool {
+    workspace_dir: PathBuf,
+    instance_slug: String,
+}
+
+impl ReadUploadTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ReadUploadArgs {
+    /// The upload ID (e.g. "upload_1710000000000").
+    pub upload_id: String,
+}
+
+impl Tool for ReadUploadTool {
+    const NAME: &'static str = "read_upload";
+    type Error = ToolExecError;
+    type Args = ReadUploadArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "read_upload".into(),
+            description: "Read the content of an uploaded file. Works with text files (md, txt, csv, json). \
+                For images and PDFs, returns metadata description.".into(),
+            parameters: openai_schema::<ReadUploadArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let meta = super::uploads::get_upload(&self.workspace_dir, &self.instance_slug, &args.upload_id)
+            .map_err(|e| ToolExecError(format!("failed to get upload: {e}")))?
+            .ok_or_else(|| ToolExecError(format!("upload '{}' not found", args.upload_id)))?;
+
+        // For text files, return content
+        match super::uploads::read_upload_text(&self.workspace_dir, &self.instance_slug, &args.upload_id) {
+            Ok(Some(content)) => {
+                Ok(format!("# {} ({})\n\n{content}", meta.original_name, meta.mime_type))
+            }
+            Ok(None) => {
+                // Binary file — return metadata
+                let size_kb = meta.size / 1024;
+                Ok(format!(
+                    "Binary file: {} ({}, {}KB). Cannot read content directly — \
+                     this is an image/PDF. The user can view it in the chat UI.",
+                    meta.original_name, meta.mime_type, size_kb
+                ))
+            }
+            Err(e) => Err(ToolExecError(format!("failed to read upload: {e}"))),
+        }
+    }
 }
 
 fn url_encode(s: &str) -> String {

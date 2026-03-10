@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from "svelte";
-	import { clearContext, fetchChats, fetchCompanionName, fetchMessages, fetchMood, sendMessage, stopAgent } from "$lib/api/client.js";
+	import { clearContext, fetchChats, fetchCompanionName, fetchMessages, fetchMood, sendMessage, stopAgent, uploadFile } from "$lib/api/client.js";
 	import type { ChatMessage, ChatSummary, ServerEvent } from "$lib/api/types.js";
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
 	import MessageBubble from "./MessageBubble.svelte";
@@ -147,10 +147,21 @@
 		return unsub;
 	});
 
-	async function handleSend(content: string) {
+	async function handleSend(content: string, files?: File[]) {
 		sending = true;
 		try {
-			const res = await sendMessage(slug, content, activeChatId);
+			// Upload files first, then reference them in the message
+			let finalContent = content;
+			if (files && files.length > 0) {
+				const uploadResults = await Promise.all(
+					files.map((f) => uploadFile(slug, f)),
+				);
+				const refs = uploadResults
+					.map((u) => `[attached: ${u.original_name} (${u.id})]`)
+					.join("\n");
+				finalContent = finalContent ? `${finalContent}\n\n${refs}` : refs;
+			}
+			const res = await sendMessage(slug, finalContent, activeChatId);
 			for (const msg of res.messages) addMessage(msg);
 		} catch {
 			sending = false;
@@ -250,7 +261,7 @@
 					{:else}
 						{#each stream as item, i (streamKey(item))}
 							{#if item.type === "message"}
-								<MessageBubble message={item.data} index={i} prevMessage={getPrev(item, i)} />
+								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} />
 							{:else}
 								<StreamActivity kind={item.kind} label={item.label} timestamp={item.timestamp} />
 							{/if}

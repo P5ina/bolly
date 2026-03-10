@@ -93,6 +93,15 @@ export interface Drop {
 	created_at: string;
 }
 
+export interface UploadMeta {
+	id: string;
+	original_name: string;
+	stored_name: string;
+	mime_type: string;
+	size: number;
+	uploaded_at: string;
+}
+
 export type ServerEvent =
 	| {
 			type: "chat_message_created";

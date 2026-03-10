@@ -6,7 +6,7 @@
 		agentRunning = false,
 		mood = "calm",
 	}: {
-		onSend: (content: string) => void;
+		onSend: (content: string, files?: File[]) => void;
 		onStop: () => void;
 		disabled?: boolean;
 		agentRunning?: boolean;
@@ -15,12 +15,17 @@
 
 	let value = $state("");
 	let focused = $state(false);
+	let attachments = $state<File[]>([]);
+	let fileInput: HTMLInputElement | undefined = $state();
+
+	const ALLOWED = ".jpg,.jpeg,.png,.gif,.webp,.svg,.md,.txt,.pdf,.json,.csv";
 
 	function handleSubmit() {
 		const trimmed = value.trim();
-		if (!trimmed || disabled) return;
-		onSend(trimmed);
+		if ((!trimmed && attachments.length === 0) || disabled) return;
+		onSend(trimmed, attachments.length > 0 ? [...attachments] : undefined);
 		value = "";
+		attachments = [];
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -29,7 +34,42 @@
 			handleSubmit();
 		}
 	}
+
+	function openFilePicker() {
+		fileInput?.click();
+	}
+
+	function handleFiles(e: Event) {
+		const input = e.target as HTMLInputElement;
+		if (input.files) {
+			attachments = [...attachments, ...Array.from(input.files)];
+		}
+		input.value = "";
+	}
+
+	function removeAttachment(index: number) {
+		attachments = attachments.filter((_, i) => i !== index);
+	}
+
+	function formatSize(bytes: number): string {
+		if (bytes < 1024) return `${bytes}B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+	}
+
+	function isImage(file: File): boolean {
+		return file.type.startsWith("image/");
+	}
 </script>
+
+<input
+	type="file"
+	bind:this={fileInput}
+	onchange={handleFiles}
+	accept={ALLOWED}
+	multiple
+	hidden
+/>
 
 <div class="whisper-container" class:whisper-focused={focused} class:whisper-disabled={disabled} data-mood={mood}>
 	<div class="whisper-inner">
@@ -38,29 +78,63 @@
 			<span>{agentRunning ? "alive" : focused ? "listening" : "ready"}</span>
 			<span>{mood}</span>
 		</div>
-		<textarea
-			bind:value
-			onkeydown={handleKeydown}
-			onfocus={() => focused = true}
-			onblur={() => focused = false}
-			placeholder="..."
-			rows={1}
-			class="whisper-input"
-			disabled={disabled && !agentRunning}
-		></textarea>
-		{#if agentRunning}
-			<button onclick={onStop} class="whisper-stop" aria-label="Stop">
-				<svg viewBox="0 0 24 24" fill="currentColor" class="w-3 h-3">
-					<rect x="6" y="6" width="12" height="12" rx="2" />
-				</svg>
-			</button>
-		{:else if value.trim() && !disabled}
-			<button onclick={handleSubmit} class="whisper-send" aria-label="Send">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-4 h-4">
-					<path d="M5 12h14" stroke-linecap="round"/><path d="m12 5 7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/>
-				</svg>
-			</button>
+
+		{#if attachments.length > 0}
+			<div class="whisper-attachments">
+				{#each attachments as file, i}
+					<div class="whisper-attachment">
+						{#if isImage(file)}
+							<img src={URL.createObjectURL(file)} alt={file.name} class="attachment-thumb" />
+						{:else}
+							<span class="attachment-icon">
+								<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
+									<path d="M4 1h5.5L13 4.5V14a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z" stroke-linejoin="round"/>
+									<path d="M9 1v4h4" stroke-linejoin="round"/>
+								</svg>
+							</span>
+						{/if}
+						<span class="attachment-name">{file.name}</span>
+						<span class="attachment-size">{formatSize(file.size)}</span>
+						<button class="attachment-remove" onclick={() => removeAttachment(i)} aria-label="Remove">
+							<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" class="w-2.5 h-2.5">
+								<path d="M2 2l8 8M10 2l-8 8" stroke-linecap="round"/>
+							</svg>
+						</button>
+					</div>
+				{/each}
+			</div>
 		{/if}
+
+		<div class="whisper-row">
+			<button onclick={openFilePicker} class="whisper-attach" aria-label="Attach file" disabled={disabled && !agentRunning}>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-4 h-4">
+					<path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+			</button>
+			<textarea
+				bind:value
+				onkeydown={handleKeydown}
+				onfocus={() => focused = true}
+				onblur={() => focused = false}
+				placeholder="..."
+				rows={1}
+				class="whisper-input"
+				disabled={disabled && !agentRunning}
+			></textarea>
+			{#if agentRunning}
+				<button onclick={onStop} class="whisper-stop" aria-label="Stop">
+					<svg viewBox="0 0 24 24" fill="currentColor" class="w-3 h-3">
+						<rect x="6" y="6" width="12" height="12" rx="2" />
+					</svg>
+				</button>
+			{:else if (value.trim() || attachments.length > 0) && !disabled}
+				<button onclick={handleSubmit} class="whisper-send" aria-label="Send">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-4 h-4">
+						<path d="M5 12h14" stroke-linecap="round"/><path d="m12 5 7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/>
+					</svg>
+				</button>
+			{/if}
+		</div>
 	</div>
 </div>
 
@@ -121,12 +195,108 @@
 		background: radial-gradient(ellipse, var(--input-accent) 0%, transparent 70%);
 	}
 
+	/* attachments */
+	.whisper-attachments {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+		margin-bottom: 0.5rem;
+		padding: 0 0.25rem;
+	}
+
+	.whisper-attachment {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.25rem 0.5rem;
+		border-radius: 8px;
+		background: oklch(0.78 0.12 75 / 6%);
+		border: 1px solid oklch(0.78 0.12 75 / 10%);
+		animation: attach-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	@keyframes attach-enter {
+		from { opacity: 0; transform: scale(0.9); }
+		to { opacity: 1; transform: scale(1); }
+	}
+
+	.attachment-thumb {
+		width: 24px;
+		height: 24px;
+		border-radius: 4px;
+		object-fit: cover;
+	}
+
+	.attachment-icon {
+		display: flex;
+		color: oklch(0.78 0.12 75 / 40%);
+	}
+
+	.attachment-name {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: oklch(0.85 0.03 75 / 70%);
+		max-width: 100px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.attachment-size {
+		font-family: var(--font-mono);
+		font-size: 0.55rem;
+		color: oklch(0.55 0.02 280 / 40%);
+	}
+
+	.attachment-remove {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1rem;
+		height: 1rem;
+		border-radius: 50%;
+		color: oklch(0.55 0.02 280 / 40%);
+		transition: all 0.2s ease;
+	}
+	.attachment-remove:hover {
+		color: oklch(0.70 0.15 25 / 80%);
+		background: oklch(0.70 0.15 25 / 10%);
+	}
+
+	/* input row */
+	.whisper-row {
+		display: flex;
+		align-items: flex-end;
+		gap: 0.375rem;
+	}
+
+	.whisper-attach {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		flex-shrink: 0;
+		border-radius: 50%;
+		color: oklch(0.78 0.12 75 / 30%);
+		transition: all 0.3s ease;
+		margin-bottom: 0.375rem;
+	}
+	.whisper-attach:hover {
+		color: oklch(0.78 0.12 75 / 60%);
+		background: oklch(0.78 0.12 75 / 8%);
+	}
+	.whisper-attach:disabled {
+		opacity: 0.2;
+		pointer-events: none;
+	}
+
 	.whisper-input {
-		width: 100%;
+		flex: 1;
 		min-height: 44px;
 		max-height: 120px;
 		resize: none;
-		padding: 0.75rem 1rem;
+		padding: 0.75rem 2.5rem 0.75rem 1rem;
 		font-family: var(--font-body);
 		font-size: 0.875rem;
 		line-height: 1.6;

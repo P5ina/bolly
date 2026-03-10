@@ -8,6 +8,7 @@ import type {
 	Soul,
 	SoulTemplate,
 	UpdateLlmRequest,
+	UploadMeta,
 } from "./types.js";
 
 const BASE = "";
@@ -177,6 +178,33 @@ export async function deleteDrop(slug: string, dropId: string): Promise<void> {
 		`/api/instances/${encodeURIComponent(slug)}/drops/${encodeURIComponent(dropId)}`,
 		{ method: "DELETE" },
 	);
+}
+
+export async function uploadFile(slug: string, file: File): Promise<UploadMeta> {
+	const form = new FormData();
+	form.append("file", file);
+	const res = await authedFetch(
+		`/api/instances/${encodeURIComponent(slug)}/uploads`,
+		{ method: "POST", body: form },
+	);
+	if (res.status === 401) throw new AuthError();
+	if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
+	return res.json();
+}
+
+export function fetchUploads(slug: string): Promise<UploadMeta[]> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/uploads`);
+}
+
+export async function deleteUpload(slug: string, uploadId: string): Promise<void> {
+	await authedFetch(
+		`/api/instances/${encodeURIComponent(slug)}/uploads/${encodeURIComponent(uploadId)}`,
+		{ method: "DELETE" },
+	);
+}
+
+export function uploadFileUrl(slug: string, uploadId: string): string {
+	return `/api/instances/${encodeURIComponent(slug)}/uploads/${encodeURIComponent(uploadId)}/file`;
 }
 
 export function createWebSocket(): WebSocket {

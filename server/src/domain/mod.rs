@@ -7,3 +7,4 @@ pub mod memory;
 pub mod meta;
 pub mod mood;
 pub mod soul;
+pub mod upload;

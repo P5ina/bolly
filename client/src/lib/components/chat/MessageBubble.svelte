@@ -1,15 +1,18 @@
 <script lang="ts">
 	import type { ChatMessage } from "$lib/api/types.js";
+	import { uploadFileUrl } from "$lib/api/client.js";
 	import { Marked } from "marked";
 
 	let {
 		message,
+		slug = "",
 		index = 0,
 		prevMessage,
 		mood = "calm",
 		active = false,
 	}: {
 		message: ChatMessage;
+		slug?: string;
 		index?: number;
 		prevMessage?: ChatMessage;
 		mood?: string;
@@ -37,7 +40,40 @@
 		gfm: true,
 	});
 
-	const html = $derived(isUser ? message.content : (marked.parse(message.content) as string));
+	interface Attachment {
+		name: string;
+		id: string;
+		isImage: boolean;
+		url: string;
+	}
+
+	const ATTACH_RE = /\[attached:\s*(.+?)\s*\((\w+)\)\]/g;
+	const IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "webp", "svg"];
+
+	const attachments = $derived.by(() => {
+		const results: Attachment[] = [];
+		if (!slug) return results;
+		for (const match of message.content.matchAll(ATTACH_RE)) {
+			const name = match[1];
+			const id = match[2];
+			const ext = name.split(".").pop()?.toLowerCase() ?? "";
+			results.push({
+				name,
+				id,
+				isImage: IMAGE_EXTS.includes(ext),
+				url: uploadFileUrl(slug, id),
+			});
+		}
+		return results;
+	});
+
+	const textContent = $derived(
+		message.content.replace(ATTACH_RE, "").trim()
+	);
+
+	const html = $derived(
+		isUser ? textContent : (marked.parse(textContent) as string)
+	);
 </script>
 
 <div
@@ -50,9 +86,30 @@
 	style="animation-delay: {Math.min(index * 20, 300)}ms"
 >
 	{#if isUser}
-		<div class="msg-content msg-content-user">
-			{message.content}
-		</div>
+		{#if textContent}
+			<div class="msg-content msg-content-user">
+				{textContent}
+			</div>
+		{/if}
+		{#if attachments.length > 0}
+			<div class="msg-attachments" class:msg-attachments-right={isUser}>
+				{#each attachments as a (a.id)}
+					{#if a.isImage}
+						<a href={a.url} target="_blank" class="msg-img-link">
+							<img src={a.url} alt={a.name} class="msg-img" loading="lazy" />
+						</a>
+					{:else}
+						<a href={a.url} target="_blank" class="msg-file-link" download={a.name}>
+							<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
+								<path d="M4 1h5.5L13 4.5V14a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z" stroke-linejoin="round"/>
+								<path d="M9 1v4h4" stroke-linejoin="round"/>
+							</svg>
+							<span>{a.name}</span>
+						</a>
+					{/if}
+				{/each}
+			</div>
+		{/if}
 	{:else}
 		<div class="msg-companion-wrap">
 			{#if !isConsecutive()}
@@ -61,9 +118,30 @@
 					<span class="msg-presence-label">{mood}</span>
 				</div>
 			{/if}
-			<div class="msg-content msg-content-companion prose">
-				{@html html}
-			</div>
+			{#if textContent}
+				<div class="msg-content msg-content-companion prose">
+					{@html html}
+				</div>
+			{/if}
+			{#if attachments.length > 0}
+				<div class="msg-attachments">
+					{#each attachments as a (a.id)}
+						{#if a.isImage}
+							<a href={a.url} target="_blank" class="msg-img-link">
+								<img src={a.url} alt={a.name} class="msg-img" loading="lazy" />
+							</a>
+						{:else}
+							<a href={a.url} target="_blank" class="msg-file-link" download={a.name}>
+								<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
+									<path d="M4 1h5.5L13 4.5V14a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z" stroke-linejoin="round"/>
+									<path d="M9 1v4h4" stroke-linejoin="round"/>
+								</svg>
+								<span>{a.name}</span>
+							</a>
+						{/if}
+					{/each}
+				</div>
+			{/if}
 		</div>
 	{/if}
 	{#if !isConsecutive()}
@@ -283,5 +361,54 @@
 	}
 	.msg-time-right {
 		text-align: right;
+	}
+
+	/* attachments */
+	.msg-attachments {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+		margin-top: 0.25rem;
+		max-width: 85%;
+	}
+	.msg-attachments-right {
+		justify-content: flex-end;
+	}
+
+	.msg-img-link {
+		display: block;
+		border-radius: 8px;
+		overflow: hidden;
+		transition: opacity 0.2s ease;
+	}
+	.msg-img-link:hover {
+		opacity: 0.85;
+	}
+
+	.msg-img {
+		max-width: 280px;
+		max-height: 200px;
+		border-radius: 8px;
+		object-fit: cover;
+		border: 1px solid oklch(0.78 0.12 75 / 8%);
+	}
+
+	.msg-file-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		padding: 0.3rem 0.6rem;
+		border-radius: 6px;
+		background: oklch(0.78 0.12 75 / 5%);
+		border: 1px solid oklch(0.78 0.12 75 / 10%);
+		color: oklch(0.78 0.12 75 / 60%);
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		text-decoration: none;
+		transition: all 0.2s ease;
+	}
+	.msg-file-link:hover {
+		background: oklch(0.78 0.12 75 / 10%);
+		color: oklch(0.78 0.12 75 / 85%);
 	}
 </style>
