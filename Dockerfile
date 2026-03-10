@@ -29,4 +29,4 @@ ENV RUST_LOG=info
 EXPOSE 8080
 VOLUME /data
 
-CMD ["bolly"]
+CMD ["sh", "-c", "mkdir -p /data && grep -q static_dir /data/config.toml 2>/dev/null || printf 'static_dir = \"/opt/bolly/static\"\\n' >> /data/config.toml && exec bolly"]
