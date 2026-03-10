@@ -542,12 +542,14 @@ impl Tool for WebSearchTool {
 
 pub struct UpdateConfigTool {
     config_path: PathBuf,
+    instance_dir: PathBuf,
 }
 
 impl UpdateConfigTool {
-    pub fn new(config_path: &Path) -> Self {
+    pub fn new(config_path: &Path, workspace_dir: &Path, instance_slug: &str) -> Self {
         Self {
             config_path: config_path.to_path_buf(),
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
         }
     }
 }
@@ -662,55 +664,72 @@ impl Tool for UpdateConfigTool {
             changes.push("brave search key updated".into());
         }
 
-        // Email — SMTP
+        if changes.is_empty() {
+            // Check if there are email changes before declaring nothing to change
+            let has_email_changes = args.smtp_host.is_some()
+                || args.smtp_port.is_some()
+                || args.smtp_user.is_some()
+                || args.smtp_password.is_some()
+                || args.smtp_from.is_some()
+                || args.imap_host.is_some()
+                || args.imap_port.is_some()
+                || args.imap_user.is_some()
+                || args.imap_password.is_some();
+
+            if !has_email_changes {
+                return Ok("nothing to change — all fields were null".into());
+            }
+        }
+
+        // Save LLM/global config changes
+        if !changes.is_empty() {
+            let output = toml::to_string_pretty(&config)
+                .map_err(|e| ToolExecError(format!("failed to serialize config: {e}")))?;
+            fs::write(&self.config_path, &output)
+                .map_err(|e| ToolExecError(format!("failed to write config: {e}")))?;
+        }
+
+        // Email config is stored per-instance
+        let mut email_config = load_instance_email_config(&self.instance_dir).unwrap_or_default();
+
         if let Some(v) = &args.smtp_host {
-            config.email.smtp_host = v.trim().to_string();
+            email_config.smtp_host = v.trim().to_string();
             changes.push(format!("smtp_host → {}", v.trim()));
         }
         if let Some(v) = args.smtp_port {
-            config.email.smtp_port = v;
+            email_config.smtp_port = v;
             changes.push(format!("smtp_port → {v}"));
         }
         if let Some(v) = &args.smtp_user {
-            config.email.smtp_user = v.trim().to_string();
+            email_config.smtp_user = v.trim().to_string();
             changes.push("smtp_user updated".into());
         }
         if let Some(v) = &args.smtp_password {
-            config.email.smtp_password = v.trim().to_string();
+            email_config.smtp_password = v.trim().to_string();
             changes.push("smtp_password updated".into());
         }
         if let Some(v) = &args.smtp_from {
-            config.email.smtp_from = v.trim().to_string();
+            email_config.smtp_from = v.trim().to_string();
             changes.push(format!("smtp_from → {}", v.trim()));
         }
-
-        // Email — IMAP
         if let Some(v) = &args.imap_host {
-            config.email.imap_host = v.trim().to_string();
+            email_config.imap_host = v.trim().to_string();
             changes.push(format!("imap_host → {}", v.trim()));
         }
         if let Some(v) = args.imap_port {
-            config.email.imap_port = v;
+            email_config.imap_port = v;
             changes.push(format!("imap_port → {v}"));
         }
         if let Some(v) = &args.imap_user {
-            config.email.imap_user = v.trim().to_string();
+            email_config.imap_user = v.trim().to_string();
             changes.push("imap_user updated".into());
         }
         if let Some(v) = &args.imap_password {
-            config.email.imap_password = v.trim().to_string();
+            email_config.imap_password = v.trim().to_string();
             changes.push("imap_password updated".into());
         }
 
-        if changes.is_empty() {
-            return Ok("nothing to change — all fields were null".into());
-        }
-
-        // Serialize back and write
-        let output = toml::to_string_pretty(&config)
-            .map_err(|e| ToolExecError(format!("failed to serialize config: {e}")))?;
-        fs::write(&self.config_path, &output)
-            .map_err(|e| ToolExecError(format!("failed to write config: {e}")))?;
+        save_instance_email_config(&self.instance_dir, &email_config)?;
 
         Ok(format!("config updated: {}. changes take effect on next message.", changes.join(", ")))
     }
@@ -2124,13 +2143,13 @@ impl Tool for CreateDropTool {
 // ---------------------------------------------------------------------------
 
 pub struct SendEmailTool {
-    config_path: PathBuf,
+    instance_dir: PathBuf,
 }
 
 impl SendEmailTool {
-    pub fn new(config_path: &Path) -> Self {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
         Self {
-            config_path: config_path.to_path_buf(),
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
         }
     }
 }
@@ -2168,7 +2187,7 @@ impl Tool for SendEmailTool {
             AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
         };
 
-        let config = load_email_config(&self.config_path)?;
+        let config = load_instance_email_config(&self.instance_dir)?;
 
         if !config.is_smtp_configured() {
             return Err(ToolExecError(
@@ -2212,13 +2231,13 @@ impl Tool for SendEmailTool {
 // ---------------------------------------------------------------------------
 
 pub struct ReadEmailTool {
-    config_path: PathBuf,
+    instance_dir: PathBuf,
 }
 
 impl ReadEmailTool {
-    pub fn new(config_path: &Path) -> Self {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
         Self {
-            config_path: config_path.to_path_buf(),
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
         }
     }
 }
@@ -2258,7 +2277,7 @@ impl Tool for ReadEmailTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let config = load_email_config(&self.config_path)?;
+        let config = load_instance_email_config(&self.instance_dir)?;
 
         if !config.is_imap_configured() {
             return Err(ToolExecError(
@@ -2365,12 +2384,24 @@ impl Tool for ReadEmailTool {
     }
 }
 
-fn load_email_config(config_path: &Path) -> Result<crate::config::EmailConfig, ToolExecError> {
-    let raw = fs::read_to_string(config_path)
-        .map_err(|e| ToolExecError(format!("failed to read config: {e}")))?;
-    let config: crate::config::Config = toml::from_str(&raw)
-        .map_err(|e| ToolExecError(format!("failed to parse config: {e}")))?;
-    Ok(config.email)
+fn load_instance_email_config(instance_dir: &Path) -> Result<crate::config::EmailConfig, ToolExecError> {
+    let path = instance_dir.join("email.toml");
+    if !path.exists() {
+        return Ok(crate::config::EmailConfig::default());
+    }
+    let raw = fs::read_to_string(&path)
+        .map_err(|e| ToolExecError(format!("failed to read email config: {e}")))?;
+    toml::from_str(&raw)
+        .map_err(|e| ToolExecError(format!("failed to parse email config: {e}")))
+}
+
+fn save_instance_email_config(instance_dir: &Path, config: &crate::config::EmailConfig) -> Result<(), ToolExecError> {
+    fs::create_dir_all(instance_dir)
+        .map_err(|e| ToolExecError(format!("failed to create instance dir: {e}")))?;
+    let output = toml::to_string_pretty(config)
+        .map_err(|e| ToolExecError(format!("failed to serialize email config: {e}")))?;
+    fs::write(instance_dir.join("email.toml"), &output)
+        .map_err(|e| ToolExecError(format!("failed to write email config: {e}")))
 }
 
 // ---------------------------------------------------------------------------

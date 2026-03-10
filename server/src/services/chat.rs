@@ -960,7 +960,7 @@ fn build_instance_tools(
         Box::new(GetMoodTool::new(workspace_dir, instance_slug)),
         Box::new(CurrentTimeTool),
         Box::new(WebSearchTool::new(brave_api_key, config_path)),
-        Box::new(UpdateConfigTool::new(config_path)),
+        Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug)),
         Box::new(GetProjectStateTool::new(workspace_dir, instance_slug)),
         Box::new(UpdateProjectStateTool::new(workspace_dir, instance_slug)),
         Box::new(CreateTaskTool::new(workspace_dir, instance_slug)),
@@ -970,8 +970,8 @@ fn build_instance_tools(
         Box::new(RunCommandTool::new(workspace_dir, instance_slug)),
         Box::new(ClearContextTool::new(workspace_dir, instance_slug)),
         Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
-        Box::new(SendEmailTool::new(config_path)),
-        Box::new(ReadEmailTool::new(config_path)),
+        Box::new(SendEmailTool::new(workspace_dir, instance_slug)),
+        Box::new(ReadEmailTool::new(workspace_dir, instance_slug)),
         Box::new(InstallPackageTool),
     ];
 
