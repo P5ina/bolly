@@ -101,6 +101,16 @@ export interface Thought {
 	created_at: string;
 }
 
+export interface Skill {
+	id: string;
+	name: string;
+	description: string;
+	icon: string;
+	builtin: boolean;
+	enabled: boolean;
+	instructions: string;
+}
+
 export interface UploadMeta {
 	id: string;
 	original_name: string;

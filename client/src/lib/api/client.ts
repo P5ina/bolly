@@ -5,6 +5,7 @@ import type {
 	Drop,
 	InstanceSummary,
 	ServerMeta,
+	Skill,
 	Soul,
 	SoulTemplate,
 	Thought,
@@ -238,6 +239,32 @@ export function uploadFileUrl(slug: string, uploadId: string): string {
 	const base = `/api/instances/${encodeURIComponent(slug)}/uploads/${encodeURIComponent(uploadId)}/file`;
 	const token = getAuthToken();
 	return token ? `${base}?token=${encodeURIComponent(token)}` : base;
+}
+
+// ---------------------------------------------------------------------------
+// Skills
+// ---------------------------------------------------------------------------
+
+export function fetchSkills(): Promise<Skill[]> {
+	return json("/api/skills");
+}
+
+export function fetchSkill(skillId: string): Promise<Skill> {
+	return json(`/api/skills/${encodeURIComponent(skillId)}`);
+}
+
+export function createSkill(skill: Skill): Promise<Skill> {
+	return json("/api/skills", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(skill),
+	});
+}
+
+export async function deleteSkill(skillId: string): Promise<void> {
+	await authedFetch(`/api/skills/${encodeURIComponent(skillId)}`, {
+		method: "DELETE",
+	});
 }
 
 export function createWebSocket(): WebSocket {

@@ -9,4 +9,5 @@ pub mod mood;
 pub mod soul;
 pub mod rhythm;
 pub mod thought;
+pub mod skill;
 pub mod upload;

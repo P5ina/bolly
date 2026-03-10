@@ -5,6 +5,7 @@ pub mod llm;
 pub mod memory;
 pub mod rhythm;
 pub mod scheduler;
+pub mod skills;
 pub mod soul;
 pub mod thoughts;
 pub mod tools;
