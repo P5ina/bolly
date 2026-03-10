@@ -169,7 +169,7 @@ impl LlmBackend {
                 let mut chat_history = history.clone();
                 agent.prompt(prompt)
                     .with_history(&mut chat_history)
-                    .max_turns(16)
+                    .max_turns(64)
                     .await
             }
             LlmBackend::OpenAI { client, model } => {
@@ -184,7 +184,7 @@ impl LlmBackend {
                 let mut chat_history = history.clone();
                 agent.prompt(prompt)
                     .with_history(&mut chat_history)
-                    .max_turns(16)
+                    .max_turns(64)
                     .await
             }
         };
