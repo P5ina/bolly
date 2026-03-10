@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { play } from "$lib/sounds.js";
+
 	let {
 		onSend,
 		onStop,
@@ -22,6 +24,7 @@
 	function handleSubmit() {
 		const trimmed = value.trim();
 		if ((!trimmed && attachments.length === 0) || disabled) return;
+		play("message_send");
 		onSend(trimmed, attachments.length > 0 ? [...attachments] : undefined);
 		value = "";
 		attachments = [];
@@ -40,7 +43,8 @@
 
 	function handleFiles(e: Event) {
 		const input = e.target as HTMLInputElement;
-		if (input.files) {
+		if (input.files && input.files.length > 0) {
+			play("attachment_added");
 			attachments = [...attachments, ...Array.from(input.files)];
 		}
 		input.value = "";

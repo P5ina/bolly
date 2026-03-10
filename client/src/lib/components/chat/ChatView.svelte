@@ -7,6 +7,7 @@
 	import ChatInput from "./ChatInput.svelte";
 	import AsciiRenderer from "./AsciiRenderer.svelte";
 	import StreamActivity from "./StreamActivity.svelte";
+	import { play } from "$lib/sounds.js";
 
 	let { slug }: { slug: string } = $props();
 
@@ -125,9 +126,11 @@
 			if (event.instance_slug !== currentSlug) return;
 
 			if (event.type === "chat_message_created") {
+				if (event.message.role === "assistant") play("message_receive");
 				addMessage(event.message);
 				refreshChatList();
 			} else if (event.type === "mood_updated") {
+				play("mood_shift");
 				mood = event.mood;
 				pushActivity("mood", `mood → ${event.mood}`);
 			} else if (event.type === "agent_running") {
