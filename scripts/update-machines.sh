@@ -56,11 +56,6 @@ for app in $apps; do
     config=$(curl -sf -H "$(auth_header)" "$API/apps/$app/machines/$machine_id")
     current_image=$(echo "$config" | jq -r '.config.image // empty')
 
-    if [ "$current_image" = "$IMAGE" ]; then
-      echo " already up to date"
-      continue
-    fi
-
     # Skip nightly machines when updating to stable image (and vice versa)
     if [[ "$IMAGE" == *":latest" ]] && [[ "$current_image" == *":nightly" ]]; then
       echo " skipped (nightly channel)"
