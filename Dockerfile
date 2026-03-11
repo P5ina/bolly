@@ -1,3 +1,6 @@
+# Stage 0: Node binaries for runtime (glibc-based, not Alpine)
+FROM node:20-slim AS node-bin
+
 # Stage 1: Build client
 FROM node:20-alpine AS client-build
 RUN corepack enable
@@ -39,11 +42,16 @@ RUN apt-get update && \
       git jq && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 20 + pnpm
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y --no-install-recommends nodejs && \
-    rm -rf /var/lib/apt/lists/* && \
+# Copy Node.js from glibc-based image (not Alpine/musl) + enable pnpm
+COPY --from=node-bin /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-bin /usr/local/bin/corepack /usr/local/bin/corepack
+COPY --from=node-bin /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
+    ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
     corepack enable && corepack prepare pnpm@latest --activate
+
+# Limit Node.js memory to avoid OOM on small servers
+ENV NODE_OPTIONS="--max-old-space-size=384"
 
 COPY --from=server-build /app/target/release/server /usr/local/bin/bolly
 COPY --from=client-build /app/client/build /opt/bolly/static
