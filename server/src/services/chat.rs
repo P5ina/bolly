@@ -936,6 +936,9 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
         }
     };
 
+    let ws = workspace_dir.display();
+    let slug = instance_slug;
+
     format!(
         "{project_context}{tasks_summary}\n\
          ## capabilities\n\
@@ -948,7 +951,10 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          use them directly — never say you can't access something.\n\
          you have a heartbeat — a background loop that runs every 45 minutes even when \
          the user is away. edit your heartbeat.md file to customize what you do between conversations \
-         (check email, journal, reach out, etc).\n\n\
+         (check email, journal, reach out, etc).\n\
+         your workspace is {ws}/instances/{slug}/. all your files \
+         (soul.md, heartbeat.md, memory, drops, etc) live there. the workspace root {ws} \
+         is mounted as a persistent volume — this is where all your data is stored.\n\n\
          ## behavior\n\
          always use pnpm instead of npm for Node.js package management.\n\
          task given → act fully: orient, execute, verify, report. use continuation words to get more turns.\n\
