@@ -38,10 +38,16 @@ plan_memory() {
   esac
 }
 
-# Fetch all running tenants with their plan and fly IDs
+# Fetch all running tenants with their plan and fly IDs (uses Node + @neondatabase/serverless)
 echo "Fetching tenants from database..."
-tenants=$(psql "$DATABASE_URL" -t -A -F '|' -c \
-  "SELECT slug, plan, fly_app_id, fly_machine_id FROM tenants WHERE status = 'running' AND fly_app_id IS NOT NULL AND fly_machine_id IS NOT NULL")
+tenants=$(node -e "
+  const { neon } = require('@neondatabase/serverless');
+  const sql = neon(process.env.DATABASE_URL);
+  sql\`SELECT slug, plan, fly_app_id, fly_machine_id FROM tenants
+      WHERE status = 'running' AND fly_app_id IS NOT NULL AND fly_machine_id IS NOT NULL\`
+    .then(rows => rows.forEach(r => console.log([r.slug, r.plan, r.fly_app_id, r.fly_machine_id].join('|'))))
+    .catch(e => { console.error(e.message); process.exit(1); });
+" 2>&1) || { echo "DB query failed: $tenants"; exit 1; }
 
 if [ -z "$tenants" ]; then
   echo "No running tenants found."
