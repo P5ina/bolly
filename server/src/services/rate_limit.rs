@@ -64,10 +64,11 @@ pub async fn check(pool: &PgPool, instance_id: &str) -> Result<(), String> {
     let msg_limit = messages_per_day();
     let tok_limit = tokens_per_month();
 
-    if messages_today >= msg_limit {
+    // -1 means unlimited
+    if msg_limit > 0 && messages_today >= msg_limit {
         return Err(format!("daily message limit reached ({msg_limit})"));
     }
-    if tokens_this_month >= tok_limit {
+    if tok_limit > 0 && tokens_this_month >= tok_limit {
         return Err(format!("monthly token limit reached ({tok_limit})"));
     }
 

@@ -6,14 +6,14 @@
 			name: 'starter',
 			desc: 'See if it clicks',
 			price: 5,
-			features: ['1 companion', '1 GB storage', 'Heartbeat every 45 min', 'Memory & mood tracking', 'Your own API key'],
+			features: ['1 companion', '100 messages / day', '500K tokens / month', '1 GB storage', 'Memory & mood tracking'],
 			featured: false,
 		},
 		{
 			name: 'companion',
 			desc: 'For everyday life',
 			price: 12,
-			features: ['3 companions', '5 GB storage', 'Custom heartbeat interval', 'Email integration', 'Priority support'],
+			features: ['3 companions', '300 messages / day', '2M tokens / month', '5 GB storage', 'Email integration'],
 			featured: true,
 			badge: 'popular',
 		},
@@ -21,7 +21,7 @@
 			name: 'unlimited',
 			desc: 'No limits',
 			price: 25,
-			features: ['Unlimited companions', '20 GB storage', 'Custom heartbeat interval', 'SSH access', 'Early access to new features'],
+			features: ['Unlimited companions', 'Unlimited messages', 'Unlimited tokens', '20 GB storage', 'Early access to new features'],
 			featured: false,
 		},
 	];
@@ -37,8 +37,8 @@
 		</Reveal>
 		<Reveal delay={200}>
 			<p class="text-[0.9375rem] text-text-dim max-w-[480px] mb-16">
-				Every plan includes full privacy, persistent memory, and a friend that never sleeps.
-				Bring your own API key.
+				Every plan includes full privacy, persistent memory, and a companion that never sleeps.
+				AI included — no API key needed.
 			</p>
 		</Reveal>
 

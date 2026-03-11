@@ -132,6 +132,8 @@ export interface CreateMachineOpts {
 	volumeId: string;
 	authToken: string;
 	instanceId: string;
+	messagesPerDay?: number;
+	tokensPerMonth?: number;
 	channel?: ImageChannel;
 	region?: string;
 	cpus?: number;
@@ -158,6 +160,8 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 					DATABASE_URL: env.DATABASE_URL ?? '',
 					ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
 					OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
+					RATE_LIMIT_MESSAGES_PER_DAY: String(opts.messagesPerDay ?? 100),
+					RATE_LIMIT_TOKENS_PER_MONTH: String(opts.tokensPerMonth ?? 500_000),
 				},
 				guest: {
 					cpus: opts.cpus ?? 1,
