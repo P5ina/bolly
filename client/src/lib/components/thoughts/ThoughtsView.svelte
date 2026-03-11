@@ -2,6 +2,9 @@
 	import { fetchThoughts } from "$lib/api/client.js";
 	import type { Thought, ServerEvent } from "$lib/api/types.js";
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
+	import { getToasts } from "$lib/stores/toast.svelte.js";
+
+	const toast = getToasts();
 
 	let { slug }: { slug: string } = $props();
 
@@ -47,8 +50,8 @@
 		loading = true;
 		try {
 			thoughts = await fetchThoughts(slug);
-		} catch (e) {
-			console.error("failed to load thoughts", e);
+		} catch {
+			toast.error("failed to load thoughts");
 		} finally {
 			loading = false;
 		}

@@ -398,9 +398,19 @@ where
     let mut accumulated = String::new();
     let mut hit_turn_limit = false;
 
+    // Per-item timeout: if the stream stalls for >3 minutes (e.g. tool hang),
+    // break out instead of waiting forever.
+    const STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(180);
+
     tokio::pin!(stream);
 
-    while let Some(item) = stream.next().await {
+    while let Some(item) = tokio::time::timeout(STREAM_ITEM_TIMEOUT, stream.next())
+        .await
+        .unwrap_or_else(|_| {
+            log::warn!("stream item timed out after {}s", STREAM_ITEM_TIMEOUT.as_secs());
+            None
+        })
+    {
         match item {
             Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(t))) => {
                 let delta = t.text;

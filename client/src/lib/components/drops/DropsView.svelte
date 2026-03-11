@@ -2,8 +2,11 @@
 	import { deleteDrop, fetchDrops } from "$lib/api/client.js";
 	import type { Drop, ServerEvent } from "$lib/api/types.js";
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
+	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import { play } from "$lib/sounds.js";
 	import DropCard from "./DropCard.svelte";
+
+	const toast = getToasts();
 
 	let { slug }: { slug: string } = $props();
 
@@ -17,8 +20,8 @@
 		loading = true;
 		try {
 			drops = await fetchDrops(slug);
-		} catch (e) {
-			console.error("failed to load drops", e);
+		} catch {
+			toast.error("failed to load drops");
 		} finally {
 			loading = false;
 		}
@@ -42,8 +45,8 @@
 			await deleteDrop(slug, dropId);
 			drops = drops.filter((d) => d.id !== dropId);
 			if (expandedId === dropId) expandedId = null;
-		} catch (e) {
-			console.error("failed to delete drop", e);
+		} catch {
+			toast.error("failed to delete drop");
 		}
 	}
 

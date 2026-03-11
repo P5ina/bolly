@@ -6,9 +6,12 @@
 		installRegistrySkill,
 	} from "$lib/api/client.js";
 	import type { Skill, RegistryEntry } from "$lib/api/types.js";
+	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import SkillCard from "./SkillCard.svelte";
 	import RegistryCard from "./RegistryCard.svelte";
 	import CreateSkillModal from "./CreateSkillModal.svelte";
+
+	const toast = getToasts();
 
 	let skills = $state<Skill[]>([]);
 	let loading = $state(true);
@@ -24,8 +27,8 @@
 		loading = true;
 		try {
 			skills = await fetchSkills();
-		} catch (e) {
-			console.error("failed to load skills", e);
+		} catch {
+			toast.error("failed to load skills");
 		} finally {
 			loading = false;
 		}
@@ -63,8 +66,8 @@
 			registry = registry.map((e) =>
 				e.id === skillId ? { ...e, installed: false } : e,
 			);
-		} catch (e) {
-			console.error("failed to delete skill", e);
+		} catch {
+			toast.error("failed to delete skill");
 		}
 	}
 
@@ -81,8 +84,8 @@
 			registry = registry.map((e) =>
 				e.id === id ? { ...e, installed: true } : e,
 			);
-		} catch (e) {
-			console.error("failed to install skill", e);
+		} catch {
+			toast.error("failed to install skill");
 		} finally {
 			installingId = null;
 		}

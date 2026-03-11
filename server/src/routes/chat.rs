@@ -154,7 +154,10 @@ async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String,
         let emb_clone = emb_guard.clone();
         drop(emb_guard);
 
-        let result = chat::run_single_turn(
+        // Wrap single turn in timeout + cancellation so we never hang forever.
+        const TURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+        let turn_fut = chat::run_single_turn(
             &state.workspace_dir,
             &config_path,
             &instance_slug,
@@ -163,8 +166,23 @@ async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String,
             emb_clone.as_ref(),
             if brave_key.is_empty() { None } else { Some(brave_key.as_str()) },
             state.events.clone(),
-        )
-        .await;
+        );
+
+        let result = tokio::select! {
+            r = tokio::time::timeout(TURN_TIMEOUT, turn_fut) => {
+                match r {
+                    Ok(inner) => inner,
+                    Err(_) => {
+                        log::warn!("[agent] {instance_slug}/{chat_id} — turn timed out after {}s", TURN_TIMEOUT.as_secs());
+                        Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "turn timed out — the model or a tool took too long"))
+                    }
+                }
+            }
+            _ = cancel.cancelled() => {
+                log::info!("[agent] {instance_slug}/{chat_id} — cancelled during turn");
+                break;
+            }
+        };
 
         // Reload config in case LLM changed it
         state.reload_config().await;
@@ -229,7 +247,28 @@ async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String,
                 }
             }
             Err(e) => {
-                log::warn!("[agent] {instance_slug}/{chat_id} — error: {e}");
+                let msg = e.to_string();
+                log::warn!("[agent] {instance_slug}/{chat_id} — error: {msg}");
+
+                // Let the client know what happened
+                let error_label = if msg.contains("rate limit") || msg.contains("429") {
+                    "rate limited — try again in a moment"
+                } else if msg.contains("timed out") {
+                    "request timed out"
+                } else {
+                    "something went wrong"
+                };
+                let error_msg = chat::save_system_message(
+                    &state.workspace_dir, &instance_slug, &chat_id,
+                    &format!("[system] {error_label}"),
+                );
+                if let Ok(m) = error_msg {
+                    let _ = state.events.send(ServerEvent::ChatMessageCreated {
+                        instance_slug: instance_slug.clone(),
+                        chat_id: chat_id.clone(),
+                        message: m,
+                    });
+                }
                 break;
             }
         }

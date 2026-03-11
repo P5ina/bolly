@@ -9,6 +9,7 @@
 	import { onMount } from "svelte";
 	import { pwaInfo } from "virtual:pwa-info";
 	import AuthGate from "$lib/components/auth/AuthGate.svelte";
+	import Toast from "$lib/components/layout/Toast.svelte";
 
 	let { children } = $props();
 
@@ -125,6 +126,8 @@
 			</button>
 		</div>
 	{/if}
+
+	<Toast />
 
 	<!-- connection lost banner -->
 	{#if ws.reconnecting}

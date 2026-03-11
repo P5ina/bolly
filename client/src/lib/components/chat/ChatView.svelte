@@ -9,7 +9,10 @@
 	import AsciiRenderer from "./AsciiRenderer.svelte";
 	import StreamActivity from "./StreamActivity.svelte";
 	import { play } from "$lib/sounds.js";
+	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
+
+	const toast = getToasts();
 
 	let { slug, chatId }: { slug: string; chatId: string } = $props();
 
@@ -214,16 +217,21 @@
 					if (agentRunning) pushActivity("state", "thinking...");
 					scrollToBottom();
 				})
-				.catch(() => { messages = []; })
+				.catch((e) => {
+					messages = [];
+					if (!(e instanceof Error && e.message === "unauthorized")) {
+						toast.error("failed to load messages");
+					}
+				})
 				.finally(() => { loading = false; });
 
 			fetchMood(currentSlug)
 				.then((res) => { if (res.mood) mood = res.mood; })
-				.catch(() => {});
+				.catch(() => {}); // mood is non-critical
 
 			fetchCompanionName(currentSlug)
 				.then((res) => { if (res.name) companionName = res.name; })
-				.catch(() => {});
+				.catch(() => {}); // name is non-critical
 		});
 
 		const unsub = ws.subscribe((event: ServerEvent) => {
@@ -303,9 +311,20 @@
 			}
 			const res = await sendMessage(slug, finalContent, activeChatId);
 			for (const msg of res.messages) addMessage(msg);
-		} catch {
+		} catch (e) {
 			play("error");
 			sending = false;
+			const msg = e instanceof Error ? e.message : "failed to send";
+			if (msg.includes("rate limit")) {
+				try {
+					const parsed = JSON.parse(msg);
+					toast.error(parsed.detail ?? "rate limited — try again later");
+				} catch {
+					toast.error("rate limited — try again later");
+				}
+			} else {
+				toast.error(msg);
+			}
 		}
 	}
 

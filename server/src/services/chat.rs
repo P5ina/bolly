@@ -67,6 +67,31 @@ pub fn save_user_message(
     Ok(user_message)
 }
 
+/// Save a system/tool message (role=assistant) for status/error notifications.
+pub fn save_system_message(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    chat_id: &str,
+    content: &str,
+) -> io::Result<ChatMessage> {
+    let instance_slug = sanitize_slug(instance_slug);
+    let chat_id = sanitize_slug(chat_id);
+    ensure_chat_dir(workspace_dir, &instance_slug, &chat_id)?;
+
+    let msg = ChatMessage {
+        id: next_id(),
+        role: ChatRole::Assistant,
+        content: content.to_string(),
+        created_at: timestamp(),
+    };
+
+    let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
+    messages.push(msg.clone());
+    save_messages(workspace_dir, &instance_slug, &chat_id, &messages)?;
+
+    Ok(msg)
+}
+
 /// Run a single LLM turn: build context, call LLM with tools, save response.
 /// Returns one or more assistant messages (the reply is split into chat-like chunks).
 /// Rig handles up to 8 internal tool sub-turns.

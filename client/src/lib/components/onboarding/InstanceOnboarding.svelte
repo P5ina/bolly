@@ -8,7 +8,10 @@
 	} from "$lib/api/client.js";
 	import type { SoulTemplate } from "$lib/api/types.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
+	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import { play, preload } from "$lib/sounds.js";
+
+	const toast = getToasts();
 	import AsciiRenderer from "$lib/components/chat/AsciiRenderer.svelte";
 
 	let { slug, oncomplete }: { slug: string; oncomplete: () => void } = $props();
@@ -210,7 +213,7 @@
 			await sendMessage(slug, content);
 			await instances.refresh();
 		} catch {
-			// instance created even on failure
+			toast.error("setup failed — try sending a message after");
 		}
 
 		stage = "departing";
