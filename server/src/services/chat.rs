@@ -195,6 +195,7 @@ pub async fn run_single_turn(
             );
             let _ = events.send(ServerEvent::ContextCompacting {
                 instance_slug: instance_slug.clone(),
+                chat_id: chat_id.to_string(),
                 messages_compacted: to_compact.len(),
             });
             let new_summary = compact_messages(llm, &existing_compact, to_compact).await;
@@ -243,7 +244,7 @@ pub async fn run_single_turn(
     };
 
     let sent_files = tools::SentFiles::default();
-    let (tools, sent_files) = build_instance_tools(workspace_dir, &instance_slug, brave_api_key, config_path, events.clone(), sent_files);
+    let (tools, sent_files) = build_instance_tools(workspace_dir, &instance_slug, &chat_id, brave_api_key, config_path, events.clone(), sent_files);
 
     let tool_result = llm
         .chat_with_tools(&system_prompt, prompt_msg, history_msgs, tools, memory_index)
@@ -1033,6 +1034,7 @@ fn load_rhythm_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
 fn build_instance_tools(
     workspace_dir: &Path,
     instance_slug: &str,
+    chat_id: &str,
     brave_api_key: Option<&str>,
     config_path: &Path,
     events: broadcast::Sender<ServerEvent>,
@@ -1073,7 +1075,7 @@ fn build_instance_tools(
     let wrapped: Vec<Box<dyn ToolDyn>> = raw_tools
         .into_iter()
         .map(|tool| -> Box<dyn ToolDyn> {
-            Box::new(ObservableTool::new(tool, events.clone(), instance_slug.to_string()))
+            Box::new(ObservableTool::new(tool, events.clone(), instance_slug.to_string(), chat_id.to_string()))
         })
         .collect();
     (wrapped, sent_files)

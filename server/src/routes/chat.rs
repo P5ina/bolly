@@ -53,6 +53,7 @@ async fn post_chat(
     // Broadcast user message
     let _ = state.events.send(ServerEvent::ChatMessageCreated {
         instance_slug: instance_slug.clone(),
+        chat_id: chat_id.clone(),
         message: user_message.clone(),
     });
 
@@ -104,6 +105,7 @@ async fn post_chat(
 async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String, cancel: CancellationToken) {
     let _ = state.events.send(ServerEvent::AgentRunning {
         instance_slug: instance_slug.clone(),
+        chat_id: chat_id.clone(),
     });
 
     const MAX_ITERATIONS: usize = 20;
@@ -166,6 +168,7 @@ async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String,
                     }
                     let _ = state.events.send(ServerEvent::ChatMessageCreated {
                         instance_slug: instance_slug.clone(),
+                        chat_id: chat_id.clone(),
                         message: msg.clone(),
                     });
                 }
@@ -247,6 +250,7 @@ async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String,
 
     let _ = state.events.send(ServerEvent::AgentStopped {
         instance_slug: instance_slug.clone(),
+        chat_id: chat_id.clone(),
     });
 }
 

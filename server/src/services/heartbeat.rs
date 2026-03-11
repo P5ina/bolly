@@ -476,6 +476,7 @@ fn deliver_spontaneous_message(
     // Broadcast via WebSocket
     let _ = events.send(ServerEvent::ChatMessageCreated {
         instance_slug: slug.to_string(),
+        chat_id: "default".to_string(),
         message: chat_message,
     });
 }
@@ -563,7 +564,7 @@ fn build_heartbeat_tools(
     raw_tools
         .into_iter()
         .map(|tool| -> Box<dyn ToolDyn> {
-            Box::new(ObservableTool::new(tool, events.clone(), instance_slug.to_string()))
+            Box::new(ObservableTool::new(tool, events.clone(), instance_slug.to_string(), "default".to_string()))
         })
         .collect()
 }

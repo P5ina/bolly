@@ -92,6 +92,7 @@ fn check_and_deliver(workspace_dir: &Path, events: &broadcast::Sender<ServerEven
             // Broadcast via WebSocket
             match events.send(ServerEvent::ChatMessageCreated {
                 instance_slug: instance_slug.clone(),
+                chat_id: "default".to_string(),
                 message,
             }) {
                 Ok(n) => log::info!("broadcast scheduled message to {n} receivers"),

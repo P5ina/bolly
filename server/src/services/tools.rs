@@ -85,6 +85,7 @@ pub struct ObservableTool {
     inner: Box<dyn ToolDyn>,
     events: broadcast::Sender<ServerEvent>,
     instance_slug: String,
+    chat_id: String,
 }
 
 impl ObservableTool {
@@ -92,8 +93,9 @@ impl ObservableTool {
         inner: Box<dyn ToolDyn>,
         events: broadcast::Sender<ServerEvent>,
         instance_slug: String,
+        chat_id: String,
     ) -> Self {
-        Self { inner, events, instance_slug }
+        Self { inner, events, instance_slug, chat_id }
     }
 }
 
@@ -111,10 +113,36 @@ impl ToolDyn for ObservableTool {
         let summary = tool_summary(&tool_name, &args);
         let _ = self.events.send(ServerEvent::ToolActivity {
             instance_slug: self.instance_slug.clone(),
-            tool_name,
+            chat_id: self.chat_id.clone(),
+            tool_name: tool_name.clone(),
             summary,
         });
-        self.inner.call(args)
+        let events = self.events.clone();
+        let instance_slug = self.instance_slug.clone();
+        let chat_id = self.chat_id.clone();
+        let fut = self.inner.call(args);
+        Box::pin(async move {
+            let result = fut.await;
+            // Emit output for commands so the user can see what happened
+            if tool_name == "run_command" || tool_name == "install_package" {
+                let output = match &result {
+                    Ok(s) => {
+                        let short: String = s.chars().take(200).collect();
+                        if s.len() > 200 { format!("{short}...") } else { short }
+                    }
+                    Err(e) => format!("error: {e}"),
+                };
+                if !output.is_empty() {
+                    let _ = events.send(ServerEvent::ToolActivity {
+                        instance_slug,
+                        chat_id,
+                        tool_name: format!("{tool_name}_output"),
+                        summary: output,
+                    });
+                }
+            }
+            result
+        })
     }
 }
 

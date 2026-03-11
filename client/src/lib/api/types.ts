@@ -144,6 +144,7 @@ export type ServerEvent =
 	| {
 			type: "chat_message_created";
 			instance_slug: string;
+			chat_id: string;
 			message: ChatMessage;
 	  }
 	| {
@@ -158,14 +159,17 @@ export type ServerEvent =
 	| {
 			type: "agent_running";
 			instance_slug: string;
+			chat_id: string;
 	  }
 	| {
 			type: "agent_stopped";
 			instance_slug: string;
+			chat_id: string;
 	  }
 	| {
 			type: "tool_activity";
 			instance_slug: string;
+			chat_id: string;
 			tool_name: string;
 			summary: string;
 	  }
@@ -182,5 +186,6 @@ export type ServerEvent =
 	| {
 			type: "context_compacting";
 			instance_slug: string;
+			chat_id: string;
 			messages_compacted: number;
 	  };

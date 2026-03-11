@@ -7,6 +7,7 @@ use crate::domain::{chat::ChatMessage, drop::Drop, instance::InstanceSummary, th
 pub enum ServerEvent {
     ChatMessageCreated {
         instance_slug: String,
+        chat_id: String,
         message: ChatMessage,
     },
     InstanceDiscovered {
@@ -18,12 +19,15 @@ pub enum ServerEvent {
     },
     AgentRunning {
         instance_slug: String,
+        chat_id: String,
     },
     AgentStopped {
         instance_slug: String,
+        chat_id: String,
     },
     ToolActivity {
         instance_slug: String,
+        chat_id: String,
         tool_name: String,
         summary: String,
     },
@@ -37,6 +41,7 @@ pub enum ServerEvent {
     },
     ContextCompacting {
         instance_slug: String,
+        chat_id: String,
         messages_compacted: usize,
     },
 }

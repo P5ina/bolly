@@ -4,22 +4,27 @@
 		label,
 		timestamp,
 	}: {
-		kind?: "tool" | "mood" | "state";
+		kind?: "tool" | "mood" | "state" | "output";
 		label: string;
 		timestamp?: string;
 	} = $props();
 
-	const accentMap = {
+	const accentMap: Record<string, string> = {
 		tool: "act-tool",
 		mood: "act-mood",
 		state: "act-state",
+		output: "act-output",
 	};
 </script>
 
-<div class="act-row {accentMap[kind]}">
+<div class="act-row {accentMap[kind] ?? 'act-tool'}">
 	<div class="act-border"></div>
 	<div class="act-body">
-		<span class="act-label">{label}</span>
+		{#if kind === "output"}
+			<pre class="act-output-text">{label}</pre>
+		{:else}
+			<span class="act-label">{label}</span>
+		{/if}
 		{#if timestamp}
 			<span class="act-time">{timestamp}</span>
 		{/if}
@@ -56,6 +61,9 @@
 	.act-state .act-border {
 		background: oklch(0.60 0.08 280 / 40%);
 	}
+	.act-output .act-border {
+		background: oklch(0.55 0.06 200 / 30%);
+	}
 
 	.act-body {
 		display: flex;
@@ -83,6 +91,18 @@
 	}
 	.act-state .act-label {
 		color: oklch(0.62 0.04 280 / 55%);
+	}
+
+	.act-output-text {
+		font-family: var(--font-mono);
+		font-size: 0.62rem;
+		line-height: 1.5;
+		color: oklch(0.60 0.03 200 / 55%);
+		white-space: pre-wrap;
+		word-break: break-all;
+		margin: 0;
+		max-height: 120px;
+		overflow-y: auto;
 	}
 
 	.act-time {

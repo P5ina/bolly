@@ -14,7 +14,7 @@
 
 	type StreamItem =
 		| { type: "message"; data: ChatMessage }
-		| { type: "activity"; id: string; kind: "tool" | "mood" | "state"; label: string; timestamp: string };
+		| { type: "activity"; id: string; kind: "tool" | "mood" | "state" | "output"; label: string; timestamp: string };
 
 	let activeChatId = $derived(chatId);
 	let chats = $state<ChatSummary[]>([]);
@@ -43,7 +43,7 @@
 		return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 	}
 
-	function pushActivity(kind: "tool" | "mood" | "state", label: string) {
+	function pushActivity(kind: "tool" | "mood" | "state" | "output", label: string) {
 		stream = [...stream, {
 			type: "activity",
 			id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -142,6 +142,10 @@
 			if (event.type === "instance_discovered") return;
 			if (event.instance_slug !== currentSlug) return;
 
+			// Filter chat-specific events by chat_id
+			const eventChatId = "chat_id" in event ? event.chat_id : undefined;
+			if (eventChatId && eventChatId !== currentChat) return;
+
 			if (event.type === "chat_message_created") {
 				if (event.message.role === "assistant") play("message_receive");
 				addMessage(event.message);
@@ -159,7 +163,8 @@
 			} else if (event.type === "tool_activity") {
 				// Skip tool_activity for set_mood — the dedicated mood_updated event handles it
 				if (event.summary.startsWith("mood →")) return;
-				pushActivity("tool", event.summary);
+				const isOutput = event.tool_name.endsWith("_output");
+				pushActivity(isOutput ? "output" : "tool", event.summary);
 			} else if (event.type === "drop_created") {
 				pushActivity("tool", `dropped: ${event.drop.title}`);
 			} else if (event.type === "context_compacting") {
