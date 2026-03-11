@@ -2102,6 +2102,8 @@ pub struct RunCommandArgs {
     pub cwd: Option<String>,
     /// Timeout in seconds. Choose based on what the command does: quick commands (ls, cat, echo) use 5-10, builds/installs use 60-120, long tasks up to 300. Default: 30.
     pub timeout_secs: Option<u64>,
+    /// Allocate a pseudo-terminal (PTY) for this command. Enables commands that require a TTY (ssh, gh auth, python REPL, etc.). Default: true.
+    pub pty: Option<bool>,
 }
 
 impl Tool for RunCommandTool {
@@ -2113,9 +2115,11 @@ impl Tool for RunCommandTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "run_command".into(),
-            description: "Execute a shell command. Optionally specify a working directory \
-                with an absolute path, otherwise runs in your instance directory. \
-                Use this to run builds, tests, git commands, or any shell operation."
+            description: "Execute a shell command with PTY (pseudo-terminal) support. \
+                Commands run in a real terminal by default, enabling interactive tools \
+                like ssh, gh auth, python, and other TTY-requiring programs. \
+                Set pty=false for simple non-interactive commands if needed. \
+                Optionally specify a working directory with an absolute path."
                 .into(),
             parameters: openai_schema::<RunCommandArgs>(),
         }
@@ -2134,45 +2138,498 @@ impl Tool for RunCommandTool {
             .unwrap_or_else(|| self.instance_dir.clone());
 
         let timeout = args.timeout_secs.unwrap_or(30).min(300);
-        log::info!("[run_command] executing: {} (cwd: {})", command, work_dir.display());
-        let output = tokio::time::timeout(
-            std::time::Duration::from_secs(timeout),
-            tokio::process::Command::new("sh")
-                .arg("-c")
-                .arg(&command)
-                .current_dir(&work_dir)
-                .stdin(std::process::Stdio::null())
-                .output(),
-        )
-        .await
-        .map_err(|_| ToolExecError(format!("command timed out after {timeout}s: {command}")))?
-        .map_err(|e| ToolExecError(format!("failed to execute command: {e}")))?;
+        let use_pty = args.pty.unwrap_or(true);
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::info!("[run_command] executing: {} (cwd: {}, pty: {})", command, work_dir.display(), use_pty);
 
-        let mut result = String::new();
-        if !stdout.is_empty() {
-            let truncated: String = stdout.chars().take(4000).collect();
-            result.push_str(&truncated);
-            if stdout.len() > 4000 {
-                result.push_str("\n...(output truncated)");
+        if use_pty {
+            let cmd = command.clone();
+            let dir = work_dir.clone();
+            tokio::task::spawn_blocking(move || run_command_pty(&cmd, &dir, timeout))
+                .await
+                .map_err(|e| ToolExecError(format!("task join error: {e}")))?
+                .map_err(|e| ToolExecError(e))
+        } else {
+            let output = tokio::time::timeout(
+                std::time::Duration::from_secs(timeout),
+                tokio::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(&command)
+                    .current_dir(&work_dir)
+                    .stdin(std::process::Stdio::null())
+                    .output(),
+            )
+            .await
+            .map_err(|_| ToolExecError(format!("command timed out after {timeout}s: {command}")))?
+            .map_err(|e| ToolExecError(format!("failed to execute command: {e}")))?;
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+
+            let mut result = String::new();
+            if !stdout.is_empty() {
+                let truncated: String = stdout.chars().take(4000).collect();
+                result.push_str(&truncated);
+                if stdout.len() > 4000 {
+                    result.push_str("\n...(output truncated)");
+                }
+            }
+            if !stderr.is_empty() {
+                if !result.is_empty() {
+                    result.push('\n');
+                }
+                let truncated: String = stderr.chars().take(2000).collect();
+                result.push_str(&format!("stderr: {truncated}"));
+            }
+
+            if result.is_empty() {
+                result = format!("command completed with exit code {}", output.status.code().unwrap_or(-1));
+            }
+
+            Ok(result)
+        }
+    }
+}
+
+/// Execute a command inside a pseudo-terminal (PTY).
+/// This runs synchronously (intended for `spawn_blocking`).
+fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64) -> Result<String, String> {
+    use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+    use std::io::Read;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
+    let pty_system = native_pty_system();
+    let pair = pty_system
+        .openpty(PtySize {
+            rows: 24,
+            cols: 120,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|e| format!("failed to open pty: {e}"))?;
+
+    let mut cmd = CommandBuilder::new("sh");
+    cmd.args(["-c", command]);
+    cmd.cwd(work_dir);
+
+    let mut child = pair
+        .slave
+        .spawn_command(cmd)
+        .map_err(|e| format!("failed to spawn command: {e}"))?;
+
+    // Drop slave so we get EOF when the child process exits
+    drop(pair.slave);
+
+    let mut reader = pair
+        .master
+        .try_clone_reader()
+        .map_err(|e| format!("failed to clone pty reader: {e}"))?;
+
+    // Drop the writer so the child gets EOF on stdin (no interactive input)
+    let _writer = pair.master.take_writer().ok();
+    drop(_writer);
+
+    // Read output in a separate thread so we can enforce a timeout
+    let (tx, rx) = mpsc::channel::<Option<Vec<u8>>>();
+    std::thread::spawn(move || {
+        let mut buf = vec![0u8; 4096];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => {
+                    let _ = tx.send(None);
+                    break;
+                }
+                Ok(n) => {
+                    if tx.send(Some(buf[..n].to_vec())).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => {
+                    let _ = tx.send(None);
+                    break;
+                }
             }
         }
-        if !stderr.is_empty() {
-            if !result.is_empty() {
-                result.push('\n');
+    });
+
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+    let mut output = Vec::new();
+    let max_capture = 6000usize; // capture a bit more than we display
+
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            let _ = child.kill();
+            return Err(format!("command timed out after {timeout_secs}s: {command}"));
+        }
+
+        match rx.recv_timeout(remaining) {
+            Ok(Some(data)) => {
+                output.extend_from_slice(&data);
+                if output.len() > max_capture {
+                    break;
+                }
             }
-            let truncated: String = stderr.chars().take(2000).collect();
-            result.push_str(&format!("stderr: {truncated}"));
+            Ok(None) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let _ = child.kill();
+                return Err(format!("command timed out after {timeout_secs}s: {command}"));
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
+    }
 
-        if result.is_empty() {
-            result = format!("command completed with exit code {}", output.status.code().unwrap_or(-1));
+    // Wait for the child to finish
+    let exit_status = child.wait().ok();
+
+    // Convert output, strip ANSI escape codes
+    let raw = String::from_utf8_lossy(&output);
+    let clean = strip_ansi_codes(&raw);
+    let truncated: String = clean.chars().take(4000).collect();
+
+    if truncated.is_empty() {
+        let code = exit_status
+            .map(|s| s.exit_code().to_string())
+            .unwrap_or_else(|| "unknown".into());
+        Ok(format!("command completed with exit code {code}"))
+    } else {
+        let mut result = truncated;
+        if clean.chars().count() > 4000 {
+            result.push_str("\n...(output truncated)");
         }
-
         Ok(result)
     }
+}
+
+/// Strip ANSI escape sequences from a string (CSI sequences, OSC, etc.)
+fn strip_ansi_codes(s: &str) -> String {
+    let re = regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[mGKHJ]|\r")
+        .unwrap();
+    re.replace_all(s, "").into_owned()
+}
+
+// ---------------------------------------------------------------------------
+// interactive_session — persistent PTY sessions for interactive commands
+// ---------------------------------------------------------------------------
+
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex as StdMutex};
+
+struct PtySession {
+    child: Box<dyn portable_pty::Child + Send + Sync>,
+    writer: Box<dyn std::io::Write + Send>,
+    output_rx: std::sync::mpsc::Receiver<Vec<u8>>,
+}
+
+impl PtySession {
+    /// Drain all available output, waiting up to `timeout` for the first chunk.
+    fn drain_output(&self, timeout: std::time::Duration) -> String {
+        let mut output = Vec::new();
+        // Wait for first chunk with timeout
+        match self.output_rx.recv_timeout(timeout) {
+            Ok(data) => output.extend(data),
+            Err(_) => {}
+        }
+        // Drain any remaining buffered output without blocking
+        while let Ok(data) = self.output_rx.try_recv() {
+            output.extend(data);
+            if output.len() > 8000 {
+                break;
+            }
+        }
+        let raw = String::from_utf8_lossy(&output);
+        strip_ansi_codes(&raw)
+    }
+}
+
+static PTY_SESSIONS: LazyLock<StdMutex<HashMap<String, PtySession>>> =
+    LazyLock::new(|| StdMutex::new(HashMap::new()));
+
+pub struct InteractiveSessionTool {
+    instance_dir: PathBuf,
+}
+
+impl InteractiveSessionTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct InteractiveSessionArgs {
+    /// Action to perform: "start", "write", "read", or "close".
+    pub action: String,
+    /// Shell command to execute (required for "start").
+    pub command: Option<String>,
+    /// Working directory, absolute path (for "start"). Default: instance directory.
+    pub cwd: Option<String>,
+    /// Session ID (required for "write", "read", "close"). Returned by "start".
+    pub session_id: Option<String>,
+    /// Input to send to the process (for "write"). Supports escape sequences:
+    /// use \n for Enter/Return, \t for Tab. For arrow keys: \x1b[A (up), \x1b[B (down),
+    /// \x1b[C (right), \x1b[D (left). For Ctrl+C: \x03, Ctrl+D: \x04.
+    pub input: Option<String>,
+    /// Seconds to wait for output after starting or writing. Default: 2.
+    pub wait_secs: Option<u64>,
+}
+
+impl Tool for InteractiveSessionTool {
+    const NAME: &'static str = "interactive_session";
+    type Error = ToolExecError;
+    type Args = InteractiveSessionArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "interactive_session".into(),
+            description: "Manage interactive PTY sessions for commands that require a terminal \
+                (ssh, gh auth, python REPL, etc.). Use action=\"start\" to begin a session, \
+                \"write\" to send input (keystrokes), \"read\" to check for new output, \
+                and \"close\" to end the session. The session persists across tool calls, \
+                allowing multi-step interactive workflows."
+                .into(),
+            parameters: openai_schema::<InteractiveSessionArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        match args.action.as_str() {
+            "start" => {
+                let command = args.command.ok_or_else(|| {
+                    ToolExecError("\"command\" is required for action \"start\"".into())
+                })?;
+
+                let work_dir = args.cwd
+                    .as_deref()
+                    .filter(|p| p.starts_with('/'))
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| self.instance_dir.clone());
+
+                let wait = std::time::Duration::from_secs(args.wait_secs.unwrap_or(2));
+                let session_id = uuid::Uuid::new_v4().to_string()[..8].to_string();
+
+                log::info!("[interactive_session] starting: {} (session: {})", command, session_id);
+
+                // Spawn PTY in a blocking context
+                let cmd = command.clone();
+                let dir = work_dir.clone();
+                let sid = session_id.clone();
+
+                let initial_output = tokio::task::spawn_blocking(move || -> Result<String, String> {
+                    use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+
+                    let pty_system = native_pty_system();
+                    let pair = pty_system
+                        .openpty(PtySize {
+                            rows: 24,
+                            cols: 120,
+                            pixel_width: 0,
+                            pixel_height: 0,
+                        })
+                        .map_err(|e| format!("failed to open pty: {e}"))?;
+
+                    let mut pty_cmd = CommandBuilder::new("sh");
+                    pty_cmd.args(["-c", &cmd]);
+                    pty_cmd.cwd(&dir);
+
+                    let child = pair
+                        .slave
+                        .spawn_command(pty_cmd)
+                        .map_err(|e| format!("failed to spawn command: {e}"))?;
+
+                    drop(pair.slave);
+
+                    let mut reader = pair
+                        .master
+                        .try_clone_reader()
+                        .map_err(|e| format!("failed to clone pty reader: {e}"))?;
+
+                    let writer = pair
+                        .master
+                        .take_writer()
+                        .map_err(|e| format!("failed to take pty writer: {e}"))?;
+
+                    // Start background reader thread
+                    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+                    std::thread::spawn(move || {
+                        let mut buf = vec![0u8; 4096];
+                        loop {
+                            match std::io::Read::read(&mut reader, &mut buf) {
+                                Ok(0) => { let _ = tx.send(Vec::new()); break; }
+                                Ok(n) => {
+                                    if tx.send(buf[..n].to_vec()).is_err() {
+                                        break;
+                                    }
+                                }
+                                Err(_) => { let _ = tx.send(Vec::new()); break; }
+                            }
+                        }
+                    });
+
+                    let session = PtySession { child, writer, output_rx: rx };
+
+                    // Wait for initial output
+                    let initial = session.drain_output(wait);
+
+                    PTY_SESSIONS.lock().unwrap().insert(sid, session);
+
+                    Ok(initial)
+                })
+                .await
+                .map_err(|e| ToolExecError(format!("task join error: {e}")))?
+                .map_err(|e| ToolExecError(e))?;
+
+                let mut result = format!("Session started: {session_id}\n");
+                if !initial_output.is_empty() {
+                    result.push_str(&initial_output);
+                } else {
+                    result.push_str("(waiting for output...)");
+                }
+                Ok(result)
+            }
+
+            "write" => {
+                let session_id = args.session_id.ok_or_else(|| {
+                    ToolExecError("\"session_id\" is required for action \"write\"".into())
+                })?;
+                let input = args.input.ok_or_else(|| {
+                    ToolExecError("\"input\" is required for action \"write\"".into())
+                })?;
+                let wait = std::time::Duration::from_secs(args.wait_secs.unwrap_or(2));
+
+                // Unescape common sequences
+                let bytes = unescape_input(&input);
+
+                let sid = session_id.clone();
+                let output = tokio::task::spawn_blocking(move || -> Result<String, String> {
+                    let mut sessions = PTY_SESSIONS.lock().unwrap();
+                    let session = sessions.get_mut(&sid).ok_or_else(|| {
+                        format!("no session with id \"{sid}\". It may have been closed or expired.")
+                    })?;
+
+                    // First drain any pending output before writing
+                    let _ = session.drain_output(std::time::Duration::from_millis(100));
+
+                    std::io::Write::write_all(&mut session.writer, &bytes)
+                        .map_err(|e| format!("write error: {e}"))?;
+                    std::io::Write::flush(&mut session.writer)
+                        .map_err(|e| format!("flush error: {e}"))?;
+
+                    // Wait for response output
+                    let output = session.drain_output(wait);
+                    Ok(output)
+                })
+                .await
+                .map_err(|e| ToolExecError(format!("task join error: {e}")))?
+                .map_err(|e| ToolExecError(e))?;
+
+                if output.is_empty() {
+                    Ok(format!("[session {session_id}] Input sent. No new output yet."))
+                } else {
+                    Ok(format!("[session {session_id}]\n{output}"))
+                }
+            }
+
+            "read" => {
+                let session_id = args.session_id.ok_or_else(|| {
+                    ToolExecError("\"session_id\" is required for action \"read\"".into())
+                })?;
+                let wait = std::time::Duration::from_secs(args.wait_secs.unwrap_or(2));
+
+                let sid = session_id.clone();
+                let output = tokio::task::spawn_blocking(move || -> Result<String, String> {
+                    let sessions = PTY_SESSIONS.lock().unwrap();
+                    let session = sessions.get(&sid).ok_or_else(|| {
+                        format!("no session with id \"{sid}\"")
+                    })?;
+                    Ok(session.drain_output(wait))
+                })
+                .await
+                .map_err(|e| ToolExecError(format!("task join error: {e}")))?
+                .map_err(|e| ToolExecError(e))?;
+
+                if output.is_empty() {
+                    Ok(format!("[session {session_id}] No new output."))
+                } else {
+                    Ok(format!("[session {session_id}]\n{output}"))
+                }
+            }
+
+            "close" => {
+                let session_id = args.session_id.ok_or_else(|| {
+                    ToolExecError("\"session_id\" is required for action \"close\"".into())
+                })?;
+
+                let sid = session_id.clone();
+                let output = tokio::task::spawn_blocking(move || -> Result<String, String> {
+                    let mut sessions = PTY_SESSIONS.lock().unwrap();
+                    if let Some(mut session) = sessions.remove(&sid) {
+                        // Drain remaining output
+                        let final_output = session.drain_output(std::time::Duration::from_millis(500));
+                        let _ = session.child.kill();
+                        let _ = session.child.wait();
+                        Ok(final_output)
+                    } else {
+                        Ok(String::new())
+                    }
+                })
+                .await
+                .map_err(|e| ToolExecError(format!("task join error: {e}")))?
+                .map_err(|e| ToolExecError(e))?;
+
+                let mut result = format!("Session {session_id} closed.");
+                if !output.is_empty() {
+                    result.push_str(&format!("\nFinal output:\n{output}"));
+                }
+                Ok(result)
+            }
+
+            other => Err(ToolExecError(format!(
+                "unknown action \"{other}\". Use \"start\", \"write\", \"read\", or \"close\"."
+            ))),
+        }
+    }
+}
+
+/// Unescape common terminal input sequences from a string.
+/// Handles: \n (newline/enter), \r (carriage return), \t (tab),
+/// \x1b (escape), \xNN (hex byte), \\ (literal backslash).
+fn unescape_input(s: &str) -> Vec<u8> {
+    let mut result = Vec::new();
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.peek() {
+                Some('n') => { chars.next(); result.push(b'\n'); }
+                Some('r') => { chars.next(); result.push(b'\r'); }
+                Some('t') => { chars.next(); result.push(b'\t'); }
+                Some('\\') => { chars.next(); result.push(b'\\'); }
+                Some('x') => {
+                    chars.next();
+                    let mut hex = String::new();
+                    for _ in 0..2 {
+                        if let Some(&h) = chars.peek() {
+                            if h.is_ascii_hexdigit() {
+                                hex.push(h);
+                                chars.next();
+                            }
+                        }
+                    }
+                    if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                        result.push(byte);
+                    }
+                }
+                _ => result.push(b'\\'),
+            }
+        } else {
+            let mut buf = [0u8; 4];
+            result.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+        }
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------
