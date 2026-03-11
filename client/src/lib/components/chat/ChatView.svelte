@@ -9,6 +9,7 @@
 	import AsciiRenderer from "./AsciiRenderer.svelte";
 	import StreamActivity from "./StreamActivity.svelte";
 	import { play } from "$lib/sounds.js";
+	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 
 	let { slug, chatId }: { slug: string; chatId: string } = $props();
 
@@ -250,11 +251,28 @@
 					<path d="M8 3v10M3 8h10" stroke-linecap="round"/>
 				</svg>
 			</button>
-			<button onclick={handleClear} onmousedown={(e) => e.preventDefault()} class="bar-btn bar-clear" title="Clear context">
-				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
-					<path d="M2 4h12M5.5 4V2.5h5V4M6 7v5M10 7v5M3.5 4l.75 9.5h7.5L12.5 4" stroke-linecap="round" stroke-linejoin="round"/>
-				</svg>
-			</button>
+			<AlertDialog.Root>
+				<AlertDialog.Trigger class="bar-btn bar-clear" title="Clear context">
+					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
+						<path d="M2 4h12M5.5 4V2.5h5V4M6 7v5M10 7v5M3.5 4l.75 9.5h7.5L12.5 4" stroke-linecap="round" stroke-linejoin="round"/>
+					</svg>
+				</AlertDialog.Trigger>
+				<AlertDialog.Portal>
+					<AlertDialog.Overlay class="clear-dialog-overlay" />
+					<AlertDialog.Content class="clear-dialog">
+						<AlertDialog.Header>
+							<AlertDialog.Title class="clear-dialog-title">clear context</AlertDialog.Title>
+							<AlertDialog.Description class="clear-dialog-desc">
+								this will erase all messages in this conversation. this cannot be undone.
+							</AlertDialog.Description>
+						</AlertDialog.Header>
+						<AlertDialog.Footer class="clear-dialog-footer">
+							<AlertDialog.Cancel class="clear-dialog-btn clear-dialog-cancel">cancel</AlertDialog.Cancel>
+							<AlertDialog.Action class="clear-dialog-btn clear-dialog-confirm" onclick={handleClear}>clear</AlertDialog.Action>
+						</AlertDialog.Footer>
+					</AlertDialog.Content>
+				</AlertDialog.Portal>
+			</AlertDialog.Root>
 		</div>
 	</header>
 
@@ -621,5 +639,95 @@
 		.bar-right {
 			max-width: 50%;
 		}
+	}
+
+	/* --- clear context dialog --- */
+
+	:global(.clear-dialog-overlay) {
+		position: fixed;
+		inset: 0;
+		z-index: 50;
+		background: oklch(0 0 0 / 60%);
+		backdrop-filter: blur(4px);
+		animation: overlay-in 0.2s ease both;
+	}
+
+	@keyframes overlay-in {
+		from { opacity: 0; }
+		to { opacity: 1; }
+	}
+
+	:global(.clear-dialog) {
+		position: fixed;
+		top: 50%;
+		left: 50%;
+		z-index: 51;
+		transform: translate(-50%, -50%);
+		width: min(360px, calc(100vw - 2rem));
+		background: oklch(0.12 0.01 280);
+		border: 1px solid oklch(0.78 0.12 75 / 10%);
+		border-radius: 12px;
+		padding: 1.5rem;
+		box-shadow: 0 16px 64px oklch(0 0 0 / 50%);
+		animation: dialog-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	@keyframes dialog-in {
+		from { opacity: 0; transform: translate(-50%, -48%) scale(0.96); }
+		to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+	}
+
+	:global(.clear-dialog-title) {
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+		letter-spacing: 0.04em;
+		color: oklch(0.90 0.04 75 / 90%);
+		margin: 0;
+	}
+
+	:global(.clear-dialog-desc) {
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		line-height: 1.5;
+		color: oklch(0.70 0.02 280 / 60%);
+		margin-top: 0.5rem;
+	}
+
+	:global(.clear-dialog-footer) {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.5rem;
+		margin-top: 1.25rem;
+	}
+
+	:global(.clear-dialog-btn) {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		letter-spacing: 0.04em;
+		padding: 0.4rem 1rem;
+		border-radius: 6px;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	:global(.clear-dialog-cancel) {
+		color: oklch(0.70 0.02 280 / 60%);
+		background: oklch(1 0 0 / 4%);
+		border: 1px solid oklch(1 0 0 / 8%);
+	}
+
+	:global(.clear-dialog-cancel:hover) {
+		background: oklch(1 0 0 / 8%);
+		color: oklch(0.85 0.02 280 / 80%);
+	}
+
+	:global(.clear-dialog-confirm) {
+		color: oklch(0.90 0.08 25 / 90%);
+		background: oklch(0.65 0.12 25 / 15%);
+		border: 1px solid oklch(0.65 0.12 25 / 25%);
+	}
+
+	:global(.clear-dialog-confirm:hover) {
+		background: oklch(0.65 0.12 25 / 25%);
 	}
 </style>
