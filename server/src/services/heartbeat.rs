@@ -468,7 +468,7 @@ fn deliver_spontaneous_message(
 
     {
         let lock = crate::services::tools::chat_file_lock(&messages_path);
-        let _guard = lock.lock().unwrap();
+        let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
 
         let mut messages: Vec<ChatMessage> = fs::read_to_string(&messages_path)
             .ok()

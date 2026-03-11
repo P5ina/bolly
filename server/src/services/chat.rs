@@ -586,7 +586,7 @@ fn save_messages(
     }
 
     let lock = tools::chat_file_lock(&path);
-    let _guard = lock.lock().unwrap();
+    let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
 
     let body = serde_json::to_string_pretty(messages)
         .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))?;

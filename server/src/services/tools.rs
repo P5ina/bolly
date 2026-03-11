@@ -33,7 +33,7 @@ fn chat_locks() -> &'static ChatLocks {
 
 /// Get a mutex for a specific messages.json path. All writers must use this.
 pub fn chat_file_lock(path: &Path) -> Arc<Mutex<()>> {
-    let mut map = chat_locks().lock().unwrap();
+    let mut map = chat_locks().lock().unwrap_or_else(|e| e.into_inner());
     map.entry(path.to_path_buf())
         .or_insert_with(|| Arc::new(Mutex::new(())))
         .clone()
@@ -323,7 +323,7 @@ fn append_message_to_chat(
     let path = chat_dir.join("messages.json");
 
     let lock = chat_file_lock(&path);
-    let _guard = lock.lock().unwrap();
+    let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut messages: Vec<crate::domain::chat::ChatMessage> = fs::read_to_string(&path)
         .ok()
@@ -2889,7 +2889,7 @@ impl Tool for ReachOutTool {
         let messages_path = chat_dir.join("messages.json");
 
         let lock = chat_file_lock(&messages_path);
-        let _guard = lock.lock().unwrap();
+        let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
 
         let mut messages: Vec<crate::domain::chat::ChatMessage> = std::fs::read_to_string(&messages_path)
             .ok()
@@ -3318,7 +3318,7 @@ impl Tool for ClearContextTool {
             let messages_path = self.instance_dir.join("chat").join("messages.json");
             if messages_path.exists() {
                 let lock = chat_file_lock(&messages_path);
-                let _guard = lock.lock().unwrap();
+                let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
                 fs::write(&messages_path, "[]")
                     .map_err(|e| ToolExecError(format!("failed to clear messages: {e}")))?;
             }
