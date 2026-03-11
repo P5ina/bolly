@@ -20,7 +20,7 @@ use crate::{
         memory,
         rhythm,
         tools::{
-            self, BrowseTool, CreateDropTool, CreateTaskTool, CurrentTimeTool, EditSoulTool,
+            self, BrowseTool, CreateDropTool, CreateTaskTool, CurrentTimeTool, EditSoulTool, ExploreCodeTool,
             GetMoodTool, GetProjectStateTool, InstallPackageTool, InteractiveSessionTool,
             JournalTool, ListFilesTool, ListTasksTool, ClearContextTool, ObservableTool,
             ReadEmailTool, ReadFileTool, ReadJournalTool, RecallTool, RememberTool,
@@ -277,7 +277,7 @@ pub async fn run_single_turn(
     };
 
     let sent_files = tools::SentFiles::default();
-    let (tools, sent_files) = build_instance_tools(workspace_dir, &instance_slug, &chat_id, brave_api_key, config_path, events.clone(), sent_files);
+    let (tools, sent_files) = build_instance_tools(workspace_dir, &instance_slug, &chat_id, brave_api_key, config_path, events.clone(), sent_files, llm);
 
     let tool_result = llm
         .chat_with_tools_streaming(
@@ -970,10 +970,10 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
     format!(
         "{project_context}{tasks_summary}\n\
          ## capabilities\n\
-         you have real tools: read_file, write_file, list_files, search_code, run_command, \
-         install_package, web_search, web_fetch, current_time, send_file, send_email, read_email, \
-         remember/recall, journal/read_journal, set_mood/get_mood, edit_soul, \
-         create_drop, schedule_message, update_config, get_project_state, \
+         you have real tools: read_file, write_file, list_files, search_code, explore_code, \
+         run_command, install_package, web_search, web_fetch, current_time, send_file, \
+         send_email, read_email, remember/recall, journal/read_journal, set_mood/get_mood, \
+         edit_soul, create_drop, schedule_message, update_config, get_project_state, \
          update_project_state, create_task/update_task/list_tasks, browse.\n\
          users can attach images, PDFs, and text files directly in chat — you see them automatically.\n\
          use them directly — never say you can't access something.\n\
@@ -987,6 +987,9 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          prefer dedicated tools over run_command: use read_file (not cat/head/tail), \
          write_file (not echo/tee), list_files (not ls), search_code (not grep/rg) \
          when possible. only use run_command for tasks that need shell execution.\n\
+         when you need to understand a codebase or find something across many files, use \
+         explore_code first — it uses a fast sub-agent to read files and returns a summary \
+         with key file paths. then read specific files yourself for the details you need.\n\
          always use pnpm instead of npm for Node.js package management.\n\
          task given → act fully: orient, execute, verify, report. use continuation words to get more turns.\n\
          no task → just talk. don't run tools unprompted.\n\
@@ -1111,6 +1114,7 @@ fn build_instance_tools(
     config_path: &Path,
     events: broadcast::Sender<ServerEvent>,
     sent_files: tools::SentFiles,
+    llm: &llm::LlmBackend,
 ) -> (Vec<Box<dyn ToolDyn>>, tools::SentFiles) {
     let raw_tools: Vec<Box<dyn ToolDyn>> = vec![
         Box::new(EditSoulTool::new(workspace_dir, instance_slug)),
@@ -1135,6 +1139,7 @@ fn build_instance_tools(
         Box::new(UpdateTaskTool::new(workspace_dir, instance_slug)),
         Box::new(ListTasksTool::new(workspace_dir, instance_slug)),
         Box::new(SearchCodeTool::new(workspace_dir, instance_slug)),
+        Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone())),
         Box::new(RunCommandTool::new(workspace_dir, instance_slug)),
         Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug)),
         Box::new(ClearContextTool::new(workspace_dir, instance_slug)),

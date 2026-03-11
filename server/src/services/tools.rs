@@ -2417,6 +2417,114 @@ fn search_files_recursive(
 }
 
 // ---------------------------------------------------------------------------
+// explore_code — sub-agent that explores a codebase using a fast model
+// ---------------------------------------------------------------------------
+
+pub struct ExploreCodeTool {
+    workspace_dir: PathBuf,
+    instance_slug: String,
+    llm: crate::services::llm::LlmBackend,
+}
+
+impl ExploreCodeTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str, llm: crate::services::llm::LlmBackend) -> Self {
+        Self {
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
+            llm: llm.fast_variant(),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ExploreCodeArgs {
+    /// What you want to find out about the codebase. Be specific — e.g. "how does authentication
+    /// middleware work", "find where database migrations are defined", "what components render the
+    /// dashboard page".
+    pub question: String,
+    /// Root directory to explore. Absolute path (e.g. "/Users/timur/projects/app") or relative to
+    /// instance workspace. The explore agent will search within this directory.
+    pub path: String,
+}
+
+impl Tool for ExploreCodeTool {
+    const NAME: &'static str = "explore_code";
+    type Error = ToolExecError;
+    type Args = ExploreCodeArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "explore_code".into(),
+            description: "Explore a codebase using a fast sub-agent. The agent reads files, \
+                searches code, and lists directories to answer your question. Returns a summary \
+                with key findings and relevant file paths with line numbers. Use this instead of \
+                reading many files yourself — it keeps your context clean. After getting results, \
+                you can read specific key files for details."
+                .into(),
+            parameters: openai_schema::<ExploreCodeArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let explore_dir = if args.path.starts_with('/') {
+            PathBuf::from(&args.path)
+        } else {
+            self.workspace_dir
+                .join("instances")
+                .join(&self.instance_slug)
+                .join(&args.path)
+        };
+
+        if !explore_dir.exists() {
+            return Err(ToolExecError(format!(
+                "path does not exist: {}",
+                explore_dir.display()
+            )));
+        }
+
+        let explore_dir_str = explore_dir.display().to_string();
+
+        // Build read-only tools for the explore agent (no ObservableTool wrapper)
+        let tools: Vec<Box<dyn ToolDyn>> = vec![
+            Box::new(ReadFileTool::new(&self.workspace_dir, &self.instance_slug)),
+            Box::new(ListFilesTool::new(&self.workspace_dir, &self.instance_slug)),
+            Box::new(SearchCodeTool::new(&self.workspace_dir, &self.instance_slug)),
+        ];
+
+        let system_prompt = format!(
+            "you are a code exploration agent. your job is to thoroughly explore a codebase \
+             and answer a question.\n\n\
+             ## rules\n\
+             - explore the directory at: {explore_dir_str}\n\
+             - start by listing files to understand the structure, then read relevant files\n\
+             - use search_code to find specific patterns, functions, or types\n\
+             - read as many files as you need — be thorough\n\
+             - use read_file with offset/limit for large files — read specific sections\n\
+             - NEVER give up or say you can't access something — use the tools\n\n\
+             ## your final response MUST include\n\
+             1. a clear, concise answer to the question\n\
+             2. key file paths with line numbers for the most relevant code\n\
+             3. any important patterns, relationships, or gotchas you noticed\n\n\
+             keep your answer focused and under 2000 chars. the caller will read specific \
+             files themselves — you just need to point them in the right direction."
+        );
+
+        let result = self.llm
+            .chat_with_tools_only(
+                &system_prompt,
+                &args.question,
+                vec![],
+                tools,
+            )
+            .await
+            .map_err(|e| ToolExecError(format!("explore agent failed: {e}")))?;
+
+        Ok(result)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // run_command — execute shell commands (sandboxed to instance dir)
 // ---------------------------------------------------------------------------
 

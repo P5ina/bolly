@@ -110,6 +110,21 @@ impl LlmBackend {
         }
     }
 
+    /// Create a fast/cheap variant for sub-agent tasks (exploration, summarization).
+    /// Uses Haiku for Anthropic, gpt-5.2 for OpenAI.
+    pub fn fast_variant(&self) -> Self {
+        match self {
+            LlmBackend::Anthropic { client, .. } => LlmBackend::Anthropic {
+                client: client.clone(),
+                model: "claude-haiku-4-5-20251001".to_string(),
+            },
+            LlmBackend::OpenAI { client, .. } => LlmBackend::OpenAI {
+                client: client.clone(),
+                model: "gpt-5-mini-2025-08-07".to_string(),
+            },
+        }
+    }
+
     pub fn model_name(&self) -> &str {
         match self {
             LlmBackend::Anthropic { model, .. } => model,
