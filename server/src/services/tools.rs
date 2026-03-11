@@ -2510,6 +2510,9 @@ impl Tool for ExploreCodeTool {
              files themselves — you just need to point them in the right direction."
         );
 
+        log::info!("[explore_code] starting sub-agent for: {}", &args.question);
+        let start = std::time::Instant::now();
+
         let result = self.llm
             .chat_with_tools_only(
                 &system_prompt,
@@ -2518,8 +2521,12 @@ impl Tool for ExploreCodeTool {
                 tools,
             )
             .await
-            .map_err(|e| ToolExecError(format!("explore agent failed: {e}")))?;
+            .map_err(|e| {
+                log::warn!("[explore_code] sub-agent failed after {:?}: {e}", start.elapsed());
+                ToolExecError(format!("explore agent failed: {e}"))
+            })?;
 
+        log::info!("[explore_code] completed in {:?}, result: {} chars", start.elapsed(), result.len());
         Ok(result)
     }
 }

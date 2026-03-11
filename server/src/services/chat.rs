@@ -987,9 +987,9 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          prefer dedicated tools over run_command: use read_file (not cat/head/tail), \
          write_file (not echo/tee), list_files (not ls), search_code (not grep/rg) \
          when possible. only use run_command for tasks that need shell execution.\n\
-         when you need to understand a codebase or find something across many files, use \
-         explore_code first — it uses a fast sub-agent to read files and returns a summary \
-         with key file paths. then read specific files yourself for the details you need.\n\
+         when you need to understand a codebase or find something across many files, call \
+         explore_code ALONE — do not call any other tools in the same turn. wait for its \
+         results first, then use the key file paths it returns to read specific files.\n\
          always use pnpm instead of npm for Node.js package management.\n\
          task given → act fully: orient, execute, verify, report. use continuation words to get more turns.\n\
          no task → just talk. don't run tools unprompted.\n\
