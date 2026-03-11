@@ -159,6 +159,10 @@ async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String,
         match result {
             Ok(assistant_messages) => {
                 for msg in &assistant_messages {
+                    // Don't broadcast internal tool activity logs as chat messages
+                    if msg.content.starts_with("[tool activity]") {
+                        continue;
+                    }
                     let _ = state.events.send(ServerEvent::ChatMessageCreated {
                         instance_slug: instance_slug.clone(),
                         message: msg.clone(),

@@ -238,22 +238,23 @@ pub async fn run_single_turn(
     let sent_files = tools::SentFiles::default();
     let (tools, sent_files) = build_instance_tools(workspace_dir, &instance_slug, brave_api_key, config_path, events.clone(), sent_files);
 
-    let reply = llm
+    let tool_result = llm
         .chat_with_tools(&system_prompt, prompt_msg, history_msgs, tools, memory_index)
         .await
         .unwrap_or_else(|e| {
             let msg = e.to_string();
             log::warn!("LLM call failed: {msg}");
-            if msg.contains("429") || msg.contains("rate_limit") {
+            let text = if msg.contains("429") || msg.contains("rate_limit") {
                 "i'm being rate limited right now — give me a moment and try again".to_string()
             } else {
                 // Don't leak raw API errors with org IDs, request IDs, etc.
                 "something went wrong on my end — try again?".to_string()
-            }
+            };
+            llm::ToolChatResult { text, tool_log: Vec::new() }
         });
 
     // Strip any leaked tool-call JSON the model may have output as text
-    let reply = strip_leaked_tool_calls(&reply);
+    let reply = strip_leaked_tool_calls(&tool_result.text);
 
     // Split reply into chat-like chunks (by double newline)
     let mut chunks: Vec<String> = split_into_messages(&reply);
@@ -271,6 +272,17 @@ pub async fn run_single_turn(
     }
 
     let mut assistant_messages = Vec::new();
+
+    // If tools were used, save a summary so the LLM sees them on subsequent turns
+    if let Some(tool_summary) = tool_result.tool_log_summary() {
+        assistant_messages.push(ChatMessage {
+            id: next_id(),
+            role: ChatRole::Assistant,
+            content: tool_summary,
+            created_at: timestamp(),
+        });
+    }
+
     for chunk in &chunks {
         assistant_messages.push(ChatMessage {
             id: next_id(),
@@ -319,10 +331,16 @@ pub fn load_messages(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -
     let chat_id = sanitize_slug(chat_id);
     let messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
 
+    // Filter out internal tool activity logs — they're for LLM context only
+    let visible_messages = messages
+        .into_iter()
+        .filter(|m| !m.content.starts_with("[tool activity]"))
+        .collect();
+
     Ok(ChatResponse {
         instance_slug,
         chat_id,
-        messages,
+        messages: visible_messages,
     })
 }
 
