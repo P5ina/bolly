@@ -201,5 +201,27 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
         }
     }
 
+    // API key overrides from env (for managed hosting)
+    if let Ok(key) = env::var("ANTHROPIC_API_KEY") {
+        if !key.is_empty() {
+            config.llm.tokens.anthropic = key;
+            // Auto-set provider and model if not already configured
+            if config.llm.provider.is_none() {
+                config.llm.provider = Some(LlmProvider::Anthropic);
+            }
+            if config.llm.model.is_none() {
+                config.llm.model = Some("claude-sonnet-4-6".to_string());
+            }
+        }
+    }
+    if let Ok(key) = env::var("OPENAI_API_KEY") {
+        if !key.is_empty() {
+            config.llm.tokens.open_ai = key;
+            if config.llm.provider.is_none() {
+                config.llm.provider = Some(LlmProvider::OpenAI);
+            }
+        }
+    }
+
     Ok(config)
 }

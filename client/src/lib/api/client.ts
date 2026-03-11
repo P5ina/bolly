@@ -141,6 +141,10 @@ export function updateLlmConfig(req: UpdateLlmRequest): Promise<void> {
 	});
 }
 
+export function fetchConfigStatus(): Promise<{ llm_configured: boolean; provider?: string; model?: string }> {
+	return json("/api/config/status");
+}
+
 export function fetchSoul(slug: string): Promise<Soul> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/soul`);
 }

@@ -33,3 +33,4 @@ regex = "1"
 serde_yml = "0.0.12"
 portable-pty = "0.9"
 zip = "2"
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres"] }

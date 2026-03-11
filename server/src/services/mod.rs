@@ -1,4 +1,5 @@
 pub mod chat;
+pub mod rate_limit;
 pub mod drops;
 pub mod heartbeat;
 pub mod llm;

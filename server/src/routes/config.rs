@@ -1,4 +1,4 @@
-use axum::{Json, Router, extract::State, http::StatusCode, routing::put};
+use axum::{Json, Router, extract::State, http::StatusCode, routing::{get, put}};
 use serde_json::json;
 
 use crate::{
@@ -8,7 +8,27 @@ use crate::{
 };
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/api/config/llm", put(update_llm))
+    Router::new()
+        .route("/api/config/llm", put(update_llm))
+        .route("/api/config/status", get(get_status))
+}
+
+async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let config = state.config.read().await;
+    let llm_configured = config.llm.provider.is_some()
+        && match config.llm.provider {
+            Some(LlmProvider::Anthropic) => !config.llm.tokens.anthropic.is_empty(),
+            Some(LlmProvider::OpenAI) => !config.llm.tokens.open_ai.is_empty(),
+            None => false,
+        };
+    Json(json!({
+        "llm_configured": llm_configured,
+        "provider": config.llm.provider.map(|p| match p {
+            LlmProvider::Anthropic => "anthropic",
+            LlmProvider::OpenAI => "openai",
+        }),
+        "model": config.llm.model,
+    }))
 }
 
 async fn update_llm(

@@ -63,6 +63,16 @@ export const tenants = pgTable('tenants', {
 	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ─── Rate Limits ────────────────────────────────────────────────────────────
+
+export const rateLimits = pgTable('rate_limits', {
+	instanceId: text('instance_id').primaryKey(),
+	messagesToday: integer('messages_today').notNull().default(0),
+	tokensThisMonth: integer('tokens_this_month').notNull().default(0),
+	lastResetDaily: timestamp('last_reset_daily', { withTimezone: true }).notNull().defaultNow(),
+	lastResetMonthly: timestamp('last_reset_monthly', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── Type exports ────────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;
@@ -71,3 +81,4 @@ export type Session = typeof sessions.$inferSelect;
 export type Tenant = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type RateLimit = typeof rateLimits.$inferSelect;

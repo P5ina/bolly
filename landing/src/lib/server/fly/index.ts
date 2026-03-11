@@ -131,6 +131,7 @@ export interface CreateMachineOpts {
 	appName: string;
 	volumeId: string;
 	authToken: string;
+	instanceId: string;
 	channel?: ImageChannel;
 	region?: string;
 	cpus?: number;
@@ -153,6 +154,10 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 					BOLLY_HOME: '/data',
 					RUST_LOG: 'info',
 					BOLLY_AUTH_TOKEN: opts.authToken,
+					BOLLY_INSTANCE_ID: opts.instanceId,
+					DATABASE_URL: env.DATABASE_URL ?? '',
+					ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
+					OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
 				},
 				guest: {
 					cpus: opts.cpus ?? 1,

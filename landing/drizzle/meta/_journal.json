@@ -36,6 +36,13 @@
       "when": 1773160523832,
       "tag": "0004_strange_grim_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1773214937963,
+      "tag": "0005_minor_pet_avengers",
+      "breakpoints": true
     }
   ]
 }

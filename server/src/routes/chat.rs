@@ -14,7 +14,7 @@ use crate::{
         chat::{ChatRequest, ChatResponse, ChatRole, ChatSummary},
         events::ServerEvent,
     },
-    services::chat,
+    services::{chat, rate_limit},
 };
 
 pub fn router() -> Router<AppState> {
@@ -44,6 +44,16 @@ async fn post_chat(
 
     if instance_slug.is_empty() || content.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "slug and content required".into()));
+    }
+
+    // Rate limit check (only when DATABASE_URL is configured)
+    if let (Some(pool), Some(iid)) = (&state.pg_pool, &state.instance_id) {
+        if let Err(reason) = rate_limit::check(pool, iid).await {
+            return Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                serde_json::json!({ "error": "rate limit exceeded", "detail": reason }).to_string(),
+            ));
+        }
     }
 
     // Save user message immediately
@@ -171,6 +181,14 @@ async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String,
                         chat_id: chat_id.clone(),
                         message: msg.clone(),
                     });
+                }
+
+                // Record usage for rate limiting
+                if let (Some(pool), Some(iid)) = (&state.pg_pool, &state.instance_id) {
+                    let tokens: i32 = turn.messages.iter()
+                        .map(|m| rate_limit::estimate_tokens(&m.content))
+                        .sum();
+                    rate_limit::record_usage(pool, iid, tokens).await;
                 }
 
                 // Always continue if the agent was cut short by the turn limit

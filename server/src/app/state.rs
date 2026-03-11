@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use rig::client::EmbeddingsClient;
 use rig::providers::openai;
+use sqlx::PgPool;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 
@@ -22,13 +23,29 @@ pub struct AppState {
     pub embedding_model: Arc<RwLock<Option<openai::EmbeddingModel>>>,
     /// Active agent tasks per instance slug — cancellation tokens.
     pub agent_tasks: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    /// Shared Postgres pool for rate limiting (None for self-hosted).
+    pub pg_pool: Option<PgPool>,
+    /// Instance identifier for rate limit tracking.
+    pub instance_id: Option<String>,
 }
 
 impl AppState {
-    pub fn new(config: Config) -> Self {
+    pub async fn new(config: Config) -> Self {
         let (events, _) = broadcast::channel(256);
         let llm = LlmBackend::from_config(&config);
         let embedding_model = build_embedding_model(&config);
+
+        let (pg_pool, instance_id) = match std::env::var("DATABASE_URL") {
+            Ok(url) if !url.is_empty() => {
+                let pool = PgPool::connect(&url).await.ok();
+                if pool.is_none() {
+                    log::warn!("DATABASE_URL set but connection failed — rate limiting disabled");
+                }
+                let id = std::env::var("BOLLY_INSTANCE_ID").ok().filter(|s| !s.is_empty());
+                (pool, id)
+            }
+            _ => (None, None),
+        };
 
         Self {
             config: Arc::new(RwLock::new(config)),
@@ -37,6 +54,8 @@ impl AppState {
             llm: Arc::new(RwLock::new(llm)),
             embedding_model: Arc::new(RwLock::new(embedding_model)),
             agent_tasks: Arc::new(Mutex::new(HashMap::new())),
+            pg_pool,
+            instance_id,
         }
     }
 

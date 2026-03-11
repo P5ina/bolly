@@ -3,6 +3,7 @@
 	import {
 		sendMessage,
 		updateLlmConfig,
+		fetchConfigStatus,
 		fetchSoulTemplates,
 		applySoulTemplate,
 	} from "$lib/api/client.js";
@@ -123,6 +124,21 @@
 		await pause(400);
 		await typewrite("this is your space.");
 		await pause(800);
+
+		// Check if LLM is already configured (managed hosting with shared keys)
+		try {
+			const status = await fetchConfigStatus();
+			if (status.llm_configured) {
+				chosenProvider = (status.provider as "anthropic" | "openai") ?? "anthropic";
+				chosenModel = status.model ?? null;
+				await typewrite("i\u2019m already connected. let\u2019s get to know each other.");
+				await pause(600);
+				await askLanguage();
+				return;
+			}
+		} catch {
+			// status endpoint unavailable — continue with normal flow
+		}
 
 		await typewrite("before we begin \u2014 who should i think with?");
 		stage = "picking-provider";

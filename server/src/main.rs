@@ -33,7 +33,7 @@ async fn main() {
         }
     };
 
-    let state = app::state::AppState::new(config);
+    let state = app::state::AppState::new(config).await;
 
     let addr: SocketAddr = format!("{host}:{port}")
         .parse()
