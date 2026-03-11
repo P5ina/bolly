@@ -204,6 +204,7 @@
 				pushActivity(isOutput ? "output" : "tool", event.summary);
 			} else if (event.type === "drop_created") {
 				pushActivity("tool", `dropped: ${event.drop.title}`);
+				play("drop_received");
 			} else if (event.type === "context_compacting") {
 				pushActivity("state", `compacting ${event.messages_compacted} messages...`);
 			}

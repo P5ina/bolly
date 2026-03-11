@@ -8,12 +8,15 @@
 	} from "$lib/api/client.js";
 	import type { SoulTemplate } from "$lib/api/types.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
+	import { play, preload } from "$lib/sounds.js";
+	import AsciiRenderer from "$lib/components/chat/AsciiRenderer.svelte";
 
 	let { slug, oncomplete }: { slug: string; oncomplete: () => void } = $props();
 
 	const instances = getInstances();
 
 	type Stage =
+		| "reveal"
 		| "intro"
 		| "picking-language"
 		| "naming-companion"
@@ -22,7 +25,8 @@
 		| "sending"
 		| "departing";
 
-	let stage = $state<Stage>("intro");
+	let stage = $state<Stage>("reveal");
+	let revealed = $state(false);
 	let firstMessage = $state("");
 	let companionNameInput = $state("");
 	let messageInput: HTMLTextAreaElement | undefined = $state();
@@ -81,6 +85,13 @@
 	}
 
 	async function runSequence() {
+		// Reveal stage
+		preload("intro_reveal");
+		await pause(600);
+		play("intro_reveal");
+		revealed = true;
+		await pause(1800);
+		stage = "intro";
 		await pause(400);
 		await typewrite(`hey, ${slug}.`);
 		await pause(400);
@@ -235,16 +246,20 @@
 	</div>
 
 	<div class="relative z-10 w-full max-w-md px-6">
-		<!-- companion core -->
+		<!-- companion creature -->
 		<div class="mb-10 flex justify-center">
-			<div class="instance-core">
-				<span class="instance-initial">{slug[0]?.toUpperCase() ?? "?"}</span>
-				<div class="instance-halo"></div>
+			<div class="instance-creature" class:instance-creature-reveal={revealed}>
+				<AsciiRenderer thinking={stage === "reveal" && revealed} mood="calm" />
+				{#if stage === "reveal" && revealed}
+					<div class="instance-ring instance-ring-1"></div>
+					<div class="instance-ring instance-ring-2"></div>
+					<div class="instance-ring instance-ring-3"></div>
+				{/if}
 			</div>
 		</div>
 
 		<!-- typewriter lines -->
-		<div class="space-y-3 mb-8">
+		<div class="space-y-3 mb-8" class:invisible={stage === "reveal"}>
 			{#each lines as line, i}
 				<div class="instance-line" style="animation-delay: {i * 50}ms">
 					{#if i === 0 && line.done}
@@ -423,42 +438,47 @@
 		75% { transform: translate(16px, -12px); opacity: 0.5; }
 	}
 
-	/* companion core */
-	.instance-core {
+	.invisible {
+		visibility: hidden;
+	}
+
+	/* companion creature */
+	.instance-creature {
 		position: relative;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 64px;
-		height: 64px;
-		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 8%);
-		border: 1px solid oklch(0.78 0.12 75 / 15%);
-		animation: core-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
-	}
-	@keyframes core-enter {
-		from { opacity: 0; transform: scale(0.6); }
-		to { opacity: 1; transform: scale(1); }
+		opacity: 0;
+		transform: scale(0.3);
+		transition: all 1.2s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-	.instance-initial {
-		font-family: var(--font-display);
-		font-size: 1.5rem;
-		font-weight: 500;
-		font-style: italic;
-		color: oklch(0.78 0.12 75 / 60%);
+	.instance-creature-reveal {
+		opacity: 1;
+		transform: scale(1);
 	}
 
-	.instance-halo {
+	/* reveal rings */
+	.instance-ring {
 		position: absolute;
-		inset: -8px;
+		inset: -4px;
 		border-radius: 50%;
-		border: 1px solid oklch(0.78 0.12 75 / 6%);
-		animation: halo-pulse 5s ease-in-out infinite;
+		border: 1px solid oklch(0.78 0.12 75 / 30%);
+		animation: ring-expand 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 	}
-	@keyframes halo-pulse {
-		0%, 100% { transform: scale(1); opacity: 0.6; }
-		50% { transform: scale(1.12); opacity: 0.2; }
+	.instance-ring-1 { animation-delay: 0ms; }
+	.instance-ring-2 { animation-delay: 150ms; border-color: oklch(0.78 0.12 75 / 20%); }
+	.instance-ring-3 { animation-delay: 300ms; border-color: oklch(0.78 0.12 75 / 10%); }
+
+	@keyframes ring-expand {
+		0% {
+			transform: scale(1);
+			opacity: 1;
+		}
+		100% {
+			transform: scale(3.5);
+			opacity: 0;
+		}
 	}
 
 	/* text styles */

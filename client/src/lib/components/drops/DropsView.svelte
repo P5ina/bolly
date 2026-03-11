@@ -2,6 +2,7 @@
 	import { deleteDrop, fetchDrops } from "$lib/api/client.js";
 	import type { Drop, ServerEvent } from "$lib/api/types.js";
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
+	import { play } from "$lib/sounds.js";
 	import DropCard from "./DropCard.svelte";
 
 	let { slug }: { slug: string } = $props();
@@ -29,6 +30,7 @@
 		const unsub = ws.subscribe((event: ServerEvent) => {
 			if (event.type === "drop_created" && event.instance_slug === slug) {
 				drops = [event.drop, ...drops];
+				play("drop_received");
 			}
 		});
 
