@@ -149,7 +149,12 @@ pub async fn run_single_turn(
         system_prompt = format!("{system_prompt}\n\n{memory_prompt}");
     }
 
-    // Dynamic: journal, mood, rhythm (change frequently — placed last)
+    // Dynamic: current time, journal, mood, rhythm (change frequently — placed last)
+    let now = chrono::Local::now();
+    system_prompt.push_str(&format!(
+        "\n\n## current time\n{}", now.format("%A, %B %-d, %Y %H:%M %Z")
+    ));
+
     if !journal_prompt.is_empty() {
         system_prompt = format!("{system_prompt}\n\n{journal_prompt}");
     }
