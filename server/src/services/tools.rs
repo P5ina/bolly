@@ -919,8 +919,10 @@ impl Tool for WebFetchTool {
 /// Minimal HTML tag stripping — removes tags, decodes common entities.
 fn strip_html_tags(html: &str) -> String {
     // Remove script and style blocks entirely
-    let re_script = regex::Regex::new(r"(?is)<(script|style)[^>]*>.*?</\1>").unwrap();
+    let re_script = regex::Regex::new(r"(?is)<script[^>]*>.*?</script>").unwrap();
+    let re_style = regex::Regex::new(r"(?is)<style[^>]*>.*?</style>").unwrap();
     let no_scripts = re_script.replace_all(html, " ");
+    let no_scripts = re_style.replace_all(&no_scripts, " ");
 
     // Remove all HTML tags
     let re_tags = regex::Regex::new(r"<[^>]+>").unwrap();
