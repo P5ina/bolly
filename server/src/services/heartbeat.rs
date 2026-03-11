@@ -21,7 +21,7 @@ use crate::domain::thought::Thought;
 use crate::services::{drops, llm::LlmBackend, memory, rhythm, thoughts};
 use crate::services::tools::{
     self, load_mood_state, save_mood_state, CreateDropTool, CreateTaskTool, CurrentTimeTool,
-    GetMoodTool, GetProjectStateTool, ListTasksTool, ObservableTool, ReachOutTool, ReadEmailTool,
+    GetMoodTool, GetProjectStateTool, ListTasksTool, ReachOutTool, ReadEmailTool,
     ReadJournalTool, RecallTool, RememberTool, SetMoodTool, UpdateProjectStateTool,
     WebFetchTool, WebSearchTool, ALLOWED_MOODS,
 };
@@ -567,12 +567,9 @@ fn build_heartbeat_tools(
         Box::new(WebFetchTool),
     ];
 
+    // Don't wrap in ObservableTool — heartbeat tool activity is private,
+    // captured in the thought's actions list instead of broadcast.
     raw_tools
-        .into_iter()
-        .map(|tool| -> Box<dyn ToolDyn> {
-            Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), "default".to_string()))
-        })
-        .collect()
 }
 
 /// Strip hallucinated tool-call artifacts from heartbeat responses.
