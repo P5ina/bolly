@@ -28,6 +28,7 @@ use crate::{
             UpdateConfigTool, UpdateProjectStateTool, UpdateTaskTool, WebFetchTool, WebSearchTool,
             WriteFileTool,
         },
+        skills,
         workspace,
     },
 };
@@ -129,6 +130,11 @@ pub async fn run_single_turn(
     }
     if !rhythm_prompt.is_empty() {
         system_prompt = format!("{system_prompt}\n\n{rhythm_prompt}");
+    }
+
+    let skills_prompt = build_skills_prompt(workspace_dir);
+    if !skills_prompt.is_empty() {
+        system_prompt = format!("{system_prompt}\n\n{skills_prompt}");
     }
 
     let autonomy_prompt = load_autonomy_prompt(workspace_dir, &instance_slug);
@@ -760,6 +766,28 @@ fn load_mood_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          change silently — never announce it."
     ));
     prompt
+}
+
+/// Build a prompt section listing active skills and their instructions.
+fn build_skills_prompt(workspace_dir: &Path) -> String {
+    let all_skills = skills::list_skills(workspace_dir);
+    let active: Vec<_> = all_skills
+        .into_iter()
+        .filter(|s| s.enabled && !s.instructions.is_empty())
+        .collect();
+
+    if active.is_empty() {
+        return String::new();
+    }
+
+    let mut out = String::from("## skills\nyou have the following skills installed:\n");
+    for skill in &active {
+        out.push_str(&format!(
+            "\n### {}\n{}\n",
+            skill.name, skill.instructions
+        ));
+    }
+    out
 }
 
 fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
