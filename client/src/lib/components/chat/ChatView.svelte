@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from "svelte";
+	import { goto } from "$app/navigation";
 	import { clearContext, fetchChats, fetchCompanionName, fetchMessages, fetchMood, sendMessage, stopAgent, uploadFile } from "$lib/api/client.js";
 	import type { ChatMessage, ChatSummary, ServerEvent } from "$lib/api/types.js";
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
@@ -9,13 +10,13 @@
 	import StreamActivity from "./StreamActivity.svelte";
 	import { play } from "$lib/sounds.js";
 
-	let { slug }: { slug: string } = $props();
+	let { slug, chatId }: { slug: string; chatId: string } = $props();
 
 	type StreamItem =
 		| { type: "message"; data: ChatMessage }
 		| { type: "activity"; id: string; kind: "tool" | "mood" | "state"; label: string; timestamp: string };
 
-	let activeChatId = $state("default");
+	let activeChatId = $derived(chatId);
 	let chats = $state<ChatSummary[]>([]);
 	let companionName = $state("");
 	let messages = $state<ChatMessage[]>([]);
@@ -86,23 +87,10 @@
 		);
 	}
 
-	function loadChat(chatId: string) {
-		activeChatId = chatId;
-		messages = [];
-		stream = [];
-		loading = true;
+	function loadChat(id: string) {
 		showChatList = false;
-
-		fetchMessages(slug, chatId)
-			.then((res) => {
-				messages = res.messages.filter((m) => !isToolActivity(m));
-				stream = messagesToStream(res.messages);
-				agentRunning = res.agent_running;
-				if (agentRunning) pushActivity("state", "thinking...");
-				scrollToBottom();
-			})
-			.catch(() => { messages = []; })
-			.finally(() => { loading = false; });
+		const path = id === "default" ? `/${slug}/chat` : `/${slug}/chat/${id}`;
+		goto(path);
 	}
 
 	function refreshChatList() {
@@ -120,8 +108,8 @@
 
 	$effect(() => {
 		const currentSlug = slug;
+		const currentChat = chatId;
 		untrack(() => {
-			activeChatId = "default";
 			messages = [];
 			stream = [];
 			loading = true;
@@ -129,7 +117,7 @@
 
 			refreshChatList();
 
-			fetchMessages(currentSlug, "default")
+			fetchMessages(currentSlug, currentChat)
 				.then((res) => {
 					messages = res.messages.filter((m) => !isToolActivity(m));
 					stream = messagesToStream(res.messages);
