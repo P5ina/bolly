@@ -15,6 +15,7 @@ export const PLANS = {
 		name: 'Starter',
 		priceMonthly: 500, // cents
 		storageLimit: 1024, // MB
+		cpus: 1,
 		memoryMb: 512,
 		maxInstances: 1,
 	},
@@ -22,6 +23,7 @@ export const PLANS = {
 		name: 'Companion',
 		priceMonthly: 1200,
 		storageLimit: 5120,
+		cpus: 1,
 		memoryMb: 1024,
 		maxInstances: 3,
 	},
@@ -29,6 +31,7 @@ export const PLANS = {
 		name: 'Unlimited',
 		priceMonthly: 2500,
 		storageLimit: 20480,
+		cpus: 2,
 		memoryMb: 4096,
 		maxInstances: -1, // unlimited
 	},

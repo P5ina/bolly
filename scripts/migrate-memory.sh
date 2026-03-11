@@ -28,12 +28,20 @@ auth_header() {
   fi
 }
 
+# Plan -> cpus mapping (must match landing/src/lib/server/stripe/index.ts)
+plan_cpus() {
+  case "$1" in
+    unlimited) echo 2    ;;
+    *)         echo 1    ;;
+  esac
+}
+
 # Plan -> memory mapping (must match landing/src/lib/server/stripe/index.ts)
 plan_memory() {
   case "$1" in
     starter)   echo 512  ;;
     companion) echo 1024 ;;
-    unlimited) echo 2048 ;;
+    unlimited) echo 4096 ;;
     *)         echo 512  ;;
   esac
 }
@@ -63,8 +71,9 @@ updated=0
 skipped=0
 
 while IFS='|' read -r slug plan app_id machine_id; do
+  target_cpus=$(plan_cpus "$plan")
   target_mb=$(plan_memory "$plan")
-  echo -n "  [$slug] plan=$plan target=${target_mb}MB ... "
+  echo -n "  [$slug] plan=$plan target=${target_cpus}cpu/${target_mb}MB ... "
 
   # Get current machine config
   config=$(curl -sf -H "$(auth_header)" "$API/apps/$app_id/machines/$machine_id" 2>/dev/null) || {
@@ -73,17 +82,18 @@ while IFS='|' read -r slug plan app_id machine_id; do
     continue
   }
 
+  current_cpus=$(echo "$config" | jq -r '.config.guest.cpus // 1')
   current_mb=$(echo "$config" | jq -r '.config.guest.memory_mb // 0')
 
-  if [ "$current_mb" -ge "$target_mb" ]; then
-    echo "already ${current_mb}MB, skipped"
+  if [ "$current_cpus" -ge "$target_cpus" ] && [ "$current_mb" -ge "$target_mb" ]; then
+    echo "already ${current_cpus}cpu/${current_mb}MB, skipped"
     skipped=$((skipped + 1))
     continue
   fi
 
-  # Update guest config with new memory
-  update_payload=$(echo "$config" | jq --argjson mem "$target_mb" '{
-    config: (.config | .guest.memory_mb = $mem)
+  # Update guest config with new cpus and memory
+  update_payload=$(echo "$config" | jq --argjson cpus "$target_cpus" --argjson mem "$target_mb" '{
+    config: (.config | .guest.cpus = $cpus | .guest.memory_mb = $mem)
   }')
 
   result=$(curl -sf -X POST \
@@ -97,7 +107,7 @@ while IFS='|' read -r slug plan app_id machine_id; do
     continue
   }
 
-  echo "${current_mb}MB -> ${target_mb}MB done"
+  echo "${current_cpus}cpu/${current_mb}MB -> ${target_cpus}cpu/${target_mb}MB done"
   updated=$((updated + 1))
 done <<< "$tenants"
 
