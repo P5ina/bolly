@@ -15,18 +15,21 @@ export const PLANS = {
 		name: 'Starter',
 		priceMonthly: 500, // cents
 		storageLimit: 1024, // MB
+		memoryMb: 512,
 		maxInstances: 1,
 	},
 	companion: {
 		name: 'Companion',
 		priceMonthly: 1200,
 		storageLimit: 5120,
+		memoryMb: 1024,
 		maxInstances: 3,
 	},
 	unlimited: {
 		name: 'Unlimited',
 		priceMonthly: 2500,
 		storageLimit: 20480,
+		memoryMb: 2048,
 		maxInstances: -1, // unlimited
 	},
 } as const;

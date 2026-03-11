@@ -82,6 +82,7 @@ export async function provisionTenant(opts: {
 			volumeId: volume.id,
 			authToken,
 			channel: (tenant.imageChannel as fly.ImageChannel) ?? 'stable',
+			memoryMb: planConfig.memoryMb,
 		});
 
 		// 6. Update tenant

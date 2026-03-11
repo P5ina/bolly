@@ -156,7 +156,7 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 				},
 				guest: {
 					cpus: opts.cpus ?? 1,
-					memory_mb: opts.memoryMb ?? 256,
+					memory_mb: opts.memoryMb ?? 512,
 					cpu_kind: 'shared',
 				},
 				mounts: [
