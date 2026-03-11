@@ -11,6 +11,7 @@
 		repo: string;
 		git_ref: string;
 		author: string;
+		path?: string;
 	}
 
 	const REGISTRY_URL =
@@ -103,7 +104,7 @@
 					bind:value={search}
 				/>
 				{#if search}
-					<button class="search-clear" onclick={() => (search = '')}>
+					<button class="search-clear" onclick={() => (search = '')} aria-label="Clear search">
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="w-3.5 h-3.5">
 							<path d="M18 6 6 18M6 6l12 12" />
 						</svg>
