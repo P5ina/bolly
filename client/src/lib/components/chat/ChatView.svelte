@@ -133,6 +133,8 @@
 	function toolActivityToStreamItems(msg: ChatMessage): StreamItem[] {
 		// New format: [tool: tool_name] summary
 		if (msg.content.startsWith("[tool:")) {
+			// Skip set_mood — handled by MoodUpdated event
+			if (msg.content.startsWith("[tool: set_mood]")) return [];
 			const isOutput = msg.content.includes(" output]");
 			return [{
 				type: "activity" as const,
