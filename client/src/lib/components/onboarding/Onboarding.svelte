@@ -126,18 +126,22 @@
 		await pause(800);
 
 		// Check if LLM is already configured (managed hosting with shared keys)
-		try {
-			const status = await fetchConfigStatus();
-			if (status.llm_configured) {
-				chosenProvider = (status.provider as "anthropic" | "openai") ?? "anthropic";
-				chosenModel = status.model ?? null;
-				await typewrite("i\u2019m already connected. let\u2019s get to know each other.");
-				await pause(600);
-				await askLanguage();
-				return;
+		// Retry a few times — the server may still be booting after provisioning
+		for (let attempt = 0; attempt < 3; attempt++) {
+			try {
+				const status = await fetchConfigStatus();
+				if (status.llm_configured) {
+					chosenProvider = (status.provider as "anthropic" | "openai") ?? "anthropic";
+					chosenModel = status.model ?? null;
+					await typewrite("i\u2019m already connected. let\u2019s get to know each other.");
+					await pause(600);
+					await askLanguage();
+					return;
+				}
+				break; // server responded, LLM just not configured
+			} catch {
+				if (attempt < 2) await pause(2000);
 			}
-		} catch {
-			// status endpoint unavailable — continue with normal flow
 		}
 
 		await typewrite("before we begin \u2014 who should i think with?");
