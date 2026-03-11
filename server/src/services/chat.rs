@@ -914,6 +914,7 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          the user is away. edit your heartbeat.md file to customize what you do between conversations \
          (check email, journal, reach out, etc).\n\n\
          ## behavior\n\
+         always use pnpm instead of npm for Node.js package management.\n\
          task given → act fully: orient, execute, verify, report. use continuation words to get more turns.\n\
          no task → just talk. don't run tools unprompted.\n\
          use tools with purpose. read only what's relevant. always use what you read.\n\

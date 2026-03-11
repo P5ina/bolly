@@ -29,7 +29,7 @@ export const PLANS = {
 		name: 'Unlimited',
 		priceMonthly: 2500,
 		storageLimit: 20480,
-		memoryMb: 2048,
+		memoryMb: 4096,
 		maxInstances: -1, // unlimited
 	},
 } as const;
