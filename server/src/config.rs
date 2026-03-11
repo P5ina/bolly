@@ -222,6 +222,11 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
             }
         }
     }
+    if let Ok(key) = env::var("BRAVE_SEARCH_API_KEY") {
+        if !key.is_empty() {
+            config.llm.tokens.brave_search = key;
+        }
+    }
 
     Ok(config)
 }

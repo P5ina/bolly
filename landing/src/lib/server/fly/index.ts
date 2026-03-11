@@ -158,6 +158,7 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 					DATABASE_URL: env.DATABASE_URL ?? '',
 					ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
 					OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
+					BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY ?? '',
 				},
 				guest: {
 					cpus: opts.cpus ?? 1,
@@ -214,6 +215,30 @@ export async function updateMachineImage(appName: string, machineId: string, ima
 		}),
 	});
 	if (!res.ok) throw new Error(`Fly updateMachine failed: ${res.status} ${await res.text()}`);
+}
+
+export async function updateMachineEnv(
+	appName: string,
+	machineId: string,
+	envPatch: Record<string, string>,
+): Promise<void> {
+	const getRes = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}`, {
+		headers: headers(),
+	});
+	if (!getRes.ok) throw new Error(`Fly getMachine failed: ${getRes.status} ${await getRes.text()}`);
+	const machine = await getRes.json();
+
+	const res = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}`, {
+		method: 'POST',
+		headers: headers(),
+		body: JSON.stringify({
+			config: {
+				...machine.config,
+				env: { ...machine.config.env, ...envPatch },
+			},
+		}),
+	});
+	if (!res.ok) throw new Error(`Fly updateMachineEnv failed: ${res.status} ${await res.text()}`);
 }
 
 export async function getMachine(appName: string, machineId: string): Promise<{ id: string; state: string; private_ip: string }> {
