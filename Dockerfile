@@ -35,12 +35,6 @@ RUN echo "build: ${GIT_HASH}" > /tmp/build-info && \
 
 # Stage 5: Runtime
 FROM debian:bookworm-slim
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      ca-certificates curl sudo \
-      python3 python3-pip python3-venv \
-      git jq && \
-    rm -rf /var/lib/apt/lists/*
 
 # Copy Node.js + npm from glibc-based image (not Alpine/musl), install pnpm
 COPY --from=node-bin /usr/local/bin/node /usr/local/bin/node
@@ -49,16 +43,21 @@ RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
     ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
     npm install -g pnpm
 
-# Limit Node.js memory to avoid OOM on small servers
-ENV NODE_OPTIONS="--max-old-space-size=384"
-
-# Install Playwright's Chromium and its dependencies
-RUN npx playwright@1.52.0 install --with-deps chromium && \
-    rm -rf /root/.cache/ms-playwright/.links
+# Install system packages + Playwright Chromium with deps in one apt session
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      ca-certificates curl sudo \
+      python3 python3-pip python3-venv \
+      git jq && \
+    npx playwright@1.52.0 install --with-deps chromium && \
+    rm -rf /var/lib/apt/lists/* /root/.cache/ms-playwright/.links
 
 # Copy browse tool scripts and install deps
 COPY server/scripts/ /opt/bolly/scripts/
 RUN cd /opt/bolly/scripts && npm install --omit=dev
+
+# Limit Node.js memory to avoid OOM on small servers (after install steps)
+ENV NODE_OPTIONS="--max-old-space-size=384"
 
 COPY --from=server-build /app/target/release/server /usr/local/bin/bolly
 COPY --from=client-build /app/client/build /opt/bolly/static
