@@ -64,10 +64,36 @@
 	}
 
 	function isToolActivity(msg: ChatMessage): boolean {
-		return msg.role === "assistant" && msg.content.startsWith("[tool activity]");
+		return msg.role === "assistant" && (
+			msg.content.startsWith("[tool activity]") ||
+			msg.content.startsWith("[tool:") ||
+			msg.content.startsWith("[system]")
+		);
 	}
 
 	function toolActivityToStreamItems(msg: ChatMessage): StreamItem[] {
+		// New format: [tool: tool_name] summary
+		if (msg.content.startsWith("[tool:")) {
+			const isOutput = msg.content.includes(" output]");
+			return [{
+				type: "activity" as const,
+				id: msg.id,
+				kind: isOutput ? "output" as const : "tool" as const,
+				label: msg.content.replace(/^\[tool:\s*\S+?\s*(?:output\])?\]?\s*/, ""),
+				timestamp: new Date(Number(msg.created_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+			}];
+		}
+		// System messages (e.g., restart notifications)
+		if (msg.content.startsWith("[system]")) {
+			return [{
+				type: "activity" as const,
+				id: msg.id,
+				kind: "state" as const,
+				label: msg.content.replace(/^\[system\]\s*/, ""),
+				timestamp: new Date(Number(msg.created_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+			}];
+		}
+		// Legacy format: [tool activity]\n• tool_name → result
 		return msg.content
 			.split("\n")
 			.filter((line) => line.startsWith("• "))
@@ -75,7 +101,7 @@
 				type: "activity" as const,
 				id: `${msg.id}-${idx}`,
 				kind: "tool" as const,
-				label: line.slice(2).replace(/ →.*/, ""), // show tool name + args, trim result
+				label: line.slice(2).replace(/ →.*/, ""),
 				timestamp: new Date(Number(msg.created_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
 			}));
 	}
@@ -148,9 +174,19 @@
 			if (eventChatId && eventChatId !== currentChat) return;
 
 			if (event.type === "chat_message_created") {
-				if (event.message.role === "assistant") play("message_receive");
-				addMessage(event.message);
-				refreshChatList();
+				const content = event.message.content;
+				if (content.startsWith("[tool:") || content.startsWith("[system]")) {
+					// Tool activity / system messages — show as activity items, not chat bubbles
+					const items = toolActivityToStreamItems(event.message);
+					for (const item of items) {
+						stream = [...stream, item];
+					}
+					scrollToBottom();
+				} else {
+					if (event.message.role === "assistant") play("message_receive");
+					addMessage(event.message);
+					refreshChatList();
+				}
 			} else if (event.type === "mood_updated") {
 				play("mood_shift");
 				mood = event.mood;
@@ -162,7 +198,7 @@
 				agentRunning = false;
 				sending = false;
 			} else if (event.type === "tool_activity") {
-				// Skip tool_activity for set_mood — the dedicated mood_updated event handles it
+				// Legacy: tool_activity events (kept for backwards compat)
 				if (event.summary.startsWith("mood →")) return;
 				const isOutput = event.tool_name.endsWith("_output");
 				pushActivity(isOutput ? "output" : "tool", event.summary);

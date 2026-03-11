@@ -128,14 +128,8 @@ impl ToolDyn for ObservableTool {
     ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
         let tool_name = self.inner.name();
         let summary = tool_summary(&tool_name, &args);
-        let _ = self.events.send(ServerEvent::ToolActivity {
-            instance_slug: self.instance_slug.clone(),
-            chat_id: self.chat_id.clone(),
-            tool_name: tool_name.clone(),
-            summary: summary.clone(),
-        });
 
-        // Persist tool call start to messages
+        // Persist tool call to messages and broadcast
         let start_msg = crate::domain::chat::ChatMessage {
             id: format!("tool_{}_{}", tool_call_counter(), unix_millis()),
             role: crate::domain::chat::ChatRole::Assistant,
@@ -156,7 +150,7 @@ impl ToolDyn for ObservableTool {
         let fut = self.inner.call(args);
         Box::pin(async move {
             let result = fut.await;
-            // Emit output for commands so the user can see what happened
+            // Persist output for commands so the user can see what happened
             if tool_name == "run_command" || tool_name == "install_package"
                 || tool_name == "interactive_session"
             {
@@ -180,15 +174,9 @@ impl ToolDyn for ObservableTool {
                     };
                     append_message_to_chat(&workspace_dir, &instance_slug, &chat_id, &output_msg);
                     let _ = events.send(ServerEvent::ChatMessageCreated {
-                        instance_slug: instance_slug.clone(),
-                        chat_id: chat_id.clone(),
-                        message: output_msg,
-                    });
-                    let _ = events.send(ServerEvent::ToolActivity {
                         instance_slug,
                         chat_id,
-                        tool_name: format!("{tool_name}_output"),
-                        summary: output,
+                        message: output_msg,
                     });
                 }
             }
