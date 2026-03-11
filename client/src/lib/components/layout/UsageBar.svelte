@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { fetchUsage } from "$lib/api/client.js";
 	import type { Usage } from "$lib/api/types.js";
-	import MessageSquare from "@lucide/svelte/icons/message-square";
-	import Zap from "@lucide/svelte/icons/zap";
 
 	let usage: Usage | null = $state(null);
 
@@ -26,9 +24,9 @@
 	}
 
 	function barColor(p: number): string {
-		if (p >= 100) return "bg-red-400/70";
-		if (p >= 80) return "bg-amber-400/70";
-		return "bg-warm/60";
+		if (p >= 100) return "oklch(0.65 0.2 25)";
+		if (p >= 80) return "oklch(0.75 0.15 85)";
+		return "oklch(0.78 0.12 75 / 50%)";
 	}
 
 	function formatTokens(n: number): string {
@@ -44,48 +42,67 @@
 	{@const msgUnlimited = usage.messages_limit < 0}
 	{@const tokUnlimited = usage.tokens_limit < 0}
 
-	<div class="space-y-2.5 px-5 py-3.5">
+	<div class="usage-bar">
 		{#if !msgUnlimited}
-			<div class="space-y-1">
-				<div class="flex items-center justify-between text-[10px] text-muted-foreground/60">
-					<span class="flex items-center gap-1">
-						<MessageSquare class="h-2.5 w-2.5" />
-						messages
-					</span>
-					<span>{usage.messages_today} / {usage.messages_limit}</span>
-				</div>
-				<div class="h-1 rounded-full bg-muted/30 overflow-hidden">
+			<div class="usage-item" title="Messages today: {usage.messages_today} / {usage.messages_limit}">
+				<span class="usage-label">{usage.messages_today}/{usage.messages_limit}</span>
+				<div class="usage-track">
 					<div
-						class="h-full rounded-full transition-all duration-500 {barColor(msgPct)}"
-						style="width: {msgPct}%"
+						class="usage-fill"
+						style="width: {msgPct}%; background: {barColor(msgPct)}"
 					></div>
 				</div>
 			</div>
 		{/if}
 
 		{#if !tokUnlimited}
-			<div class="space-y-1">
-				<div class="flex items-center justify-between text-[10px] text-muted-foreground/60">
-					<span class="flex items-center gap-1">
-						<Zap class="h-2.5 w-2.5" />
-						tokens
-					</span>
-					<span>{formatTokens(usage.tokens_this_month)} / {formatTokens(usage.tokens_limit)}</span>
-				</div>
-				<div class="h-1 rounded-full bg-muted/30 overflow-hidden">
+			<div class="usage-item" title="Tokens this month: {formatTokens(usage.tokens_this_month)} / {formatTokens(usage.tokens_limit)}">
+				<span class="usage-label">{formatTokens(usage.tokens_this_month)}/{formatTokens(usage.tokens_limit)}</span>
+				<div class="usage-track">
 					<div
-						class="h-full rounded-full transition-all duration-500 {barColor(tokPct)}"
-						style="width: {tokPct}%"
+						class="usage-fill"
+						style="width: {tokPct}%; background: {barColor(tokPct)}"
 					></div>
 				</div>
 			</div>
 		{/if}
-
-		{#if msgUnlimited && tokUnlimited}
-			<div class="flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
-				<Zap class="h-2.5 w-2.5" />
-				<span>unlimited</span>
-			</div>
-		{/if}
 	</div>
 {/if}
+
+<style>
+	.usage-bar {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-left: auto;
+		padding-right: 0.5rem;
+	}
+
+	.usage-item {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		cursor: default;
+	}
+
+	.usage-label {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: oklch(0.78 0.12 75 / 35%);
+		white-space: nowrap;
+	}
+
+	.usage-track {
+		width: 2.5rem;
+		height: 2px;
+		border-radius: 1px;
+		background: oklch(1 0 0 / 5%);
+		overflow: hidden;
+	}
+
+	.usage-fill {
+		height: 100%;
+		border-radius: 1px;
+		transition: width 0.5s ease, background 0.5s ease;
+	}
+</style>

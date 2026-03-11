@@ -2,7 +2,6 @@
 	import { page } from "$app/state";
 	import { fetchMessages } from "$lib/api/client.js";
 	import InstanceOnboarding from "$lib/components/onboarding/InstanceOnboarding.svelte";
-
 	let { children } = $props();
 
 	const slug = $derived(page.params.slug!);
