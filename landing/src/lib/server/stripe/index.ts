@@ -74,6 +74,32 @@ export async function createCustomer(email: string, name?: string): Promise<stri
 	return customer.id;
 }
 
+/**
+ * Ensure a user has a valid Stripe customer ID.
+ * If the stored ID is missing or invalid (e.g. test-mode ID in prod), create a new one.
+ */
+export async function ensureCustomer(user: { id: string; email: string; name?: string | null; stripeCustomerId?: string | null }): Promise<string> {
+	if (user.stripeCustomerId) {
+		try {
+			await stripe().customers.retrieve(user.stripeCustomerId);
+			return user.stripeCustomerId;
+		} catch {
+			// Customer doesn't exist (wrong mode or deleted) — create a new one
+			console.warn(`Stripe customer ${user.stripeCustomerId} not found, creating new one for ${user.email}`);
+		}
+	}
+
+	const customerId = await createCustomer(user.email, user.name ?? undefined);
+
+	// Update DB
+	const { db } = await import('$lib/server/db/index.js');
+	const { users } = await import('$lib/server/db/schema.js');
+	const { eq } = await import('drizzle-orm');
+	await db.update(users).set({ stripeCustomerId: customerId }).where(eq(users.id, user.id));
+
+	return customerId;
+}
+
 export async function createBillingPortalSession(customerId: string, returnUrl: string): Promise<string> {
 	const session = await stripe().billingPortal.sessions.create({
 		customer: customerId,

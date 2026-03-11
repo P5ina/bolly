@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { getTenantsByUser, getTenantBySlug } from '$lib/server/tenants.js';
-import { createCheckoutSession, priceIdForPlan, type PlanId } from '$lib/server/stripe/index.js';
+import { createCheckoutSession, ensureCustomer, priceIdForPlan, type PlanId } from '$lib/server/stripe/index.js';
 import { env } from '$env/dynamic/private';
 
 // GET /api/tenants — list user's tenants
@@ -30,15 +30,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		error(409, 'That name is already taken. Please choose another.');
 	}
 
-	if (!locals.user.stripeCustomerId) {
-		error(400, 'No billing account. Please contact support.');
-	}
-
 	const origin = env.ORIGIN ?? 'https://bollyai.dev';
 
 	try {
+		const customerId = await ensureCustomer(locals.user);
 		const checkoutUrl = await createCheckoutSession({
-			customerId: locals.user.stripeCustomerId,
+			customerId,
 			priceId: priceIdForPlan(plan as PlanId),
 			successUrl: `${origin}/dashboard?checkout=success`,
 			cancelUrl: `${origin}/dashboard?checkout=cancelled`,

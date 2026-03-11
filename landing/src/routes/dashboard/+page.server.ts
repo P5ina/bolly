@@ -3,7 +3,7 @@ import type { Actions, PageServerLoad } from './$types.js';
 import type Stripe from 'stripe';
 import { getTenantsByUser, getTenantBySlug, provisionTenant, switchTenantChannel } from '$lib/server/tenants.js';
 import { invalidateSession, deleteSessionCookie } from '$lib/server/auth/index.js';
-import { stripe, createBillingPortalSession, PLANS, type PlanId } from '$lib/server/stripe/index.js';
+import { stripe, createBillingPortalSession, ensureCustomer, PLANS, type PlanId } from '$lib/server/stripe/index.js';
 import { env } from '$env/dynamic/private';
 
 type SubscriptionInfo = {
@@ -67,16 +67,17 @@ export const load: PageServerLoad = async ({ locals }) => {
 			})
 		),
 		// All active subscriptions from Stripe
-		locals.user.stripeCustomerId
-			? stripe()
+		ensureCustomer(locals.user)
+			.then((cid) =>
+				stripe()
 					.subscriptions.list({
-						customer: locals.user.stripeCustomerId,
+						customer: cid,
 						status: 'active',
 						expand: ['data.items.data.price.product'],
 					})
 					.then((res) => res.data)
-					.catch(() => [] as Stripe.Subscription[])
-			: ([] as Stripe.Subscription[]),
+			)
+			.catch(() => [] as Stripe.Subscription[]),
 	]);
 
 	// Find orphaned subscriptions (active in Stripe but not linked to any tenant)
@@ -117,10 +118,11 @@ export const actions: Actions = {
 		redirect(302, '/');
 	},
 	billing: async ({ locals, url }) => {
-		if (!locals.user?.stripeCustomerId) redirect(302, '/dashboard');
+		if (!locals.user) redirect(302, '/dashboard');
 
+		const customerId = await ensureCustomer(locals.user);
 		const returnUrl = `${env.ORIGIN ?? url.origin}/dashboard`;
-		const portalUrl = await createBillingPortalSession(locals.user.stripeCustomerId, returnUrl);
+		const portalUrl = await createBillingPortalSession(customerId, returnUrl);
 		redirect(303, portalUrl);
 	},
 	retryProvision: async ({ request, locals }) => {
@@ -169,16 +171,17 @@ export const actions: Actions = {
 		}
 	},
 	cancelSubscription: async ({ request, locals }) => {
-		if (!locals.user?.stripeCustomerId) redirect(302, '/dashboard');
+		if (!locals.user) redirect(302, '/dashboard');
 
 		const formData = await request.formData();
 		const subscriptionId = formData.get('subscriptionId') as string;
 		if (!subscriptionId) return fail(400, { error: 'Missing subscription ID' });
 
 		try {
+			const customerId = await ensureCustomer(locals.user);
 			// Verify this subscription belongs to the user
 			const sub = await stripe().subscriptions.retrieve(subscriptionId);
-			if (sub.customer !== locals.user.stripeCustomerId) {
+			if (sub.customer !== customerId) {
 				return fail(403, { error: 'Not your subscription' });
 			}
 			await stripe().subscriptions.update(subscriptionId, {
