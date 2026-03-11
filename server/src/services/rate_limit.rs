@@ -1,43 +1,32 @@
 use sqlx::PgPool;
 
-/// Plan limits derived from the tenants table.
+/// Plan limits read from the tenants table.
 struct PlanLimits {
     messages_per_day: i32,
     tokens_per_month: i32,
 }
 
-/// Map plan name to limits (must match landing PLANS config).
-fn limits_for_plan(plan: &str) -> PlanLimits {
-    match plan {
-        "starter" => PlanLimits {
-            messages_per_day: 100,
-            tokens_per_month: 500_000,
+/// Fetch plan limits from the tenants table. Falls back to starter defaults.
+async fn fetch_limits(pool: &PgPool, instance_id: &str) -> PlanLimits {
+    let row = sqlx::query_as::<_, (i32, i32)>(
+        "SELECT messages_per_day, tokens_per_month FROM tenants WHERE id = $1",
+    )
+    .bind(instance_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    match row {
+        Some((mpd, tpm)) => PlanLimits {
+            messages_per_day: mpd,
+            tokens_per_month: tpm,
         },
-        "companion" => PlanLimits {
-            messages_per_day: 300,
-            tokens_per_month: 1_000_000,
-        },
-        "unlimited" => PlanLimits {
-            messages_per_day: -1, // unlimited
-            tokens_per_month: 5_000_000,
-        },
-        _ => PlanLimits {
+        None => PlanLimits {
             messages_per_day: 100,
             tokens_per_month: 500_000,
         },
     }
-}
-
-/// Fetch plan limits from the tenants table. Falls back to starter defaults.
-async fn fetch_limits(pool: &PgPool, instance_id: &str) -> PlanLimits {
-    let plan: Option<String> = sqlx::query_scalar("SELECT plan FROM tenants WHERE id = $1")
-        .bind(instance_id)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten();
-
-    limits_for_plan(plan.as_deref().unwrap_or("starter"))
 }
 
 /// Check rate limits. Returns Ok(()) if allowed, Err(message) if exceeded.
