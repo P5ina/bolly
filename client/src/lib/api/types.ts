@@ -195,4 +195,10 @@ export type ServerEvent =
 			instance_slug: string;
 			chat_id: string;
 			messages_compacted: number;
+	  }
+	| {
+			type: "chat_stream_delta";
+			instance_slug: string;
+			chat_id: string;
+			delta: string;
 	  };

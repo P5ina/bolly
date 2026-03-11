@@ -8,7 +8,7 @@ export default defineConfig({
 		tailwindcss(),
 		sveltekit(),
 		SvelteKitPWA({
-			registerType: "autoUpdate",
+			registerType: "prompt",
 			manifest: false,
 			workbox: {
 				globPatterns: ["client/**/*.{js,css,ico,png,svg,webp,woff,woff2}"],

@@ -255,7 +255,10 @@ pub async fn run_single_turn(
     let (tools, sent_files) = build_instance_tools(workspace_dir, &instance_slug, &chat_id, brave_api_key, config_path, events.clone(), sent_files);
 
     let tool_result = llm
-        .chat_with_tools(&system_prompt, prompt_msg, history_msgs, tools, memory_index)
+        .chat_with_tools_streaming(
+            &system_prompt, prompt_msg, history_msgs, tools, memory_index,
+            events.clone(), &instance_slug, &chat_id,
+        )
         .await
         .unwrap_or_else(|e| {
             let msg = e.to_string();

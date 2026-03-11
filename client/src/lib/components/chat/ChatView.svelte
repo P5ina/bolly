@@ -29,6 +29,7 @@
 	let scrollContainer: HTMLDivElement | undefined = $state();
 	let isConnected = $state(false);
 	let showChatList = $state(false);
+	let streamingContent = $state("");
 
 	const ws = getWebSocket();
 
@@ -57,6 +58,11 @@
 
 	function addMessage(msg: ChatMessage) {
 		if (!messages.some((m) => m.id === msg.id)) {
+			// Clear streaming bubble when first real assistant message arrives
+			if (msg.role === "assistant" && streamingContent) {
+				streamingContent = "";
+				stream = stream.filter((s) => !(s.type === "message" && s.data.id === "__streaming__"));
+			}
 			messages = [...messages, msg];
 			stream = [...stream, { type: "message", data: msg }];
 			scrollToBottom();
@@ -141,6 +147,7 @@
 			stream = [];
 			loading = true;
 			isConnected = false;
+			streamingContent = "";
 
 			refreshChatList();
 
@@ -197,6 +204,7 @@
 			} else if (event.type === "agent_stopped") {
 				agentRunning = false;
 				sending = false;
+				streamingContent = "";
 			} else if (event.type === "tool_activity") {
 				// Legacy: tool_activity events (kept for backwards compat)
 				if (event.summary.startsWith("mood →")) return;
@@ -205,6 +213,23 @@
 			} else if (event.type === "drop_created") {
 				pushActivity("tool", `dropped: ${event.drop.title}`);
 				play("drop_received");
+			} else if (event.type === "chat_stream_delta") {
+				streamingContent += event.delta;
+				// Upsert the streaming bubble in the stream array
+				const streamIdx = stream.findIndex((s) => s.type === "message" && s.data.id === "__streaming__");
+				const streamingMsg: ChatMessage = {
+					id: "__streaming__",
+					role: "assistant",
+					content: streamingContent,
+					created_at: new Date().toISOString(),
+				};
+				if (streamIdx >= 0) {
+					stream[streamIdx] = { type: "message", data: streamingMsg };
+					stream = stream; // trigger reactivity
+				} else {
+					stream = [...stream, { type: "message", data: streamingMsg }];
+				}
+				scrollToBottom();
 			} else if (event.type === "context_compacting") {
 				pushActivity("state", `compacting ${event.messages_compacted} messages...`);
 			}
@@ -229,6 +254,7 @@
 			const res = await sendMessage(slug, finalContent, activeChatId);
 			for (const msg of res.messages) addMessage(msg);
 		} catch {
+			play("error");
 			sending = false;
 		}
 	}

@@ -2,14 +2,19 @@ use std::path::Path;
 use std::time::Duration;
 
 use base64::Engine as _;
+use futures::StreamExt;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, Message, Prompt};
-use rig::agent::AgentBuilder;
+use rig::agent::{AgentBuilder, MultiTurnStreamItem, StreamingError};
 use rig::completion::message::{AssistantContent, UserContent, ImageMediaType, DocumentMediaType, MimeType};
 use rig::one_or_many::OneOrMany;
 use rig::providers::{anthropic, openai};
+use rig::streaming::{StreamingPrompt, StreamedAssistantContent};
 use rig::tool::ToolDyn;
 use rig::vector_store::VectorStoreIndexDyn;
+use tokio::sync::broadcast;
+
+use crate::domain::events::ServerEvent;
 
 use crate::config::{Config, LlmProvider};
 use crate::domain::chat::{ChatMessage, ChatRole};
@@ -264,6 +269,68 @@ impl LlmBackend {
         }
     }
 
+    /// Streaming variant of chat_with_tools: sends text deltas via events channel.
+    pub async fn chat_with_tools_streaming<I>(
+        &self,
+        system_prompt: &str,
+        prompt: Message,
+        history: Vec<Message>,
+        tools: Vec<Box<dyn ToolDyn>>,
+        memory_index: Option<I>,
+        events: broadcast::Sender<ServerEvent>,
+        instance_slug: &str,
+        chat_id: &str,
+    ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>>
+    where
+        I: VectorStoreIndexDyn + Send + Sync + 'static,
+    {
+        log::info!("chat_with_tools_streaming: {} tools registered, memory_rag={}", tools.len(), memory_index.is_some());
+
+        const AGENT_MAX_TURNS: usize = 4;
+
+        let slug = instance_slug.to_string();
+        let cid = chat_id.to_string();
+
+        match self {
+            LlmBackend::Anthropic { client, model } => {
+                let cm = client.completion_model(model).with_prompt_caching();
+                let mut builder = AgentBuilder::new(cm)
+                    .preamble(system_prompt)
+                    .tools(tools);
+                if let Some(index) = memory_index {
+                    builder = builder.dynamic_context(8, index);
+                }
+                let agent = builder.build();
+
+                let stream = agent
+                    .stream_prompt(prompt)
+                    .with_history(history)
+                    .multi_turn(AGENT_MAX_TURNS)
+                    .await;
+
+                consume_stream(stream, &events, &slug, &cid).await
+            }
+            LlmBackend::OpenAI { client, model } => {
+                let mut builder = client
+                    .agent(model)
+                    .preamble(system_prompt)
+                    .tools(tools);
+                if let Some(index) = memory_index {
+                    builder = builder.dynamic_context(8, index);
+                }
+                let agent = builder.build();
+
+                let stream = agent
+                    .stream_prompt(prompt)
+                    .with_history(history)
+                    .multi_turn(AGENT_MAX_TURNS)
+                    .await;
+
+                consume_stream(stream, &events, &slug, &cid).await
+            }
+        }
+    }
+
     /// Simplified tool call without memory RAG index.
     /// Used by heartbeat and other contexts that don't need vector search.
     pub async fn chat_with_tools_only(
@@ -316,6 +383,58 @@ impl LlmBackend {
             }
         }
     }
+}
+
+/// Consume a streaming response, broadcasting text deltas and accumulating the full text.
+async fn consume_stream<R>(
+    stream: std::pin::Pin<Box<dyn futures::Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send>>,
+    events: &broadcast::Sender<ServerEvent>,
+    instance_slug: &str,
+    chat_id: &str,
+) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>>
+where
+    R: Clone + Unpin,
+{
+    let mut accumulated = String::new();
+    let mut hit_turn_limit = false;
+
+    tokio::pin!(stream);
+
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(t))) => {
+                let delta = t.text;
+                if !delta.is_empty() {
+                    accumulated.push_str(&delta);
+                    let _ = events.send(ServerEvent::ChatStreamDelta {
+                        instance_slug: instance_slug.to_string(),
+                        chat_id: chat_id.to_string(),
+                        delta,
+                    });
+                }
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("MaxTurn") || msg.contains("max turn") {
+                    log::info!("streaming hit turn limit, accumulated {} chars", accumulated.len());
+                    hit_turn_limit = true;
+                    break;
+                }
+                if is_rate_limit_error(&msg) && accumulated.is_empty() {
+                    return Err(Box::new(e));
+                }
+                // If we already have some text, return it rather than losing it
+                if !accumulated.is_empty() {
+                    log::warn!("streaming error after partial text: {msg}");
+                    break;
+                }
+                return Err(Box::new(e));
+            }
+            _ => {} // Ignore tool call deltas, user items, final response
+        }
+    }
+
+    Ok(ToolChatResult { text: accumulated, hit_turn_limit })
 }
 
 fn is_max_turns_error(error: &(dyn std::error::Error + Send + Sync)) -> bool {

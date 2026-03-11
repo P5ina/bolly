@@ -44,4 +44,9 @@ pub enum ServerEvent {
         chat_id: String,
         messages_compacted: usize,
     },
+    ChatStreamDelta {
+        instance_slug: String,
+        chat_id: String,
+        delta: String,
+    },
 }

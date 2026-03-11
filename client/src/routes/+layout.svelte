@@ -15,7 +15,12 @@
 	onMount(async () => {
 		if (pwaInfo) {
 			const { registerSW } = await import("virtual:pwa-register");
-			registerSW({ immediate: true });
+			updateSW = registerSW({
+				immediate: true,
+				onNeedRefresh() {
+					updateAvailable = true;
+				},
+			});
 		}
 	});
 
@@ -23,6 +28,8 @@
 	const ws = getWebSocket();
 
 	let needsAuth = $state(false);
+	let updateAvailable = $state(false);
+	let updateSW: ((reloadPage?: boolean) => Promise<void>) | undefined;
 
 	function init() {
 		needsAuth = false;
@@ -104,6 +111,19 @@
 			title={ws.connected ? "connected" : ws.reconnecting ? `reconnecting (attempt ${ws.retryCount})…` : "disconnected"}
 		></div>
 		</nav>
+	{/if}
+
+	<!-- update available banner -->
+	{#if updateAvailable}
+		<div class="update-banner">
+			<span class="update-banner-text">update available</span>
+			<button class="update-banner-btn" onclick={() => updateSW?.(true)}>refresh</button>
+			<button class="update-banner-dismiss" onclick={() => updateAvailable = false} aria-label="Dismiss">
+				<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" class="w-2.5 h-2.5">
+					<path d="M2 2l8 8M10 2l-8 8" stroke-linecap="round"/>
+				</svg>
+			</button>
+		</div>
 	{/if}
 
 	<!-- connection lost banner -->
@@ -238,6 +258,65 @@
 	@keyframes pulse-warn {
 		0%, 100% { opacity: 1; transform: scale(1); }
 		50% { opacity: 0.3; transform: scale(1.4); }
+	}
+
+	.update-banner {
+		position: fixed;
+		top: calc(1rem + env(safe-area-inset-top, 0px));
+		left: 50%;
+		transform: translateX(-50%);
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+		padding: 0.4rem 0.5rem 0.4rem 1rem;
+		border-radius: 2rem;
+		background: oklch(0.065 0.015 280 / 85%);
+		backdrop-filter: blur(20px);
+		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		z-index: 100;
+		animation: banner-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	.update-banner-text {
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: oklch(0.78 0.12 75 / 70%);
+	}
+
+	.update-banner-btn {
+		padding: 0.2rem 0.625rem;
+		border-radius: 1rem;
+		background: oklch(0.78 0.12 75 / 12%);
+		border: 1px solid oklch(0.78 0.12 75 / 20%);
+		color: oklch(0.78 0.12 75 / 90%);
+		font-family: var(--font-mono);
+		font-size: 0.62rem;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		transition: all 0.2s ease;
+		cursor: pointer;
+	}
+	.update-banner-btn:hover {
+		background: oklch(0.78 0.12 75 / 20%);
+		border-color: oklch(0.78 0.12 75 / 35%);
+	}
+
+	.update-banner-dismiss {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.25rem;
+		height: 1.25rem;
+		border-radius: 50%;
+		color: oklch(0.55 0.02 280 / 40%);
+		transition: all 0.2s ease;
+		cursor: pointer;
+	}
+	.update-banner-dismiss:hover {
+		color: oklch(0.78 0.12 75 / 60%);
+		background: oklch(0.78 0.12 75 / 8%);
 	}
 
 	.connection-banner {

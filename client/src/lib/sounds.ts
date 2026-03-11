@@ -8,6 +8,7 @@ const volumes: Record<string, number> = {
 	mood_shift: 0.15,
 	intro_reveal: 0.4,
 	drop_received: 0.3,
+	error: 0.3,
 };
 
 function getContext(): AudioContext {
