@@ -1,18 +1,43 @@
 use sqlx::PgPool;
 
-/// Env-configurable limits with defaults.
-fn messages_per_day() -> i32 {
-    std::env::var("RATE_LIMIT_MESSAGES_PER_DAY")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(100)
+/// Plan limits derived from the tenants table.
+struct PlanLimits {
+    messages_per_day: i32,
+    tokens_per_month: i32,
 }
 
-fn tokens_per_month() -> i32 {
-    std::env::var("RATE_LIMIT_TOKENS_PER_MONTH")
+/// Map plan name to limits (must match landing PLANS config).
+fn limits_for_plan(plan: &str) -> PlanLimits {
+    match plan {
+        "starter" => PlanLimits {
+            messages_per_day: 100,
+            tokens_per_month: 500_000,
+        },
+        "companion" => PlanLimits {
+            messages_per_day: 300,
+            tokens_per_month: 1_000_000,
+        },
+        "unlimited" => PlanLimits {
+            messages_per_day: -1, // unlimited
+            tokens_per_month: 5_000_000,
+        },
+        _ => PlanLimits {
+            messages_per_day: 100,
+            tokens_per_month: 500_000,
+        },
+    }
+}
+
+/// Fetch plan limits from the tenants table. Falls back to starter defaults.
+async fn fetch_limits(pool: &PgPool, instance_id: &str) -> PlanLimits {
+    let plan: Option<String> = sqlx::query_scalar("SELECT plan FROM tenants WHERE id = $1")
+        .bind(instance_id)
+        .fetch_optional(pool)
+        .await
         .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(500_000)
+        .flatten();
+
+    limits_for_plan(plan.as_deref().unwrap_or("starter"))
 }
 
 /// Check rate limits. Returns Ok(()) if allowed, Err(message) if exceeded.
@@ -61,15 +86,20 @@ pub async fn check(pool: &PgPool, instance_id: &str) -> Result<(), String> {
         Err(_) => return Ok(()), // fail open
     };
 
-    let msg_limit = messages_per_day();
-    let tok_limit = tokens_per_month();
+    let limits = fetch_limits(pool, instance_id).await;
 
     // -1 means unlimited
-    if msg_limit > 0 && messages_today >= msg_limit {
-        return Err(format!("daily message limit reached ({msg_limit})"));
+    if limits.messages_per_day > 0 && messages_today >= limits.messages_per_day {
+        return Err(format!(
+            "daily message limit reached ({})",
+            limits.messages_per_day
+        ));
     }
-    if tok_limit > 0 && tokens_this_month >= tok_limit {
-        return Err(format!("monthly token limit reached ({tok_limit})"));
+    if limits.tokens_per_month > 0 && tokens_this_month >= limits.tokens_per_month {
+        return Err(format!(
+            "monthly token limit reached ({})",
+            limits.tokens_per_month
+        ));
     }
 
     Ok(())
@@ -114,14 +144,13 @@ pub async fn get_usage(pool: &PgPool, instance_id: &str) -> Option<Usage> {
     .flatten();
 
     let (messages_today, tokens_this_month) = row.unwrap_or((0, 0));
-    let msg_limit = messages_per_day();
-    let tok_limit = tokens_per_month();
+    let limits = fetch_limits(pool, instance_id).await;
 
     Some(Usage {
         messages_today,
-        messages_limit: msg_limit,
+        messages_limit: limits.messages_per_day,
         tokens_this_month,
-        tokens_limit: tok_limit,
+        tokens_limit: limits.tokens_per_month,
     })
 }
 
