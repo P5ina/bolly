@@ -118,20 +118,12 @@ pub async fn run_single_turn(
     let mood_prompt = load_mood_prompt(workspace_dir, &instance_slug);
     let rhythm_prompt = load_rhythm_prompt(workspace_dir, &instance_slug);
 
+    // Build system prompt with STABLE content first (for Anthropic prompt caching).
+    // Anthropic caches the longest matching prefix, so put rarely-changing
+    // sections at the top and dynamic/per-message sections at the bottom.
     let mut system_prompt = base_prompt;
-    if !memory_prompt.is_empty() {
-        system_prompt = format!("{system_prompt}\n\n{memory_prompt}");
-    }
-    if !journal_prompt.is_empty() {
-        system_prompt = format!("{system_prompt}\n\n{journal_prompt}");
-    }
-    if !mood_prompt.is_empty() {
-        system_prompt = format!("{system_prompt}\n\n{mood_prompt}");
-    }
-    if !rhythm_prompt.is_empty() {
-        system_prompt = format!("{system_prompt}\n\n{rhythm_prompt}");
-    }
 
+    // Stable: skills, capabilities, email, style (rarely change)
     let skills_prompt = build_skills_prompt(workspace_dir);
     if !skills_prompt.is_empty() {
         system_prompt = format!("{system_prompt}\n\n{skills_prompt}");
@@ -145,13 +137,28 @@ pub async fn run_single_turn(
         system_prompt = format!("{system_prompt}\n\n{email_status}");
     }
 
-    // Messaging style
     system_prompt.push_str(
         "\n\n## style\n\
          write like texting a friend. short messages split by blank lines. \
          1-2 sentences each. no walls of text, no bullet lists in conversation. \
          lowercase, casual, warm."
     );
+
+    // Semi-stable: memory (changes when facts are added)
+    if !memory_prompt.is_empty() {
+        system_prompt = format!("{system_prompt}\n\n{memory_prompt}");
+    }
+
+    // Dynamic: journal, mood, rhythm (change frequently — placed last)
+    if !journal_prompt.is_empty() {
+        system_prompt = format!("{system_prompt}\n\n{journal_prompt}");
+    }
+    if !mood_prompt.is_empty() {
+        system_prompt = format!("{system_prompt}\n\n{mood_prompt}");
+    }
+    if !rhythm_prompt.is_empty() {
+        system_prompt = format!("{system_prompt}\n\n{rhythm_prompt}");
+    }
 
     // Token-aware context management with auto-compaction
     let model_name = llm.model_name();
