@@ -984,6 +984,9 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          (soul.md, heartbeat.md, memory, drops, etc) live there. the workspace root {ws} \
          is mounted as a persistent volume — this is where all your data is stored.\n\n\
          ## behavior\n\
+         prefer dedicated tools over run_command: use read_file (not cat/head/tail), \
+         write_file (not echo/tee), list_files (not ls), search_code (not grep/rg) \
+         when possible. only use run_command for tasks that need shell execution.\n\
          always use pnpm instead of npm for Node.js package management.\n\
          task given → act fully: orient, execute, verify, report. use continuation words to get more turns.\n\
          no task → just talk. don't run tools unprompted.\n\
