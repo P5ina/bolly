@@ -33,8 +33,19 @@ RUN echo "build: ${GIT_HASH}" > /tmp/build-info && \
 # Stage 5: Runtime
 FROM debian:bookworm-slim
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl sudo && \
+    apt-get install -y --no-install-recommends \
+      ca-certificates curl sudo \
+      python3 python3-pip python3-venv \
+      git jq && \
     rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 20 + pnpm via corepack
+COPY --from=client-build /usr/local/bin/node /usr/local/bin/node
+COPY --from=client-build /usr/local/bin/corepack /usr/local/bin/corepack
+COPY --from=client-build /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
+    ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
+    corepack enable && corepack prepare pnpm@latest --activate
 
 COPY --from=server-build /app/target/release/server /usr/local/bin/bolly
 COPY --from=client-build /app/client/build /opt/bolly/static
