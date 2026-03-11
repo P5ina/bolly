@@ -3739,6 +3739,7 @@ impl Tool for BrowseTool {
         );
 
         let mut child = tokio::process::Command::new("node")
+            .arg("--max-old-space-size=384")
             .arg(&script)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())

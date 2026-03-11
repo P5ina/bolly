@@ -56,9 +56,6 @@ RUN apt-get update && \
 COPY server/scripts/ /opt/bolly/scripts/
 RUN cd /opt/bolly/scripts && npm install --omit=dev
 
-# Limit Node.js memory to avoid OOM on small servers (after install steps)
-ENV NODE_OPTIONS="--max-old-space-size=384"
-
 COPY --from=server-build /app/target/release/server /usr/local/bin/bolly
 COPY --from=client-build /app/client/build /opt/bolly/static
 
