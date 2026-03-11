@@ -149,12 +149,7 @@ pub async fn run_single_turn(
         system_prompt = format!("{system_prompt}\n\n{memory_prompt}");
     }
 
-    // Dynamic: current time, journal, mood, rhythm (change frequently — placed last)
-    let now = chrono::Local::now();
-    system_prompt.push_str(&format!(
-        "\n\n## current time\n{}", now.format("%A, %B %-d, %Y %H:%M %Z")
-    ));
-
+    // Dynamic: journal, mood, rhythm (change frequently — placed last)
     if !journal_prompt.is_empty() {
         system_prompt = format!("{system_prompt}\n\n{journal_prompt}");
     }
@@ -241,8 +236,10 @@ pub async fn run_single_turn(
     // The last message is the prompt, everything before is history
     let (history_msgs, prompt_msg) = if let Some(last) = trimmed.last() {
         let history = llm::to_rig_messages(&trimmed[..trimmed.len() - 1]);
-        // Build multimodal message if attachments are present
-        let msg = llm::build_multimodal_prompt(&last.content, workspace_dir, &instance_slug);
+        // Prepend current time to the user's message so the agent always knows when it is
+        let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
+        let content_with_time = format!("[{now}]\n{}", last.content);
+        let msg = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug);
         (history, msg)
     } else {
         return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
