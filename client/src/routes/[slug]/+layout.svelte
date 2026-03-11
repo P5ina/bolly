@@ -90,6 +90,15 @@
 		border-bottom: 1px solid oklch(1 0 0 / 4%);
 		flex-shrink: 0;
 		z-index: 10;
+		overflow-x: auto;
+	}
+
+	@media (max-width: 720px) {
+		.instance-tabs {
+			padding: 0.4rem 0.75rem 0;
+			/* leave room for floating nav at top-right */
+			padding-right: 5rem;
+		}
 	}
 
 	.instance-tab {

@@ -194,6 +194,8 @@
 		letter-spacing: 0.005em;
 		max-width: 85%;
 		word-break: break-word;
+		overflow-wrap: anywhere;
+		overflow-x: hidden;
 	}
 
 	.msg-content-user {
@@ -288,6 +290,7 @@
 		padding: 0.75em 1em;
 		margin: 0.5em 0;
 		overflow-x: auto;
+		max-width: 100%;
 	}
 	.prose :global(pre code) {
 		background: none;

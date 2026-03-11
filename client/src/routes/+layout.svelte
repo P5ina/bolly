@@ -71,7 +71,7 @@
 	<title>bolly</title>
 </svelte:head>
 
-<div class="relative h-dvh overflow-hidden">
+<div class="relative h-dvh w-full overflow-hidden">
 	{#if needsAuth}
 		<AuthGate onauth={handleAuth} />
 	{:else}
