@@ -13,7 +13,7 @@
 			name: 'companion',
 			desc: 'For everyday life',
 			price: 12,
-			features: ['3 companions', '300 messages / day', '2M tokens / month', '5 GB storage', 'Email integration'],
+			features: ['3 companions', '300 messages / day', '1M tokens / month', '5 GB storage', 'Email integration'],
 			featured: true,
 			badge: 'popular',
 		},
@@ -21,7 +21,7 @@
 			name: 'unlimited',
 			desc: 'No limits',
 			price: 25,
-			features: ['Unlimited companions', 'Unlimited messages', 'Unlimited tokens', '20 GB storage', 'Early access to new features'],
+			features: ['Unlimited companions', 'Unlimited messages', '5M tokens / month', '20 GB storage', 'Early access to new features'],
 			featured: false,
 		},
 	];

@@ -32,7 +32,7 @@ export const PLANS = {
 		memoryMb: 1024,
 		maxInstances: 3,
 		messagesPerDay: 300,
-		tokensPerMonth: 2_000_000,
+		tokensPerMonth: 1_000_000,
 	},
 	unlimited: {
 		name: 'Unlimited',
@@ -42,7 +42,7 @@ export const PLANS = {
 		memoryMb: 4096,
 		maxInstances: -1, // unlimited
 		messagesPerDay: -1, // unlimited
-		tokensPerMonth: -1, // unlimited
+		tokensPerMonth: 5_000_000,
 	},
 } as const;
 
