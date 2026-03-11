@@ -203,9 +203,18 @@ impl ToolDyn for ObservableTool {
         let chat_id = self.chat_id.clone();
         let fut = self.inner.call(args);
         Box::pin(async move {
-            // Redact secrets from all tool results before they reach the LLM
+            // Redact secrets and cap size of all tool results before they reach the LLM
+            const MAX_TOOL_RESULT: usize = 24_000; // ~7500 tokens
             let result = match fut.await {
-                Ok(s) => Ok(redact_secrets(&s)),
+                Ok(s) => {
+                    let redacted = redact_secrets(&s);
+                    if redacted.len() > MAX_TOOL_RESULT {
+                        let truncated: String = redacted.chars().take(MAX_TOOL_RESULT).collect();
+                        Ok(format!("{truncated}\n\n...(tool output truncated at {MAX_TOOL_RESULT} chars, total: {})", redacted.len()))
+                    } else {
+                        Ok(redacted)
+                    }
+                }
                 Err(e) => Err(e),
             };
             // Persist output for commands so the user can see what happened
@@ -402,6 +411,10 @@ impl ReadFileTool {
 pub struct ReadFileArgs {
     /// File path. Can be relative to instance directory (e.g. "soul.md") or absolute (e.g. "/Users/timur/projects/app/src/main.rs").
     pub path: String,
+    /// Starting line number (1-based). Omit to start from the beginning.
+    pub offset: Option<usize>,
+    /// Maximum number of lines to read. Omit to read the whole file (up to the size limit).
+    pub limit: Option<usize>,
 }
 
 impl Tool for ReadFileTool {
@@ -414,7 +427,9 @@ impl Tool for ReadFileTool {
         ToolDefinition {
             name: "read_file".into(),
             description: "Read a file. Use a relative path for your instance workspace \
-                or an absolute path (starting with /) to read any file on the system."
+                or an absolute path (starting with /) to read any file on the system. \
+                For large files, use offset/limit to read specific line ranges instead of \
+                reading the entire file — files over 20000 chars are truncated."
                 .into(),
             parameters: openai_schema::<ReadFileArgs>(),
         }
@@ -427,16 +442,47 @@ impl Tool for ReadFileTool {
             self.instance_dir.join(&args.path)
         };
 
-        let content = fs::read_to_string(&target)
+        let raw = fs::read_to_string(&target)
             .map_err(|e| ToolExecError(format!("{}: {e}", target.display())))?;
 
-        // Truncate very large files
-        if content.len() > 50_000 {
-            let truncated: String = content.chars().take(50_000).collect();
+        let total_lines = raw.lines().count();
+
+        // Apply line range if specified
+        let content: String = match (args.offset, args.limit) {
+            (Some(off), Some(lim)) => {
+                let start = off.saturating_sub(1); // 1-based to 0-based
+                raw.lines()
+                    .skip(start)
+                    .take(lim)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }
+            (Some(off), None) => {
+                let start = off.saturating_sub(1);
+                raw.lines()
+                    .skip(start)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }
+            (None, Some(lim)) => {
+                raw.lines()
+                    .take(lim)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }
+            (None, None) => raw,
+        };
+
+        // Truncate very large results
+        const MAX_CHARS: usize = 20_000;
+        if content.len() > MAX_CHARS {
+            let truncated: String = content.chars().take(MAX_CHARS).collect();
             Ok(format!(
-                "{truncated}\n\n...(file truncated at 50000 chars, total: {} chars)",
+                "{truncated}\n\n...(truncated at {MAX_CHARS} chars, total: {} chars, {total_lines} lines — use offset/limit to read specific sections)",
                 content.len()
             ))
+        } else if args.offset.is_some() || args.limit.is_some() {
+            Ok(format!("{content}\n\n({total_lines} lines total in file)"))
         } else {
             Ok(content)
         }
