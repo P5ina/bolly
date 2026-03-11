@@ -30,6 +30,57 @@
 	let isConnected = $state(false);
 	let showChatList = $state(false);
 	let streamingContent = $state("");
+	let displayedLength = $state(0);
+	let typewriterRaf = 0;
+	let lastTypewriterTime = 0;
+
+	const CHARS_PER_FRAME = 2;
+	const FRAME_INTERVAL = 16; // ~60fps
+
+	function startTypewriter() {
+		if (typewriterRaf) return;
+		lastTypewriterTime = performance.now();
+		function tick(now: number) {
+			if (displayedLength >= streamingContent.length && !streamingContent) {
+				typewriterRaf = 0;
+				return;
+			}
+			const elapsed = now - lastTypewriterTime;
+			if (elapsed >= FRAME_INTERVAL) {
+				const charsToAdd = Math.max(1, Math.floor(elapsed / FRAME_INTERVAL) * CHARS_PER_FRAME);
+				const newLen = Math.min(displayedLength + charsToAdd, streamingContent.length);
+				if (newLen !== displayedLength) {
+					displayedLength = newLen;
+					updateStreamingBubble();
+					scrollToBottom();
+				}
+				lastTypewriterTime = now;
+			}
+			if (displayedLength < streamingContent.length) {
+				typewriterRaf = requestAnimationFrame(tick);
+			} else {
+				typewriterRaf = 0;
+			}
+		}
+		typewriterRaf = requestAnimationFrame(tick);
+	}
+
+	function updateStreamingBubble() {
+		const displayed = streamingContent.slice(0, displayedLength);
+		const streamIdx = stream.findIndex((s) => s.type === "message" && s.data.id === "__streaming__");
+		const streamingMsg: ChatMessage = {
+			id: "__streaming__",
+			role: "assistant",
+			content: displayed,
+			created_at: new Date().toISOString(),
+		};
+		if (streamIdx >= 0) {
+			stream[streamIdx] = { type: "message", data: streamingMsg };
+			stream = stream;
+		} else {
+			stream = [...stream, { type: "message", data: streamingMsg }];
+		}
+	}
 
 	const ws = getWebSocket();
 
@@ -61,6 +112,8 @@
 			// Clear streaming bubble when first real assistant message arrives
 			if (msg.role === "assistant" && streamingContent) {
 				streamingContent = "";
+				displayedLength = 0;
+				if (typewriterRaf) { cancelAnimationFrame(typewriterRaf); typewriterRaf = 0; }
 				stream = stream.filter((s) => !(s.type === "message" && s.data.id === "__streaming__"));
 			}
 			messages = [...messages, msg];
@@ -186,6 +239,8 @@
 					// Tool activity — clear streaming bubble since a tool round started
 					if (streamingContent) {
 						streamingContent = "";
+				displayedLength = 0;
+				if (typewriterRaf) { cancelAnimationFrame(typewriterRaf); typewriterRaf = 0; }
 						stream = stream.filter((s) => !(s.type === "message" && s.data.id === "__streaming__"));
 					}
 					// Tool activity / system messages — show as activity items, not chat bubbles
@@ -210,6 +265,8 @@
 				agentRunning = false;
 				sending = false;
 				streamingContent = "";
+				displayedLength = 0;
+				if (typewriterRaf) { cancelAnimationFrame(typewriterRaf); typewriterRaf = 0; }
 			} else if (event.type === "tool_activity") {
 				// Legacy: tool_activity events (kept for backwards compat)
 				if (event.summary.startsWith("mood →")) return;
@@ -220,21 +277,7 @@
 				play("drop_received");
 			} else if (event.type === "chat_stream_delta") {
 				streamingContent += event.delta;
-				// Upsert the streaming bubble in the stream array
-				const streamIdx = stream.findIndex((s) => s.type === "message" && s.data.id === "__streaming__");
-				const streamingMsg: ChatMessage = {
-					id: "__streaming__",
-					role: "assistant",
-					content: streamingContent,
-					created_at: new Date().toISOString(),
-				};
-				if (streamIdx >= 0) {
-					stream[streamIdx] = { type: "message", data: streamingMsg };
-					stream = stream; // trigger reactivity
-				} else {
-					stream = [...stream, { type: "message", data: streamingMsg }];
-				}
-				scrollToBottom();
+				startTypewriter();
 			} else if (event.type === "context_compacting") {
 				pushActivity("state", `compacting ${event.messages_compacted} messages...`);
 			}
