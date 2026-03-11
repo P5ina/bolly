@@ -69,9 +69,9 @@
 		return msg.content
 			.split("\n")
 			.filter((line) => line.startsWith("• "))
-			.map((line) => ({
+			.map((line, idx) => ({
 				type: "activity" as const,
-				id: `${msg.id}-${line.slice(0, 20)}`,
+				id: `${msg.id}-${idx}`,
 				kind: "tool" as const,
 				label: line.slice(2).replace(/ →.*/, ""), // show tool name + args, trim result
 				timestamp: new Date(Number(msg.created_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
