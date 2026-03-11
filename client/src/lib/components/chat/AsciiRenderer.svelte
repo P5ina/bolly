@@ -52,6 +52,11 @@
 	const RAMP = " .+xo*#%@";
 	const RAMP_LEN = RAMP.length;
 
+	// Smoothed luminance range to prevent flickering from frame-to-frame jumps
+	let smoothMin = 0.1;
+	let smoothMax = 0.9;
+	const SMOOTH = 0.1; // lerp factor — lower = more stable
+
 	function renderAscii() {
 		if (!canvasRef) return;
 		const ctx = canvasRef.getContext("2d", { willReadFrequently: true });
@@ -68,10 +73,9 @@
 		const imageData = ctx.getImageData(0, 0, COLS, ROWS);
 		const data = imageData.data;
 
-		// First pass: find luminance range for contrast stretching
-		// Use higher alpha threshold to kill anti-aliased edge fringe
-		let minLum = 1;
-		let maxLum = 0;
+		// First pass: find luminance range
+		let frameMin = 1;
+		let frameMax = 0;
 		const luminances = new Float32Array(COLS * ROWS);
 
 		for (let y = 0; y < ROWS; y++) {
@@ -88,13 +92,16 @@
 				const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 				luminances[y * COLS + x] = lum;
 				if (lum > 0.02) {
-					if (lum < minLum) minLum = lum;
-					if (lum > maxLum) maxLum = lum;
+					if (lum < frameMin) frameMin = lum;
+					if (lum > frameMax) frameMax = lum;
 				}
 			}
 		}
 
-		const range = maxLum - minLum;
+		// Smooth the range across frames to prevent flicker
+		smoothMin += (frameMin - smoothMin) * SMOOTH;
+		smoothMax += (frameMax - smoothMax) * SMOOTH;
+		const range = smoothMax - smoothMin;
 		const invRange = range > 0.01 ? 1.0 / range : 1.0;
 
 		let result = "";
@@ -104,7 +111,7 @@
 				if (lum < 0) {
 					result += " ";
 				} else {
-					let n = Math.max(0, (lum - minLum) * invRange);
+					let n = Math.max(0, (lum - smoothMin) * invRange);
 					n = Math.pow(n, 0.7);
 					const idx = Math.min(Math.floor(n * (RAMP_LEN - 1)), RAMP_LEN - 1);
 					result += RAMP[idx];
