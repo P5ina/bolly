@@ -47,6 +47,15 @@
 {:else}
 	<div class="instance-view">
 		<nav class="instance-tabs">
+			<a
+				href="/"
+				class="instance-tab instance-tab-home"
+				title="all companions"
+			>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="instance-tab-icon">
+					<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+			</a>
 			{#each tabs as tab}
 				<a
 					href="/{slug}/{tab}"
@@ -81,6 +90,8 @@
 		display: flex;
 		flex-direction: column;
 		height: 100%;
+		max-width: 100%;
+		overflow: hidden;
 	}
 
 	.instance-tabs {
@@ -116,6 +127,8 @@
 		position: relative;
 		transition: color 0.3s ease;
 		text-decoration: none;
+		white-space: nowrap;
+		flex-shrink: 0;
 	}
 
 	.instance-tab:hover {
@@ -134,6 +147,17 @@
 		right: 1rem;
 		height: 1px;
 		background: oklch(0.78 0.12 75 / 30%);
+	}
+
+	.instance-tab-home {
+		display: flex;
+		align-items: center;
+		padding: 0.5rem 0.75rem 0.625rem;
+	}
+
+	.instance-tab-icon {
+		width: 0.8rem;
+		height: 0.8rem;
 	}
 
 	.instance-content {
