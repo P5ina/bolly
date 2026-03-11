@@ -12,8 +12,6 @@
 
 	let { children } = $props();
 
-	const webManifest = $derived(pwaInfo ? pwaInfo.webManifest.linkTag : "");
-
 	onMount(async () => {
 		if (pwaInfo) {
 			const { registerSW } = await import("virtual:pwa-register");
@@ -62,7 +60,7 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	{@html webManifest}
+	<link rel="manifest" href="/manifest.webmanifest" />
 	<title>bolly</title>
 </svelte:head>
 

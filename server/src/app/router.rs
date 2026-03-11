@@ -25,10 +25,12 @@ pub fn build_router(state: AppState, static_dir: Option<PathBuf>) -> Router {
     // Public routes — no auth
     let health = routes::health::router();
     let auth = routes::auth::router();
+    let pwa = routes::pwa::router();
 
     let app = Router::new()
         .merge(health)
         .merge(auth)
+        .merge(pwa)
         .merge(api)
         .with_state(state);
 
