@@ -91,13 +91,16 @@
 		flex-shrink: 0;
 		z-index: 10;
 		overflow-x: auto;
+		scrollbar-width: none;
+		-webkit-overflow-scrolling: touch;
+	}
+	.instance-tabs::-webkit-scrollbar {
+		display: none;
 	}
 
 	@media (max-width: 720px) {
 		.instance-tabs {
 			padding: 0.4rem 0.75rem 0;
-			/* leave room for floating nav at top-right */
-			padding-right: 5rem;
 		}
 	}
 

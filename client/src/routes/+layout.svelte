@@ -158,9 +158,8 @@
 
 	@media (max-width: 720px) {
 		.companion-nav {
-			bottom: auto;
-			top: calc(0.5rem + env(safe-area-inset-top, 0px));
-			right: calc(0.5rem + env(safe-area-inset-right, 0px));
+			bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+			right: calc(0.75rem + env(safe-area-inset-right, 0px));
 			padding: 0.35rem 0.5rem;
 			gap: 0.35rem;
 		}

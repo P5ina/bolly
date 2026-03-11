@@ -767,8 +767,6 @@
 		}
 		header.chat-bar {
 			padding: 0.5rem 0.75rem;
-			/* leave room for floating nav at top-right */
-			padding-right: 5rem;
 		}
 		.bar-right {
 			max-width: 50%;
