@@ -26,6 +26,7 @@ export default defineConfig({
 			},
 			workbox: {
 				globPatterns: ["client/**/*.{js,css,ico,png,svg,webp,woff,woff2}"],
+				navigateFallbackDenylist: [/^\/api/, /^\/auth/],
 			},
 		}),
 	],
