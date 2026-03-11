@@ -52,11 +52,20 @@ RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
 # Limit Node.js memory to avoid OOM on small servers
 ENV NODE_OPTIONS="--max-old-space-size=384"
 
+# Install Playwright's Chromium and its dependencies
+RUN npx playwright@1.52.0 install --with-deps chromium && \
+    rm -rf /root/.cache/ms-playwright/.links
+
+# Copy browse tool scripts and install deps
+COPY server/scripts/ /opt/bolly/scripts/
+RUN cd /opt/bolly/scripts && npm install --omit=dev
+
 COPY --from=server-build /app/target/release/server /usr/local/bin/bolly
 COPY --from=client-build /app/client/build /opt/bolly/static
 
 ENV BOLLY_HOME=/data
 ENV RUST_LOG=info
+ENV BOLLY_SCRIPTS_DIR=/opt/bolly/scripts
 
 EXPOSE 8080
 VOLUME /data

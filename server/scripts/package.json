@@ -1,0 +1,8 @@
+{
+  "name": "bolly-scripts",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "playwright-core": "^1.52.0"
+  }
+}
