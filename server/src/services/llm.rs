@@ -361,7 +361,11 @@ impl LlmBackend {
 
         let (result, chat_history) = match self {
             LlmBackend::Anthropic { client, model } => {
-                let cm = client.completion_model(model).with_prompt_caching();
+                let mut cm = client.completion_model(model).with_prompt_caching();
+                // Ensure max_tokens is set for models Rig doesn't recognize
+                if cm.default_max_tokens.is_none() {
+                    cm.default_max_tokens = Some(8192);
+                }
                 let agent = AgentBuilder::new(cm)
                     .preamble(system_prompt)
                     .tools(tools)
