@@ -240,7 +240,7 @@ impl ToolDyn for ObservableTool {
             };
             // Persist output for commands so the user can see what happened
             if tool_name == "run_command" || tool_name == "install_package"
-                || tool_name == "interactive_session"
+                || tool_name == "interactive_session" || tool_name == "send_file"
             {
                 let output = match &result {
                     Ok(s) => {
@@ -3870,11 +3870,15 @@ impl Tool for SendFileTool {
             .join("instances")
             .join(&self.instance_slug);
         let file_path = instance_dir.join(rel);
+        log::info!("[send_file] attempting to send '{}' → {}", rel, file_path.display());
 
         // Safety: must stay within instance dir
         let canonical = file_path
             .canonicalize()
-            .map_err(|e| ToolExecError(format!("file not found: {e}")))?;
+            .map_err(|e| {
+                log::warn!("[send_file] file not found: {} (resolved: {})", e, file_path.display());
+                ToolExecError(format!("file not found: {e}"))
+            })?;
         let canonical_instance = instance_dir
             .canonicalize()
             .map_err(|e| ToolExecError(format!("instance dir error: {e}")))?;
@@ -3905,7 +3909,8 @@ impl Tool for SendFileTool {
         .map_err(|e| ToolExecError(format!("failed to save upload: {e}")))?;
 
         let marker = format!("[attached: {} ({})]", original_name, meta.id);
-        self.sent_files.lock().unwrap().push(marker.clone());
+        self.sent_files.lock().unwrap_or_else(|e| e.into_inner()).push(marker.clone());
+        log::info!("[send_file] success: pushed marker '{}' for {}", marker, self.instance_slug);
 
         Ok(format!(
             "file '{}' attached to chat. the user will see it.",

@@ -308,7 +308,8 @@ pub async fn run_single_turn(
     let mut chunks: Vec<String> = split_into_messages(&reply);
 
     // Append any file attachments produced by send_file tool to the last chunk
-    let file_markers = sent_files.lock().unwrap().drain(..).collect::<Vec<_>>();
+    let file_markers = sent_files.lock().unwrap_or_else(|e| e.into_inner()).drain(..).collect::<Vec<_>>();
+    log::info!("[run_single_turn] reply len={}, chunks={}, file_markers={}", reply.len(), chunks.len(), file_markers.len());
     if !file_markers.is_empty() {
         let suffix = file_markers.join("\n");
         if let Some(last) = chunks.last_mut() {
