@@ -7,7 +7,7 @@ use std::{
 
 use crate::domain::upload::UploadMeta;
 
-const MAX_FILE_SIZE: u64 = 20 * 1024 * 1024; // 20 MB
+const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024; // 100 MB
 
 const BLOCKED_EXTENSIONS: &[&str] = &[
     "exe", "dll", "so", "dylib", "bin", "msi", "dmg", "iso",
@@ -61,6 +61,8 @@ fn mime_from_ext(ext: &str) -> &'static str {
         | "dockerfile" | "makefile" | "cmake"
         | "r" | "lua" | "php" | "pl" | "ex" | "exs" | "zig" | "nim"
         | "dart" | "elm" | "clj" | "hs" | "ml" | "fs" | "erl" => "text/plain",
+        "zip" => "application/zip",
+        "tar" | "gz" | "tgz" | "bz2" | "xz" => "application/octet-stream",
         _ => "application/octet-stream",
     }
 }
@@ -184,6 +186,83 @@ pub fn delete_upload(workspace_dir: &Path, instance_slug: &str, upload_id: &str)
 
     fs::remove_file(&meta_path)?;
     Ok(true)
+}
+
+/// Extract a ZIP file to `instances/{slug}/projects/{stem}/`.
+/// Returns the extraction path and a list of extracted file paths (relative).
+pub fn extract_zip(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    upload_id: &str,
+) -> io::Result<(std::path::PathBuf, Vec<String>)> {
+    let meta = get_upload(workspace_dir, instance_slug, upload_id)?
+        .ok_or_else(|| io::Error::new(ErrorKind::NotFound, "upload not found"))?;
+
+    let file_path = get_upload_file_path(workspace_dir, instance_slug, upload_id)
+        .ok_or_else(|| io::Error::new(ErrorKind::NotFound, "upload file not found"))?;
+
+    let file = fs::File::open(&file_path)?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|e| io::Error::new(ErrorKind::InvalidData, format!("invalid zip: {e}")))?;
+
+    // Derive project name from original filename (without .zip extension)
+    let stem = meta
+        .original_name
+        .rsplit('.')
+        .skip(1)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join(".");
+    let stem = if stem.is_empty() { upload_id.to_string() } else { stem };
+
+    // Sanitize stem
+    let stem: String = stem
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
+        .collect();
+
+    let projects_dir = workspace_dir
+        .join("instances")
+        .join(instance_slug)
+        .join("projects");
+    let extract_dir = projects_dir.join(&stem);
+    fs::create_dir_all(&extract_dir)?;
+
+    let mut extracted_files = Vec::new();
+
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i)
+            .map_err(|e| io::Error::new(ErrorKind::InvalidData, format!("zip entry error: {e}")))?;
+
+        let entry_path = match entry.enclosed_name() {
+            Some(p) => p.to_path_buf(),
+            None => continue, // Skip entries with unsafe paths (e.g., "../")
+        };
+
+        let target = extract_dir.join(&entry_path);
+
+        if entry.is_dir() {
+            fs::create_dir_all(&target)?;
+        } else {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let mut outfile = fs::File::create(&target)?;
+            io::copy(&mut entry, &mut outfile)?;
+            extracted_files.push(entry_path.to_string_lossy().to_string());
+        }
+    }
+
+    log::info!(
+        "[uploads] extracted zip {} → {} ({} files)",
+        meta.original_name,
+        extract_dir.display(),
+        extracted_files.len()
+    );
+
+    Ok((extract_dir, extracted_files))
 }
 
 fn unix_millis() -> u128 {

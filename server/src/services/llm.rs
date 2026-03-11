@@ -463,6 +463,33 @@ pub fn build_multimodal_prompt(
             let truncated: String = text_content.chars().take(10_000).collect();
             contents.push(UserContent::text(format!("\n--- {name} ---\n{truncated}\n---")));
             log::info!("attached text file: {name} ({} bytes)", bytes.len());
+        } else if meta.mime_type == "application/zip" {
+            // Extract ZIP and tell the LLM where files are
+            match super::uploads::extract_zip(workspace_dir, instance_slug, upload_id) {
+                Ok((extract_dir, files)) => {
+                    let mut summary = format!(
+                        "\n--- ZIP extracted: {name} ---\n\
+                         path: {}\n\
+                         {} files:\n",
+                        extract_dir.display(),
+                        files.len()
+                    );
+                    for (i, f) in files.iter().enumerate() {
+                        if i >= 50 {
+                            summary.push_str(&format!("... and {} more files\n", files.len() - 50));
+                            break;
+                        }
+                        summary.push_str(&format!("  {f}\n"));
+                    }
+                    summary.push_str("---\nUse read_file, write_file, list_files, and run_command with the path above to work with this project.");
+                    contents.push(UserContent::text(summary));
+                    log::info!("extracted zip: {name} → {} ({} files)", extract_dir.display(), files.len());
+                }
+                Err(e) => {
+                    contents.push(UserContent::text(format!("[zip: {name} — extraction failed: {e}]")));
+                    log::warn!("failed to extract zip {name}: {e}");
+                }
+            }
         } else {
             contents.push(UserContent::text(format!("[file: {name} — {}, {} bytes, binary format]", meta.mime_type, bytes.len())));
         }

@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
     body::Body,
-    extract::{Multipart, Path, State},
+    extract::{DefaultBodyLimit, Multipart, Path, State},
     http::{HeaderValue, StatusCode, header},
     response::Response,
     routing::get,
@@ -19,6 +19,7 @@ pub fn router() -> Router<AppState> {
             "/api/instances/{instance_slug}/uploads",
             get(list_uploads).post(upload_file),
         )
+        .layer(DefaultBodyLimit::max(100 * 1024 * 1024)) // 100 MB
         .route(
             "/api/instances/{instance_slug}/uploads/{upload_id}",
             get(get_upload_meta).delete(delete_upload),
