@@ -243,11 +243,15 @@ pub async fn run_single_turn(
         .await
         .unwrap_or_else(|e| {
             let msg = e.to_string();
-            log::warn!("LLM call failed: {msg}");
-            let text = if msg.contains("429") || msg.contains("rate_limit") {
+            log::error!("LLM call failed: {msg}");
+            let text = if msg.contains("429") || msg.contains("rate_limit")
+                || msg.contains("Too Many Requests")
+                || msg.contains("529") || msg.contains("overloaded")
+            {
                 "i'm being rate limited right now — give me a moment and try again".to_string()
             } else {
-                // Don't leak raw API errors with org IDs, request IDs, etc.
+                // Log full error for debugging but don't leak API internals
+                log::error!("LLM error details: {e:?}");
                 "something went wrong on my end — try again?".to_string()
             };
             llm::ToolChatResult { text, tool_log: Vec::new() }

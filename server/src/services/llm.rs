@@ -4,6 +4,7 @@ use std::time::Duration;
 use base64::Engine as _;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, Message, Prompt};
+use rig::agent::AgentBuilder;
 use rig::completion::message::{AssistantContent, UserContent, ImageMediaType, DocumentMediaType, MimeType};
 use rig::one_or_many::OneOrMany;
 use rig::providers::{anthropic, openai};
@@ -102,6 +103,7 @@ const INITIAL_BACKOFF_MS: u64 = 2000;
 
 fn is_rate_limit_error(msg: &str) -> bool {
     msg.contains("429") || msg.contains("rate_limit") || msg.contains("Too Many Requests")
+        || msg.contains("529") || msg.contains("overloaded")
 }
 
 async fn retry_on_rate_limit<F, Fut, T>(f: F) -> Result<T, Box<dyn std::error::Error + Send + Sync>>
@@ -150,7 +152,11 @@ impl LlmBackend {
                 if token.is_empty() {
                     return None;
                 }
-                let client = anthropic::Client::new(token).ok()?;
+                let client = anthropic::Client::builder()
+                    .api_key(token)
+                    .anthropic_beta("prompt-caching-2024-07-31")
+                    .build()
+                    .ok()?;
                 let model = config
                     .llm
                     .model
@@ -198,7 +204,8 @@ impl LlmBackend {
             async move {
                 match &backend {
                     LlmBackend::Anthropic { client, model } => {
-                        let agent = client.agent(model).preamble(&system).build();
+                        let cm = client.completion_model(model).with_prompt_caching();
+                        let agent = AgentBuilder::new(cm).preamble(&system).build();
                         Ok(agent.chat(&prompt, history).await?)
                     }
                     LlmBackend::OpenAI { client, model } => {
@@ -247,8 +254,8 @@ impl LlmBackend {
 
         let (result, chat_history) = match self {
             LlmBackend::Anthropic { client, model } => {
-                let mut builder = client
-                    .agent(model)
+                let cm = client.completion_model(model).with_prompt_caching();
+                let mut builder = AgentBuilder::new(cm)
                     .preamble(system_prompt)
                     .tools(tools);
                 if let Some(index) = memory_index {
@@ -295,8 +302,8 @@ impl LlmBackend {
 
                     let retry_result = match self {
                         LlmBackend::Anthropic { client, model } => {
-                            let agent = client
-                                .agent(model)
+                            let cm = client.completion_model(model).with_prompt_caching();
+                            let agent = AgentBuilder::new(cm)
                                 .preamble(system_prompt)
                                 .build();
                             agent.chat(&prompt_text, history.clone()).await
@@ -347,8 +354,8 @@ impl LlmBackend {
 
         let result = match self {
             LlmBackend::Anthropic { client, model } => {
-                let agent = client
-                    .agent(model)
+                let cm = client.completion_model(model).with_prompt_caching();
+                let agent = AgentBuilder::new(cm)
                     .preamble(system_prompt)
                     .tools(tools)
                     .build();
