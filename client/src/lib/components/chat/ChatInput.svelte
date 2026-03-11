@@ -31,6 +31,8 @@
 	let attachments = $state<File[]>([]);
 	let fileInput: HTMLInputElement | undefined = $state();
 	let textareaEl: HTMLTextAreaElement | undefined = $state();
+	let dragging = $state(false);
+	let dragCounter = $state(0);
 
 	$effect(() => {
 		// Refocus textarea when it re-enables after sending
@@ -82,6 +84,41 @@
 	function isImage(file: File): boolean {
 		return file.type.startsWith("image/");
 	}
+
+	function handleDragEnter(e: DragEvent) {
+		e.preventDefault();
+		dragCounter++;
+		if (e.dataTransfer?.types.includes("Files")) {
+			dragging = true;
+		}
+	}
+
+	function handleDragLeave(e: DragEvent) {
+		e.preventDefault();
+		dragCounter--;
+		if (dragCounter === 0) {
+			dragging = false;
+		}
+	}
+
+	function handleDragOver(e: DragEvent) {
+		e.preventDefault();
+		if (e.dataTransfer) {
+			e.dataTransfer.dropEffect = "copy";
+		}
+	}
+
+	function handleDrop(e: DragEvent) {
+		e.preventDefault();
+		dragging = false;
+		dragCounter = 0;
+		if (disabled && !agentRunning) return;
+		const files = e.dataTransfer?.files;
+		if (files && files.length > 0) {
+			play("attachment_added");
+			attachments = [...attachments, ...Array.from(files)];
+		}
+	}
 </script>
 
 <input
@@ -92,7 +129,27 @@
 	hidden
 />
 
-<div class="whisper-container" class:whisper-focused={focused} class:whisper-disabled={disabled} data-mood={mood}>
+<div
+	class="whisper-container"
+	class:whisper-focused={focused}
+	class:whisper-disabled={disabled}
+	class:whisper-dragover={dragging}
+	data-mood={mood}
+	ondragenter={handleDragEnter}
+	ondragleave={handleDragLeave}
+	ondragover={handleDragOver}
+	ondrop={handleDrop}
+	role="region"
+>
+	{#if dragging}
+		<div class="whisper-dropzone">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-5 h-5">
+				<path d="M12 16V4m0 0L8 8m4-4l4 4" stroke-linecap="round" stroke-linejoin="round"/>
+				<path d="M20 16v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
+			</svg>
+			<span>drop files</span>
+		</div>
+	{/if}
 	<div class="whisper-inner">
 		<div class="whisper-glow" class:whisper-glow-active={focused || agentRunning}></div>
 		<div class="whisper-sense-line">
@@ -164,6 +221,7 @@
 <style>
 	.whisper-container {
 		position: relative;
+		isolation: isolate;
 		padding: 0.75rem 1.5rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
 		z-index: 10;
 		flex-shrink: 0;
@@ -385,6 +443,37 @@
 	@keyframes send-enter {
 		from { opacity: 0; transform: scale(0.8); }
 		to { opacity: 1; transform: scale(1); }
+	}
+
+	/* drop zone */
+	.whisper-dragover {
+		outline: 2px dashed oklch(0.78 0.12 75 / 40%);
+		outline-offset: -2px;
+		border-radius: 16px;
+	}
+
+	.whisper-dropzone {
+		position: absolute;
+		inset: 0;
+		z-index: 20;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		border-radius: 16px;
+		background: oklch(0.10 0.02 75 / 85%);
+		color: oklch(0.78 0.12 75 / 70%);
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		animation: dropzone-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+		pointer-events: none;
+	}
+
+	@keyframes dropzone-enter {
+		from { opacity: 0; }
+		to { opacity: 1; }
 	}
 
 	@media (max-width: 720px) {
