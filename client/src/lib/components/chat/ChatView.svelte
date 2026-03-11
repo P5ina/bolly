@@ -257,8 +257,6 @@
 						<path d="M2 4h12M5.5 4V2.5h5V4M6 7v5M10 7v5M3.5 4l.75 9.5h7.5L12.5 4" stroke-linecap="round" stroke-linejoin="round"/>
 					</svg>
 				</AlertDialog.Trigger>
-				<AlertDialog.Portal>
-					<AlertDialog.Overlay class="clear-dialog-overlay" />
 					<AlertDialog.Content class="clear-dialog">
 						<AlertDialog.Header>
 							<AlertDialog.Title class="clear-dialog-title">clear context</AlertDialog.Title>
@@ -271,7 +269,6 @@
 							<AlertDialog.Action class="clear-dialog-btn clear-dialog-confirm" onclick={handleClear}>clear</AlertDialog.Action>
 						</AlertDialog.Footer>
 					</AlertDialog.Content>
-				</AlertDialog.Portal>
 			</AlertDialog.Root>
 		</div>
 	</header>
@@ -643,38 +640,12 @@
 
 	/* --- clear context dialog --- */
 
-	:global(.clear-dialog-overlay) {
-		position: fixed;
-		inset: 0;
-		z-index: 50;
-		background: oklch(0 0 0 / 60%);
-		backdrop-filter: blur(4px);
-		animation: overlay-in 0.2s ease both;
-	}
-
-	@keyframes overlay-in {
-		from { opacity: 0; }
-		to { opacity: 1; }
-	}
-
 	:global(.clear-dialog) {
-		position: fixed;
-		top: 50%;
-		left: 50%;
-		z-index: 51;
-		transform: translate(-50%, -50%);
-		width: min(360px, calc(100vw - 2rem));
-		background: oklch(0.12 0.01 280);
-		border: 1px solid oklch(0.78 0.12 75 / 10%);
-		border-radius: 12px;
-		padding: 1.5rem;
-		box-shadow: 0 16px 64px oklch(0 0 0 / 50%);
-		animation: dialog-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
-	}
-
-	@keyframes dialog-in {
-		from { opacity: 0; transform: translate(-50%, -48%) scale(0.96); }
-		to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+		background: oklch(0.12 0.01 280) !important;
+		border: 1px solid oklch(0.78 0.12 75 / 10%) !important;
+		border-radius: 12px !important;
+		padding: 1.5rem !important;
+		box-shadow: 0 16px 64px oklch(0 0 0 / 50%) !important;
 	}
 
 	:global(.clear-dialog-title) {
