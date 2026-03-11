@@ -38,16 +38,8 @@ impl ToolChatResult {
         }
         let mut out = String::from("[tool activity]\n");
         for entry in &self.tool_log {
-            out.push_str(&format!("• {} {}", entry.tool_name, entry.arguments));
-            if !entry.result.is_empty() {
-                // Truncate long results
-                let truncated: String = entry.result.chars().take(200).collect();
-                out.push_str(&format!(" → {truncated}"));
-                if entry.result.len() > 200 {
-                    out.push_str("...");
-                }
-            }
-            out.push('\n');
+            let summary = crate::services::tools::tool_summary(&entry.tool_name, &entry.arguments);
+            out.push_str(&format!("• {summary}\n"));
         }
         Some(out)
     }

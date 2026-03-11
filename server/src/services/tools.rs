@@ -38,7 +38,7 @@ fn openai_schema<T: JsonSchema>() -> serde_json::Value {
 // Tool activity summary helper
 // ---------------------------------------------------------------------------
 
-fn tool_summary(name: &str, args: &str) -> String {
+pub fn tool_summary(name: &str, args: &str) -> String {
     let v: serde_json::Value = serde_json::from_str(args).unwrap_or_default();
     match name {
         "read_file" => format!("reading {}", v["path"].as_str().unwrap_or("?")),
