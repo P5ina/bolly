@@ -42,13 +42,12 @@ RUN apt-get update && \
       git jq && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy Node.js from glibc-based image (not Alpine/musl) + enable pnpm
+# Copy Node.js + npm from glibc-based image (not Alpine/musl), install pnpm
 COPY --from=node-bin /usr/local/bin/node /usr/local/bin/node
-COPY --from=node-bin /usr/local/bin/corepack /usr/local/bin/corepack
 COPY --from=node-bin /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
     ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
-    corepack enable && corepack prepare pnpm@latest --activate
+    npm install -g pnpm
 
 # Limit Node.js memory to avoid OOM on small servers
 ENV NODE_OPTIONS="--max-old-space-size=384"
