@@ -95,6 +95,7 @@ async fn post_chat(
         instance_slug: request.instance_slug,
         chat_id: request.chat_id,
         messages: vec![user_message],
+        agent_running: true,
     }))
 }
 
@@ -297,8 +298,9 @@ async fn get_messages_default(
     State(state): State<AppState>,
     Path(instance_slug): Path<String>,
 ) -> Result<Json<ChatResponse>, (StatusCode, String)> {
-    let response =
+    let mut response =
         chat::load_messages(&state.workspace_dir, &instance_slug, "default").map_err(map_chat_error)?;
+    response.agent_running = is_agent_running(&state, &instance_slug, "default").await;
     Ok(Json(response))
 }
 
@@ -306,9 +308,16 @@ async fn get_messages(
     State(state): State<AppState>,
     Path((instance_slug, chat_id)): Path<(String, String)>,
 ) -> Result<Json<ChatResponse>, (StatusCode, String)> {
-    let response =
+    let mut response =
         chat::load_messages(&state.workspace_dir, &instance_slug, &chat_id).map_err(map_chat_error)?;
+    response.agent_running = is_agent_running(&state, &instance_slug, &chat_id).await;
     Ok(Json(response))
+}
+
+async fn is_agent_running(state: &AppState, instance_slug: &str, chat_id: &str) -> bool {
+    let key = task_key(instance_slug, chat_id);
+    let tasks = state.agent_tasks.lock().await;
+    tasks.contains_key(&key)
 }
 
 async fn stop_agent(

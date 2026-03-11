@@ -17,6 +17,7 @@ export interface ChatResponse {
 	instance_slug: string;
 	chat_id: string;
 	messages: ChatMessage[];
+	agent_running: boolean;
 }
 
 export interface ChatSummary {

@@ -61,6 +61,31 @@
 		}
 	}
 
+	function isToolActivity(msg: ChatMessage): boolean {
+		return msg.role === "assistant" && msg.content.startsWith("[tool activity]");
+	}
+
+	function toolActivityToStreamItems(msg: ChatMessage): StreamItem[] {
+		return msg.content
+			.split("\n")
+			.filter((line) => line.startsWith("• "))
+			.map((line) => ({
+				type: "activity" as const,
+				id: `${msg.id}-${line.slice(0, 20)}`,
+				kind: "tool" as const,
+				label: line.slice(2).replace(/ →.*/, ""), // show tool name + args, trim result
+				timestamp: new Date(Number(msg.created_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+			}));
+	}
+
+	function messagesToStream(msgs: ChatMessage[]): StreamItem[] {
+		return msgs.flatMap((m) =>
+			isToolActivity(m)
+				? toolActivityToStreamItems(m)
+				: [{ type: "message" as const, data: m }]
+		);
+	}
+
 	function loadChat(chatId: string) {
 		activeChatId = chatId;
 		messages = [];
@@ -70,8 +95,10 @@
 
 		fetchMessages(slug, chatId)
 			.then((res) => {
-				messages = res.messages;
-				stream = res.messages.map((m) => ({ type: "message" as const, data: m }));
+				messages = res.messages.filter((m) => !isToolActivity(m));
+				stream = messagesToStream(res.messages);
+				agentRunning = res.agent_running;
+				if (agentRunning) pushActivity("state", "thinking...");
 				scrollToBottom();
 			})
 			.catch(() => { messages = []; })
@@ -104,8 +131,10 @@
 
 			fetchMessages(currentSlug, "default")
 				.then((res) => {
-					messages = res.messages;
-					stream = res.messages.map((m) => ({ type: "message" as const, data: m }));
+					messages = res.messages.filter((m) => !isToolActivity(m));
+					stream = messagesToStream(res.messages);
+					agentRunning = res.agent_running;
+					if (agentRunning) pushActivity("state", "thinking...");
 					scrollToBottom();
 				})
 				.catch(() => { messages = []; })

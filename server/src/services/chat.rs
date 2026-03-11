@@ -342,16 +342,11 @@ pub fn load_messages(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -
     let chat_id = sanitize_slug(chat_id);
     let messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
 
-    // Filter out internal tool activity logs — they're for LLM context only
-    let visible_messages = messages
-        .into_iter()
-        .filter(|m| !m.content.starts_with("[tool activity]"))
-        .collect();
-
     Ok(ChatResponse {
         instance_slug,
         chat_id,
-        messages: visible_messages,
+        messages,
+        agent_running: false, // Caller sets this from AppState
     })
 }
 

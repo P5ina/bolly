@@ -32,6 +32,7 @@ pub struct ChatResponse {
     pub instance_slug: String,
     pub chat_id: String,
     pub messages: Vec<ChatMessage>,
+    pub agent_running: bool,
 }
 
 /// Summary of a chat session for listing.
