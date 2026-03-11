@@ -8,7 +8,6 @@
 	import ChatInput from "./ChatInput.svelte";
 	import AsciiRenderer from "./AsciiRenderer.svelte";
 	import StreamActivity from "./StreamActivity.svelte";
-	import UsageBar from "$lib/components/layout/UsageBar.svelte";
 	import { play } from "$lib/sounds.js";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 
@@ -359,7 +358,6 @@
 			</div>
 
 			<ChatInput onSend={handleSend} onStop={handleStop} disabled={sending || agentRunning} {agentRunning} />
-			<UsageBar />
 		</div>
 
 		<aside class="chat-creature">

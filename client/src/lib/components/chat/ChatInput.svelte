@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { play } from "$lib/sounds.js";
+	import UsageBar from "$lib/components/layout/UsageBar.svelte";
 
 	let {
 		onSend,
@@ -17,6 +18,16 @@
 
 	let value = $state("");
 	let focused = $state(false);
+	let usageTick = $state(0);
+	let prevDisabled = $state(false);
+
+	// Refresh usage when agent finishes (disabled goes from true to false)
+	$effect(() => {
+		if (prevDisabled && !disabled) {
+			usageTick++;
+		}
+		prevDisabled = disabled;
+	});
 	let attachments = $state<File[]>([]);
 	let fileInput: HTMLInputElement | undefined = $state();
 	let textareaEl: HTMLTextAreaElement | undefined = $state();
@@ -146,6 +157,7 @@
 				</button>
 			{/if}
 		</div>
+		<UsageBar tick={usageTick} />
 	</div>
 </div>
 

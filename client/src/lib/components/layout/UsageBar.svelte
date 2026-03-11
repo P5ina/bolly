@@ -2,6 +2,8 @@
 	import { fetchUsage } from "$lib/api/client.js";
 	import type { Usage } from "$lib/api/types.js";
 
+	let { tick = 0 }: { tick?: number } = $props();
+
 	let usage: Usage | null = $state(null);
 
 	async function load() {
@@ -12,8 +14,13 @@
 		}
 	}
 
+	// Refresh on mount, every 60s, and whenever tick changes
 	$effect(() => {
+		void tick;
 		load();
+	});
+
+	$effect(() => {
 		const interval = setInterval(load, 60_000);
 		return () => clearInterval(interval);
 	});
@@ -26,7 +33,7 @@
 	function barColor(p: number): string {
 		if (p >= 100) return "oklch(0.65 0.2 25)";
 		if (p >= 80) return "oklch(0.75 0.15 85)";
-		return "oklch(0.78 0.12 75 / 50%)";
+		return "oklch(0.78 0.12 75 / 40%)";
 	}
 
 	function formatTokens(n: number): string {
@@ -42,40 +49,46 @@
 	{@const msgUnlimited = usage.messages_limit < 0}
 	{@const tokUnlimited = usage.tokens_limit < 0}
 
-	<div class="usage-bar">
-		{#if !msgUnlimited}
-			<div class="usage-item" title="Messages today: {usage.messages_today} / {usage.messages_limit}">
-				<span class="usage-label">{usage.messages_today}/{usage.messages_limit}</span>
-				<div class="usage-track">
-					<div
-						class="usage-fill"
-						style="width: {msgPct}%; background: {barColor(msgPct)}"
-					></div>
+	{#if !(msgUnlimited && tokUnlimited)}
+		<div class="usage-bar">
+			{#if !msgUnlimited}
+				<div class="usage-item" title="Messages today: {usage.messages_today} / {usage.messages_limit}">
+					<span class="usage-label">{usage.messages_today}/{usage.messages_limit} msgs</span>
+					<div class="usage-track">
+						<div
+							class="usage-fill"
+							style="width: {msgPct}%; background: {barColor(msgPct)}"
+						></div>
+					</div>
 				</div>
-			</div>
-		{/if}
+			{/if}
 
-		{#if !tokUnlimited}
-			<div class="usage-item" title="Tokens this month: {formatTokens(usage.tokens_this_month)} / {formatTokens(usage.tokens_limit)}">
-				<span class="usage-label">{formatTokens(usage.tokens_this_month)}/{formatTokens(usage.tokens_limit)}</span>
-				<div class="usage-track">
-					<div
-						class="usage-fill"
-						style="width: {tokPct}%; background: {barColor(tokPct)}"
-					></div>
+			{#if !msgUnlimited && !tokUnlimited}
+				<span class="usage-sep"></span>
+			{/if}
+
+			{#if !tokUnlimited}
+				<div class="usage-item" title="Tokens this month: {formatTokens(usage.tokens_this_month)} / {formatTokens(usage.tokens_limit)}">
+					<span class="usage-label">{formatTokens(usage.tokens_this_month)}/{formatTokens(usage.tokens_limit)} tokens</span>
+					<div class="usage-track">
+						<div
+							class="usage-fill"
+							style="width: {tokPct}%; background: {barColor(tokPct)}"
+						></div>
+					</div>
 				</div>
-			</div>
-		{/if}
-	</div>
+			{/if}
+		</div>
+	{/if}
 {/if}
 
 <style>
 	.usage-bar {
 		display: flex;
 		align-items: center;
+		justify-content: center;
 		gap: 0.75rem;
-		margin-left: auto;
-		padding-right: 0.5rem;
+		padding: 0.5rem 0.3rem 0;
 	}
 
 	.usage-item {
@@ -87,8 +100,9 @@
 
 	.usage-label {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
-		color: oklch(0.78 0.12 75 / 35%);
+		font-size: 0.55rem;
+		letter-spacing: 0.03em;
+		color: oklch(0.78 0.12 75 / 25%);
 		white-space: nowrap;
 	}
 
@@ -96,7 +110,7 @@
 		width: 2.5rem;
 		height: 2px;
 		border-radius: 1px;
-		background: oklch(1 0 0 / 5%);
+		background: oklch(1 0 0 / 4%);
 		overflow: hidden;
 	}
 
@@ -104,5 +118,11 @@
 		height: 100%;
 		border-radius: 1px;
 		transition: width 0.5s ease, background 0.5s ease;
+	}
+
+	.usage-sep {
+		width: 1px;
+		height: 0.5rem;
+		background: oklch(1 0 0 / 6%);
 	}
 </style>
