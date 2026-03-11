@@ -649,6 +649,7 @@
 		z-index: 2;
 		flex: 1;
 		min-height: 0;
+		min-width: 0;
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 	}
@@ -657,6 +658,7 @@
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
+		min-width: 0;
 		border-right: 1px solid oklch(0.78 0.12 75 / 5%);
 	}
 
@@ -674,16 +676,20 @@
 	.chat-stream {
 		flex: 1;
 		min-height: 0;
+		min-width: 0;
 		overflow-y: auto;
+		overflow-x: hidden;
 	}
 
 	.stream-inner {
 		max-width: 640px;
+		width: 100%;
 		margin: 0 auto;
 		padding: 0.75rem 1.25rem 2rem;
 		display: flex;
 		flex-direction: column;
 		gap: 0.1rem;
+		box-sizing: border-box;
 	}
 
 	.chat-loading {

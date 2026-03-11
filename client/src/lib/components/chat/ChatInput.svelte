@@ -225,6 +225,8 @@
 		padding: 0.75rem 1.5rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
 		z-index: 10;
 		flex-shrink: 0;
+		min-width: 0;
+		box-sizing: border-box;
 		--input-accent: oklch(0.78 0.12 75 / 16%);
 	}
 
@@ -349,6 +351,7 @@
 		display: flex;
 		align-items: flex-end;
 		gap: 0.375rem;
+		min-width: 0;
 	}
 
 	.whisper-attach {
