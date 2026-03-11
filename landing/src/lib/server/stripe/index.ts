@@ -1,5 +1,8 @@
 import Stripe from 'stripe';
 import { env } from '$env/dynamic/private';
+import { eq } from 'drizzle-orm';
+import { db } from '$lib/server/db/index.js';
+import { users } from '$lib/server/db/schema.js';
 
 let _stripe: Stripe | null = null;
 
@@ -92,10 +95,7 @@ export async function ensureCustomer(user: { id: string; email: string; name?: s
 	const customerId = await createCustomer(user.email, user.name ?? undefined);
 
 	// Update DB
-	const { db } = await import('$lib/server/db/index.js');
-	const { users } = await import('$lib/server/db/schema.js');
-	const { eq } = await import('drizzle-orm');
-	await db.update(users).set({ stripeCustomerId: customerId }).where(eq(users.id, user.id));
+	await db().update(users).set({ stripeCustomerId: customerId }).where(eq(users.id, user.id));
 
 	return customerId;
 }
