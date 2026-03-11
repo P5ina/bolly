@@ -39,12 +39,10 @@ RUN apt-get update && \
       git jq && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 20 + pnpm via corepack
-COPY --from=client-build /usr/local/bin/node /usr/local/bin/node
-COPY --from=client-build /usr/local/bin/corepack /usr/local/bin/corepack
-COPY --from=client-build /usr/local/lib/node_modules /usr/local/lib/node_modules
-RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
-    ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
+# Install Node.js 20 + pnpm
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/* && \
     corepack enable && corepack prepare pnpm@latest --activate
 
 COPY --from=server-build /app/target/release/server /usr/local/bin/bolly
