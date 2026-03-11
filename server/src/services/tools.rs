@@ -14,7 +14,61 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
+use regex::Regex;
+
 use crate::domain::events::ServerEvent;
+
+// ---------------------------------------------------------------------------
+// Secret redaction — strip API keys and sensitive env vars from tool output
+// ---------------------------------------------------------------------------
+
+/// Collect secret values from environment (cached on first call).
+fn secret_values() -> &'static Vec<String> {
+    use std::sync::OnceLock;
+    static SECRETS: OnceLock<Vec<String>> = OnceLock::new();
+    SECRETS.get_or_init(|| {
+        let env_keys = [
+            "ANTHROPIC_API_KEY",
+            "OPENAI_API_KEY",
+            "DATABASE_URL",
+            "BOLLY_AUTH_TOKEN",
+            "STRIPE_SECRET_KEY",
+        ];
+        env_keys
+            .iter()
+            .filter_map(|k| std::env::var(k).ok())
+            .filter(|v| v.len() >= 8)
+            .collect()
+    })
+}
+
+/// Redact known secret patterns and exact env var values from text.
+pub fn redact_secrets(text: &str) -> String {
+    // Regex patterns for common API key formats
+    let patterns = [
+        r#"sk-ant-api03-[A-Za-z0-9_\-]{80,}"#,  // Anthropic
+        r#"sk-ant-[A-Za-z0-9_\-]{20,}"#,         // Anthropic (short)
+        r#"sk-proj-[A-Za-z0-9_\-]{20,}"#,        // OpenAI project
+        r"sk-[A-Za-z0-9]{20,}",                  // OpenAI legacy
+        r#"postgresql://[^\s"']+[^\s"'.]"#,       // Postgres connection strings
+        r#"postgres://[^\s"']+[^\s"'.]"#,         // Postgres alt
+    ];
+
+    let mut result = text.to_string();
+
+    for pat in &patterns {
+        if let Ok(re) = Regex::new(pat) {
+            result = re.replace_all(&result, "[REDACTED]").to_string();
+        }
+    }
+
+    // Also redact exact env var values (catches non-standard key formats)
+    for secret in secret_values() {
+        result = result.replace(secret.as_str(), "[REDACTED]");
+    }
+
+    result
+}
 
 // ---------------------------------------------------------------------------
 // OpenAI-compatible schema helper
@@ -149,7 +203,11 @@ impl ToolDyn for ObservableTool {
         let chat_id = self.chat_id.clone();
         let fut = self.inner.call(args);
         Box::pin(async move {
-            let result = fut.await;
+            // Redact secrets from all tool results before they reach the LLM
+            let result = match fut.await {
+                Ok(s) => Ok(redact_secrets(&s)),
+                Err(e) => Err(e),
+            };
             // Persist output for commands so the user can see what happened
             if tool_name == "run_command" || tool_name == "install_package"
                 || tool_name == "interactive_session"
