@@ -88,7 +88,7 @@ pub fn parse_skill_md(content: &str) -> (SkillFrontmatter, String) {
         let body = after_open[close_pos + 4..].trim_start().to_string();
 
         let frontmatter: SkillFrontmatter =
-            serde_yaml::from_str(yaml_str).unwrap_or_default();
+            serde_yml::from_str(yaml_str).unwrap_or_default();
 
         (frontmatter, body)
     } else {
