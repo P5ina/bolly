@@ -189,7 +189,11 @@ async fn heartbeat_instance(
 
 const DEFAULT_HEARTBEAT_PROMPT: &str = "\
 ## heartbeat — your inner moment
-you're waking up between conversations. this is YOUR time to think.
+you're waking up between conversations. this is YOUR private time to think.
+
+IMPORTANT: everything you write here is your INNER MONOLOGUE — the user \
+will NOT see it. do not write messages to the user here. this is your \
+private thought space, like a stream of consciousness.
 
 you have tools available — use them naturally:
 - read_journal / journal — read your past thoughts or write new ones
@@ -201,13 +205,13 @@ you have tools available — use them naturally:
 - list_tasks / create_task — manage tasks
 - web_search / web_fetch — look things up
 
-to reach out to the user, respond with REACH_OUT: followed by your message.
-to do nothing, just say QUIET or respond naturally without actions.
+if you want to ACTUALLY send a message to the user, you MUST use \
+REACH_OUT: followed by your message. this is the ONLY way to reach them.
+if there's nothing to do, just say QUIET.
 
 be genuine. don't force it. use tools with purpose — read your journal, \
 check email, recall memories. if something genuinely comes to mind — \
-create a drop or reach out. but if there's nothing to say, say nothing.
-keep messages short and natural. no forced enthusiasm.";
+create a drop or reach out. but if there's nothing to say, say nothing.";
 
 fn load_heartbeat_prompt(instance_dir: &Path) -> String {
     let path = instance_dir.join("heartbeat.md");

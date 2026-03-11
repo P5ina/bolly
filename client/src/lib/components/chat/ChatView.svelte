@@ -241,7 +241,8 @@
 			{:else}
 				<span class="bar-status">{messages.length} msgs</span>
 			{/if}
-			<button onclick={() => showChatList = !showChatList} onmousedown={(e) => e.preventDefault()} class="bar-btn" title="Chats">
+			<!-- TODO: re-enable multi-chat when ready -->
+			<!-- <button onclick={() => showChatList = !showChatList} onmousedown={(e) => e.preventDefault()} class="bar-btn" title="Chats">
 				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
 					<path d="M2 3h12M2 7h8M2 11h10" stroke-linecap="round"/>
 				</svg>
@@ -250,7 +251,7 @@
 				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
 					<path d="M8 3v10M3 8h10" stroke-linecap="round"/>
 				</svg>
-			</button>
+			</button> -->
 			<AlertDialog.Root>
 				<AlertDialog.Trigger class="bar-btn bar-clear" title="Clear context">
 					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
@@ -273,8 +274,8 @@
 		</div>
 	</header>
 
-	<!-- Chat list dropdown -->
-	{#if showChatList}
+	<!-- TODO: re-enable multi-chat when ready -->
+	<!-- {#if showChatList}
 		<div class="chat-list-overlay" onclick={() => showChatList = false} role="presentation"></div>
 		<div class="chat-list">
 			{#each chats as chat (chat.id)}
@@ -290,7 +291,7 @@
 				<div class="chat-list-empty">no chats yet</div>
 			{/each}
 		</div>
-	{/if}
+	{/if} -->
 
 	<div class="chat-columns">
 		<div class="chat-main">
