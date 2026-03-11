@@ -10,6 +10,7 @@
 		prevMessage,
 		mood = "calm",
 		active = false,
+		streaming = false,
 	}: {
 		message: ChatMessage;
 		slug?: string;
@@ -17,6 +18,7 @@
 		prevMessage?: ChatMessage;
 		mood?: string;
 		active?: boolean;
+		streaming?: boolean;
 	} = $props();
 
 	const isUser = $derived(message.role === "user");
@@ -118,8 +120,8 @@
 					<span class="msg-presence-label">{mood}</span>
 				</div>
 			{/if}
-			{#if textContent}
-				<div class="msg-content msg-content-companion prose">
+			{#if textContent || streaming}
+				<div class="msg-content msg-content-companion prose" class:msg-streaming={streaming}>
 					{@html html}
 				</div>
 			{/if}
@@ -333,6 +335,23 @@
 		background: oklch(0.10 0.01 280 / 50%);
 		color: oklch(0.90 0.04 75);
 		font-weight: 600;
+	}
+
+	/* typewriter cursor for streaming */
+	.msg-streaming::after {
+		content: "";
+		display: inline-block;
+		width: 2px;
+		height: 1em;
+		margin-left: 1px;
+		vertical-align: text-bottom;
+		background: oklch(0.78 0.12 75 / 70%);
+		animation: cursor-blink 0.6s steps(2) infinite;
+	}
+
+	@keyframes cursor-blink {
+		0% { opacity: 1; }
+		50% { opacity: 0; }
 	}
 
 	.msg-user {

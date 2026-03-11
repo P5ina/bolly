@@ -413,6 +413,15 @@ where
                     });
                 }
             }
+            // When the agent calls a tool, discard any intermediate text so
+            // only the final response (after all tool rounds) is kept.
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall { .. })) |
+            Ok(MultiTurnStreamItem::StreamUserItem(_)) => {
+                if !accumulated.is_empty() {
+                    log::debug!("tool round detected, resetting {} chars of intermediate text", accumulated.len());
+                    accumulated.clear();
+                }
+            }
             Err(e) => {
                 let msg = e.to_string();
                 if msg.contains("MaxTurn") || msg.contains("max turn") {

@@ -183,6 +183,11 @@
 			if (event.type === "chat_message_created") {
 				const content = event.message.content;
 				if (content.startsWith("[tool:") || content.startsWith("[system]")) {
+					// Tool activity — clear streaming bubble since a tool round started
+					if (streamingContent) {
+						streamingContent = "";
+						stream = stream.filter((s) => !(s.type === "message" && s.data.id === "__streaming__"));
+					}
 					// Tool activity / system messages — show as activity items, not chat bubbles
 					const items = toolActivityToStreamItems(event.message);
 					for (const item of items) {
@@ -367,7 +372,7 @@
 					{:else}
 						{#each stream as item, i (streamKey(item))}
 							{#if item.type === "message"}
-								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} />
+								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} streaming={item.data.id === "__streaming__"} />
 							{:else}
 								<StreamActivity kind={item.kind} label={item.label} timestamp={item.timestamp} />
 							{/if}
