@@ -1,8 +1,10 @@
 use std::{
+    collections::HashMap,
     fmt, fs,
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use chrono::{Local, Utc};
@@ -17,6 +19,25 @@ use tokio::sync::broadcast;
 use regex::Regex;
 
 use crate::domain::events::ServerEvent;
+
+// ---------------------------------------------------------------------------
+// Per-chat file lock — prevents concurrent read-modify-write corruption
+// ---------------------------------------------------------------------------
+
+type ChatLocks = Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>;
+
+fn chat_locks() -> &'static ChatLocks {
+    static LOCKS: OnceLock<ChatLocks> = OnceLock::new();
+    LOCKS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Get a mutex for a specific messages.json path. All writers must use this.
+pub fn chat_file_lock(path: &Path) -> Arc<Mutex<()>> {
+    let mut map = chat_locks().lock().unwrap();
+    map.entry(path.to_path_buf())
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
 
 // ---------------------------------------------------------------------------
 // Secret redaction — strip API keys and sensitive env vars from tool output
@@ -286,7 +307,7 @@ fn unix_millis() -> u128 {
         .as_millis()
 }
 
-/// Append a single message to a chat's messages.json (atomic read-modify-write).
+/// Append a single message to a chat's messages.json with file locking.
 fn append_message_to_chat(
     workspace_dir: &Path,
     instance_slug: &str,
@@ -300,6 +321,9 @@ fn append_message_to_chat(
         .join(chat_id);
     let _ = fs::create_dir_all(&chat_dir);
     let path = chat_dir.join("messages.json");
+
+    let lock = chat_file_lock(&path);
+    let _guard = lock.lock().unwrap();
 
     let mut messages: Vec<crate::domain::chat::ChatMessage> = fs::read_to_string(&path)
         .ok()
@@ -2862,6 +2886,9 @@ impl Tool for ReachOutTool {
         let _ = std::fs::create_dir_all(&chat_dir);
         let messages_path = chat_dir.join("messages.json");
 
+        let lock = chat_file_lock(&messages_path);
+        let _guard = lock.lock().unwrap();
+
         let mut messages: Vec<crate::domain::chat::ChatMessage> = std::fs::read_to_string(&messages_path)
             .ok()
             .and_then(|raw| serde_json::from_str(&raw).ok())
@@ -2889,8 +2916,7 @@ impl Tool for ReachOutTool {
 // interactive_session — persistent PTY sessions for interactive commands
 // ---------------------------------------------------------------------------
 
-use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex as StdMutex};
+use std::sync::LazyLock;
 
 struct PtySession {
     child: Box<dyn portable_pty::Child + Send + Sync>,
@@ -2919,8 +2945,8 @@ impl PtySession {
     }
 }
 
-static PTY_SESSIONS: LazyLock<StdMutex<HashMap<String, PtySession>>> =
-    LazyLock::new(|| StdMutex::new(HashMap::new()));
+static PTY_SESSIONS: LazyLock<Mutex<HashMap<String, PtySession>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub struct InteractiveSessionTool {
     instance_dir: PathBuf,
@@ -3289,6 +3315,8 @@ impl Tool for ClearContextTool {
         if args.clear_messages {
             let messages_path = self.instance_dir.join("chat").join("messages.json");
             if messages_path.exists() {
+                let lock = chat_file_lock(&messages_path);
+                let _guard = lock.lock().unwrap();
                 fs::write(&messages_path, "[]")
                     .map_err(|e| ToolExecError(format!("failed to clear messages: {e}")))?;
             }

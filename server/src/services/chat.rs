@@ -338,13 +338,12 @@ pub async fn run_single_turn(
     save_messages(workspace_dir, &instance_slug, &chat_id, &messages)?;
 
     // Background memory + sentiment extraction
-    {
+    if let Some(last_msg) = assistant_messages.last().cloned() {
         let backend = llm.clone();
         let emb = embedding_model.cloned();
         let ws = workspace_dir.to_path_buf();
         let slug = instance_slug.clone();
         let user_content = last_user_content.to_string();
-        let last_msg = assistant_messages.last().cloned().unwrap();
         let recent_pair = existing
             .iter()
             .rev()
@@ -586,9 +585,12 @@ fn save_messages(
         fs::create_dir_all(parent)?;
     }
 
+    let lock = tools::chat_file_lock(&path);
+    let _guard = lock.lock().unwrap();
+
     let body = serde_json::to_string_pretty(messages)
         .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))?;
-    fs::write(path, body)
+    fs::write(&path, body)
 }
 
 /// Split a single LLM reply into multiple chat-like messages.

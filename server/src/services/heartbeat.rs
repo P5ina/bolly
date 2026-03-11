@@ -466,15 +466,20 @@ fn deliver_spontaneous_message(
     let _ = fs::create_dir_all(&chat_dir);
     let messages_path = chat_dir.join("messages.json");
 
-    let mut messages: Vec<ChatMessage> = fs::read_to_string(&messages_path)
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default();
+    {
+        let lock = crate::services::tools::chat_file_lock(&messages_path);
+        let _guard = lock.lock().unwrap();
 
-    messages.push(chat_message.clone());
+        let mut messages: Vec<ChatMessage> = fs::read_to_string(&messages_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_default();
 
-    if let Ok(json) = serde_json::to_string_pretty(&messages) {
-        let _ = fs::write(&messages_path, json);
+        messages.push(chat_message.clone());
+
+        if let Ok(json) = serde_json::to_string_pretty(&messages) {
+            let _ = fs::write(&messages_path, json);
+        }
     }
 
     // Broadcast via WebSocket

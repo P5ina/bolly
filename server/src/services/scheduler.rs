@@ -116,6 +116,9 @@ fn append_scheduled_message(workspace_dir: &Path, instance_slug: &str, message: 
     let _ = fs::create_dir_all(&chat_dir);
     let messages_path = chat_dir.join("messages.json");
 
+    let lock = crate::services::tools::chat_file_lock(&messages_path);
+    let _guard = lock.lock().unwrap();
+
     let mut messages: Vec<ChatMessage> = match fs::read_to_string(&messages_path) {
         Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
         Err(_) => Vec::new(),
