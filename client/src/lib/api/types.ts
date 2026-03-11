@@ -140,6 +140,13 @@ export interface UploadMeta {
 	uploaded_at: string;
 }
 
+export interface Usage {
+	messages_today: number;
+	messages_limit: number;
+	tokens_this_month: number;
+	tokens_limit: number;
+}
+
 export type ServerEvent =
 	| {
 			type: "chat_message_created";

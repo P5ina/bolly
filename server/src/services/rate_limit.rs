@@ -96,6 +96,43 @@ pub async fn record_usage(pool: &PgPool, instance_id: &str, tokens: i32) {
     }
 }
 
+/// Return current usage and limits.
+pub async fn get_usage(pool: &PgPool, instance_id: &str) -> Option<Usage> {
+    let row = sqlx::query_as::<_, (i32, i32)>(
+        r#"
+        SELECT
+            CASE WHEN last_reset_daily::date < CURRENT_DATE THEN 0 ELSE messages_today END,
+            CASE WHEN last_reset_monthly < date_trunc('month', CURRENT_DATE) THEN 0 ELSE tokens_this_month END
+        FROM rate_limits
+        WHERE instance_id = $1
+        "#,
+    )
+    .bind(instance_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let (messages_today, tokens_this_month) = row.unwrap_or((0, 0));
+    let msg_limit = messages_per_day();
+    let tok_limit = tokens_per_month();
+
+    Some(Usage {
+        messages_today,
+        messages_limit: msg_limit,
+        tokens_this_month,
+        tokens_limit: tok_limit,
+    })
+}
+
+#[derive(serde::Serialize)]
+pub struct Usage {
+    pub messages_today: i32,
+    pub messages_limit: i32,
+    pub tokens_this_month: i32,
+    pub tokens_limit: i32,
+}
+
 /// Estimate token count from text (rough heuristic: ~3.2 chars per token).
 pub fn estimate_tokens(text: &str) -> i32 {
     (text.len() as f64 / 3.2) as i32

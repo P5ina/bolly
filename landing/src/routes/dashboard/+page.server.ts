@@ -81,7 +81,44 @@ export const load: PageServerLoad = async ({ locals }) => {
 	]);
 
 	// Find orphaned subscriptions (active in Stripe but not linked to any tenant)
-	const orphanedSubscriptions = allSubscriptions
+	const orphanedSubs = allSubscriptions.filter((sub) => !linkedSubIds.has(sub.id));
+
+	// Auto-reconcile: provision tenants for orphaned subscriptions that have valid metadata
+	for (const sub of orphanedSubs) {
+		const { user_id, slug, plan } = sub.metadata ?? {};
+		if (user_id === locals.user.id && slug && plan && ['starter', 'companion', 'unlimited'].includes(plan)) {
+			try {
+				console.log(`Auto-reconciling orphaned subscription ${sub.id} → ${slug}`);
+				const tenant = await provisionTenant({
+					userId: user_id,
+					slug,
+					plan: plan as PlanId,
+					stripeSubscriptionId: sub.id,
+				});
+				// Add to the tenants list so it shows up immediately
+				const planConfig = PLANS[plan as PlanId];
+				tenantsWithSub.push({
+					id: tenant.id,
+					slug: tenant.slug,
+					plan: tenant.plan,
+					planName: planConfig?.name ?? tenant.plan,
+					priceMonthly: planConfig?.priceMonthly ?? 0,
+					status: tenant.status,
+					flyAppId: tenant.flyAppId,
+					errorMessage: tenant.errorMessage,
+					imageChannel: tenant.imageChannel,
+					shareToken: tenant.shareToken,
+					createdAt: tenant.createdAt.toISOString(),
+					subscription: await getSubscriptionInfo(sub.id),
+				});
+				linkedSubIds.add(sub.id);
+			} catch (err) {
+				console.error(`Auto-reconcile failed for ${slug}:`, err);
+			}
+		}
+	}
+
+	const orphanedSubscriptions = orphanedSubs
 		.filter((sub) => !linkedSubIds.has(sub.id))
 		.map((sub) => {
 			const item = sub.items.data[0];

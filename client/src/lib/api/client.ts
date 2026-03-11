@@ -12,6 +12,7 @@ import type {
 	Thought,
 	UpdateLlmRequest,
 	UploadMeta,
+	Usage,
 } from "./types.js";
 
 const BASE = "";
@@ -282,6 +283,10 @@ export function installRegistrySkill(id: string): Promise<Skill> {
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ id }),
 	});
+}
+
+export function fetchUsage(): Promise<Usage> {
+	return json("/api/usage");
 }
 
 export function createWebSocket(): WebSocket {

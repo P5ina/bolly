@@ -10,4 +10,5 @@ pub mod skills;
 pub mod soul;
 pub mod thoughts;
 pub mod uploads;
+pub mod usage;
 pub mod ws;

@@ -8,7 +8,8 @@ const config = {
 		}),
 		prerender: {
 			handleHttpError: 'warn',
-		}
+		},
+		trailingSlash: 'never',
 	}
 };
 
