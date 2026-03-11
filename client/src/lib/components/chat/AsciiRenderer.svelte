@@ -44,71 +44,43 @@
 	let canvasRef = $state<HTMLCanvasElement | undefined>();
 	let asciiOutput = $state("");
 
-	const COLS = 56;
-	const ROWS = 32;
+	const COLS = 48;
+	const ROWS = 28;
+	// Dense to sparse luminance ramp — reversed so bright = dense
+	const ASCII_CHARS = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
 
-	// Only use visually "round" characters — no colons, semicolons, dashes, equals
-	// At tiny font sizes those create horizontal line artifacts
-	const RAMP = " .+xo*#%@";
-	const RAMP_LEN = RAMP.length;
+	function luminanceToChar(l: number): string {
+		const idx = Math.floor(l * (ASCII_CHARS.length - 1));
+		return ASCII_CHARS[Math.min(idx, ASCII_CHARS.length - 1)];
+	}
 
 	function renderAscii() {
 		if (!canvasRef) return;
 		const ctx = canvasRef.getContext("2d", { willReadFrequently: true });
 		if (!ctx) return;
 
+		// Find the threlte canvas inside container
 		const threlteCanvas = containerRef?.querySelector("canvas");
 		if (!threlteCanvas) return;
 
+		// Draw the 3D scene to our small sampling canvas
 		canvasRef.width = COLS;
 		canvasRef.height = ROWS;
-		ctx.clearRect(0, 0, COLS, ROWS);
 		ctx.drawImage(threlteCanvas, 0, 0, COLS, ROWS);
 
 		const imageData = ctx.getImageData(0, 0, COLS, ROWS);
 		const data = imageData.data;
 
-		// First pass: find luminance range for contrast stretching
-		// Use higher alpha threshold to kill anti-aliased edge fringe
-		let minLum = 1;
-		let maxLum = 0;
-		const luminances = new Float32Array(COLS * ROWS);
-
-		for (let y = 0; y < ROWS; y++) {
-			for (let x = 0; x < COLS; x++) {
-				const i = (y * COLS + x) * 4;
-				const a = data[i + 3];
-				if (a < 80) {
-					luminances[y * COLS + x] = -1;
-					continue;
-				}
-				const r = data[i];
-				const g = data[i + 1];
-				const b = data[i + 2];
-				const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-				luminances[y * COLS + x] = lum;
-				if (lum > 0.02) {
-					if (lum < minLum) minLum = lum;
-					if (lum > maxLum) maxLum = lum;
-				}
-			}
-		}
-
-		const range = maxLum - minLum;
-		const invRange = range > 0.01 ? 1.0 / range : 1.0;
-
 		let result = "";
 		for (let y = 0; y < ROWS; y++) {
 			for (let x = 0; x < COLS; x++) {
-				const lum = luminances[y * COLS + x];
-				if (lum < 0) {
-					result += " ";
-				} else {
-					let n = Math.max(0, (lum - minLum) * invRange);
-					n = Math.pow(n, 0.7);
-					const idx = Math.min(Math.floor(n * (RAMP_LEN - 1)), RAMP_LEN - 1);
-					result += RAMP[idx];
-				}
+				const i = (y * COLS + x) * 4;
+				const r = data[i];
+				const g = data[i + 1];
+				const b = data[i + 2];
+				// Perceived luminance
+				const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+				result += luminanceToChar(luminance);
 			}
 			result += "\n";
 		}
@@ -126,6 +98,7 @@
 			renderAscii();
 			requestAnimationFrame(loop);
 		}
+		// Small delay for threlte to initialize
 		setTimeout(() => requestAnimationFrame(loop), 100);
 
 		return () => {
@@ -163,8 +136,8 @@
 
 	.threlte-hidden {
 		position: absolute;
-		width: 300px;
-		height: 300px;
+		width: 200px;
+		height: 200px;
 		opacity: 0;
 		pointer-events: none;
 		overflow: hidden;
@@ -176,9 +149,9 @@
 
 	.ascii-display {
 		font-family: var(--font-mono);
-		font-size: 6px;
+		font-size: 5.5px;
 		line-height: 7px;
-		letter-spacing: 0;
+		letter-spacing: 1.5px;
 		text-align: center;
 		margin: 0;
 		user-select: none;
