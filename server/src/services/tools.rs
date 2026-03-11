@@ -87,6 +87,7 @@ pub fn tool_summary(name: &str, args: &str) -> String {
 pub struct ObservableTool {
     inner: Box<dyn ToolDyn>,
     events: broadcast::Sender<ServerEvent>,
+    workspace_dir: PathBuf,
     instance_slug: String,
     chat_id: String,
 }
@@ -95,12 +96,14 @@ impl ObservableTool {
     pub fn new(
         inner: Box<dyn ToolDyn>,
         events: broadcast::Sender<ServerEvent>,
+        workspace_dir: &Path,
         instance_slug: String,
         chat_id: String,
     ) -> Self {
         Self {
             inner,
             events,
+            workspace_dir: workspace_dir.to_path_buf(),
             instance_slug,
             chat_id,
         }
@@ -129,16 +132,34 @@ impl ToolDyn for ObservableTool {
             instance_slug: self.instance_slug.clone(),
             chat_id: self.chat_id.clone(),
             tool_name: tool_name.clone(),
-            summary,
+            summary: summary.clone(),
         });
+
+        // Persist tool call start to messages
+        let start_msg = crate::domain::chat::ChatMessage {
+            id: format!("tool_{}_{}", tool_call_counter(), unix_millis()),
+            role: crate::domain::chat::ChatRole::Assistant,
+            content: format!("[tool: {tool_name}] {summary}"),
+            created_at: unix_millis().to_string(),
+        };
+        append_message_to_chat(&self.workspace_dir, &self.instance_slug, &self.chat_id, &start_msg);
+        let _ = self.events.send(ServerEvent::ChatMessageCreated {
+            instance_slug: self.instance_slug.clone(),
+            chat_id: self.chat_id.clone(),
+            message: start_msg,
+        });
+
         let events = self.events.clone();
+        let workspace_dir = self.workspace_dir.clone();
         let instance_slug = self.instance_slug.clone();
         let chat_id = self.chat_id.clone();
         let fut = self.inner.call(args);
         Box::pin(async move {
             let result = fut.await;
             // Emit output for commands so the user can see what happened
-            if tool_name == "run_command" || tool_name == "install_package" {
+            if tool_name == "run_command" || tool_name == "install_package"
+                || tool_name == "interactive_session"
+            {
                 let output = match &result {
                     Ok(s) => {
                         let short: String = s.chars().take(200).collect();
@@ -151,6 +172,18 @@ impl ToolDyn for ObservableTool {
                     Err(e) => format!("error: {e}"),
                 };
                 if !output.is_empty() {
+                    let output_msg = crate::domain::chat::ChatMessage {
+                        id: format!("tool_{}_{}", tool_call_counter(), unix_millis()),
+                        role: crate::domain::chat::ChatRole::Assistant,
+                        content: format!("[tool: {tool_name} output] {output}"),
+                        created_at: unix_millis().to_string(),
+                    };
+                    append_message_to_chat(&workspace_dir, &instance_slug, &chat_id, &output_msg);
+                    let _ = events.send(ServerEvent::ChatMessageCreated {
+                        instance_slug: instance_slug.clone(),
+                        chat_id: chat_id.clone(),
+                        message: output_msg,
+                    });
                     let _ = events.send(ServerEvent::ToolActivity {
                         instance_slug,
                         chat_id,
@@ -178,6 +211,74 @@ impl fmt::Display for ToolExecError {
 }
 
 impl std::error::Error for ToolExecError {}
+
+// ---------------------------------------------------------------------------
+// Helpers for tool activity persistence
+// ---------------------------------------------------------------------------
+
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static TOOL_CALL_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn tool_call_counter() -> u64 {
+    TOOL_CALL_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
+
+fn unix_millis() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time after epoch")
+        .as_millis()
+}
+
+/// Append a single message to a chat's messages.json (atomic read-modify-write).
+fn append_message_to_chat(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    chat_id: &str,
+    message: &crate::domain::chat::ChatMessage,
+) {
+    let chat_dir = workspace_dir
+        .join("instances")
+        .join(instance_slug)
+        .join("chats")
+        .join(chat_id);
+    let _ = fs::create_dir_all(&chat_dir);
+    let path = chat_dir.join("messages.json");
+
+    let mut messages: Vec<crate::domain::chat::ChatMessage> = fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default();
+
+    messages.push(message.clone());
+
+    if let Ok(json) = serde_json::to_string_pretty(&messages) {
+        let _ = fs::write(&path, json);
+    }
+}
+
+/// Inject a system message into a chat (used for restart notifications etc.).
+pub fn inject_system_message(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    chat_id: &str,
+    content: &str,
+    events: &broadcast::Sender<ServerEvent>,
+) {
+    let message = crate::domain::chat::ChatMessage {
+        id: format!("sys_{}_{}", tool_call_counter(), unix_millis()),
+        role: crate::domain::chat::ChatRole::Assistant,
+        content: content.to_string(),
+        created_at: unix_millis().to_string(),
+    };
+    append_message_to_chat(workspace_dir, instance_slug, chat_id, &message);
+    let _ = events.send(ServerEvent::ChatMessageCreated {
+        instance_slug: instance_slug.to_string(),
+        chat_id: chat_id.to_string(),
+        message,
+    });
+}
 
 // ---------------------------------------------------------------------------
 // edit_soul — lets the companion rewrite its own soul.md

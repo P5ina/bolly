@@ -5,7 +5,7 @@ use base64::Engine as _;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, Message, Prompt};
 use rig::agent::AgentBuilder;
-use rig::completion::message::{AssistantContent, UserContent, ImageMediaType, DocumentMediaType, MimeType};
+use rig::completion::message::{UserContent, ImageMediaType, DocumentMediaType, MimeType};
 use rig::one_or_many::OneOrMany;
 use rig::providers::{anthropic, openai};
 use rig::tool::ToolDyn;
@@ -14,80 +14,11 @@ use rig::vector_store::VectorStoreIndexDyn;
 use crate::config::{Config, LlmProvider};
 use crate::domain::chat::{ChatMessage, ChatRole};
 
-/// A single tool interaction: the tool name, arguments, and (truncated) result.
-#[derive(Clone, Debug)]
-pub struct ToolLogEntry {
-    pub tool_name: String,
-    pub arguments: String,
-    pub result: String,
-}
-
-/// Result of `chat_with_tools`: the final text + a log of tool calls that happened.
+/// Result of `chat_with_tools`: the final text response.
+/// Tool activity is now persisted incrementally by ObservableTool.
 #[derive(Clone, Debug)]
 pub struct ToolChatResult {
     pub text: String,
-    pub tool_log: Vec<ToolLogEntry>,
-}
-
-impl ToolChatResult {
-    /// Format tool interactions as a human-readable summary for persistence.
-    /// Returns None if no tools were called.
-    pub fn tool_log_summary(&self) -> Option<String> {
-        if self.tool_log.is_empty() {
-            return None;
-        }
-        let mut out = String::from("[tool activity]\n");
-        for entry in &self.tool_log {
-            let summary = crate::services::tools::tool_summary(&entry.tool_name, &entry.arguments);
-            out.push_str(&format!("• {summary}\n"));
-        }
-        Some(out)
-    }
-}
-
-/// Extract tool call/result pairs from new messages Rig added to chat_history.
-fn extract_tool_log(new_messages: &[Message]) -> Vec<ToolLogEntry> {
-    let mut pending_calls: Vec<ToolLogEntry> = Vec::new();
-    let mut log: Vec<ToolLogEntry> = Vec::new();
-
-    for msg in new_messages {
-        match msg {
-            Message::Assistant { content, .. } => {
-                for c in content.iter() {
-                    if let AssistantContent::ToolCall(tc) = c {
-                        let args = serde_json::to_string(&tc.function.arguments)
-                            .unwrap_or_default();
-                        pending_calls.push(ToolLogEntry {
-                            tool_name: tc.function.name.clone(),
-                            arguments: args,
-                            result: String::new(),
-                        });
-                    }
-                }
-            }
-            Message::User { content } => {
-                for c in content.iter() {
-                    if let UserContent::ToolResult(tr) = c {
-                        // Match result to the earliest pending call
-                        if let Some(entry) = pending_calls.first_mut() {
-                            let result_text: String = tr.content.iter().filter_map(|rc| {
-                                if let rig::completion::message::ToolResultContent::Text(t) = rc {
-                                    Some(t.text.clone())
-                                } else {
-                                    None
-                                }
-                            }).collect::<Vec<_>>().join(" ");
-                            entry.result = result_text;
-                            log.push(pending_calls.remove(0));
-                        }
-                    }
-                }
-            }
-        }
-    }
-    // Any unmatched calls (shouldn't happen normally)
-    log.extend(pending_calls);
-    log
 }
 
 const MAX_RETRIES: u32 = 3;
@@ -239,12 +170,10 @@ impl LlmBackend {
 
         if tools.is_empty() {
             let text = self.chat(system_prompt, &prompt_text, history).await?;
-            return Ok(ToolChatResult { text, tool_log: Vec::new() });
+            return Ok(ToolChatResult { text });
         }
 
-        let history_len = history.len();
-
-        let (result, chat_history) = match self {
+        let (result, _chat_history) = match self {
             LlmBackend::Anthropic { client, model } => {
                 let cm = client.completion_model(model).with_prompt_caching();
                 let mut builder = AgentBuilder::new(cm)
@@ -279,11 +208,8 @@ impl LlmBackend {
             }
         };
 
-        // Extract tool interactions from the new messages Rig added to chat_history
-        let tool_log = extract_tool_log(&chat_history[history_len..]);
-
         match result {
-            Ok(response) => Ok(ToolChatResult { text: response, tool_log }),
+            Ok(response) => Ok(ToolChatResult { text: response }),
             Err(e) if is_rate_limit_error(&e.to_string()) => {
                 // Retry with exponential backoff, keeping tools
                 log::warn!("Rate limited during tool agent, retrying with backoff");
@@ -312,7 +238,7 @@ impl LlmBackend {
                     };
 
                     match retry_result {
-                        Ok(response) => return Ok(ToolChatResult { text: response, tool_log }),
+                        Ok(response) => return Ok(ToolChatResult { text: response }),
                         Err(e) if is_rate_limit_error(&e.to_string()) => continue,
                         Err(e) => return Err(e),
                     }
@@ -323,7 +249,7 @@ impl LlmBackend {
                 // If max turns exceeded, extract the last assistant text from chat history
                 if let Some(text) = extract_last_assistant_text_from_error(&e) {
                     log::warn!("Max turns reached, returning last assistant text");
-                    return Ok(ToolChatResult { text, tool_log });
+                    return Ok(ToolChatResult { text });
                 }
                 log::error!("Tool agent failed: {e:?}");
                 Err(e.into())

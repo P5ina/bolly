@@ -42,6 +42,9 @@ async fn main() {
             SocketAddr::from(([0, 0, 0, 0], port))
         });
 
+    // Notify active chats that the server restarted
+    services::chat::notify_restart(&state.workspace_dir, &state.events);
+
     // Start background scheduler for scheduled messages
     services::scheduler::start(&state.workspace_dir, state.events.clone());
 

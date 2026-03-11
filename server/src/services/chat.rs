@@ -264,7 +264,7 @@ pub async fn run_single_turn(
                 log::error!("LLM error details: {e:?}");
                 "something went wrong on my end — try again?".to_string()
             };
-            llm::ToolChatResult { text, tool_log: Vec::new() }
+            llm::ToolChatResult { text }
         });
 
     // Strip any leaked tool-call JSON the model may have output as text
@@ -285,17 +285,9 @@ pub async fn run_single_turn(
         }
     }
 
+    // Tool activity is now persisted incrementally by ObservableTool,
+    // so we only need to save the final response messages here.
     let mut assistant_messages = Vec::new();
-
-    // If tools were used, save a summary so the LLM sees them on subsequent turns
-    if let Some(tool_summary) = tool_result.tool_log_summary() {
-        assistant_messages.push(ChatMessage {
-            id: next_id(),
-            role: ChatRole::Assistant,
-            content: tool_summary,
-            created_at: timestamp(),
-        });
-    }
 
     for chunk in &chunks {
         assistant_messages.push(ChatMessage {
@@ -462,6 +454,38 @@ pub fn discover_instance(
         .join("instances")
         .join(sanitize_slug(instance_slug));
     Ok(workspace::summarize_instance(&path))
+}
+
+/// Inject a restart notification into all active instance chats so the agent
+/// knows it was restarted and can pick up where it left off.
+pub fn notify_restart(workspace_dir: &Path, events: &broadcast::Sender<ServerEvent>) {
+    let instances_dir = workspace_dir.join("instances");
+    let entries = match fs::read_dir(&instances_dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
+    let content = format!(
+        "[system] server restarted at {now}. \
+         if you were in the middle of a task, review your recent tool activity above and continue where you left off."
+    );
+
+    for entry in entries.filter_map(Result::ok) {
+        let instance_dir = entry.path();
+        if !instance_dir.is_dir() || !instance_dir.join("soul.md").exists() {
+            continue;
+        }
+        let slug = entry.file_name().to_string_lossy().to_string();
+
+        // Inject into the default chat
+        let chat_dir = instance_dir.join("chats").join("default");
+        let messages_path = chat_dir.join("messages.json");
+        if messages_path.exists() {
+            tools::inject_system_message(workspace_dir, &slug, "default", &content, events);
+            log::info!("[restart] injected restart message for {slug}/default");
+        }
+    }
 }
 
 fn ensure_instance_layout(workspace_dir: &Path, instance_slug: &str) -> io::Result<()> {
@@ -1078,7 +1102,7 @@ fn build_instance_tools(
     let wrapped: Vec<Box<dyn ToolDyn>> = raw_tools
         .into_iter()
         .map(|tool| -> Box<dyn ToolDyn> {
-            Box::new(ObservableTool::new(tool, events.clone(), instance_slug.to_string(), chat_id.to_string()))
+            Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), chat_id.to_string()))
         })
         .collect();
     (wrapped, sent_files)

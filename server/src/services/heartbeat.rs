@@ -570,7 +570,7 @@ fn build_heartbeat_tools(
     raw_tools
         .into_iter()
         .map(|tool| -> Box<dyn ToolDyn> {
-            Box::new(ObservableTool::new(tool, events.clone(), instance_slug.to_string(), "default".to_string()))
+            Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), "default".to_string()))
         })
         .collect()
 }
