@@ -70,6 +70,12 @@ pub fn save_user_message(
 /// Run a single LLM turn: build context, call LLM with tools, save response.
 /// Returns one or more assistant messages (the reply is split into chat-like chunks).
 /// Rig handles up to 8 internal tool sub-turns.
+pub struct SingleTurnResult {
+    pub messages: Vec<ChatMessage>,
+    /// The agent was cut short by the inner turn limit and needs to continue.
+    pub hit_turn_limit: bool,
+}
+
 pub async fn run_single_turn(
     workspace_dir: &Path,
     config_path: &Path,
@@ -79,7 +85,7 @@ pub async fn run_single_turn(
     embedding_model: Option<&openai::EmbeddingModel>,
     brave_api_key: Option<&str>,
     events: broadcast::Sender<ServerEvent>,
-) -> io::Result<Vec<ChatMessage>> {
+) -> io::Result<SingleTurnResult> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
 
@@ -264,7 +270,7 @@ pub async fn run_single_turn(
                 log::error!("LLM error details: {e:?}");
                 "something went wrong on my end — try again?".to_string()
             };
-            llm::ToolChatResult { text }
+            llm::ToolChatResult { text, hit_turn_limit: false }
         });
 
     // Strip any leaked tool-call JSON the model may have output as text
@@ -329,7 +335,10 @@ pub async fn run_single_turn(
         });
     }
 
-    Ok(assistant_messages)
+    Ok(SingleTurnResult {
+        messages: assistant_messages,
+        hit_turn_limit: tool_result.hit_turn_limit,
+    })
 }
 
 pub fn load_messages(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> io::Result<ChatResponse> {
@@ -945,8 +954,8 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          task given → act fully: orient, execute, verify, report. use continuation words to get more turns.\n\
          no task → just talk. don't run tools unprompted.\n\
          use tools with purpose. read only what's relevant. always use what you read.\n\
-         never narrate what you're about to do — just do it. no \"сейчас сделаю\", \"сейчас проверю\", \"let me check\". \
-         act first, then share results or thoughts.\n\
+         when doing multi-step work, share short thoughts between groups of actions — \
+         what you found, what you're thinking, what's next. keep it casual and brief.\n\
          if a tool fails, always tell the user what went wrong and what you tried. never fail silently.\n\
          NEVER output tool calls as text or JSON in your messages. use the tool_use API to call tools. \
          your text output should only contain natural language for the user — no {{\"name\":...}} blocks."

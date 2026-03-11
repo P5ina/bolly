@@ -160,8 +160,8 @@ async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String,
         state.reload_config().await;
 
         match result {
-            Ok(assistant_messages) => {
-                for msg in &assistant_messages {
+            Ok(turn) => {
+                for msg in &turn.messages {
                     // Don't broadcast internal tool activity logs as chat messages
                     if msg.content.starts_with("[tool activity]") {
                         continue;
@@ -173,19 +173,24 @@ async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String,
                     });
                 }
 
-                let last_content = assistant_messages
-                    .last()
-                    .map(|m| m.content.as_str())
-                    .unwrap_or("");
+                // Always continue if the agent was cut short by the turn limit
+                if turn.hit_turn_limit {
+                    log::info!(
+                        "[agent] {instance_slug}/{chat_id} — iteration {iteration}, hit turn limit, continuing"
+                    );
+                } else {
+                    let last_content = turn.messages
+                        .last()
+                        .map(|m| m.content.as_str())
+                        .unwrap_or("");
 
-                if !should_continue(last_content) {
-                    // Before exiting, check if new user messages arrived while we were thinking.
-                    // If so, do another turn to respond to them.
-                    if has_pending_user_message(&state, &instance_slug, &chat_id).await {
-                        log::info!("[agent] {instance_slug}/{chat_id} — new user message arrived, continuing");
-                        continue;
+                    if !should_continue(last_content) {
+                        if has_pending_user_message(&state, &instance_slug, &chat_id).await {
+                            log::info!("[agent] {instance_slug}/{chat_id} — new user message arrived, continuing");
+                            continue;
+                        }
+                        break;
                     }
-                    break;
                 }
 
                 log::info!(

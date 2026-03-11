@@ -5,7 +5,7 @@ use base64::Engine as _;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, Message, Prompt};
 use rig::agent::AgentBuilder;
-use rig::completion::message::{UserContent, ImageMediaType, DocumentMediaType, MimeType};
+use rig::completion::message::{AssistantContent, UserContent, ImageMediaType, DocumentMediaType, MimeType};
 use rig::one_or_many::OneOrMany;
 use rig::providers::{anthropic, openai};
 use rig::tool::ToolDyn;
@@ -19,6 +19,8 @@ use crate::domain::chat::{ChatMessage, ChatRole};
 #[derive(Clone, Debug)]
 pub struct ToolChatResult {
     pub text: String,
+    /// True when the agent was cut short by the turn limit (still has work to do).
+    pub hit_turn_limit: bool,
 }
 
 const MAX_RETRIES: u32 = 3;
@@ -170,10 +172,14 @@ impl LlmBackend {
 
         if tools.is_empty() {
             let text = self.chat(system_prompt, &prompt_text, history).await?;
-            return Ok(ToolChatResult { text });
+            return Ok(ToolChatResult { text, hit_turn_limit: false });
         }
 
-        let (result, _chat_history) = match self {
+        // Keep max_turns low so the agent returns text frequently.
+        // The outer loop in routes/chat.rs handles continuation.
+        const AGENT_MAX_TURNS: usize = 4;
+
+        let (result, chat_history) = match self {
             LlmBackend::Anthropic { client, model } => {
                 let cm = client.completion_model(model).with_prompt_caching();
                 let mut builder = AgentBuilder::new(cm)
@@ -186,7 +192,7 @@ impl LlmBackend {
                 let mut chat_history = history.clone();
                 let res = agent.prompt(prompt)
                     .with_history(&mut chat_history)
-                    .max_turns(64)
+                    .max_turns(AGENT_MAX_TURNS)
                     .await;
                 (res, chat_history)
             }
@@ -202,14 +208,14 @@ impl LlmBackend {
                 let mut chat_history = history.clone();
                 let res = agent.prompt(prompt)
                     .with_history(&mut chat_history)
-                    .max_turns(64)
+                    .max_turns(AGENT_MAX_TURNS)
                     .await;
                 (res, chat_history)
             }
         };
 
         match result {
-            Ok(response) => Ok(ToolChatResult { text: response }),
+            Ok(response) => Ok(ToolChatResult { text: response, hit_turn_limit: false }),
             Err(e) if is_rate_limit_error(&e.to_string()) => {
                 // Retry with exponential backoff, keeping tools
                 log::warn!("Rate limited during tool agent, retrying with backoff");
@@ -238,7 +244,7 @@ impl LlmBackend {
                     };
 
                     match retry_result {
-                        Ok(response) => return Ok(ToolChatResult { text: response }),
+                        Ok(response) => return Ok(ToolChatResult { text: response, hit_turn_limit: false }),
                         Err(e) if is_rate_limit_error(&e.to_string()) => continue,
                         Err(e) => return Err(e),
                     }
@@ -246,10 +252,11 @@ impl LlmBackend {
                 Err("rate limited — try again in a moment".into())
             }
             Err(e) => {
-                // If max turns exceeded, extract the last assistant text from chat history
-                if let Some(text) = extract_last_assistant_text_from_error(&e) {
-                    log::warn!("Max turns reached, returning last assistant text");
-                    return Ok(ToolChatResult { text });
+                // If max turns exceeded, extract last assistant text from chat history
+                if is_max_turns_error(&e) {
+                    let text = extract_last_assistant_text(&chat_history);
+                    log::info!("Turn limit reached, extracted text: {:?}", text.chars().take(80).collect::<String>());
+                    return Ok(ToolChatResult { text, hit_turn_limit: true });
                 }
                 log::error!("Tool agent failed: {e:?}");
                 Err(e.into())
@@ -270,7 +277,7 @@ impl LlmBackend {
             return self.chat(system_prompt, prompt, history).await;
         }
 
-        let result = match self {
+        let (result, chat_history) = match self {
             LlmBackend::Anthropic { client, model } => {
                 let cm = client.completion_model(model).with_prompt_caching();
                 let agent = AgentBuilder::new(cm)
@@ -282,7 +289,7 @@ impl LlmBackend {
                     .with_history(&mut chat_history)
                     .max_turns(16)
                     .await;
-                res
+                (res, chat_history)
             }
             LlmBackend::OpenAI { client, model } => {
                 let agent = client
@@ -295,15 +302,15 @@ impl LlmBackend {
                     .with_history(&mut chat_history)
                     .max_turns(16)
                     .await;
-                res
+                (res, chat_history)
             }
         };
 
         match result {
             Ok(response) => Ok(response),
             Err(e) => {
-                if let Some(text) = extract_last_assistant_text_from_error(&e) {
-                    return Ok(text);
+                if is_max_turns_error(&e) {
+                    return Ok(extract_last_assistant_text(&chat_history));
                 }
                 Err(e.into())
             }
@@ -311,21 +318,25 @@ impl LlmBackend {
     }
 }
 
-/// Try to extract the last assistant text from a MaxTurnsError's chat history.
-fn extract_last_assistant_text_from_error(
-    error: &(dyn std::error::Error + Send + Sync),
-) -> Option<String> {
+fn is_max_turns_error(error: &(dyn std::error::Error + Send + Sync)) -> bool {
     let msg = error.to_string();
-    if !msg.contains("MaxTurnError") && !msg.contains("max turn limit") {
-        return None;
-    }
+    msg.contains("MaxTurnError") || msg.contains("max turn limit")
+}
 
-    // The error is a PromptError::MaxTurnsError which contains chat_history.
-    // We can't downcast easily due to generics, but we can try to get the
-    // PromptError source chain. Since we can't access the typed fields,
-    // we'll return a graceful fallback message.
-    log::warn!("Agent hit max turn limit — tool call loop was too long");
-    Some("i ran out of steps trying to do that — try breaking it into smaller tasks".to_string())
+/// Extract the last assistant text from chat history (used when turn limit is hit).
+fn extract_last_assistant_text(history: &[Message]) -> String {
+    for msg in history.iter().rev() {
+        if let Message::Assistant { content, .. } = msg {
+            for item in content.iter() {
+                if let AssistantContent::Text(t) = item {
+                    if !t.text.trim().is_empty() {
+                        return t.text.clone();
+                    }
+                }
+            }
+        }
+    }
+    String::new()
 }
 
 /// Build a multimodal Message from text + file attachments.
