@@ -79,7 +79,7 @@
 				type: "activity" as const,
 				id: msg.id,
 				kind: isOutput ? "output" as const : "tool" as const,
-				label: msg.content.replace(/^\[tool:\s*\S+?\s*(?:output\])?\]?\s*/, ""),
+				label: msg.content.replace(/^\[tool:[^\]]*\]\s*/, ""),
 				timestamp: new Date(Number(msg.created_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
 			}];
 		}
