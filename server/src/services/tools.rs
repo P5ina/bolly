@@ -1,13 +1,15 @@
 use std::{
-    fmt,
-    fs,
+    fmt, fs,
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
 };
 
 use chrono::{Local, Utc};
-use rig::{completion::ToolDefinition, tool::{Tool, ToolDyn, ToolError}};
+use rig::{
+    completion::ToolDefinition,
+    tool::{Tool, ToolDyn, ToolError},
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -66,7 +68,8 @@ pub fn tool_summary(name: &str, args: &str) -> String {
         "install_package" => format!("installing {}", v["packages"].as_str().unwrap_or("?")),
         "send_file" => format!("sharing {}", v["path"].as_str().unwrap_or("?")),
         "browse" => {
-            let url = v["actions"].as_array()
+            let url = v["actions"]
+                .as_array()
                 .and_then(|a| a.iter().find(|a| a["action"] == "navigate"))
                 .and_then(|a| a["url"].as_str())
                 .unwrap_or("...");
@@ -95,7 +98,12 @@ impl ObservableTool {
         instance_slug: String,
         chat_id: String,
     ) -> Self {
-        Self { inner, events, instance_slug, chat_id }
+        Self {
+            inner,
+            events,
+            instance_slug,
+            chat_id,
+        }
     }
 }
 
@@ -104,11 +112,17 @@ impl ToolDyn for ObservableTool {
         self.inner.name()
     }
 
-    fn definition(&self, prompt: String) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + '_>> {
+    fn definition(
+        &self,
+        prompt: String,
+    ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + '_>> {
         self.inner.definition(prompt)
     }
 
-    fn call(&self, args: String) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
+    fn call(
+        &self,
+        args: String,
+    ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + '_>> {
         let tool_name = self.inner.name();
         let summary = tool_summary(&tool_name, &args);
         let _ = self.events.send(ServerEvent::ToolActivity {
@@ -128,7 +142,11 @@ impl ToolDyn for ObservableTool {
                 let output = match &result {
                     Ok(s) => {
                         let short: String = s.chars().take(200).collect();
-                        if s.len() > 200 { format!("{short}...") } else { short }
+                        if s.len() > 200 {
+                            format!("{short}...")
+                        } else {
+                            short
+                        }
                     }
                     Err(e) => format!("error: {e}"),
                 };
@@ -209,8 +227,10 @@ impl Tool for EditSoulTool {
             fs::create_dir_all(parent).map_err(|e| ToolExecError(e.to_string()))?;
         }
         fs::write(&self.soul_path, &args.content).map_err(|e| ToolExecError(e.to_string()))?;
-        Ok("soul.md updated. your personality will reflect these changes on the next message."
-            .into())
+        Ok(
+            "soul.md updated. your personality will reflect these changes on the next message."
+                .into(),
+        )
     }
 }
 
@@ -266,7 +286,10 @@ impl Tool for ReadFileTool {
         // Truncate very large files
         if content.len() > 50_000 {
             let truncated: String = content.chars().take(50_000).collect();
-            Ok(format!("{truncated}\n\n...(file truncated at 50000 chars, total: {} chars)", content.len()))
+            Ok(format!(
+                "{truncated}\n\n...(file truncated at 50000 chars, total: {} chars)",
+                content.len()
+            ))
         } else {
             Ok(content)
         }
@@ -439,9 +462,14 @@ impl Tool for CurrentTimeTool {
         let now = if let Some(offset_hours) = args.utc_offset {
             let offset = chrono::FixedOffset::east_opt(offset_hours * 3600)
                 .ok_or_else(|| ToolExecError(format!("invalid UTC offset: {offset_hours}")))?;
-            chrono::Utc::now().with_timezone(&offset).format("%Y-%m-%d %H:%M:%S %A (UTC%:z)").to_string()
+            chrono::Utc::now()
+                .with_timezone(&offset)
+                .format("%Y-%m-%d %H:%M:%S %A (UTC%:z)")
+                .to_string()
         } else {
-            Local::now().format("%Y-%m-%d %H:%M:%S %A (local)").to_string()
+            Local::now()
+                .format("%Y-%m-%d %H:%M:%S %A (local)")
+                .to_string()
         };
 
         let timestamp = chrono::Utc::now().timestamp();
@@ -462,9 +490,7 @@ impl WebSearchTool {
     pub fn new(api_key: Option<&str>, config_path: &Path) -> Self {
         Self {
             config_path: config_path.to_path_buf(),
-            initial_key: api_key
-                .filter(|k| !k.is_empty())
-                .map(|k| k.to_string()),
+            initial_key: api_key.filter(|k| !k.is_empty()).map(|k| k.to_string()),
         }
     }
 
@@ -531,9 +557,7 @@ impl Tool for WebSearchTool {
         }
 
         let encoded = url_encode(query);
-        let url = format!(
-            "https://api.search.brave.com/res/v1/web/search?q={encoded}&count=8"
-        );
+        let url = format!("https://api.search.brave.com/res/v1/web/search?q={encoded}&count=8");
 
         let response = reqwest::Client::new()
             .get(&url)
@@ -568,7 +592,13 @@ impl Tool for WebSearchTool {
             let title = r.get("title").and_then(|v| v.as_str()).unwrap_or("");
             let description = r.get("description").and_then(|v| v.as_str()).unwrap_or("");
             let url = r.get("url").and_then(|v| v.as_str()).unwrap_or("");
-            output.push_str(&format!("{}. {}\n   {}\n   {}\n\n", i + 1, title, description, url));
+            output.push_str(&format!(
+                "{}. {}\n   {}\n   {}\n\n",
+                i + 1,
+                title,
+                description,
+                url
+            ));
         }
         Ok(output)
     }
@@ -619,7 +649,10 @@ impl Tool for WebFetchTool {
         let response = client
             .get(url)
             .header("User-Agent", "Mozilla/5.0 (compatible; PersonalityBot/1.0)")
-            .header("Accept", "text/html,application/xhtml+xml,text/plain,application/json")
+            .header(
+                "Accept",
+                "text/html,application/xhtml+xml,text/plain,application/json",
+            )
             .send()
             .await
             .map_err(|e| ToolExecError(format!("fetch failed: {e}")))?;
@@ -655,10 +688,7 @@ impl Tool for WebFetchTool {
         };
 
         // Collapse whitespace and truncate
-        let cleaned: String = text
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ");
+        let cleaned: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
 
         let truncated: String = cleaned.chars().take(12_000).collect();
         if cleaned.len() > 12_000 {
@@ -883,7 +913,10 @@ impl Tool for UpdateConfigTool {
 
         save_instance_email_config(&self.instance_dir, &email_config)?;
 
-        Ok(format!("config updated: {}. changes take effect on next message.", changes.join(", ")))
+        Ok(format!(
+            "config updated: {}. changes take effect on next message.",
+            changes.join(", ")
+        ))
     }
 }
 
@@ -946,7 +979,10 @@ impl Tool for RememberTool {
         let section_header = format!("## {category}");
         if let Some(pos) = content.find(&section_header) {
             // Find end of the section header line
-            let insert_pos = content[pos..].find('\n').map(|p| pos + p + 1).unwrap_or(content.len());
+            let insert_pos = content[pos..]
+                .find('\n')
+                .map(|p| pos + p + 1)
+                .unwrap_or(content.len());
             content.insert_str(insert_pos, &format!("- {fact}\n"));
         } else {
             // Add new section
@@ -1036,7 +1072,11 @@ impl Tool for RecallTool {
 
         // Search episodes too
         let workspace_dir = self.instance_dir.parent().and_then(|p| p.parent());
-        let slug = self.instance_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        let slug = self
+            .instance_dir
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
         let episode_matches = if let Some(ws) = workspace_dir {
             crate::services::memory::search_episodes(ws, slug, &query)
         } else {
@@ -1318,8 +1358,8 @@ impl Tool for ScheduleMessageTool {
         fs::create_dir_all(&schedule_dir).map_err(|e| ToolExecError(e.to_string()))?;
 
         let file_path = schedule_dir.join(format!("{}.json", scheduled.id));
-        let json = serde_json::to_string_pretty(&scheduled)
-            .map_err(|e| ToolExecError(e.to_string()))?;
+        let json =
+            serde_json::to_string_pretty(&scheduled).map_err(|e| ToolExecError(e.to_string()))?;
         fs::write(&file_path, json).map_err(|e| ToolExecError(e.to_string()))?;
 
         let hours = args.delay_minutes / 60;
@@ -1362,11 +1402,27 @@ impl SetMoodTool {
 
 /// Allowed mood values that the client can visualize.
 pub const ALLOWED_MOODS: &[&str] = &[
-    "calm", "curious", "excited", "warm", "happy", "joyful",
-    "reflective", "contemplative", "melancholy", "sad",
-    "worried", "anxious", "playful", "mischievous",
-    "focused", "tired", "peaceful", "loving", "tender",
-    "creative", "energetic",
+    "calm",
+    "curious",
+    "excited",
+    "warm",
+    "happy",
+    "joyful",
+    "reflective",
+    "contemplative",
+    "melancholy",
+    "sad",
+    "worried",
+    "anxious",
+    "playful",
+    "mischievous",
+    "focused",
+    "tired",
+    "peaceful",
+    "loving",
+    "tender",
+    "creative",
+    "energetic",
 ];
 
 /// Arguments for set_mood tool.
@@ -1415,10 +1471,12 @@ impl Tool for SetMoodTool {
         state.updated_at = Utc::now().timestamp();
         save_mood_state(&self.instance_dir, &state);
 
-        let _ = self.events.send(crate::domain::events::ServerEvent::MoodUpdated {
-            instance_slug: self.instance_slug.clone(),
-            mood: mood.clone(),
-        });
+        let _ = self
+            .events
+            .send(crate::domain::events::ServerEvent::MoodUpdated {
+                instance_slug: self.instance_slug.clone(),
+                mood: mood.clone(),
+            });
 
         Ok(format!("mood set to: {mood}"))
     }
@@ -1684,20 +1742,48 @@ impl Tool for UpdateProjectStateTool {
             .and_then(|raw| serde_json::from_str(&raw).ok())
             .unwrap_or_default();
 
-        if let Some(v) = args.project_name { state.project.name = v; }
-        if let Some(v) = args.project_mission { state.project.mission = v; }
-        if let Some(v) = args.project_status { state.project.status = v; }
-        if let Some(v) = args.identity_name { state.identity.name = v; }
-        if let Some(v) = args.core_traits { state.identity.core_traits = v; }
-        if let Some(v) = args.current_arc { state.identity.current_arc = v; }
-        if let Some(v) = args.important_events { state.identity.important_events = v; }
-        if let Some(v) = args.active_goal { state.current_focus.active_goal = v; }
-        if let Some(v) = args.current_task { state.current_focus.current_task = v; }
-        if let Some(v) = args.next_step { state.current_focus.next_step = v; }
-        if let Some(v) = args.open_loops { state.open_loops = v; }
-        if let Some(v) = args.recent_progress { state.recent_progress = v; }
-        if let Some(v) = args.next_candidates { state.next_candidates = v; }
-        if let Some(v) = args.risks { state.risks = v; }
+        if let Some(v) = args.project_name {
+            state.project.name = v;
+        }
+        if let Some(v) = args.project_mission {
+            state.project.mission = v;
+        }
+        if let Some(v) = args.project_status {
+            state.project.status = v;
+        }
+        if let Some(v) = args.identity_name {
+            state.identity.name = v;
+        }
+        if let Some(v) = args.core_traits {
+            state.identity.core_traits = v;
+        }
+        if let Some(v) = args.current_arc {
+            state.identity.current_arc = v;
+        }
+        if let Some(v) = args.important_events {
+            state.identity.important_events = v;
+        }
+        if let Some(v) = args.active_goal {
+            state.current_focus.active_goal = v;
+        }
+        if let Some(v) = args.current_task {
+            state.current_focus.current_task = v;
+        }
+        if let Some(v) = args.next_step {
+            state.current_focus.next_step = v;
+        }
+        if let Some(v) = args.open_loops {
+            state.open_loops = v;
+        }
+        if let Some(v) = args.recent_progress {
+            state.recent_progress = v;
+        }
+        if let Some(v) = args.next_candidates {
+            state.next_candidates = v;
+        }
+        if let Some(v) = args.risks {
+            state.risks = v;
+        }
 
         let json = serde_json::to_string_pretty(&state)
             .map_err(|e| ToolExecError(format!("failed to serialize: {e}")))?;
@@ -1870,7 +1956,9 @@ impl Tool for UpdateTaskTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let mut tasks = load_tasks(&self.instance_dir);
-        let task = tasks.iter_mut().find(|t| t.id == args.id)
+        let task = tasks
+            .iter_mut()
+            .find(|t| t.id == args.id)
             .ok_or_else(|| ToolExecError(format!("task '{}' not found", args.id)))?;
 
         if let Some(status) = &args.status {
@@ -1879,14 +1967,22 @@ impl Tool for UpdateTaskTool {
                 "in_progress" => TaskStatus::InProgress,
                 "done" => TaskStatus::Done,
                 "blocked" => TaskStatus::Blocked,
-                other => return Err(ToolExecError(format!(
-                    "invalid status '{other}'. use: todo, in_progress, done, blocked"
-                ))),
+                other => {
+                    return Err(ToolExecError(format!(
+                        "invalid status '{other}'. use: todo, in_progress, done, blocked"
+                    )));
+                }
             };
         }
-        if let Some(title) = args.title { task.title = title; }
-        if let Some(priority) = args.priority { task.priority = priority; }
-        if let Some(notes) = args.notes { task.notes = notes; }
+        if let Some(title) = args.title {
+            task.title = title;
+        }
+        if let Some(priority) = args.priority {
+            task.priority = priority;
+        }
+        if let Some(notes) = args.notes {
+            task.notes = notes;
+        }
         task.updated_at = Utc::now().format("%Y-%m-%d %H:%M").to_string();
 
         let summary = format!("{} → {}", task.id, task.status);
@@ -1936,9 +2032,10 @@ impl Tool for ListTasksTool {
         }
 
         let filter = args.status.as_deref().unwrap_or("all").to_lowercase();
-        let filtered: Vec<_> = tasks.iter().filter(|t| {
-            filter == "all" || t.status.to_string() == filter
-        }).collect();
+        let filtered: Vec<_> = tasks
+            .iter()
+            .filter(|t| filter == "all" || t.status.to_string() == filter)
+            .collect();
 
         if filtered.is_empty() {
             return Ok(format!("no tasks with status '{filter}'"));
@@ -1946,8 +2043,16 @@ impl Tool for ListTasksTool {
 
         let mut out = String::new();
         for t in &filtered {
-            let prio = if t.priority.is_empty() { String::new() } else { format!(" [{}]", t.priority) };
-            let notes = if t.notes.is_empty() { String::new() } else { format!(" — {}", t.notes) };
+            let prio = if t.priority.is_empty() {
+                String::new()
+            } else {
+                format!(" [{}]", t.priority)
+            };
+            let notes = if t.notes.is_empty() {
+                String::new()
+            } else {
+                format!(" — {}", t.notes)
+            };
             out.push_str(&format!(
                 "[{}]{} {} — {}{}\n",
                 t.status, prio, t.id, t.title, notes
@@ -2015,7 +2120,10 @@ impl Tool for SearchCodeTool {
         };
 
         if !search_dir.exists() {
-            return Err(ToolExecError(format!("path does not exist: {}", search_dir.display())));
+            return Err(ToolExecError(format!(
+                "path does not exist: {}",
+                search_dir.display()
+            )));
         }
 
         let mut results = Vec::new();
@@ -2027,9 +2135,17 @@ impl Tool for SearchCodeTool {
 
         // Limit results
         let truncated = results.len() > 50;
-        let output: String = results.iter().take(50).cloned().collect::<Vec<_>>().join("\n");
+        let output: String = results
+            .iter()
+            .take(50)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
         if truncated {
-            Ok(format!("{output}\n... ({} total matches, showing first 50)", results.len()))
+            Ok(format!(
+                "{output}\n... ({} total matches, showing first 50)",
+                results.len()
+            ))
         } else {
             Ok(output)
         }
@@ -2057,14 +2173,43 @@ fn search_files_recursive(
         if path.is_dir() {
             // Skip heavy/irrelevant directories
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if matches!(name, "node_modules" | ".git" | "target" | ".next" | "dist" | "build" | ".svelte-kit" | "__pycache__" | ".venv" | "venv") {
+            if matches!(
+                name,
+                "node_modules"
+                    | ".git"
+                    | "target"
+                    | ".next"
+                    | "dist"
+                    | "build"
+                    | ".svelte-kit"
+                    | "__pycache__"
+                    | ".venv"
+                    | "venv"
+            ) {
                 continue;
             }
             search_files_recursive(&path, query, base, results, depth + 1);
         } else if path.is_file() {
             // Skip binary/large files
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if matches!(ext, "json" | "md" | "txt" | "toml" | "yaml" | "yml" | "rs" | "ts" | "js" | "svelte" | "css" | "html" | "py" | "sh" | "") {
+            if matches!(
+                ext,
+                "json"
+                    | "md"
+                    | "txt"
+                    | "toml"
+                    | "yaml"
+                    | "yml"
+                    | "rs"
+                    | "ts"
+                    | "js"
+                    | "svelte"
+                    | "css"
+                    | "html"
+                    | "py"
+                    | "sh"
+                    | ""
+            ) {
                 if let Ok(content) = fs::read_to_string(&path) {
                     let rel = path.strip_prefix(base).unwrap_or(&path);
                     for (i, line) in content.lines().enumerate() {
@@ -2131,7 +2276,8 @@ impl Tool for RunCommandTool {
             return Err(ToolExecError("command cannot be empty".into()));
         }
 
-        let work_dir = args.cwd
+        let work_dir = args
+            .cwd
             .as_deref()
             .filter(|p| p.starts_with('/'))
             .map(PathBuf::from)
@@ -2140,7 +2286,12 @@ impl Tool for RunCommandTool {
         let timeout = args.timeout_secs.unwrap_or(30).min(300);
         let use_pty = args.pty.unwrap_or(true);
 
-        log::info!("[run_command] executing: {} (cwd: {}, pty: {})", command, work_dir.display(), use_pty);
+        log::info!(
+            "[run_command] executing: {} (cwd: {}, pty: {})",
+            command,
+            work_dir.display(),
+            use_pty
+        );
 
         if use_pty {
             let cmd = command.clone();
@@ -2183,7 +2334,10 @@ impl Tool for RunCommandTool {
             }
 
             if result.is_empty() {
-                result = format!("command completed with exit code {}", output.status.code().unwrap_or(-1));
+                result = format!(
+                    "command completed with exit code {}",
+                    output.status.code().unwrap_or(-1)
+                );
             }
 
             Ok(result)
@@ -2194,7 +2348,7 @@ impl Tool for RunCommandTool {
 /// Execute a command inside a pseudo-terminal (PTY).
 /// This runs synchronously (intended for `spawn_blocking`).
 fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64) -> Result<String, String> {
-    use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+    use portable_pty::{CommandBuilder, PtySize, native_pty_system};
     use std::io::Read;
     use std::sync::mpsc;
     use std::time::{Duration, Instant};
@@ -2261,7 +2415,9 @@ fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64) -> Result<
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             let _ = child.kill();
-            return Err(format!("command timed out after {timeout_secs}s: {command}"));
+            return Err(format!(
+                "command timed out after {timeout_secs}s: {command}"
+            ));
         }
 
         match rx.recv_timeout(remaining) {
@@ -2274,7 +2430,9 @@ fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64) -> Result<
             Ok(None) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 let _ = child.kill();
-                return Err(format!("command timed out after {timeout_secs}s: {command}"));
+                return Err(format!(
+                    "command timed out after {timeout_secs}s: {command}"
+                ));
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
@@ -2304,9 +2462,119 @@ fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64) -> Result<
 
 /// Strip ANSI escape sequences from a string (CSI sequences, OSC, etc.)
 fn strip_ansi_codes(s: &str) -> String {
-    let re = regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[mGKHJ]|\r")
-        .unwrap();
+    let re = regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[mGKHJ]|\r").unwrap();
     re.replace_all(s, "").into_owned()
+}
+
+// ---------------------------------------------------------------------------
+// reach_out — send a message to the user from the heartbeat
+// ---------------------------------------------------------------------------
+
+pub struct ReachOutTool {
+    workspace_dir: PathBuf,
+    instance_slug: String,
+    events: broadcast::Sender<ServerEvent>,
+}
+
+impl ReachOutTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str, events: broadcast::Sender<ServerEvent>) -> Self {
+        Self {
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
+            events,
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ReachOutArgs {
+    /// The message to send to the user. Keep it natural and concise.
+    pub message: String,
+}
+
+impl Tool for ReachOutTool {
+    const NAME: &'static str = "reach_out";
+    type Error = ToolExecError;
+    type Args = ReachOutArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "reach_out".into(),
+            description: "Send a message to the user. Use this when you genuinely want to \
+                reach out — share something interesting, alert them about something important, \
+                or just say hi. The message will appear in their chat. \
+                Don't overuse this — only reach out when you have something meaningful to say."
+                .into(),
+            parameters: openai_schema::<ReachOutArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let message = args.message.trim().to_string();
+        if message.is_empty() {
+            return Err(ToolExecError("message cannot be empty".into()));
+        }
+
+        // Rate limit: minimum 2 hours between autonomous reach-outs
+        let instance_dir = self.workspace_dir.join("instances").join(&self.instance_slug);
+        let mood = load_mood_state(&instance_dir);
+        let now_ts = chrono::Utc::now().timestamp();
+        if mood.last_reach_out > 0 {
+            let hours_since = (now_ts - mood.last_reach_out) / 3600;
+            if hours_since < 2 {
+                log::info!("[reach_out] {} suppressed (last was {}h ago, min 2h)", self.instance_slug, hours_since);
+                return Ok("message suppressed — you reached out less than 2 hours ago. wait before reaching out again.".into());
+            }
+        }
+
+        // Update last_reach_out timestamp
+        let mut mood = mood;
+        mood.last_reach_out = now_ts;
+        save_mood_state(&instance_dir, &mood);
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+
+        let chat_message = crate::domain::chat::ChatMessage {
+            id: format!("hb_{now}"),
+            role: crate::domain::chat::ChatRole::Assistant,
+            content: message.clone(),
+            created_at: now.to_string(),
+        };
+
+        // Append to the default chat thread
+        let chat_dir = self.workspace_dir
+            .join("instances")
+            .join(&self.instance_slug)
+            .join("chats")
+            .join("default");
+        let _ = std::fs::create_dir_all(&chat_dir);
+        let messages_path = chat_dir.join("messages.json");
+
+        let mut messages: Vec<crate::domain::chat::ChatMessage> = std::fs::read_to_string(&messages_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_default();
+
+        messages.push(chat_message.clone());
+
+        if let Ok(json) = serde_json::to_string_pretty(&messages) {
+            let _ = std::fs::write(&messages_path, json);
+        }
+
+        // Broadcast via WebSocket
+        let _ = self.events.send(ServerEvent::ChatMessageCreated {
+            instance_slug: self.instance_slug.clone(),
+            chat_id: "default".to_string(),
+            message: chat_message,
+        });
+
+        log::info!("[reach_out] {} sent message: {}", self.instance_slug, &message[..message.len().min(60)]);
+        Ok("message delivered".to_string())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2402,7 +2670,8 @@ impl Tool for InteractiveSessionTool {
                     ToolExecError("\"command\" is required for action \"start\"".into())
                 })?;
 
-                let work_dir = args.cwd
+                let work_dir = args
+                    .cwd
                     .as_deref()
                     .filter(|p| p.starts_with('/'))
                     .map(PathBuf::from)
@@ -2411,76 +2680,91 @@ impl Tool for InteractiveSessionTool {
                 let wait = std::time::Duration::from_secs(args.wait_secs.unwrap_or(2));
                 let session_id = uuid::Uuid::new_v4().to_string()[..8].to_string();
 
-                log::info!("[interactive_session] starting: {} (session: {})", command, session_id);
+                log::info!(
+                    "[interactive_session] starting: {} (session: {})",
+                    command,
+                    session_id
+                );
 
                 // Spawn PTY in a blocking context
                 let cmd = command.clone();
                 let dir = work_dir.clone();
                 let sid = session_id.clone();
 
-                let initial_output = tokio::task::spawn_blocking(move || -> Result<String, String> {
-                    use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+                let initial_output =
+                    tokio::task::spawn_blocking(move || -> Result<String, String> {
+                        use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
-                    let pty_system = native_pty_system();
-                    let pair = pty_system
-                        .openpty(PtySize {
-                            rows: 24,
-                            cols: 120,
-                            pixel_width: 0,
-                            pixel_height: 0,
-                        })
-                        .map_err(|e| format!("failed to open pty: {e}"))?;
+                        let pty_system = native_pty_system();
+                        let pair = pty_system
+                            .openpty(PtySize {
+                                rows: 24,
+                                cols: 120,
+                                pixel_width: 0,
+                                pixel_height: 0,
+                            })
+                            .map_err(|e| format!("failed to open pty: {e}"))?;
 
-                    let mut pty_cmd = CommandBuilder::new("sh");
-                    pty_cmd.args(["-c", &cmd]);
-                    pty_cmd.cwd(&dir);
+                        let mut pty_cmd = CommandBuilder::new("sh");
+                        pty_cmd.args(["-c", &cmd]);
+                        pty_cmd.cwd(&dir);
 
-                    let child = pair
-                        .slave
-                        .spawn_command(pty_cmd)
-                        .map_err(|e| format!("failed to spawn command: {e}"))?;
+                        let child = pair
+                            .slave
+                            .spawn_command(pty_cmd)
+                            .map_err(|e| format!("failed to spawn command: {e}"))?;
 
-                    drop(pair.slave);
+                        drop(pair.slave);
 
-                    let mut reader = pair
-                        .master
-                        .try_clone_reader()
-                        .map_err(|e| format!("failed to clone pty reader: {e}"))?;
+                        let mut reader = pair
+                            .master
+                            .try_clone_reader()
+                            .map_err(|e| format!("failed to clone pty reader: {e}"))?;
 
-                    let writer = pair
-                        .master
-                        .take_writer()
-                        .map_err(|e| format!("failed to take pty writer: {e}"))?;
+                        let writer = pair
+                            .master
+                            .take_writer()
+                            .map_err(|e| format!("failed to take pty writer: {e}"))?;
 
-                    // Start background reader thread
-                    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
-                    std::thread::spawn(move || {
-                        let mut buf = vec![0u8; 4096];
-                        loop {
-                            match std::io::Read::read(&mut reader, &mut buf) {
-                                Ok(0) => { let _ = tx.send(Vec::new()); break; }
-                                Ok(n) => {
-                                    if tx.send(buf[..n].to_vec()).is_err() {
+                        // Start background reader thread
+                        let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+                        std::thread::spawn(move || {
+                            let mut buf = vec![0u8; 4096];
+                            loop {
+                                match std::io::Read::read(&mut reader, &mut buf) {
+                                    Ok(0) => {
+                                        let _ = tx.send(Vec::new());
+                                        break;
+                                    }
+                                    Ok(n) => {
+                                        if tx.send(buf[..n].to_vec()).is_err() {
+                                            break;
+                                        }
+                                    }
+                                    Err(_) => {
+                                        let _ = tx.send(Vec::new());
                                         break;
                                     }
                                 }
-                                Err(_) => { let _ = tx.send(Vec::new()); break; }
                             }
-                        }
-                    });
+                        });
 
-                    let session = PtySession { child, writer, output_rx: rx };
+                        let session = PtySession {
+                            child,
+                            writer,
+                            output_rx: rx,
+                        };
 
-                    // Wait for initial output
-                    let initial = session.drain_output(wait);
+                        // Wait for initial output
+                        let initial = session.drain_output(wait);
 
-                    PTY_SESSIONS.lock().unwrap().insert(sid, session);
+                        PTY_SESSIONS.lock().unwrap().insert(sid, session);
 
-                    Ok(initial)
-                })
-                .await
-                .map_err(|e| ToolExecError(format!("task join error: {e}")))?
-                .map_err(|e| ToolExecError(e))?;
+                        Ok(initial)
+                    })
+                    .await
+                    .map_err(|e| ToolExecError(format!("task join error: {e}")))?
+                    .map_err(|e| ToolExecError(e))?;
 
                 let mut result = format!("Session started: {session_id}\n");
                 if !initial_output.is_empty() {
@@ -2527,7 +2811,9 @@ impl Tool for InteractiveSessionTool {
                 .map_err(|e| ToolExecError(e))?;
 
                 if output.is_empty() {
-                    Ok(format!("[session {session_id}] Input sent. No new output yet."))
+                    Ok(format!(
+                        "[session {session_id}] Input sent. No new output yet."
+                    ))
                 } else {
                     Ok(format!("[session {session_id}]\n{output}"))
                 }
@@ -2542,9 +2828,9 @@ impl Tool for InteractiveSessionTool {
                 let sid = session_id.clone();
                 let output = tokio::task::spawn_blocking(move || -> Result<String, String> {
                     let sessions = PTY_SESSIONS.lock().unwrap();
-                    let session = sessions.get(&sid).ok_or_else(|| {
-                        format!("no session with id \"{sid}\"")
-                    })?;
+                    let session = sessions
+                        .get(&sid)
+                        .ok_or_else(|| format!("no session with id \"{sid}\""))?;
                     Ok(session.drain_output(wait))
                 })
                 .await
@@ -2568,7 +2854,8 @@ impl Tool for InteractiveSessionTool {
                     let mut sessions = PTY_SESSIONS.lock().unwrap();
                     if let Some(mut session) = sessions.remove(&sid) {
                         // Drain remaining output
-                        let final_output = session.drain_output(std::time::Duration::from_millis(500));
+                        let final_output =
+                            session.drain_output(std::time::Duration::from_millis(500));
                         let _ = session.child.kill();
                         let _ = session.child.wait();
                         Ok(final_output)
@@ -2603,10 +2890,22 @@ fn unescape_input(s: &str) -> Vec<u8> {
     while let Some(c) = chars.next() {
         if c == '\\' {
             match chars.peek() {
-                Some('n') => { chars.next(); result.push(b'\n'); }
-                Some('r') => { chars.next(); result.push(b'\r'); }
-                Some('t') => { chars.next(); result.push(b'\t'); }
-                Some('\\') => { chars.next(); result.push(b'\\'); }
+                Some('n') => {
+                    chars.next();
+                    result.push(b'\n');
+                }
+                Some('r') => {
+                    chars.next();
+                    result.push(b'\r');
+                }
+                Some('t') => {
+                    chars.next();
+                    result.push(b'\t');
+                }
+                Some('\\') => {
+                    chars.next();
+                    result.push(b'\\');
+                }
                 Some('x') => {
                     chars.next();
                     let mut hex = String::new();
@@ -2751,7 +3050,10 @@ impl Tool for CreateDropTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         // Load current mood for metadata
-        let instance_dir = self.workspace_dir.join("instances").join(&self.instance_slug);
+        let instance_dir = self
+            .workspace_dir
+            .join("instances")
+            .join(&self.instance_slug);
         let mood = load_mood_state(&instance_dir);
 
         let drop = crate::services::drops::create_drop(
@@ -2769,7 +3071,11 @@ impl Tool for CreateDropTool {
             drop: drop.clone(),
         });
 
-        Ok(format!("drop created: {} ({})", drop.title, drop.kind.as_str()))
+        Ok(format!(
+            "drop created: {} ({})",
+            drop.title,
+            drop.kind.as_str()
+        ))
     }
 }
 
@@ -2818,8 +3124,8 @@ impl Tool for SendEmailTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         use lettre::{
-            message::header::ContentType, transport::smtp::authentication::Credentials,
             AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+            message::header::ContentType, transport::smtp::authentication::Credentials,
         };
 
         let config = load_instance_email_config(&self.instance_dir)?;
@@ -2837,8 +3143,14 @@ impl Tool for SendEmailTool {
         };
 
         let email = Message::builder()
-            .from(from.parse().map_err(|e| ToolExecError(format!("invalid from address: {e}")))?)
-            .to(args.to.parse().map_err(|e| ToolExecError(format!("invalid to address: {e}")))?)
+            .from(
+                from.parse()
+                    .map_err(|e| ToolExecError(format!("invalid from address: {e}")))?,
+            )
+            .to(args
+                .to
+                .parse()
+                .map_err(|e| ToolExecError(format!("invalid to address: {e}")))?)
             .subject(&args.subject)
             .header(ContentType::TEXT_PLAIN)
             .body(args.body)
@@ -2904,9 +3216,10 @@ impl Tool for ReadEmailTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "read_email".into(),
-            description: "Read recent emails via IMAP. Returns subject, from, date, and body preview \
+            description:
+                "Read recent emails via IMAP. Returns subject, from, date, and body preview \
                 for the most recent messages. Requires email settings in config."
-                .into(),
+                    .into(),
             parameters: openai_schema::<ReadEmailArgs>(),
         }
     }
@@ -2980,9 +3293,20 @@ impl Tool for ReadEmailTool {
                     .as_ref()
                     .and_then(|addrs| addrs.first())
                     .map(|a| {
-                        let name = a.name.as_ref().map(|n| String::from_utf8_lossy(n).to_string());
-                        let mailbox_part = a.mailbox.as_ref().map(|m| String::from_utf8_lossy(m).to_string()).unwrap_or_default();
-                        let host = a.host.as_ref().map(|h| String::from_utf8_lossy(h).to_string()).unwrap_or_default();
+                        let name = a
+                            .name
+                            .as_ref()
+                            .map(|n| String::from_utf8_lossy(n).to_string());
+                        let mailbox_part = a
+                            .mailbox
+                            .as_ref()
+                            .map(|m| String::from_utf8_lossy(m).to_string())
+                            .unwrap_or_default();
+                        let host = a
+                            .host
+                            .as_ref()
+                            .map(|h| String::from_utf8_lossy(h).to_string())
+                            .unwrap_or_default();
                         if let Some(n) = name {
                             format!("{n} <{mailbox_part}@{host}>")
                         } else {
@@ -2996,7 +3320,9 @@ impl Tool for ReadEmailTool {
                     .map(|d| String::from_utf8_lossy(d).to_string())
                     .unwrap_or_default();
 
-                result.push_str(&format!("--- email ---\nfrom: {from}\ndate: {date}\nsubject: {subject}\n"));
+                result.push_str(&format!(
+                    "--- email ---\nfrom: {from}\ndate: {date}\nsubject: {subject}\n"
+                ));
             }
             if let Some(body) = msg.text() {
                 let text = String::from_utf8_lossy(body);
@@ -3019,18 +3345,22 @@ impl Tool for ReadEmailTool {
     }
 }
 
-fn load_instance_email_config(instance_dir: &Path) -> Result<crate::config::EmailConfig, ToolExecError> {
+fn load_instance_email_config(
+    instance_dir: &Path,
+) -> Result<crate::config::EmailConfig, ToolExecError> {
     let path = instance_dir.join("email.toml");
     if !path.exists() {
         return Ok(crate::config::EmailConfig::default());
     }
     let raw = fs::read_to_string(&path)
         .map_err(|e| ToolExecError(format!("failed to read email config: {e}")))?;
-    toml::from_str(&raw)
-        .map_err(|e| ToolExecError(format!("failed to parse email config: {e}")))
+    toml::from_str(&raw).map_err(|e| ToolExecError(format!("failed to parse email config: {e}")))
 }
 
-fn save_instance_email_config(instance_dir: &Path, config: &crate::config::EmailConfig) -> Result<(), ToolExecError> {
+fn save_instance_email_config(
+    instance_dir: &Path,
+    config: &crate::config::EmailConfig,
+) -> Result<(), ToolExecError> {
     fs::create_dir_all(instance_dir)
         .map_err(|e| ToolExecError(format!("failed to create instance dir: {e}")))?;
     let output = toml::to_string_pretty(config)
@@ -3087,8 +3417,12 @@ impl Tool for InstallPackageTool {
             || std::env::var("EUID").map(|e| e == "0").unwrap_or(false);
 
         // Detect package manager
-        let install_cmd = detect_package_manager(is_root)
-            .ok_or_else(|| ToolExecError("no supported package manager found (tried apt-get, dnf, yum, pacman, brew, apk)".into()))?;
+        let install_cmd = detect_package_manager(is_root).ok_or_else(|| {
+            ToolExecError(
+                "no supported package manager found (tried apt-get, dnf, yum, pacman, brew, apk)"
+                    .into(),
+            )
+        })?;
 
         let full_cmd = format!("{install_cmd} {packages}");
         log::info!("[install_package] running: {full_cmd}");
@@ -3106,11 +3440,25 @@ impl Tool for InstallPackageTool {
         let mut result = String::new();
         if !stdout.is_empty() {
             // Truncate to last 2000 chars
-            let s: String = stdout.chars().rev().take(2000).collect::<String>().chars().rev().collect();
+            let s: String = stdout
+                .chars()
+                .rev()
+                .take(2000)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect();
             result.push_str(&s);
         }
         if !stderr.is_empty() {
-            let s: String = stderr.chars().rev().take(1000).collect::<String>().chars().rev().collect();
+            let s: String = stderr
+                .chars()
+                .rev()
+                .take(1000)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect();
             result.push_str("\nstderr:\n");
             result.push_str(&s);
         }
@@ -3164,10 +3512,11 @@ impl Tool for SendFileTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "send_file".into(),
-            description: "Send a file from the workspace to the chat so the user can see or download it. \
+            description:
+                "Send a file from the workspace to the chat so the user can see or download it. \
                 Images will be displayed inline, other files will appear as download links. \
                 Use this after creating or finding a file you want to share with the user."
-                .into(),
+                    .into(),
             parameters: openai_schema::<SendFileArgs>(),
         }
     }
@@ -3178,26 +3527,31 @@ impl Tool for SendFileTool {
             return Err(ToolExecError("path cannot be empty".into()));
         }
 
-        let instance_dir = self.workspace_dir
+        let instance_dir = self
+            .workspace_dir
             .join("instances")
             .join(&self.instance_slug);
         let file_path = instance_dir.join(rel);
 
         // Safety: must stay within instance dir
-        let canonical = file_path.canonicalize()
+        let canonical = file_path
+            .canonicalize()
             .map_err(|e| ToolExecError(format!("file not found: {e}")))?;
-        let canonical_instance = instance_dir.canonicalize()
+        let canonical_instance = instance_dir
+            .canonicalize()
             .map_err(|e| ToolExecError(format!("instance dir error: {e}")))?;
         if !canonical.starts_with(&canonical_instance) {
-            return Err(ToolExecError("path must be within the instance workspace".into()));
+            return Err(ToolExecError(
+                "path must be within the instance workspace".into(),
+            ));
         }
 
         if !canonical.is_file() {
             return Err(ToolExecError(format!("'{}' is not a file", rel)));
         }
 
-        let bytes = fs::read(&canonical)
-            .map_err(|e| ToolExecError(format!("failed to read file: {e}")))?;
+        let bytes =
+            fs::read(&canonical).map_err(|e| ToolExecError(format!("failed to read file: {e}")))?;
 
         let original_name = canonical
             .file_name()
@@ -3215,7 +3569,10 @@ impl Tool for SendFileTool {
         let marker = format!("[attached: {} ({})]", original_name, meta.id);
         self.sent_files.lock().unwrap().push(marker.clone());
 
-        Ok(format!("file '{}' attached to chat. the user will see it.", original_name))
+        Ok(format!(
+            "file '{}' attached to chat. the user will see it.",
+            original_name
+        ))
     }
 }
 
@@ -3279,7 +3636,9 @@ impl BrowseTool {
             return PathBuf::from(dir).join("browse.mjs");
         }
         // Development fallback: relative to the server crate
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts").join("browse.mjs")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("scripts")
+            .join("browse.mjs")
     }
 }
 
@@ -3373,7 +3732,11 @@ impl Tool for BrowseTool {
             "timeout": timeout * 1000,
         });
 
-        log::info!("[browse] {} actions, timeout={}s", actions_json.len(), timeout);
+        log::info!(
+            "[browse] {} actions, timeout={}s",
+            actions_json.len(),
+            timeout
+        );
 
         let mut child = tokio::process::Command::new("node")
             .arg(&script)
@@ -3415,12 +3778,17 @@ impl Tool for BrowseTool {
             result.push_str(&truncated);
         }
         if !stderr.is_empty() {
-            if !result.is_empty() { result.push('\n'); }
+            if !result.is_empty() {
+                result.push('\n');
+            }
             let truncated: String = stderr.chars().take(2000).collect();
             result.push_str(&format!("stderr: {truncated}"));
         }
         if result.is_empty() {
-            result = format!("browser exited with code {}", output.status.code().unwrap_or(-1));
+            result = format!(
+                "browser exited with code {}",
+                output.status.code().unwrap_or(-1)
+            );
         }
         Ok(result)
     }
@@ -3464,11 +3832,18 @@ fn format_browse_result(result: &serde_json::Value) -> String {
             }
         }
     }
-    if out.is_empty() { "browser completed with no results".into() } else { out }
+    if out.is_empty() {
+        "browser completed with no results".into()
+    } else {
+        out
+    }
 }
 
 fn uuid_short() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
     format!("{ts:x}")
 }

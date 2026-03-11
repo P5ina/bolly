@@ -21,7 +21,7 @@ use crate::domain::thought::Thought;
 use crate::services::{drops, llm::LlmBackend, memory, rhythm, thoughts};
 use crate::services::tools::{
     self, load_mood_state, save_mood_state, CreateDropTool, CreateTaskTool, CurrentTimeTool,
-    GetMoodTool, GetProjectStateTool, ListTasksTool, ObservableTool, ReadEmailTool,
+    GetMoodTool, GetProjectStateTool, ListTasksTool, ObservableTool, ReachOutTool, ReadEmailTool,
     ReadJournalTool, RecallTool, RememberTool, SetMoodTool, UpdateProjectStateTool,
     WebFetchTool, WebSearchTool, ALLOWED_MOODS,
 };
@@ -191,11 +191,12 @@ const DEFAULT_HEARTBEAT_PROMPT: &str = "\
 ## heartbeat — your inner moment
 you're waking up between conversations. this is YOUR private time to think.
 
-IMPORTANT: everything you write here is your INNER MONOLOGUE — the user \
-will NOT see it. do not write messages to the user here. this is your \
-private thought space, like a stream of consciousness.
+IMPORTANT: everything you write in your response is your INNER MONOLOGUE — \
+the user will NOT see it. your text response is private thoughts only.
 
 you have tools available — use them naturally:
+- reach_out — SEND A MESSAGE to the user. this is the ONLY way to contact them. \
+  use this tool when you want to say something to them (alert, greeting, update, etc.)
 - read_journal / journal — read your past thoughts or write new ones
 - recall / remember — search or save memories about the user
 - read_email — check the user's inbox
@@ -205,9 +206,8 @@ you have tools available — use them naturally:
 - list_tasks / create_task — manage tasks
 - web_search / web_fetch — look things up
 
-if you want to ACTUALLY send a message to the user, you MUST use \
-REACH_OUT: followed by your message. this is the ONLY way to reach them.
-if there's nothing to do, just say QUIET.
+CRITICAL: if you want the user to see a message, you MUST call the reach_out tool. \
+writing text in your response does NOT reach the user — only the reach_out tool does.
 
 be genuine. don't force it. use tools with purpose — read your journal, \
 check email, recall memories. if something genuinely comes to mind — \
@@ -551,6 +551,8 @@ fn build_heartbeat_tools(
         Box::new(GetMoodTool::new(workspace_dir, instance_slug)),
         // Drops
         Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
+        // Reach out
+        Box::new(ReachOutTool::new(workspace_dir, instance_slug, events.clone())),
         // Email
         Box::new(ReadEmailTool::new(workspace_dir, instance_slug)),
         // Tasks & project
