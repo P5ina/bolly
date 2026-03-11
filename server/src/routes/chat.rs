@@ -155,7 +155,8 @@ async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String,
         drop(emb_guard);
 
         // Wrap single turn in timeout + cancellation so we never hang forever.
-        const TURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+        // Must exceed stream item timeout (480s) to allow sub-agent tools to complete.
+        const TURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
 
         let turn_fut = chat::run_single_turn(
             &state.workspace_dir,

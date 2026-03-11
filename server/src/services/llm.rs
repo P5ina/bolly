@@ -413,9 +413,10 @@ where
     let mut accumulated = String::new();
     let mut hit_turn_limit = false;
 
-    // Per-item timeout: if the stream stalls for >3 minutes (e.g. tool hang),
-    // break out instead of waiting forever.
-    const STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(180);
+    // Per-item timeout: if the stream stalls for >8 minutes (e.g. tool hang),
+    // break out instead of waiting forever. Must be long enough for sub-agent
+    // tools like explore_code which run many internal turns.
+    const STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(480);
 
     tokio::pin!(stream);
 
