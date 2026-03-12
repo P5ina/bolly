@@ -28,6 +28,7 @@ pub struct Config {
 pub enum LlmProvider {
     Anthropic,
     OpenAI,
+    OpenRouter,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -48,6 +49,8 @@ pub struct LlmTokens {
     pub anthropic: String,
     #[serde(default, rename = "BRAVE_SEARCH", alias = "brave_search", alias = "brave")]
     pub brave_search: String,
+    #[serde(default, rename = "OPENROUTER", alias = "open_router", alias = "openrouter")]
+    pub open_router: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -132,6 +135,7 @@ impl Default for LlmTokens {
             open_ai: String::new(),
             anthropic: String::new(),
             brave_search: String::new(),
+            open_router: String::new(),
         }
     }
 }
@@ -219,6 +223,14 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
             config.llm.tokens.open_ai = key;
             if config.llm.provider.is_none() {
                 config.llm.provider = Some(LlmProvider::OpenAI);
+            }
+        }
+    }
+    if let Ok(key) = env::var("OPENROUTER_API_KEY") {
+        if !key.is_empty() {
+            config.llm.tokens.open_router = key;
+            if config.llm.provider.is_none() {
+                config.llm.provider = Some(LlmProvider::OpenRouter);
             }
         }
     }

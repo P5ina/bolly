@@ -8,7 +8,7 @@ use rig::completion::{Chat, Message, Prompt};
 use rig::agent::{AgentBuilder, MultiTurnStreamItem, StreamingError};
 use rig::completion::message::{AssistantContent, UserContent, ImageMediaType, DocumentMediaType, MimeType};
 use rig::one_or_many::OneOrMany;
-use rig::providers::{anthropic, openai};
+use rig::providers::{anthropic, openai, openrouter};
 use rig::streaming::{StreamingPrompt, StreamedAssistantContent};
 use rig::tool::{ToolDyn, ToolSet};
 use rig::vector_store::VectorStoreIndexDyn;
@@ -78,6 +78,10 @@ pub enum LlmBackend {
         client: openai::Client,
         model: String,
     },
+    OpenRouter {
+        client: openrouter::Client,
+        model: String,
+    },
 }
 
 impl LlmBackend {
@@ -114,11 +118,23 @@ impl LlmBackend {
                     .unwrap_or_else(|| "gpt-5.2".to_string());
                 Some(LlmBackend::OpenAI { client, model })
             }
+            LlmProvider::OpenRouter => {
+                let token = &config.llm.tokens.open_router;
+                if token.is_empty() {
+                    return None;
+                }
+                let client = openrouter::Client::new(token).ok()?;
+                let model = config
+                    .llm
+                    .model
+                    .clone()
+                    .unwrap_or_else(|| "google/gemini-2.5-flash".to_string());
+                Some(LlmBackend::OpenRouter { client, model })
+            }
         }
     }
 
     /// Create a fast/cheap variant for sub-agent tasks (exploration, summarization).
-    /// Uses Haiku for Anthropic, gpt-5.2 for OpenAI.
     pub fn fast_variant(&self) -> Self {
         match self {
             LlmBackend::Anthropic { client, .. } => LlmBackend::Anthropic {
@@ -129,6 +145,10 @@ impl LlmBackend {
                 client: client.clone(),
                 model: "gpt-5-mini-2025-08-07".to_string(),
             },
+            LlmBackend::OpenRouter { client, .. } => LlmBackend::OpenRouter {
+                client: client.clone(),
+                model: "google/gemini-2.5-flash".to_string(),
+            },
         }
     }
 
@@ -136,6 +156,7 @@ impl LlmBackend {
         match self {
             LlmBackend::Anthropic { model, .. } => model,
             LlmBackend::OpenAI { model, .. } => model,
+            LlmBackend::OpenRouter { model, .. } => model,
         }
     }
 
@@ -161,6 +182,10 @@ impl LlmBackend {
                         Ok(agent.chat(&prompt, history).await?)
                     }
                     LlmBackend::OpenAI { client, model } => {
+                        let agent = client.agent(model).preamble(&system).build();
+                        Ok(agent.chat(&prompt, history).await?)
+                    }
+                    LlmBackend::OpenRouter { client, model } => {
                         let agent = client.agent(model).preamble(&system).build();
                         Ok(agent.chat(&prompt, history).await?)
                     }
@@ -239,6 +264,22 @@ impl LlmBackend {
                     .await;
                 (res, chat_history)
             }
+            LlmBackend::OpenRouter { client, model } => {
+                let mut builder = client
+                    .agent(model)
+                    .preamble(system_prompt)
+                    .tools(tools);
+                if let Some(index) = memory_index {
+                    builder = builder.dynamic_context(8, index);
+                }
+                let agent = builder.build();
+                let mut chat_history = history.clone();
+                let res = agent.prompt(prompt)
+                    .with_history(&mut chat_history)
+                    .max_turns(AGENT_MAX_TURNS)
+                    .await;
+                (res, chat_history)
+            }
         };
 
         match result {
@@ -261,6 +302,14 @@ impl LlmBackend {
                                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
                         }
                         LlmBackend::OpenAI { client, model } => {
+                            let agent = client
+                                .agent(model)
+                                .preamble(system_prompt)
+                                .build();
+                            agent.chat(&prompt_text, history.clone()).await
+                                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
+                        }
+                        LlmBackend::OpenRouter { client, model } => {
                             let agent = client
                                 .agent(model)
                                 .preamble(system_prompt)
@@ -361,6 +410,27 @@ impl LlmBackend {
 
                 consume_stream(stream, &events, &slug, &cid).await
             }
+            LlmBackend::OpenRouter { client, model } => {
+                let mut builder = client
+                    .agent(model)
+                    .preamble(system_prompt)
+                    .tools(static_tools);
+                if let Some((toolset, index)) = dynamic_tools {
+                    builder = builder.dynamic_tools(DYNAMIC_SAMPLE, index, toolset);
+                }
+                if let Some(index) = memory_index {
+                    builder = builder.dynamic_context(8, index);
+                }
+                let agent = builder.build();
+
+                let stream = agent
+                    .stream_prompt(prompt)
+                    .with_history(history)
+                    .multi_turn(AGENT_MAX_TURNS)
+                    .await;
+
+                consume_stream(stream, &events, &slug, &cid).await
+            }
         }
     }
 
@@ -396,6 +466,19 @@ impl LlmBackend {
                 (res, chat_history)
             }
             LlmBackend::OpenAI { client, model } => {
+                let agent = client
+                    .agent(model)
+                    .preamble(system_prompt)
+                    .tools(tools)
+                    .build();
+                let mut chat_history = history.clone();
+                let res = agent.prompt(prompt)
+                    .with_history(&mut chat_history)
+                    .max_turns(16)
+                    .await;
+                (res, chat_history)
+            }
+            LlmBackend::OpenRouter { client, model } => {
                 let agent = client
                     .agent(model)
                     .preamble(system_prompt)

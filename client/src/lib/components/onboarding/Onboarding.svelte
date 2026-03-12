@@ -37,7 +37,7 @@
 	let messageInput: HTMLTextAreaElement | undefined = $state();
 	let apiKeyValue = $state("");
 	let keyInput: HTMLInputElement | undefined = $state();
-	let chosenProvider = $state<"anthropic" | "openai" | null>(null);
+	let chosenProvider = $state<"anthropic" | "openai" | "openrouter" | null>(null);
 	let chosenModel = $state<string | null>(null);
 	let chosenLanguage = $state("english");
 	let keyError = $state("");
@@ -55,6 +55,13 @@
 			{ id: "gpt-5.4", label: "gpt-5.4", note: "flagship" },
 			{ id: "gpt-5.4-pro", label: "gpt-5.4 pro", note: "max performance" },
 			{ id: "gpt-5.2", label: "gpt-5.2", note: "affordable" },
+		],
+		openrouter: [
+			{ id: "google/gemini-2.5-flash", label: "gemini 2.5 flash", note: "fast & cheap" },
+			{ id: "google/gemini-2.5-pro", label: "gemini 2.5 pro", note: "powerful" },
+			{ id: "anthropic/claude-sonnet-4", label: "claude sonnet 4", note: "balanced" },
+			{ id: "deepseek/deepseek-r1", label: "deepseek r1", note: "reasoning" },
+			{ id: "meta-llama/llama-4-maverick", label: "llama 4 maverick", note: "open source" },
 		],
 	};
 
@@ -131,7 +138,7 @@
 			try {
 				const status = await fetchConfigStatus();
 				if (status.llm_configured) {
-					chosenProvider = (status.provider as "anthropic" | "openai") ?? "anthropic";
+					chosenProvider = (status.provider as "anthropic" | "openai" | "openrouter") ?? "anthropic";
 					chosenModel = status.model ?? null;
 					await typewrite("i\u2019m already connected. let\u2019s get to know each other.");
 					await pause(600);
@@ -148,7 +155,7 @@
 		stage = "picking-provider";
 	}
 
-	function pickProvider(provider: "anthropic" | "openai") {
+	function pickProvider(provider: "anthropic" | "openai" | "openrouter") {
 		chosenProvider = provider;
 		continueAfterProvider();
 	}
@@ -156,7 +163,7 @@
 	async function continueAfterProvider() {
 		stage = "greeting";
 		await pause(300);
-		const name = chosenProvider === "anthropic" ? "anthropic" : "openai";
+		const name = chosenProvider ?? "unknown";
 		await typewrite(`${name}. good choice.`);
 		await pause(400);
 		await typewrite("which mind should i wear?");
@@ -413,6 +420,9 @@
 					</button>
 					<button onclick={() => pickProvider("openai")} class="onboard-pill flex-1">
 						<span class="font-display text-sm italic">openai</span>
+					</button>
+					<button onclick={() => pickProvider("openrouter")} class="onboard-pill flex-1">
+						<span class="font-display text-sm italic">openrouter</span>
 					</button>
 				</div>
 				<button

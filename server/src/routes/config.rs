@@ -19,6 +19,7 @@ async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
         && match config.llm.provider {
             Some(LlmProvider::Anthropic) => !config.llm.tokens.anthropic.is_empty(),
             Some(LlmProvider::OpenAI) => !config.llm.tokens.open_ai.is_empty(),
+            Some(LlmProvider::OpenRouter) => !config.llm.tokens.open_router.is_empty(),
             None => false,
         };
     Json(json!({
@@ -26,6 +27,7 @@ async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
         "provider": config.llm.provider.map(|p| match p {
             LlmProvider::Anthropic => "anthropic",
             LlmProvider::OpenAI => "openai",
+            LlmProvider::OpenRouter => "openrouter",
         }),
         "model": config.llm.model,
     }))
@@ -61,6 +63,7 @@ async fn update_llm(
     let provider_str = match request.provider {
         LlmProvider::Anthropic => "anthropic",
         LlmProvider::OpenAI => "openai",
+        LlmProvider::OpenRouter => "openrouter",
     };
     llm.insert(
         "provider".into(),
@@ -87,6 +90,12 @@ async fn update_llm(
         LlmProvider::OpenAI => {
             tokens.insert(
                 "OPEN_AI".into(),
+                toml::Value::String(request.api_key.clone()),
+            );
+        }
+        LlmProvider::OpenRouter => {
+            tokens.insert(
+                "OPENROUTER".into(),
                 toml::Value::String(request.api_key.clone()),
             );
         }
@@ -123,6 +132,7 @@ async fn update_llm(
         .unwrap_or(match request.provider {
             LlmProvider::Anthropic => "claude-sonnet-4-6",
             LlmProvider::OpenAI => "gpt-4o",
+            LlmProvider::OpenRouter => "google/gemini-2.5-flash",
         });
 
     Ok(Json(json!({

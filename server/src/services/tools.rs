@@ -1264,9 +1264,10 @@ impl Tool for UpdateConfigTool {
             match p.as_str() {
                 "openai" => config.llm.provider = Some(crate::config::LlmProvider::OpenAI),
                 "anthropic" => config.llm.provider = Some(crate::config::LlmProvider::Anthropic),
+                "openrouter" => config.llm.provider = Some(crate::config::LlmProvider::OpenRouter),
                 other => {
                     return Err(ToolExecError(format!(
-                        "unknown provider \"{other}\". supported: openai, anthropic"
+                        "unknown provider \"{other}\". supported: openai, anthropic, openrouter"
                     )));
                 }
             }
