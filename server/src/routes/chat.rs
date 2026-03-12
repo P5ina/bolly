@@ -118,6 +118,9 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         chat_id: chat_id.clone(),
     });
 
+    // Persist marker so we can detect interrupted agents across restarts
+    chat::set_agent_running(&state.workspace_dir, &instance_slug, &chat_id);
+
     const MAX_ITERATIONS: usize = 20;
     let mut iteration = 0;
 
@@ -312,6 +315,8 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
     }
 
     // Clean up
+    chat::clear_agent_running(&state.workspace_dir, &instance_slug, &chat_id);
+
     let key = task_key(&instance_slug, &chat_id);
     {
         let mut tasks = state.agent_tasks.lock().await;

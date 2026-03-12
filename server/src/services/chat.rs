@@ -534,10 +534,40 @@ pub fn discover_instance(
     Ok(workspace::summarize_instance(&path))
 }
 
-/// Inject a restart notification into all active instance chats so the agent
-/// knows it was restarted and can pick up where it left off.
-/// Returns (slug, chat_id) pairs that received a restart message so callers
-/// can spawn agent loops for them.
+// ---------------------------------------------------------------------------
+// Agent-running marker — persisted to disk so we know on restart whether an
+// agent was interrupted mid-task.
+// ---------------------------------------------------------------------------
+
+fn agent_marker_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> std::path::PathBuf {
+    workspace_dir
+        .join("instances")
+        .join(instance_slug)
+        .join("chats")
+        .join(chat_id)
+        .join("agent_running")
+}
+
+/// Mark that an agent loop is active for this chat.
+pub fn set_agent_running(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
+    let path = agent_marker_path(workspace_dir, instance_slug, chat_id);
+    let _ = fs::write(&path, "1");
+}
+
+/// Clear the agent-running marker.
+pub fn clear_agent_running(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
+    let path = agent_marker_path(workspace_dir, instance_slug, chat_id);
+    let _ = fs::remove_file(&path);
+}
+
+/// Check whether an agent was running when the server last stopped.
+fn was_agent_interrupted(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> bool {
+    agent_marker_path(workspace_dir, instance_slug, chat_id).exists()
+}
+
+/// On startup, find chats where an agent was interrupted and inject a restart
+/// notification so the agent can resume. Returns (slug, chat_id) pairs that
+/// need agent loops spawned.
 pub fn notify_restart(workspace_dir: &Path, events: &broadcast::Sender<ServerEvent>) -> Vec<(String, String)> {
     let instances_dir = workspace_dir.join("instances");
     let entries = match fs::read_dir(&instances_dir) {
@@ -548,7 +578,7 @@ pub fn notify_restart(workspace_dir: &Path, events: &broadcast::Sender<ServerEve
     let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
     let content = format!(
         "[restart] server restarted at {now}. \
-         if you were in the middle of a task, review your recent tool activity above and continue where you left off."
+         you were interrupted — review your recent tool activity above and continue where you left off."
     );
 
     let mut notified = Vec::new();
@@ -560,19 +590,22 @@ pub fn notify_restart(workspace_dir: &Path, events: &broadcast::Sender<ServerEve
         }
         let slug = entry.file_name().to_string_lossy().to_string();
 
-        // Inject into the default chat as a user message so the agent loop processes it
-        let chat_dir = instance_dir.join("chats").join("default");
-        let messages_path = chat_dir.join("messages.json");
-        if messages_path.exists() {
-            if let Ok(msg) = save_user_message(workspace_dir, &slug, "default", &content) {
-                let _ = events.send(ServerEvent::ChatMessageCreated {
-                    instance_slug: slug.clone(),
-                    chat_id: "default".to_string(),
-                    message: msg,
-                });
-                notified.push((slug.clone(), "default".to_string()));
-                log::info!("[restart] injected restart message for {slug}/default");
-            }
+        // Only resume if the agent was actually running when the server stopped
+        if !was_agent_interrupted(workspace_dir, &slug, "default") {
+            continue;
+        }
+
+        // Clear the stale marker — the new agent loop will set its own
+        clear_agent_running(workspace_dir, &slug, "default");
+
+        if let Ok(msg) = save_user_message(workspace_dir, &slug, "default", &content) {
+            let _ = events.send(ServerEvent::ChatMessageCreated {
+                instance_slug: slug.clone(),
+                chat_id: "default".to_string(),
+                message: msg,
+            });
+            notified.push((slug.clone(), "default".to_string()));
+            log::info!("[restart] agent was interrupted for {slug}/default, injecting restart message");
         }
     }
 

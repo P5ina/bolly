@@ -128,6 +128,8 @@
 
 	function isToolActivity(msg: ChatMessage): boolean {
 		if (msg.kind === "tool_call" || msg.kind === "tool_output") return true;
+		// Restart notifications (user-role but not real user messages)
+		if (msg.content.startsWith("[restart]")) return true;
 		// Backward compat with old messages that used string prefixes
 		return msg.role === "assistant" && (
 			msg.content.startsWith("[tool activity]") ||
