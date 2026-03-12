@@ -156,7 +156,7 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 					BOLLY_AUTH_TOKEN: opts.authToken,
 					BOLLY_INSTANCE_ID: opts.instanceId,
 					DATABASE_URL: env.DATABASE_URL ?? '',
-					ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
+					OPENROUTER_API_KEY: env.OPENROUTER_API_KEY ?? '',
 					OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
 					BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY ?? '',
 				},
