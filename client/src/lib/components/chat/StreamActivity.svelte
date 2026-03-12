@@ -64,7 +64,6 @@
 	.act-output .act-border {
 		background: oklch(0.55 0.06 200 / 30%);
 	}
-
 	.act-body {
 		display: flex;
 		align-items: baseline;

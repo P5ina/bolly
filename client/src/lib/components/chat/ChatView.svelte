@@ -120,6 +120,18 @@
 				if (typewriterRaf) { cancelAnimationFrame(typewriterRaf); typewriterRaf = 0; }
 				stream = stream.filter((s) => !(s.type === "message" && s.data.id === "__streaming__"));
 			}
+			// Replace promoted placeholder with the real message if content matches
+			if (msg.role === "assistant") {
+				const promotedIdx = stream.findIndex((s) =>
+					s.type === "message" && s.data.id.startsWith("__promoted_") && s.data.content === msg.content
+				);
+				if (promotedIdx >= 0) {
+					stream[promotedIdx] = { type: "message", data: msg };
+					stream = stream;
+					messages = [...messages, msg];
+					return;
+				}
+			}
 			messages = [...messages, msg];
 			stream = [...stream, { type: "message", data: msg }];
 			scrollToBottom();
@@ -128,9 +140,7 @@
 
 	function isToolActivity(msg: ChatMessage): boolean {
 		if (msg.kind === "tool_call" || msg.kind === "tool_output") return true;
-		// Restart notifications (user-role but not real user messages)
 		if (msg.content.startsWith("[restart]")) return true;
-		// Backward compat with old messages that used string prefixes
 		return msg.role === "assistant" && (
 			msg.content.startsWith("[tool activity]") ||
 			msg.content.startsWith("[tool:") ||
@@ -138,61 +148,57 @@
 		);
 	}
 
-	function toolActivityToStreamItems(msg: ChatMessage): StreamItem[] {
+	function toolActivityToStreamItem(msg: ChatMessage): StreamItem | null {
 		const ts = new Date(Number(msg.created_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-		// Structured format (new): kind + tool_name fields
 		if (msg.kind === "tool_call" || msg.kind === "tool_output") {
-			if (msg.tool_name === "set_mood") return [];
-			return [{
+			if (msg.tool_name === "set_mood") return null;
+			return {
 				type: "activity" as const,
 				id: msg.id,
 				kind: msg.kind === "tool_output" ? "output" as const : "tool" as const,
 				label: msg.content,
 				timestamp: ts,
-			}];
+			};
 		}
-		// Legacy: [tool: tool_name] summary prefix format
 		if (msg.content.startsWith("[tool:")) {
-			if (msg.content.startsWith("[tool: set_mood]")) return [];
+			if (msg.content.startsWith("[tool: set_mood]")) return null;
 			const isOutput = msg.content.includes(" output]");
-			return [{
+			return {
 				type: "activity" as const,
 				id: msg.id,
 				kind: isOutput ? "output" as const : "tool" as const,
 				label: msg.content.replace(/^\[tool:[^\]]*\]\s*/, ""),
 				timestamp: ts,
-			}];
+			};
 		}
-		// System messages (e.g., restart notifications)
 		if (msg.content.startsWith("[system]") || msg.content.startsWith("[restart]")) {
-			return [{
+			return {
 				type: "activity" as const,
 				id: msg.id,
 				kind: "state" as const,
 				label: msg.content.replace(/^\[(system|restart)\]\s*/, ""),
 				timestamp: ts,
-			}];
+			};
 		}
-		// Legacy format: [tool activity]\n• tool_name → result
-		return msg.content
-			.split("\n")
-			.filter((line) => line.startsWith("• "))
-			.map((line, idx) => ({
-				type: "activity" as const,
-				id: `${msg.id}-${idx}`,
-				kind: "tool" as const,
-				label: line.slice(2).replace(/ →.*/, ""),
-				timestamp: new Date(Number(msg.created_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-			}));
+		// Legacy [tool activity] format — render as single activity item
+		return {
+			type: "activity" as const,
+			id: msg.id,
+			kind: "tool" as const,
+			label: msg.content.replace(/^\[tool activity\]\s*/, ""),
+			timestamp: ts,
+		};
 	}
 
 	function messagesToStream(msgs: ChatMessage[]): StreamItem[] {
-		return msgs.flatMap((m) =>
-			isToolActivity(m)
-				? toolActivityToStreamItems(m)
-				: [{ type: "message" as const, data: m }]
-		);
+		return msgs.flatMap((m) => {
+			if (isToolActivity(m)) {
+				const item = toolActivityToStreamItem(m);
+				return item ? [item] : [];
+			}
+			return [{ type: "message" as const, data: m }];
+		});
 	}
 
 	function loadChat(id: string) {
@@ -263,22 +269,27 @@
 			if (event.type === "chat_message_created") {
 				const msg = event.message;
 				if (isToolActivity(msg)) {
-					// Tool activity — clear streaming bubble since a tool round started
+					// Promote streaming bubble to a real message so it doesn't vanish
 					if (streamingContent) {
+						const snapshotContent = streamingContent;
 						streamingContent = "";
-				displayedLength = 0;
-				if (typewriterRaf) { cancelAnimationFrame(typewriterRaf); typewriterRaf = 0; }
-						stream = stream.filter((s) => !(s.type === "message" && s.data.id === "__streaming__"));
+						displayedLength = 0;
+						if (typewriterRaf) { cancelAnimationFrame(typewriterRaf); typewriterRaf = 0; }
+						const snapshotId = `__promoted_${Date.now()}`;
+						stream = stream.map((s) =>
+							s.type === "message" && s.data.id === "__streaming__"
+								? { type: "message" as const, data: { id: snapshotId, role: "assistant" as const, content: snapshotContent, created_at: new Date().toISOString() } }
+								: s
+						);
 					}
-					// Tool activity / system messages — show as activity items, not chat bubbles
-					const items = toolActivityToStreamItems(event.message);
-					for (const item of items) {
+					const item = toolActivityToStreamItem(msg);
+					if (item) {
 						stream = [...stream, item];
 					}
 					scrollToBottom();
 				} else {
-					if (event.message.role === "assistant") play("message_receive");
-					addMessage(event.message);
+					if (msg.role === "assistant") play("message_receive");
+					addMessage(msg);
 					refreshChatList();
 				}
 			} else if (event.type === "mood_updated") {
