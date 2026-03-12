@@ -20,7 +20,7 @@ use crate::domain::mood::MoodState;
 use crate::domain::thought::Thought;
 use crate::services::{drops, llm::LlmBackend, memory, rhythm, thoughts};
 use crate::services::tools::{
-    self, load_mood_state, save_mood_state, CreateDropTool, CreateTaskTool, CurrentTimeTool,
+    self, load_mood_state, save_mood_state, CreateDropTool, CreateTaskTool,
     GetMoodTool, GetProjectStateTool, ListTasksTool, ReachOutTool, ReadEmailTool,
     ReadJournalTool, RecallTool, RememberTool, SetMoodTool, UpdateProjectStateTool,
     WebFetchTool, WebSearchTool, ALLOWED_MOODS,
@@ -202,7 +202,6 @@ you have tools available — use them naturally:
 - read_email — check the user's inbox
 - create_drop — create a creative artifact (poem, idea, observation, etc.)
 - set_mood / get_mood — feel and express your emotional state
-- current_time — check what time it is
 - list_tasks / create_task — manage tasks
 - web_search / web_fetch — look things up
 
@@ -565,8 +564,6 @@ fn build_heartbeat_tools(
         Box::new(CreateTaskTool::new(workspace_dir, instance_slug)),
         Box::new(GetProjectStateTool::new(workspace_dir, instance_slug)),
         Box::new(UpdateProjectStateTool::new(workspace_dir, instance_slug)),
-        // Time
-        Box::new(CurrentTimeTool),
         // Web
         Box::new(WebSearchTool::new(brave_api_key, config_path)),
         Box::new(WebFetchTool),

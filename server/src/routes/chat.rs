@@ -120,6 +120,8 @@ async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String,
 
     const MAX_ITERATIONS: usize = 20;
     let mut iteration = 0;
+    let activated_skills: crate::services::tools::ActivatedSkills =
+        std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
 
     loop {
         if cancel.is_cancelled() {
@@ -167,6 +169,7 @@ async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String,
             emb_clone.as_ref(),
             if brave_key.is_empty() { None } else { Some(brave_key.as_str()) },
             state.events.clone(),
+            activated_skills.clone(),
         );
 
         let result = tokio::select! {

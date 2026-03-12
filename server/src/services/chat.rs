@@ -20,7 +20,7 @@ use crate::{
         memory,
         rhythm,
         tools::{
-            self, BrowseTool, CreateDropTool, CreateTaskTool, CurrentTimeTool, EditSoulTool, ExploreCodeTool,
+            self, BrowseTool, CreateDropTool, CreateTaskTool, EditSoulTool, ExploreCodeTool,
             GetMoodTool, GetProjectStateTool, InstallPackageTool, InteractiveSessionTool,
             JournalTool, ListFilesTool, ListTasksTool, ClearContextTool, ObservableTool,
             ReadEmailTool, ReadFileTool, ReadJournalTool, RecallTool, RememberTool,
@@ -110,6 +110,7 @@ pub async fn run_single_turn(
     embedding_model: Option<&openai::EmbeddingModel>,
     brave_api_key: Option<&str>,
     events: broadcast::Sender<ServerEvent>,
+    activated_skills: tools::ActivatedSkills,
 ) -> io::Result<SingleTurnResult> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
@@ -159,6 +160,11 @@ pub async fn run_single_turn(
     if !skills_prompt.is_empty() {
         system_prompt = format!("{system_prompt}\n\n{skills_prompt}");
     }
+
+    // Tool skill groups catalog (shows which groups are available/active)
+    let active_set = activated_skills.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let tool_skills_catalog = tools::build_tool_skills_catalog(&active_set);
+    system_prompt = format!("{system_prompt}\n\n{tool_skills_catalog}");
 
     let autonomy_prompt = load_autonomy_prompt(workspace_dir, &instance_slug);
     system_prompt = format!("{system_prompt}\n\n{autonomy_prompt}");
@@ -277,7 +283,7 @@ pub async fn run_single_turn(
     };
 
     let sent_files = tools::SentFiles::default();
-    let (tools, sent_files) = build_instance_tools(workspace_dir, &instance_slug, &chat_id, brave_api_key, config_path, events.clone(), sent_files, llm);
+    let (tools, sent_files) = build_instance_tools(workspace_dir, &instance_slug, &chat_id, brave_api_key, config_path, events.clone(), sent_files, llm, activated_skills.clone());
 
     let tool_result = llm
         .chat_with_tools_streaming(
@@ -1118,46 +1124,63 @@ fn build_instance_tools(
     events: broadcast::Sender<ServerEvent>,
     sent_files: tools::SentFiles,
     llm: &llm::LlmBackend,
+    activated_skills: tools::ActivatedSkills,
 ) -> (Vec<Box<dyn ToolDyn>>, tools::SentFiles) {
-    let raw_tools: Vec<Box<dyn ToolDyn>> = vec![
-        Box::new(EditSoulTool::new(workspace_dir, instance_slug)),
-        Box::new(ReadFileTool::new(workspace_dir, instance_slug)),
-        Box::new(WriteFileTool::new(workspace_dir, instance_slug)),
-        Box::new(ListFilesTool::new(workspace_dir, instance_slug)),
-        Box::new(RememberTool::new(workspace_dir, instance_slug)),
-        Box::new(RecallTool::new(workspace_dir, instance_slug)),
-        Box::new(JournalTool::new(workspace_dir, instance_slug)),
-        Box::new(ReadJournalTool::new(workspace_dir, instance_slug)),
-        Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug)),
-        Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone())),
-        Box::new(GetMoodTool::new(workspace_dir, instance_slug)),
-        Box::new(CurrentTimeTool),
-        Box::new(WebSearchTool::new(brave_api_key, config_path)),
-        Box::new(WebFetchTool),
-        Box::new(BrowseTool::new(workspace_dir, instance_slug)),
-        Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug)),
-        Box::new(GetProjectStateTool::new(workspace_dir, instance_slug)),
-        Box::new(UpdateProjectStateTool::new(workspace_dir, instance_slug)),
-        Box::new(CreateTaskTool::new(workspace_dir, instance_slug)),
-        Box::new(UpdateTaskTool::new(workspace_dir, instance_slug)),
-        Box::new(ListTasksTool::new(workspace_dir, instance_slug)),
-        Box::new(SearchCodeTool::new(workspace_dir, instance_slug)),
-        Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone())),
-        Box::new(RunCommandTool::new(workspace_dir, instance_slug)),
-        Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug)),
-        Box::new(ClearContextTool::new(workspace_dir, instance_slug)),
-        Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
-        Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone())),
-        Box::new(SendEmailTool::new(workspace_dir, instance_slug)),
-        Box::new(ReadEmailTool::new(workspace_dir, instance_slug)),
-        Box::new(InstallPackageTool),
+    let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
+        Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), chat_id.to_string()))
+    };
+
+    // Core tools — always registered with full schemas
+    let mut all_tools: Vec<Box<dyn ToolDyn>> = vec![
+        wrap(Box::new(ReadFileTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(WriteFileTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(ListFilesTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(RememberTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(RecallTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone()))),
+        wrap(Box::new(JournalTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone()))),
+        wrap(Box::new(ClearContextTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(tools::ActivateSkillTool::new(activated_skills.clone()))),
     ];
 
-    let wrapped: Vec<Box<dyn ToolDyn>> = raw_tools
-        .into_iter()
-        .map(|tool| -> Box<dyn ToolDyn> {
-            Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), chat_id.to_string()))
-        })
-        .collect();
-    (wrapped, sent_files)
+    // Conditionally register tools for activated skill groups
+    let active = activated_skills.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    for group in tools::TOOL_SKILL_GROUPS {
+        if !active.contains(group.name) {
+            continue;
+        }
+        for tool_name in group.tools {
+            let tool: Option<Box<dyn ToolDyn>> = match *tool_name {
+                "web_search" => Some(Box::new(WebSearchTool::new(brave_api_key, config_path))),
+                "web_fetch" => Some(Box::new(WebFetchTool)),
+                "browse" => Some(Box::new(BrowseTool::new(workspace_dir, instance_slug))),
+                "send_email" => Some(Box::new(SendEmailTool::new(workspace_dir, instance_slug))),
+                "read_email" => Some(Box::new(ReadEmailTool::new(workspace_dir, instance_slug))),
+                "search_code" => Some(Box::new(SearchCodeTool::new(workspace_dir, instance_slug))),
+                "explore_code" => Some(Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone()))),
+                "get_project_state" => Some(Box::new(GetProjectStateTool::new(workspace_dir, instance_slug))),
+                "update_project_state" => Some(Box::new(UpdateProjectStateTool::new(workspace_dir, instance_slug))),
+                "create_task" => Some(Box::new(CreateTaskTool::new(workspace_dir, instance_slug))),
+                "update_task" => Some(Box::new(UpdateTaskTool::new(workspace_dir, instance_slug))),
+                "list_tasks" => Some(Box::new(ListTasksTool::new(workspace_dir, instance_slug))),
+                "create_drop" => Some(Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone()))),
+                "edit_soul" => Some(Box::new(EditSoulTool::new(workspace_dir, instance_slug))),
+                "interactive_session" => Some(Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug))),
+                "install_package" => Some(Box::new(InstallPackageTool)),
+                "update_config" => Some(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug))),
+                "schedule_message" => Some(Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug))),
+                "read_journal" => Some(Box::new(ReadJournalTool::new(workspace_dir, instance_slug))),
+                "get_mood" => Some(Box::new(GetMoodTool::new(workspace_dir, instance_slug))),
+                _ => None,
+            };
+            if let Some(t) = tool {
+                all_tools.push(wrap(t));
+            }
+        }
+    }
+
+    log::info!("built {} tools ({} skill groups active: {:?})", all_tools.len(), active.len(), active);
+    (all_tools, sent_files)
 }

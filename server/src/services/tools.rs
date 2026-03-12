@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
-use chrono::{Local, Utc};
+use chrono::Utc;
 use rig::{
     completion::ToolDefinition,
     tool::{Tool, ToolDyn, ToolError},
@@ -151,6 +151,12 @@ pub fn tool_summary(name: &str, args: &str) -> String {
             let n = v["actions"].as_array().map(|a| a.len()).unwrap_or(0);
             format!("browsing {url} ({n} actions)")
         }
+        "activate_skill" => {
+            let skills = v["skills"].as_array()
+                .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
+                .unwrap_or_else(|| "?".into());
+            format!("activating: {skills}")
+        }
         _ => format!("calling {name}"),
     }
 }
@@ -225,7 +231,7 @@ impl ToolDyn for ObservableTool {
         let fut = self.inner.call(args);
         Box::pin(async move {
             // Redact secrets and cap size of all tool results before they reach the LLM
-            const MAX_TOOL_RESULT: usize = 24_000; // ~7500 tokens
+            const MAX_TOOL_RESULT: usize = 12_000; // ~3500 tokens
             let result = match fut.await {
                 Ok(s) => {
                     let redacted = redact_secrets(&s);
@@ -270,6 +276,111 @@ impl ToolDyn for ObservableTool {
             }
             result
         })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tool skill groups — progressive disclosure for optional tools
+// ---------------------------------------------------------------------------
+// Core tools (~10) are always registered with the LLM agent.
+// Optional tools are grouped into skill categories. Only their names and
+// descriptions appear in the system prompt (~100 tokens each). The agent
+// calls `activate_skill` to make a group's tools available on the next turn.
+
+use std::collections::HashSet;
+
+pub type ActivatedSkills = Arc<Mutex<HashSet<String>>>;
+
+pub struct ToolSkillGroup {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub tools: &'static [&'static str],
+}
+
+pub const TOOL_SKILL_GROUPS: &[ToolSkillGroup] = &[
+    ToolSkillGroup { name: "web", description: "search the web, fetch pages, and browse with a headless browser", tools: &["web_search", "web_fetch", "browse"] },
+    ToolSkillGroup { name: "email", description: "send and read emails via SMTP/IMAP", tools: &["send_email", "read_email"] },
+    ToolSkillGroup { name: "code", description: "grep/search code and deep code analysis", tools: &["search_code", "explore_code"] },
+    ToolSkillGroup { name: "project", description: "manage project state, create/update/list tasks", tools: &["get_project_state", "update_project_state", "create_task", "update_task", "list_tasks"] },
+    ToolSkillGroup { name: "creative", description: "create drops (poems, sketches, etc.) and edit your personality", tools: &["create_drop", "edit_soul"] },
+    ToolSkillGroup { name: "system", description: "persistent terminal sessions, install packages, update server config", tools: &["interactive_session", "install_package", "update_config"] },
+    ToolSkillGroup { name: "scheduling", description: "schedule future messages, read journal entries, check mood", tools: &["schedule_message", "read_journal", "get_mood"] },
+];
+
+/// Build the system prompt section listing available tool skill groups.
+pub fn build_tool_skills_catalog(activated: &HashSet<String>) -> String {
+    let mut lines = Vec::new();
+    lines.push("## tool skills".to_string());
+    lines.push("call activate_skill to unlock additional tools when needed:".to_string());
+
+    for group in TOOL_SKILL_GROUPS {
+        let status = if activated.contains(group.name) { " [active]" } else { "" };
+        lines.push(format!("- {}: {}{}", group.name, group.description, status));
+    }
+    lines.join("\n")
+}
+
+// ---------------------------------------------------------------------------
+// activate_skill — unlock a tool skill group for subsequent turns
+// ---------------------------------------------------------------------------
+
+pub struct ActivateSkillTool {
+    activated: ActivatedSkills,
+}
+
+impl ActivateSkillTool {
+    pub fn new(activated: ActivatedSkills) -> Self {
+        Self { activated }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ActivateSkillArgs {
+    /// Skill group names to activate (e.g. ["web", "email"]).
+    pub skills: Vec<String>,
+}
+
+impl Tool for ActivateSkillTool {
+    const NAME: &'static str = "activate_skill";
+    type Error = ToolExecError;
+    type Args = ActivateSkillArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        let names: Vec<&str> = TOOL_SKILL_GROUPS.iter().map(|g| g.name).collect();
+        ToolDefinition {
+            name: "activate_skill".into(),
+            description: format!(
+                "Activate tool skill groups to unlock additional tools. \
+                 Available groups: {}. Once activated, the tools become available immediately on your next action.",
+                names.join(", ")
+            ),
+            parameters: openai_schema::<ActivateSkillArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let valid_names: HashSet<&str> = TOOL_SKILL_GROUPS.iter().map(|g| g.name).collect();
+        let mut activated = Vec::new();
+        let mut unknown = Vec::new();
+
+        for name in &args.skills {
+            if valid_names.contains(name.as_str()) {
+                self.activated.lock().unwrap_or_else(|e| e.into_inner()).insert(name.clone());
+                activated.push(name.as_str());
+            } else {
+                unknown.push(name.as_str());
+            }
+        }
+
+        let mut result = String::new();
+        if !activated.is_empty() {
+            result.push_str(&format!("activated: {}. their tools are now available.", activated.join(", ")));
+        }
+        if !unknown.is_empty() {
+            result.push_str(&format!(" unknown groups: {}. valid: {}", unknown.join(", "), valid_names.into_iter().collect::<Vec<_>>().join(", ")));
+        }
+        Ok(result)
     }
 }
 
@@ -643,54 +754,6 @@ impl Tool for ListFilesTool {
 
         entries.sort();
         Ok(entries.join("\n"))
-    }
-}
-
-// ---------------------------------------------------------------------------
-// current_time — get the current date and time
-// ---------------------------------------------------------------------------
-
-pub struct CurrentTimeTool;
-
-/// Arguments for current_time tool.
-#[derive(Deserialize, JsonSchema)]
-pub struct CurrentTimeArgs {
-    /// Optional timezone offset in hours from UTC (e.g. 3 for UTC+3, -5 for UTC-5). Defaults to server local time.
-    pub utc_offset: Option<i32>,
-}
-
-impl Tool for CurrentTimeTool {
-    const NAME: &'static str = "current_time";
-    type Error = ToolExecError;
-    type Args = CurrentTimeArgs;
-    type Output = String;
-
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "current_time".into(),
-            description: "Get the current date and time. Returns date, time, day of week, \
-                and unix timestamp. Use this when you need to know what time or day it is."
-                .into(),
-            parameters: openai_schema::<CurrentTimeArgs>(),
-        }
-    }
-
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let now = if let Some(offset_hours) = args.utc_offset {
-            let offset = chrono::FixedOffset::east_opt(offset_hours * 3600)
-                .ok_or_else(|| ToolExecError(format!("invalid UTC offset: {offset_hours}")))?;
-            chrono::Utc::now()
-                .with_timezone(&offset)
-                .format("%Y-%m-%d %H:%M:%S %A (UTC%:z)")
-                .to_string()
-        } else {
-            Local::now()
-                .format("%Y-%m-%d %H:%M:%S %A (local)")
-                .to_string()
-        };
-
-        let timestamp = chrono::Utc::now().timestamp();
-        Ok(format!("{now}\nunix: {timestamp}"))
     }
 }
 
