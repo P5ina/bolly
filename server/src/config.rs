@@ -229,12 +229,9 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     if let Ok(key) = env::var("OPENROUTER_API_KEY") {
         if !key.is_empty() {
             config.llm.tokens.open_router = key;
-            if config.llm.provider.is_none() {
-                config.llm.provider = Some(LlmProvider::OpenRouter);
-            }
-            if config.llm.model.is_none() {
-                config.llm.model = Some("moonshotai/kimi-k2.5".to_string());
-            }
+            // OpenRouter takes priority over other providers for chat
+            config.llm.provider = Some(LlmProvider::OpenRouter);
+            config.llm.model = Some("moonshotai/kimi-k2.5".to_string());
         }
     }
     if let Ok(key) = env::var("BRAVE_SEARCH_API_KEY") {
