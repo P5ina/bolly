@@ -123,6 +123,7 @@ pub fn tool_summary(name: &str, args: &str) -> String {
     match name {
         "read_file" => format!("reading {}", v["path"].as_str().unwrap_or("?")),
         "write_file" => format!("writing {}", v["path"].as_str().unwrap_or("?")),
+        "edit_file" => format!("editing {}", v["path"].as_str().unwrap_or("?")),
         "list_files" => format!("listing {}", v["path"].as_str().unwrap_or(".")),
         "search_code" => format!("searching '{}'", v["query"].as_str().unwrap_or("?")),
         "run_command" => {
@@ -773,6 +774,94 @@ impl Tool for WriteFileTool {
         Ok(format!(
             "wrote {} bytes to {}",
             args.content.len(),
+            args.path
+        ))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// edit_file — partial file editing via find-and-replace
+// ---------------------------------------------------------------------------
+
+pub struct EditFileTool {
+    instance_dir: PathBuf,
+}
+
+impl EditFileTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
+        }
+    }
+}
+
+/// Arguments for edit_file tool.
+#[derive(Deserialize, JsonSchema)]
+pub struct EditFileArgs {
+    /// File path. Relative for instance workspace or absolute (starting with /).
+    pub path: String,
+    /// The exact string to find in the file. Must match exactly (including whitespace and indentation). Must be unique within the file — if it appears more than once, provide more surrounding context to disambiguate.
+    pub old_string: String,
+    /// The replacement string. Must be different from old_string.
+    pub new_string: String,
+}
+
+impl Tool for EditFileTool {
+    const NAME: &'static str = "edit_file";
+    type Error = ToolExecError;
+    type Args = EditFileArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "edit_file".into(),
+            description: "Edit a file by replacing an exact string match. More efficient than \
+                write_file for small changes — only sends the diff instead of the whole file. \
+                The old_string must appear exactly once in the file. If it appears multiple \
+                times, include more surrounding context to make it unique."
+                .into(),
+            parameters: openai_schema::<EditFileArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let target = if args.path.starts_with('/') {
+            PathBuf::from(&args.path)
+        } else {
+            self.instance_dir.join(&args.path)
+        };
+
+        if args.old_string == args.new_string {
+            return Err(ToolExecError("old_string and new_string are identical".into()));
+        }
+
+        let content = fs::read_to_string(&target)
+            .map_err(|e| ToolExecError(format!("{}: {e}", target.display())))?;
+
+        let count = content.matches(&args.old_string).count();
+        if count == 0 {
+            return Err(ToolExecError(
+                "old_string not found in file. Make sure it matches exactly, \
+                 including whitespace and indentation. Use read_file to check \
+                 the current content."
+                    .into(),
+            ));
+        }
+        if count > 1 {
+            return Err(ToolExecError(format!(
+                "old_string appears {count} times in file. Include more surrounding \
+                 context to make it unique."
+            )));
+        }
+
+        let new_content = content.replacen(&args.old_string, &args.new_string, 1);
+        fs::write(&target, &new_content)
+            .map_err(|e| ToolExecError(e.to_string()))?;
+
+        let old_lines = args.old_string.lines().count();
+        let new_lines = args.new_string.lines().count();
+        Ok(format!(
+            "edited {} — replaced {old_lines} lines with {new_lines} lines",
             args.path
         ))
     }

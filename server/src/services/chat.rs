@@ -19,7 +19,7 @@ use crate::{
         memory,
         rhythm,
         tools::{
-            self, JournalTool, ListFilesTool, ClearContextTool, ObservableTool,
+            self, EditFileTool, JournalTool, ListFilesTool, ClearContextTool, ObservableTool,
             ReadFileTool, RecallTool, RememberTool,
             RunCommandTool, SendFileTool,
             SetMoodTool, WriteFileTool,
@@ -1160,6 +1160,7 @@ fn build_static_tools(
     let all_tools: Vec<Box<dyn ToolDyn>> = vec![
         wrap(Box::new(ReadFileTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(WriteFileTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(EditFileTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(ListFilesTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(RememberTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(RecallTool::new(workspace_dir, instance_slug))),
