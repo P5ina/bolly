@@ -536,11 +536,13 @@ pub fn discover_instance(
 
 /// Inject a restart notification into all active instance chats so the agent
 /// knows it was restarted and can pick up where it left off.
-pub fn notify_restart(workspace_dir: &Path, events: &broadcast::Sender<ServerEvent>) {
+/// Returns (slug, chat_id) pairs that received a restart message so callers
+/// can spawn agent loops for them.
+pub fn notify_restart(workspace_dir: &Path, events: &broadcast::Sender<ServerEvent>) -> Vec<(String, String)> {
     let instances_dir = workspace_dir.join("instances");
     let entries = match fs::read_dir(&instances_dir) {
         Ok(e) => e,
-        Err(_) => return,
+        Err(_) => return vec![],
     };
 
     let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
@@ -549,6 +551,8 @@ pub fn notify_restart(workspace_dir: &Path, events: &broadcast::Sender<ServerEve
          if you were in the middle of a task, review your recent tool activity above and continue where you left off."
     );
 
+    let mut notified = Vec::new();
+
     for entry in entries.filter_map(Result::ok) {
         let instance_dir = entry.path();
         if !instance_dir.is_dir() || !instance_dir.join("soul.md").exists() {
@@ -556,14 +560,23 @@ pub fn notify_restart(workspace_dir: &Path, events: &broadcast::Sender<ServerEve
         }
         let slug = entry.file_name().to_string_lossy().to_string();
 
-        // Inject into the default chat
+        // Inject into the default chat as a user message so the agent loop processes it
         let chat_dir = instance_dir.join("chats").join("default");
         let messages_path = chat_dir.join("messages.json");
         if messages_path.exists() {
-            tools::inject_system_message(workspace_dir, &slug, "default", &content, events);
-            log::info!("[restart] injected restart message for {slug}/default");
+            if let Ok(msg) = save_user_message(workspace_dir, &slug, "default", &content) {
+                let _ = events.send(ServerEvent::ChatMessageCreated {
+                    instance_slug: slug.clone(),
+                    chat_id: "default".to_string(),
+                    message: msg,
+                });
+                notified.push((slug.clone(), "default".to_string()));
+                log::info!("[restart] injected restart message for {slug}/default");
+            }
         }
     }
+
+    notified
 }
 
 fn ensure_instance_layout(workspace_dir: &Path, instance_slug: &str) -> io::Result<()> {

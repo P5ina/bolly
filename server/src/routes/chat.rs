@@ -112,7 +112,7 @@ async fn post_chat(
 
 /// Agent loop: keeps calling the LLM until it responds without tool use or is cancelled.
 /// New user messages are automatically picked up because each turn re-reads from disk.
-async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String, cancel: CancellationToken) {
+pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String, cancel: CancellationToken) {
     let _ = state.events.send(ServerEvent::AgentRunning {
         instance_slug: instance_slug.clone(),
         chat_id: chat_id.clone(),

@@ -42,8 +42,20 @@ async fn main() {
             SocketAddr::from(([0, 0, 0, 0], port))
         });
 
-    // Notify active chats that the server restarted
-    services::chat::notify_restart(&state.workspace_dir, &state.events);
+    // Notify active chats that the server restarted and spawn agent loops
+    let restart_chats = services::chat::notify_restart(&state.workspace_dir, &state.events);
+    for (slug, chat_id) in restart_chats {
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let key = format!("{slug}/{chat_id}");
+        {
+            let mut tasks = state.agent_tasks.lock().await;
+            tasks.insert(key, cancel.clone());
+        }
+        let bg_state = state.clone();
+        tokio::spawn(async move {
+            routes::chat::run_agent_loop(bg_state, slug, chat_id, cancel).await;
+        });
+    }
 
     // Start background scheduler for scheduled messages
     services::scheduler::start(&state.workspace_dir, state.events.clone());
