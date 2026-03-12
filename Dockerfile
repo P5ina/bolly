@@ -50,6 +50,8 @@ RUN apt-get update && \
       python3 python3-pip python3-venv \
       git jq && \
     npx playwright@1.52.0 install --with-deps chromium && \
+    curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb && \
+    dpkg -i /tmp/cloudflared.deb && rm /tmp/cloudflared.deb && \
     rm -rf /var/lib/apt/lists/* /root/.cache/ms-playwright/.links
 
 # Copy browse tool scripts and install deps

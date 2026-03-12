@@ -1028,7 +1028,11 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          using run_command. you can install packages, clone repos, build and deploy projects. \
          if the user asks you to host something or run a bot, you can actually do it — \
          write the code, install dependencies, and start the process. use nohup or background \
-         the process so it survives after the tool call returns.\n\n\
+         the process so it survives after the tool call returns.\n\
+         cloudflared is installed. to expose a local port publicly, run: \
+         `nohup cloudflared tunnel --url http://localhost:PORT &` — it prints a public \
+         https://*.trycloudflare.com URL. use this for webhook-based bots (telegram, discord), \
+         sharing websites, or any service that needs a public URL. no account needed.\n\n\
          ## behavior\n\
          prefer dedicated tools over run_command: use read_file (not cat/head/tail), \
          write_file (not echo/tee), list_files (not ls), search_code (not grep/rg) \
