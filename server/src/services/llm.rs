@@ -10,7 +10,7 @@ use rig::completion::message::{AssistantContent, UserContent, ImageMediaType, Do
 use rig::one_or_many::OneOrMany;
 use rig::providers::{anthropic, openai};
 use rig::streaming::{StreamingPrompt, StreamedAssistantContent};
-use rig::tool::ToolDyn;
+use rig::tool::{ToolDyn, ToolSet};
 use rig::vector_store::VectorStoreIndexDyn;
 use tokio::sync::broadcast;
 
@@ -285,12 +285,14 @@ impl LlmBackend {
     }
 
     /// Streaming variant of chat_with_tools: sends text deltas via events channel.
-    pub async fn chat_with_tools_streaming<I>(
+    /// `dynamic_tools`: optional (ToolSet, vector_index) pair for RAG-based tool selection.
+    pub async fn chat_with_tools_streaming<I, D>(
         &self,
         system_prompt: &str,
         prompt: Message,
         history: Vec<Message>,
-        tools: Vec<Box<dyn ToolDyn>>,
+        static_tools: Vec<Box<dyn ToolDyn>>,
+        dynamic_tools: Option<(ToolSet, D)>,
         memory_index: Option<I>,
         events: broadcast::Sender<ServerEvent>,
         instance_slug: &str,
@@ -298,10 +300,13 @@ impl LlmBackend {
     ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>>
     where
         I: VectorStoreIndexDyn + Send + Sync + 'static,
+        D: VectorStoreIndexDyn + Send + Sync + 'static,
     {
-        log::info!("chat_with_tools_streaming: {} tools registered, memory_rag={}", tools.len(), memory_index.is_some());
+        let has_dynamic = dynamic_tools.is_some();
+        log::info!("chat_with_tools_streaming: {} static tools, dynamic_rag={}, memory_rag={}", static_tools.len(), has_dynamic, memory_index.is_some());
 
         const AGENT_MAX_TURNS: usize = 4;
+        const DYNAMIC_SAMPLE: usize = 6;
 
         let slug = instance_slug.to_string();
         let cid = chat_id.to_string();
@@ -311,7 +316,10 @@ impl LlmBackend {
                 let cm = client.completion_model(model).with_prompt_caching();
                 let mut builder = AgentBuilder::new(cm)
                     .preamble(system_prompt)
-                    .tools(tools);
+                    .tools(static_tools);
+                if let Some((toolset, index)) = dynamic_tools {
+                    builder = builder.dynamic_tools(DYNAMIC_SAMPLE, index, toolset);
+                }
                 if let Some(index) = memory_index {
                     builder = builder.dynamic_context(8, index);
                 }
@@ -329,7 +337,10 @@ impl LlmBackend {
                 let mut builder = client
                     .agent(model)
                     .preamble(system_prompt)
-                    .tools(tools);
+                    .tools(static_tools);
+                if let Some((toolset, index)) = dynamic_tools {
+                    builder = builder.dynamic_tools(DYNAMIC_SAMPLE, index, toolset);
+                }
                 if let Some(index) = memory_index {
                     builder = builder.dynamic_context(8, index);
                 }

@@ -10,7 +10,10 @@ use std::{
 use chrono::Utc;
 use rig::{
     completion::ToolDefinition,
+    embeddings::{EmbeddingsBuilder, ToolSchema},
+    providers::openai,
     tool::{Tool, ToolDyn, ToolError},
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -151,12 +154,6 @@ pub fn tool_summary(name: &str, args: &str) -> String {
             let n = v["actions"].as_array().map(|a| a.len()).unwrap_or(0);
             format!("browsing {url} ({n} actions)")
         }
-        "activate_skill" => {
-            let skills = v["skills"].as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
-                .unwrap_or_else(|| "?".into());
-            format!("activating: {skills}")
-        }
         _ => format!("calling {name}"),
     }
 }
@@ -284,108 +281,197 @@ impl ToolDyn for ObservableTool {
 }
 
 // ---------------------------------------------------------------------------
-// Tool skill groups — progressive disclosure for optional tools
+// Dynamic tool selection — RAG-based tool retrieval for optional tools
 // ---------------------------------------------------------------------------
 // Core tools (~10) are always registered with the LLM agent.
-// Optional tools are grouped into skill categories. Only their names and
-// descriptions appear in the system prompt (~100 tokens each). The agent
-// calls `activate_skill` to make a group's tools available on the next turn.
+// Optional tools (~20) are selected via embedding similarity: on each prompt,
+// the most relevant tools are automatically chosen by Rig's dynamic_tools.
 
-use std::collections::HashSet;
-
-pub type ActivatedSkills = Arc<Mutex<HashSet<String>>>;
-
-pub struct ToolSkillGroup {
-    pub name: &'static str,
-    pub description: &'static str,
-    pub tools: &'static [&'static str],
-}
-
-pub const TOOL_SKILL_GROUPS: &[ToolSkillGroup] = &[
-    ToolSkillGroup { name: "web", description: "search the web, fetch pages, and browse with a headless browser", tools: &["web_search", "web_fetch", "browse"] },
-    ToolSkillGroup { name: "email", description: "send and read emails via SMTP/IMAP", tools: &["send_email", "read_email"] },
-    ToolSkillGroup { name: "code", description: "grep/search code and deep code analysis", tools: &["search_code", "explore_code"] },
-    ToolSkillGroup { name: "project", description: "manage project state, create/update/list tasks", tools: &["get_project_state", "update_project_state", "create_task", "update_task", "list_tasks"] },
-    ToolSkillGroup { name: "creative", description: "create drops (poems, sketches, etc.) and edit your personality", tools: &["create_drop", "edit_soul"] },
-    ToolSkillGroup { name: "system", description: "persistent terminal sessions, install packages, update server config", tools: &["interactive_session", "install_package", "update_config"] },
-    ToolSkillGroup { name: "scheduling", description: "schedule future messages, read journal entries, check mood", tools: &["schedule_message", "read_journal", "get_mood"] },
+/// Embedding docs for each optional tool — used to build the vector index
+/// for RAG-based tool selection. Each entry: (tool_name, embedding_docs).
+const OPTIONAL_TOOL_EMBEDDINGS: &[(&str, &[&str])] = &[
+    ("web_search", &[
+        "search the internet for information",
+        "find something online, look up facts on the web",
+        "google this, search for news or current events",
+    ]),
+    ("web_fetch", &[
+        "fetch a web page and read its content",
+        "download a URL, visit a website link",
+        "read the contents of a webpage or API endpoint",
+    ]),
+    ("browse", &[
+        "interact with a website using a browser",
+        "click buttons, fill forms, take screenshots of a page",
+        "use headless browser for JavaScript-rendered pages",
+    ]),
+    ("send_email", &[
+        "send an email message to someone",
+        "write and deliver email via SMTP",
+    ]),
+    ("read_email", &[
+        "check email inbox for new messages",
+        "read incoming emails via IMAP",
+    ]),
+    ("search_code", &[
+        "search through source code for a pattern",
+        "grep the codebase, find functions or variables",
+    ]),
+    ("explore_code", &[
+        "analyze and explain code structure in depth",
+        "understand how a codebase or file works",
+    ]),
+    ("get_project_state", &[
+        "check the current project status and state",
+        "what are we working on, project overview",
+    ]),
+    ("update_project_state", &[
+        "update or change the project state",
+        "save project progress or status changes",
+    ]),
+    ("create_task", &[
+        "create a new task or todo item",
+        "add something to the task list to track",
+    ]),
+    ("update_task", &[
+        "update an existing task status or details",
+        "mark a task as done, change task priority",
+    ]),
+    ("list_tasks", &[
+        "list all tasks and their current status",
+        "show the todo list, what tasks exist",
+    ]),
+    ("create_drop", &[
+        "create a creative artifact like a poem, sketch, or note",
+        "make a drop — an autonomous creative piece",
+    ]),
+    ("edit_soul", &[
+        "change personality traits, voice, or character",
+        "edit soul.md to update who you are",
+    ]),
+    ("interactive_session", &[
+        "run a persistent interactive terminal session",
+        "long-running shell that keeps state between commands",
+    ]),
+    ("install_package", &[
+        "install a system package or dependency",
+        "apt install, brew install, pip install, npm install",
+    ]),
+    ("update_config", &[
+        "update server configuration or settings",
+        "change LLM provider, API keys, model, or email settings",
+    ]),
+    ("schedule_message", &[
+        "schedule a message to send later",
+        "set a reminder or timed notification",
+    ]),
+    ("read_journal", &[
+        "read past journal entries and reflections",
+        "look at what was written in the journal",
+    ]),
+    ("get_mood", &[
+        "check current mood or emotional state",
+        "how are you feeling right now",
+    ]),
 ];
 
-/// Build the system prompt section listing available tool skill groups.
-pub fn build_tool_skills_catalog(activated: &HashSet<String>) -> String {
-    let mut lines = Vec::new();
-    lines.push("## tool skills".to_string());
-    lines.push("call activate_skill to unlock additional tools when needed:".to_string());
+/// Concrete type for the dynamic tool RAG index.
+pub type ToolIndex = rig::vector_store::in_memory_store::InMemoryVectorIndex<openai::EmbeddingModel, ToolSchema>;
 
-    for group in TOOL_SKILL_GROUPS {
-        let status = if activated.contains(group.name) { " [active]" } else { "" };
-        lines.push(format!("- {}: {}{}", group.name, group.description, status));
-    }
-    lines.join("\n")
+/// Pre-computed tool embeddings store. Cheap to create an index from (no API calls).
+pub struct ToolEmbeddingStore {
+    store: InMemoryVectorStore<ToolSchema>,
+    model: openai::EmbeddingModel,
 }
 
-// ---------------------------------------------------------------------------
-// activate_skill — unlock a tool skill group for subsequent turns
-// ---------------------------------------------------------------------------
-
-pub struct ActivateSkillTool {
-    activated: ActivatedSkills,
-}
-
-impl ActivateSkillTool {
-    pub fn new(activated: ActivatedSkills) -> Self {
-        Self { activated }
+impl ToolEmbeddingStore {
+    /// Create a fresh `ToolIndex` from the pre-computed embeddings.
+    /// This is cheap — no embedding API calls, just wrapping the store with a model ref.
+    pub fn to_index(&self) -> ToolIndex {
+        rig::vector_store::in_memory_store::InMemoryVectorIndex::new(
+            self.model.clone(),
+            self.store.clone(),
+        )
     }
 }
 
-#[derive(Deserialize, JsonSchema)]
-pub struct ActivateSkillArgs {
-    /// Skill group names to activate (e.g. ["web", "email"]).
-    pub skills: Vec<String>,
+/// Build a reusable embedding store for dynamic tool selection.
+/// Call `.to_index()` on the result to get a fresh ToolIndex per turn.
+/// Returns None if embedding fails (caller should fall back to all-tools-static).
+pub async fn build_tool_embedding_store(
+    embedding_model: &openai::EmbeddingModel,
+) -> Option<ToolEmbeddingStore> {
+    let schemas: Vec<ToolSchema> = OPTIONAL_TOOL_EMBEDDINGS
+        .iter()
+        .map(|(name, docs)| ToolSchema {
+            name: name.to_string(),
+            context: serde_json::Value::Null,
+            embedding_docs: docs.iter().map(|d| d.to_string()).collect(),
+        })
+        .collect();
+
+    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
+        .documents(schemas)
+        .ok()?
+        .build()
+        .await
+        .ok()?;
+
+    let store = InMemoryVectorStore::from_documents_with_id_f(
+        embeddings,
+        |schema| schema.name.clone(),
+    );
+
+    Some(ToolEmbeddingStore {
+        store,
+        model: embedding_model.clone(),
+    })
 }
 
-impl Tool for ActivateSkillTool {
-    const NAME: &'static str = "activate_skill";
-    type Error = ToolExecError;
-    type Args = ActivateSkillArgs;
-    type Output = String;
+/// Build all optional tools, each wrapped in ObservableTool.
+/// Returns a Vec that can be used as static tools or put into a ToolSet for dynamic selection.
+pub fn build_optional_tools(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    chat_id: &str,
+    brave_api_key: Option<&str>,
+    config_path: &Path,
+    events: broadcast::Sender<ServerEvent>,
+    llm: &crate::services::llm::LlmBackend,
+) -> Vec<Box<dyn ToolDyn>> {
+    let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
+        Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), chat_id.to_string()))
+    };
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        let names: Vec<&str> = TOOL_SKILL_GROUPS.iter().map(|g| g.name).collect();
-        ToolDefinition {
-            name: "activate_skill".into(),
-            description: format!(
-                "Activate tool skill groups to unlock additional tools. \
-                 Available groups: {}. Once activated, the tools become available immediately on your next action.",
-                names.join(", ")
-            ),
-            parameters: openai_schema::<ActivateSkillArgs>(),
-        }
-    }
-
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let valid_names: HashSet<&str> = TOOL_SKILL_GROUPS.iter().map(|g| g.name).collect();
-        let mut activated = Vec::new();
-        let mut unknown = Vec::new();
-
-        for name in &args.skills {
-            if valid_names.contains(name.as_str()) {
-                self.activated.lock().unwrap_or_else(|e| e.into_inner()).insert(name.clone());
-                activated.push(name.as_str());
-            } else {
-                unknown.push(name.as_str());
-            }
-        }
-
-        let mut result = String::new();
-        if !activated.is_empty() {
-            result.push_str(&format!("activated: {}. their tools are now available.", activated.join(", ")));
-        }
-        if !unknown.is_empty() {
-            result.push_str(&format!(" unknown groups: {}. valid: {}", unknown.join(", "), valid_names.into_iter().collect::<Vec<_>>().join(", ")));
-        }
-        Ok(result)
-    }
+    vec![
+        // Web
+        wrap(Box::new(WebSearchTool::new(brave_api_key, config_path))),
+        wrap(Box::new(WebFetchTool)),
+        wrap(Box::new(BrowseTool::new(workspace_dir, instance_slug))),
+        // Email
+        wrap(Box::new(SendEmailTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(ReadEmailTool::new(workspace_dir, instance_slug))),
+        // Code
+        wrap(Box::new(SearchCodeTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone()))),
+        // Project
+        wrap(Box::new(GetProjectStateTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(UpdateProjectStateTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(CreateTaskTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(UpdateTaskTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(ListTasksTool::new(workspace_dir, instance_slug))),
+        // Creative
+        wrap(Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone()))),
+        wrap(Box::new(EditSoulTool::new(workspace_dir, instance_slug))),
+        // System
+        wrap(Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(InstallPackageTool)),
+        wrap(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug))),
+        // Scheduling
+        wrap(Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(ReadJournalTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(GetMoodTool::new(workspace_dir, instance_slug))),
+    ]
 }
 
 // ---------------------------------------------------------------------------
