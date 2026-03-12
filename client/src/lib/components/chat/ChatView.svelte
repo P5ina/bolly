@@ -32,6 +32,7 @@
 	let scrollContainer: HTMLDivElement | undefined = $state();
 	let isConnected = $state(false);
 	let showChatList = $state(false);
+	let clearDialogOpen = $state(false);
 	let streamingContent = $state("");
 	let displayedLength = $state(0);
 	let typewriterRaf = 0;
@@ -346,6 +347,7 @@
 	}
 
 	async function handleClear() {
+		clearDialogOpen = false;
 		await clearContext(slug, activeChatId);
 		messages = [];
 		stream = [];
@@ -397,7 +399,7 @@
 					<path d="M8 3v10M3 8h10" stroke-linecap="round"/>
 				</svg>
 			</button> -->
-			<AlertDialog.Root>
+			<AlertDialog.Root bind:open={clearDialogOpen}>
 				<AlertDialog.Trigger class="bar-btn bar-clear" title="Clear context">
 					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
 						<path d="M2 4h12M5.5 4V2.5h5V4M6 7v5M10 7v5M3.5 4l.75 9.5h7.5L12.5 4" stroke-linecap="round" stroke-linejoin="round"/>
