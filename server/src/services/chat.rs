@@ -547,7 +547,7 @@ pub fn notify_restart(workspace_dir: &Path, events: &broadcast::Sender<ServerEve
 
     let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
     let content = format!(
-        "[system] server restarted at {now}. \
+        "[restart] server restarted at {now}. \
          if you were in the middle of a task, review your recent tool activity above and continue where you left off."
     );
 

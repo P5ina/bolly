@@ -163,12 +163,12 @@
 			}];
 		}
 		// System messages (e.g., restart notifications)
-		if (msg.content.startsWith("[system]")) {
+		if (msg.content.startsWith("[system]") || msg.content.startsWith("[restart]")) {
 			return [{
 				type: "activity" as const,
 				id: msg.id,
 				kind: "state" as const,
-				label: msg.content.replace(/^\[system\]\s*/, ""),
+				label: msg.content.replace(/^\[(system|restart)\]\s*/, ""),
 				timestamp: ts,
 			}];
 		}
