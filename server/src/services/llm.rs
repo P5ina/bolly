@@ -128,7 +128,7 @@ impl LlmBackend {
                     .llm
                     .model
                     .clone()
-                    .unwrap_or_else(|| "google/gemini-2.5-flash".to_string());
+                    .unwrap_or_else(|| "moonshotai/kimi-k2.5".to_string());
                 Some(LlmBackend::OpenRouter { client, model })
             }
         }
@@ -147,7 +147,7 @@ impl LlmBackend {
             },
             LlmBackend::OpenRouter { client, .. } => LlmBackend::OpenRouter {
                 client: client.clone(),
-                model: "google/gemini-2.5-flash".to_string(),
+                model: "moonshotai/kimi-k2.5".to_string(),
             },
         }
     }
