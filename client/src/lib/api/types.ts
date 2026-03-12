@@ -1,10 +1,14 @@
 export type ChatRole = "user" | "assistant";
 
+export type MessageKind = "message" | "tool_call" | "tool_output";
+
 export interface ChatMessage {
 	id: string;
 	role: ChatRole;
 	content: string;
 	created_at: string;
+	kind?: MessageKind;
+	tool_name?: string;
 }
 
 export interface ChatRequest {

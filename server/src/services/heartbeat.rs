@@ -454,6 +454,8 @@ fn deliver_spontaneous_message(
         role: ChatRole::Assistant,
         content: message.to_string(),
         created_at: unix_millis().to_string(),
+        kind: Default::default(),
+        tool_name: None,
     };
 
     // Append to the default chat thread (same path the client reads from)

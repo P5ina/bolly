@@ -6,6 +6,22 @@ pub struct ChatMessage {
     pub role: ChatRole,
     pub content: String,
     pub created_at: String,
+    /// Distinguishes regular messages from tool activity.
+    /// Defaults to "message" for backward compat with existing messages.json files.
+    #[serde(default)]
+    pub kind: MessageKind,
+    /// Tool name, present only when kind is tool_call or tool_output.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageKind {
+    #[default]
+    Message,
+    ToolCall,
+    ToolOutput,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

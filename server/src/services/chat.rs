@@ -52,6 +52,8 @@ pub fn save_user_message(
         role: ChatRole::User,
         content: content.to_string(),
         created_at: timestamp(),
+        kind: Default::default(),
+        tool_name: None,
     };
 
     let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
@@ -83,6 +85,8 @@ pub fn save_system_message(
         role: ChatRole::Assistant,
         content: content.to_string(),
         created_at: timestamp(),
+        kind: Default::default(),
+        tool_name: None,
     };
 
     let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
@@ -117,7 +121,10 @@ pub async fn run_single_turn(
 
     // Build system prompt with all context
     let base_prompt = llm::load_system_prompt(workspace_dir, &instance_slug);
-    let existing = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
+    let existing: Vec<ChatMessage> = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?
+        .into_iter()
+        .filter(|m| !is_tool_activity(m))
+        .collect();
 
     // Find last real user message for memory retrieval
     let last_user_content = existing
@@ -336,6 +343,8 @@ pub async fn run_single_turn(
             role: ChatRole::Assistant,
             content: chunk.clone(),
             created_at: timestamp(),
+            kind: Default::default(),
+            tool_name: None,
         });
     }
 
@@ -602,6 +611,14 @@ fn save_messages(
 
 /// Split a single LLM reply into multiple chat-like messages.
 /// Splits on double-newlines, merges very short fragments, and drops empty ones.
+/// Check if a message is a tool activity log (not real conversation content).
+fn is_tool_activity(msg: &ChatMessage) -> bool {
+    matches!(msg.kind, crate::domain::chat::MessageKind::ToolCall | crate::domain::chat::MessageKind::ToolOutput)
+        || msg.content.starts_with("[tool:") // backward compat with old messages
+        || msg.content.starts_with("[tool activity]")
+        || msg.content.starts_with("[system]")
+}
+
 /// Strip tool-call JSON that the model may have leaked into its text response
 /// instead of using the tool_use API properly.
 fn strip_leaked_tool_calls(reply: &str) -> String {

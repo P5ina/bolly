@@ -210,12 +210,14 @@ impl ToolDyn for ObservableTool {
         let tool_name = self.inner.name();
         let summary = tool_summary(&tool_name, &args);
 
-        // Persist tool call to messages and broadcast
+        // Persist tool call to messages (with structured kind, no prefix)
         let start_msg = crate::domain::chat::ChatMessage {
             id: format!("tool_{}_{}", tool_call_counter(), unix_millis()),
             role: crate::domain::chat::ChatRole::Assistant,
-            content: format!("[tool: {tool_name}] {summary}"),
+            content: summary.clone(),
             created_at: unix_millis().to_string(),
+            kind: crate::domain::chat::MessageKind::ToolCall,
+            tool_name: Some(tool_name.clone()),
         };
         append_message_to_chat(&self.workspace_dir, &self.instance_slug, &self.chat_id, &start_msg);
         let _ = self.events.send(ServerEvent::ChatMessageCreated {
@@ -263,8 +265,10 @@ impl ToolDyn for ObservableTool {
                     let output_msg = crate::domain::chat::ChatMessage {
                         id: format!("tool_{}_{}", tool_call_counter(), unix_millis()),
                         role: crate::domain::chat::ChatRole::Assistant,
-                        content: format!("[tool: {tool_name} output] {output}"),
+                        content: output,
                         created_at: unix_millis().to_string(),
+                        kind: crate::domain::chat::MessageKind::ToolOutput,
+                        tool_name: Some(tool_name.clone()),
                     };
                     append_message_to_chat(&workspace_dir, &instance_slug, &chat_id, &output_msg);
                     let _ = events.send(ServerEvent::ChatMessageCreated {
@@ -461,6 +465,8 @@ pub fn inject_system_message(
         role: crate::domain::chat::ChatRole::Assistant,
         content: content.to_string(),
         created_at: unix_millis().to_string(),
+        kind: Default::default(),
+        tool_name: None,
     };
     append_message_to_chat(workspace_dir, instance_slug, chat_id, &message);
     let _ = events.send(ServerEvent::ChatMessageCreated {
@@ -2940,6 +2946,8 @@ impl Tool for ReachOutTool {
             role: crate::domain::chat::ChatRole::Assistant,
             content: message.clone(),
             created_at: now.to_string(),
+            kind: Default::default(),
+            tool_name: None,
         };
 
         // Append to the default chat thread

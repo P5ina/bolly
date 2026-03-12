@@ -84,6 +84,8 @@ fn check_and_deliver(workspace_dir: &Path, events: &broadcast::Sender<ServerEven
                 role: ChatRole::Assistant,
                 content: scheduled.message.clone(),
                 created_at: unix_millis().to_string(),
+                kind: Default::default(),
+                tool_name: None,
             };
 
             // Append to chat history

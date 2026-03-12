@@ -126,6 +126,8 @@
 	}
 
 	function isToolActivity(msg: ChatMessage): boolean {
+		if (msg.kind === "tool_call" || msg.kind === "tool_output") return true;
+		// Backward compat with old messages that used string prefixes
 		return msg.role === "assistant" && (
 			msg.content.startsWith("[tool activity]") ||
 			msg.content.startsWith("[tool:") ||
@@ -134,9 +136,21 @@
 	}
 
 	function toolActivityToStreamItems(msg: ChatMessage): StreamItem[] {
-		// New format: [tool: tool_name] summary
+		const ts = new Date(Number(msg.created_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+		// Structured format (new): kind + tool_name fields
+		if (msg.kind === "tool_call" || msg.kind === "tool_output") {
+			if (msg.tool_name === "set_mood") return [];
+			return [{
+				type: "activity" as const,
+				id: msg.id,
+				kind: msg.kind === "tool_output" ? "output" as const : "tool" as const,
+				label: msg.content,
+				timestamp: ts,
+			}];
+		}
+		// Legacy: [tool: tool_name] summary prefix format
 		if (msg.content.startsWith("[tool:")) {
-			// Skip set_mood — handled by MoodUpdated event
 			if (msg.content.startsWith("[tool: set_mood]")) return [];
 			const isOutput = msg.content.includes(" output]");
 			return [{
@@ -144,7 +158,7 @@
 				id: msg.id,
 				kind: isOutput ? "output" as const : "tool" as const,
 				label: msg.content.replace(/^\[tool:[^\]]*\]\s*/, ""),
-				timestamp: new Date(Number(msg.created_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+				timestamp: ts,
 			}];
 		}
 		// System messages (e.g., restart notifications)
@@ -154,7 +168,7 @@
 				id: msg.id,
 				kind: "state" as const,
 				label: msg.content.replace(/^\[system\]\s*/, ""),
-				timestamp: new Date(Number(msg.created_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+				timestamp: ts,
 			}];
 		}
 		// Legacy format: [tool activity]\n• tool_name → result
@@ -244,8 +258,8 @@
 			if (eventChatId && eventChatId !== currentChat) return;
 
 			if (event.type === "chat_message_created") {
-				const content = event.message.content;
-				if (content.startsWith("[tool:") || content.startsWith("[system]")) {
+				const msg = event.message;
+				if (isToolActivity(msg)) {
 					// Tool activity — clear streaming bubble since a tool round started
 					if (streamingContent) {
 						streamingContent = "";
@@ -278,7 +292,6 @@
 				displayedLength = 0;
 				if (typewriterRaf) { cancelAnimationFrame(typewriterRaf); typewriterRaf = 0; }
 			} else if (event.type === "tool_activity") {
-				// Legacy: tool_activity events (kept for backwards compat)
 				if (event.summary.startsWith("mood →")) return;
 				const isOutput = event.tool_name.endsWith("_output");
 				pushActivity(isOutput ? "output" : "tool", event.summary);
