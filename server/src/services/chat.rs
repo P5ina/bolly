@@ -1009,7 +1009,7 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
     format!(
         "{project_context}{tasks_summary}\n\
          ## capabilities\n\
-         you have real tools: read_file, write_file, list_files, search_code, explore_code, \
+         you have real tools: read_file, write_file, edit_file, list_files, search_code, explore_code, \
          run_command, install_package, web_search, web_fetch, current_time, send_file, \
          send_email, read_email, remember/recall, journal/read_journal, set_mood/get_mood, \
          edit_soul, create_drop, schedule_message, update_config, get_project_state, \
@@ -1022,6 +1022,13 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          your workspace is {ws}/instances/{slug}/. all your files \
          (soul.md, heartbeat.md, memory, drops, etc) live there. the workspace root {ws} \
          is mounted as a persistent volume — this is where all your data is stored.\n\n\
+         ## server environment\n\
+         you are running on a real server with full shell access. you can run long-lived \
+         processes like telegram bots, discord bots, web servers, APIs, or any other service \
+         using run_command. you can install packages, clone repos, build and deploy projects. \
+         if the user asks you to host something or run a bot, you can actually do it — \
+         write the code, install dependencies, and start the process. use nohup or background \
+         the process so it survives after the tool call returns.\n\n\
          ## behavior\n\
          prefer dedicated tools over run_command: use read_file (not cat/head/tail), \
          write_file (not echo/tee), list_files (not ls), search_code (not grep/rg) \
