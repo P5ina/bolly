@@ -201,12 +201,9 @@ async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String,
                     });
                 }
 
-                // Record usage for rate limiting
+                // Record usage for rate limiting (input + output tokens)
                 if let (Some(pool), Some(iid)) = (&state.pg_pool, &state.instance_id) {
-                    let tokens: i32 = turn.messages.iter()
-                        .map(|m| rate_limit::estimate_tokens(&m.content))
-                        .sum();
-                    rate_limit::record_usage(pool, iid, tokens).await;
+                    rate_limit::record_usage(pool, iid, turn.estimated_tokens).await;
                 }
 
                 // Always continue if the agent was cut short by the turn limit

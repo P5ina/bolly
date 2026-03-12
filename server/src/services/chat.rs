@@ -103,6 +103,8 @@ pub struct SingleTurnResult {
     pub messages: Vec<ChatMessage>,
     /// The agent was cut short by the inner turn limit and needs to continue.
     pub hit_turn_limit: bool,
+    /// Estimated total tokens (input + output) consumed by this turn.
+    pub estimated_tokens: i32,
 }
 
 pub async fn run_single_turn(
@@ -378,9 +380,18 @@ pub async fn run_single_turn(
         });
     }
 
+    // Estimate total tokens: input (system prompt + history + user msg) + output
+    let input_tokens = estimate_tokens(&system_prompt)
+        + trimmed.iter().map(|m| estimate_tokens(&m.content) + 10).sum::<usize>();
+    let output_tokens: usize = assistant_messages.iter()
+        .map(|m| estimate_tokens(&m.content))
+        .sum();
+    let estimated_tokens = (input_tokens + output_tokens) as i32;
+
     Ok(SingleTurnResult {
         messages: assistant_messages,
         hit_turn_limit: tool_result.hit_turn_limit,
+        estimated_tokens,
     })
 }
 
