@@ -5,6 +5,8 @@
 		applySoulTemplate,
 		fetchSoul,
 		setCompanionName,
+		fetchConfigStatus,
+		updateLlmConfig,
 	} from "$lib/api/client.js";
 	import type { SoulTemplate } from "$lib/api/types.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
@@ -21,6 +23,10 @@
 	type Stage =
 		| "reveal"
 		| "intro"
+		| "picking-provider"
+		| "picking-model"
+		| "waiting-key"
+		| "testing"
 		| "picking-language"
 		| "naming-companion"
 		| "picking-soul"
@@ -34,11 +40,29 @@
 	let companionNameInput = $state("");
 	let messageInput: HTMLTextAreaElement | undefined = $state();
 	let nameInputEl: HTMLInputElement | undefined = $state();
+	let keyInput: HTMLInputElement | undefined = $state();
+	let chosenProvider = $state<"anthropic" | "openai" | null>(null);
+	let chosenModel = $state<string | null>(null);
+	let apiKeyValue = $state("");
+	let keyError = $state("");
 	let chosenLanguage = $state(
 		localStorage.getItem("bolly:language") ?? "english",
 	);
 	let lines = $state<{ text: string; revealed: string; done: boolean }[]>([]);
 	let soulTemplates = $state<SoulTemplate[]>([]);
+
+	const MODELS: Record<string, { id: string; label: string; note: string }[]> = {
+		anthropic: [
+			{ id: "claude-sonnet-4-6", label: "sonnet 4.6", note: "balanced" },
+			{ id: "claude-opus-4-6", label: "opus 4.6", note: "powerful" },
+			{ id: "claude-haiku-4-5", label: "haiku 4.5", note: "fast" },
+		],
+		openai: [
+			{ id: "gpt-5.4", label: "gpt-5.4", note: "flagship" },
+			{ id: "gpt-5.4-pro", label: "gpt-5.4 pro", note: "max performance" },
+			{ id: "gpt-5.2", label: "gpt-5.2", note: "affordable" },
+		],
+	};
 
 	const LANGUAGES = [
 		{ id: "english", label: "English" },
@@ -100,8 +124,101 @@
 		await pause(400);
 		await typewrite("a new space, just for us.");
 		await pause(600);
+
+		// Check if LLM is already configured
+		let llmConfigured = false;
+		for (let attempt = 0; attempt < 3; attempt++) {
+			try {
+				const status = await fetchConfigStatus();
+				if (status.llm_configured) {
+					llmConfigured = true;
+					chosenProvider = (status.provider as "anthropic" | "openai") ?? "anthropic";
+					chosenModel = status.model ?? null;
+				}
+				break;
+			} catch {
+				if (attempt < 2) await pause(2000);
+			}
+		}
+
+		if (!llmConfigured) {
+			await typewrite("before we begin \u2014 who should i think with?");
+			stage = "picking-provider";
+		} else {
+			await typewrite("what language should we speak?");
+			stage = "picking-language";
+		}
+	}
+
+	function pickProvider(provider: "anthropic" | "openai") {
+		chosenProvider = provider;
+		continueAfterProvider();
+	}
+
+	async function continueAfterProvider() {
+		stage = "intro";
+		await pause(300);
+		const name = chosenProvider === "anthropic" ? "anthropic" : "openai";
+		await typewrite(`${name}. good choice.`);
+		await pause(400);
+		await typewrite("which mind should i wear?");
+		stage = "picking-model";
+	}
+
+	async function pickModel(modelId: string) {
+		chosenModel = modelId;
+		stage = "intro";
+		await pause(300);
+		const model = MODELS[chosenProvider!]?.find((m) => m.id === modelId);
+		await typewrite(`${model?.label ?? modelId}. noted.`);
+		await pause(400);
+		await typewrite("paste your api key and i\u2019ll wake up.");
+		stage = "waiting-key";
+		await pause(100);
+		keyInput?.focus();
+	}
+
+	async function submitKey() {
+		const key = apiKeyValue.trim();
+		if (!key || !chosenProvider) return;
+		keyError = "";
+		stage = "testing";
+
+		try {
+			await updateLlmConfig({
+				provider: chosenProvider,
+				model: chosenModel ?? undefined,
+				api_key: key,
+			});
+		} catch (err) {
+			keyError = `hmm, that didn\u2019t work. try again? (${err instanceof Error ? err.message : String(err)})`;
+			stage = "waiting-key";
+			await pause(100);
+			keyInput?.focus();
+			return;
+		}
+
+		await pause(300);
+		await typewrite("i can feel it. i\u2019m alive now.");
+		await pause(600);
 		await typewrite("what language should we speak?");
 		stage = "picking-language";
+	}
+
+	async function skipConfig() {
+		stage = "intro";
+		await pause(300);
+		await typewrite("alright, we\u2019ll figure that out later.");
+		await pause(600);
+		await typewrite("what language should we speak?");
+		stage = "picking-language";
+	}
+
+	function handleKeyKeydown(e: KeyboardEvent) {
+		if (e.key === "Enter") {
+			e.preventDefault();
+			submitKey();
+		}
 	}
 
 	async function pickLanguage(langId: string) {
@@ -277,6 +394,73 @@
 				</div>
 			{/each}
 		</div>
+
+		<!-- provider picker -->
+		{#if stage === "picking-provider"}
+			<div class="instance-input-enter">
+				<div class="flex gap-3">
+					<button onclick={() => pickProvider("anthropic")} class="instance-pill flex-1">
+						<span class="font-display text-sm italic">anthropic</span>
+					</button>
+					<button onclick={() => pickProvider("openai")} class="instance-pill flex-1">
+						<span class="font-display text-sm italic">openai</span>
+					</button>
+				</div>
+				<button
+					onclick={skipConfig}
+					class="mt-4 w-full text-xs text-muted-foreground/25 transition-colors hover:text-muted-foreground/50 italic"
+				>
+					skip for now
+				</button>
+			</div>
+		{/if}
+
+		<!-- model picker -->
+		{#if stage === "picking-model" && chosenProvider}
+			<div class="instance-input-enter">
+				<div class="grid grid-cols-3 gap-2.5">
+					{#each MODELS[chosenProvider] as model}
+						<button onclick={() => pickModel(model.id)} class="instance-pill flex-col gap-0.5 py-3.5">
+							<span class="font-display text-sm italic">{model.label}</span>
+							<span class="text-[10px] text-muted-foreground/25">{model.note}</span>
+						</button>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<!-- api key -->
+		{#if stage === "waiting-key"}
+			<div class="instance-input-enter">
+				<div class="relative">
+					<input
+						bind:this={keyInput}
+						bind:value={apiKeyValue}
+						onkeydown={handleKeyKeydown}
+						type="password"
+						placeholder="sk-..."
+						class="instance-name-input font-mono text-sm"
+						style="text-align: left;"
+					/>
+					{#if apiKeyValue.trim()}
+						<button onclick={submitKey} aria-label="Submit key" class="instance-send" style="top: 50%; bottom: auto; transform: translateY(-50%);">
+							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+						</button>
+					{/if}
+				</div>
+				{#if keyError}
+					<p class="mt-2 text-xs text-red-400/60 italic">{keyError}</p>
+				{/if}
+			</div>
+		{/if}
+
+		<!-- testing -->
+		{#if stage === "testing"}
+			<div class="instance-input-enter flex items-center justify-center gap-3">
+				<div class="instance-spinner"></div>
+				<span class="font-display text-xs italic text-warm/40">waking up</span>
+			</div>
+		{/if}
 
 		<!-- language picker -->
 		{#if stage === "picking-language"}

@@ -1,38 +1,24 @@
 <script lang="ts">
 	import { page } from "$app/state";
-	import { fetchMessages } from "$lib/api/client.js";
+	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import InstanceOnboarding from "$lib/components/onboarding/InstanceOnboarding.svelte";
 	let { children } = $props();
 
 	const slug = $derived(page.params.slug!);
+	const instances = getInstances();
 
-	let isNew = $state(false);
-	let checking = $state(true);
+	const isNew = $derived(
+		!instances.loading && !instances.list.some((i) => i.slug === slug)
+	);
+	const checking = $derived(instances.loading);
 
 	const tabs = ["chat", "drops", "thoughts", "skills"] as const;
 	const activeTab = $derived(
 		tabs.find((t) => page.url.pathname.includes(`/${slug}/${t}`)) ?? "chat"
 	);
 
-	$effect(() => {
-		const s = slug;
-		checking = true;
-		isNew = false;
-
-		fetchMessages(s)
-			.then((res) => {
-				isNew = res.messages.length === 0;
-			})
-			.catch(() => {
-				isNew = true;
-			})
-			.finally(() => {
-				checking = false;
-			});
-	});
-
 	function handleOnboardingComplete() {
-		isNew = false;
+		instances.refresh();
 	}
 </script>
 

@@ -3,7 +3,6 @@
 	import { onMount } from "svelte";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { fetchMeta } from "$lib/api/client.js";
-	import Onboarding from "$lib/components/onboarding/Onboarding.svelte";
 
 	const instances = getInstances();
 
@@ -17,8 +16,6 @@
 			commit = meta.commit;
 		} catch {}
 	});
-
-	const showOnboarding = $derived(!instances.loading && instances.list.length === 0);
 
 	let newSlug = $state("");
 	let showCreate = $state(false);
@@ -62,9 +59,6 @@
 	];
 </script>
 
-{#if showOnboarding}
-	<Onboarding />
-{:else}
 	<div class="home-container">
 		<!-- layered atmosphere -->
 		<div class="home-atmosphere"></div>
@@ -210,7 +204,6 @@
 			</div>
 		{/if}
 	</div>
-{/if}
 
 <style>
 	.home-container {
