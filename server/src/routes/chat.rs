@@ -123,6 +123,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
 
     const MAX_ITERATIONS: usize = 20;
     let mut iteration = 0;
+    let mut prev_rig_history: Option<Vec<rig::completion::Message>> = None;
 
     // Build RAG tool embedding store once (expensive API call), reuse per iteration
     let tool_store = {
@@ -184,6 +185,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             if brave_key.is_empty() { None } else { Some(brave_key.as_str()) },
             state.events.clone(),
             tool_store.as_ref().map(|s| s.to_index()),
+            prev_rig_history.take(),
         );
 
         let result = tokio::select! {
@@ -207,6 +209,9 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
 
         match result {
             Ok(turn) => {
+                // Carry rig history to next iteration
+                prev_rig_history = turn.rig_history;
+
                 for msg in &turn.messages {
                     let _ = state.events.send(ServerEvent::ChatMessageCreated {
                         instance_slug: instance_slug.clone(),

@@ -101,6 +101,9 @@ pub struct SingleTurnResult {
     pub hit_turn_limit: bool,
     /// Estimated total tokens (input + output) consumed by this turn.
     pub estimated_tokens: i32,
+    /// The full Rig message history (with ToolCall/ToolResult) for carrying
+    /// context between outer loop iterations.
+    pub rig_history: Option<Vec<rig::completion::Message>>,
 }
 
 pub async fn run_single_turn(
@@ -113,22 +116,21 @@ pub async fn run_single_turn(
     brave_api_key: Option<&str>,
     events: broadcast::Sender<ServerEvent>,
     tool_index: Option<tools::ToolIndex>,
+    prev_history: Option<Vec<rig::completion::Message>>,
 ) -> io::Result<SingleTurnResult> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
 
     // Build system prompt with all context
     let base_prompt = llm::load_system_prompt(workspace_dir, &instance_slug);
-    let existing: Vec<ChatMessage> = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?
-        .into_iter()
-        .filter(|m| !is_tool_activity(m))
-        .collect();
+    let existing: Vec<ChatMessage> =
+        load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
 
     // Find last real user message for memory retrieval
     let last_user_content = existing
         .iter()
         .rev()
-        .find(|m| matches!(m.role, ChatRole::User))
+        .find(|m| matches!(m.role, ChatRole::User) && !is_tool_activity(m))
         .map(|m| m.content.as_str())
         .unwrap_or("");
 
@@ -204,90 +206,68 @@ pub async fn run_single_turn(
         system_prompt = format!("{system_prompt}\n\n{rhythm_prompt}");
     }
 
-    // Token-aware context management with auto-compaction
-    let model_name = llm.model_name();
-    let context_limit = model_context_limit(model_name);
-    let system_tokens = estimate_tokens(&system_prompt);
-    // Reserve 40% of remaining context for tool calls + response
-    let tool_reserve = (context_limit - system_tokens) * 40 / 100;
-    let history_budget = context_limit.saturating_sub(system_tokens + tool_reserve);
-
-    // Load any existing compacted context
-    let compact_path = compact_path(workspace_dir, &instance_slug, &chat_id);
-    let existing_compact = fs::read_to_string(&compact_path).unwrap_or_default();
-    let compact_tokens = estimate_tokens(&existing_compact);
-
-    // Budget available for raw messages (after compact context)
-    let raw_budget = history_budget.saturating_sub(compact_tokens);
-    let total_history_tokens: usize = existing.iter()
-        .map(|m| estimate_tokens(&m.content) + 10)
-        .sum();
-
-    // Auto-compact when raw messages exceed 60% of raw budget
-    let compact_threshold = raw_budget * 60 / 100;
-    if total_history_tokens > compact_threshold && existing.len() > 8 {
-        // Keep the last 6 messages raw, compact everything before them
-        let keep_raw = 6.min(existing.len());
-        let to_compact = &existing[..existing.len() - keep_raw];
-
-        if !to_compact.is_empty() {
-            log::info!(
-                "auto-compacting {} old messages ({} tokens over threshold {})",
-                to_compact.len(),
-                total_history_tokens,
-                compact_threshold,
-            );
-            let _ = events.send(ServerEvent::ContextCompacting {
-                instance_slug: instance_slug.clone(),
-                chat_id: chat_id.to_string(),
-                messages_compacted: to_compact.len(),
-            });
-            let new_summary = compact_messages(llm, &existing_compact, to_compact).await;
-            if !new_summary.is_empty() {
-                if let Err(e) = fs::write(&compact_path, &new_summary) {
-                    log::warn!("failed to save compact context: {e}");
-                }
+    // Build Rig message history: use prev_history if available (continuation),
+    // otherwise load from rig_history.json or fall back to converting messages.json.
+    let (history_msgs, prompt_msg) = if let Some(history) = prev_history {
+        // Continuation turn: check if there are new user messages since the last one
+        // in the Rig history, and append them.
+        let last_user_in_existing = existing.last();
+        if let Some(last_msg) = last_user_in_existing {
+            if matches!(last_msg.role, ChatRole::User) {
+                let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
+                let content_with_time = format!("[{now}]\n{}", last_msg.content);
+                let prompt = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug);
+                (history, prompt)
+            } else {
+                return Err(io::Error::new(ErrorKind::InvalidInput, "no user message to process"));
             }
+        } else {
+            return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
         }
-    }
+    } else {
+        // First turn or restart: load Rig history from disk
+        let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
+        let loaded_history = load_rig_history(&rig_path);
 
-    // Re-read compact context (may have been updated)
-    let compact_context = fs::read_to_string(&compact_path).unwrap_or_default();
+        // Filter out tool activity from existing for display-text-only operations
+        let display_msgs: Vec<&ChatMessage> = existing.iter()
+            .filter(|m| !is_tool_activity(m))
+            .collect();
 
-    // Inject compact context into system prompt if available
-    if !compact_context.is_empty() {
-        system_prompt = format!(
-            "{system_prompt}\n\n\
-             ## conversation context (compacted)\n\
-             this is a summary of your earlier conversation. treat it as your memory \
-             of what happened before the recent messages below.\n\n\
-             {compact_context}"
-        );
-    }
+        if display_msgs.is_empty() {
+            return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
+        }
 
-    // Trim remaining raw messages to fit budget
-    let updated_budget = history_budget.saturating_sub(estimate_tokens(&compact_context));
-    let trimmed = trim_history_to_budget(&existing, updated_budget);
+        let last_display = display_msgs.last().unwrap();
+        let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
+        let content_with_time = format!("[{now}]\n{}", last_display.content);
+        let prompt = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug);
+
+        let history = if let Some(h) = loaded_history {
+            log::info!("loaded {} rig history messages from disk", h.len());
+            h
+        } else {
+            // Fall back to converting messages.json (old chats without rig_history.json)
+            let text_msgs: Vec<ChatMessage> = existing.iter()
+                .filter(|m| !is_tool_activity(m))
+                .cloned()
+                .collect();
+            if text_msgs.len() > 1 {
+                log::info!("converting {} text messages to rig history (fallback)", text_msgs.len() - 1);
+                llm::to_rig_messages(&text_msgs[..text_msgs.len() - 1])
+            } else {
+                vec![]
+            }
+        };
+        (history, prompt)
+    };
 
     log::info!(
-        "context: model={model_name} limit={context_limit} system={system_tokens} \
-         compact={compact_tokens} tool_reserve={tool_reserve} \
-         raw_budget={raw_budget} msgs_total={} msgs_kept={}",
-        existing.len(),
-        trimmed.len(),
+        "context: model={} history_msgs={} system_prompt_len={}",
+        llm.model_name(),
+        history_msgs.len(),
+        system_prompt.len(),
     );
-
-    // The last message is the prompt, everything before is history
-    let (history_msgs, prompt_msg) = if let Some(last) = trimmed.last() {
-        let history = llm::to_rig_messages(&trimmed[..trimmed.len() - 1]);
-        // Prepend current time to the user's message so the agent always knows when it is
-        let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
-        let content_with_time = format!("[{now}]\n{}", last.content);
-        let msg = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug);
-        (history, msg)
-    } else {
-        return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
-    };
 
     let sent_files = tools::SentFiles::default();
     let (mut static_tools, sent_files) = build_static_tools(workspace_dir, &instance_slug, &chat_id, events.clone(), sent_files);
@@ -309,6 +289,7 @@ pub async fn run_single_turn(
         None
     };
 
+    let history_count = history_msgs.len();
     let tool_result = llm
         .chat_with_tools_streaming(
             &system_prompt, prompt_msg, history_msgs, static_tools, dynamic_tools,
@@ -328,11 +309,37 @@ pub async fn run_single_turn(
                 log::error!("LLM error details: {e:?}");
                 "something went wrong on my end — try again?".to_string()
             };
-            llm::ToolChatResult { text, hit_turn_limit: false }
+            llm::ToolChatResult { text, hit_turn_limit: false, intermediate_texts: vec![], rig_history: None }
         });
 
     // Strip any leaked tool-call JSON the model may have output as text
     let reply = strip_leaked_tool_calls(&tool_result.text);
+
+    // Save intermediate text segments (agent messages between tool calls)
+    // so they don't disappear from the chat.
+    for intermediate in &tool_result.intermediate_texts {
+        let cleaned = strip_leaked_tool_calls(intermediate);
+        if cleaned.is_empty() {
+            continue;
+        }
+        let intermediate_chunks = split_into_messages(&cleaned);
+        for chunk in intermediate_chunks {
+            let msg = ChatMessage {
+                id: next_id(),
+                role: ChatRole::Assistant,
+                content: chunk,
+                created_at: timestamp(),
+                kind: Default::default(),
+                tool_name: None,
+            };
+            tools::append_message_to_chat(workspace_dir, &instance_slug, &chat_id, &msg);
+            let _ = events.send(ServerEvent::ChatMessageCreated {
+                instance_slug: instance_slug.clone(),
+                chat_id: chat_id.clone(),
+                message: msg,
+            });
+        }
+    }
 
     // Split reply into chat-like chunks (by double newline)
     let mut chunks: Vec<String> = split_into_messages(&reply);
@@ -395,9 +402,15 @@ pub async fn run_single_turn(
         });
     }
 
-    // Estimate total tokens: input (system prompt + history + user msg) + output
+    // Save rig history to disk if we got one from the LLM
+    if let Some(ref h) = tool_result.rig_history {
+        let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
+        save_rig_history(&rig_path, h);
+    }
+
+    // Estimate total tokens: input (system prompt + history) + output
     let input_tokens = estimate_tokens(&system_prompt)
-        + trimmed.iter().map(|m| estimate_tokens(&m.content) + 10).sum::<usize>();
+        + history_count * 100; // rough estimate for rig messages
     let output_tokens: usize = assistant_messages.iter()
         .map(|m| estimate_tokens(&m.content))
         .sum();
@@ -407,6 +420,7 @@ pub async fn run_single_turn(
         messages: assistant_messages,
         hit_turn_limit: tool_result.hit_turn_limit,
         estimated_tokens,
+        rig_history: tool_result.rig_history,
     })
 }
 
@@ -430,6 +444,12 @@ pub fn clear_context(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
     if compact.exists() {
         let _ = fs::remove_file(&compact);
         log::info!("cleared compact context for {instance_slug}/{chat_id}");
+    }
+    // Delete rig history
+    let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
+    if rig_path.exists() {
+        let _ = fs::remove_file(&rig_path);
+        log::info!("cleared rig history for {instance_slug}/{chat_id}");
     }
     // Also clear messages
     let msgs = messages_path(workspace_dir, &instance_slug, &chat_id);
@@ -741,112 +761,33 @@ fn estimate_tokens(text: &str) -> usize {
     (text.len() as f64 / 3.2) as usize
 }
 
-/// Return context window size (in estimated tokens) for known models.
-/// Using standard (non-premium) context limits to avoid extra billing.
-///
-/// Actual maximums (with premium long-context pricing):
-///   claude-opus-4-6, claude-sonnet-4-6: 1M tokens
-///   gpt-5.4, gpt-5.4-pro: 1M tokens (272k standard)
-///
-/// We use the standard tier to keep costs predictable.
-fn model_context_limit(model: &str) -> usize {
-    let m = model.to_lowercase();
-    if m.contains("haiku") {
-        // claude-haiku-4-5: 200k context, 64k output
-        200_000
-    } else if m.contains("claude") {
-        // claude-sonnet-4-6, claude-opus-4-6: 200k standard (1M with premium pricing)
-        200_000
-    } else if m.contains("gpt-5.4") {
-        // gpt-5.4 / gpt-5.4-pro: 272k standard (1M with 2x input pricing)
-        272_000
-    } else if m.contains("gpt-5.2") {
-        // gpt-5.2: being retired June 2026
-        128_000
-    } else {
-        // Conservative default for unknown models
-        64_000
-    }
-}
-
-/// Trim message history from the front to fit within a token budget.
-/// Always keeps at least the last 4 messages for conversational context.
-fn trim_history_to_budget(messages: &[ChatMessage], budget: usize) -> &[ChatMessage] {
-    let min_keep = 4.min(messages.len());
-
-    // Start from the end, accumulate tokens
-    let mut total = 0usize;
-    let mut keep_from = messages.len();
-
-    for i in (0..messages.len()).rev() {
-        let msg_tokens = estimate_tokens(&messages[i].content) + 10; // overhead per message
-        if total + msg_tokens > budget && messages.len() - i >= min_keep {
-            break;
-        }
-        total += msg_tokens;
-        keep_from = i;
-    }
-
-    &messages[keep_from..]
-}
-
 fn compact_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> PathBuf {
     chat_dir(workspace_dir, instance_slug, chat_id).join("compact.md")
 }
 
-/// Use the LLM to summarize older messages into a compact context block.
-/// Merges with any existing compact context.
-async fn compact_messages(
-    llm: &LlmBackend,
-    existing_compact: &str,
-    messages: &[ChatMessage],
-) -> String {
-    let mut transcript = String::new();
-    for msg in messages {
-        let role = match msg.role {
-            ChatRole::User => "user",
-            ChatRole::Assistant => "companion",
-        };
-        transcript.push_str(&format!("[{role}]: {}\n", msg.content));
-    }
+fn rig_history_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> PathBuf {
+    chat_dir(workspace_dir, instance_slug, chat_id).join("rig_history.json")
+}
 
-    // Limit transcript to avoid blowing the compaction call itself
-    let truncated: String = transcript.chars().take(12_000).collect();
-
-    let mut prompt = String::from(
-        "Summarize the following conversation into a compact context block. \
-         Preserve: key facts discussed, decisions made, tasks mentioned, emotional shifts, \
-         what the user asked for, what you did or promised to do, file paths and technical details. \
-         Drop: greetings, filler, repetition. \
-         Write in second person (\"you discussed...\", \"the user asked you to...\"). \
-         Keep it under 500 words. Be dense and factual.\n\n"
-    );
-
-    if !existing_compact.is_empty() {
-        prompt.push_str("Previous context summary (merge with new info, don't repeat):\n");
-        // Limit existing compact to avoid overflow
-        let prev: String = existing_compact.chars().take(3_000).collect();
-        prompt.push_str(&prev);
-        prompt.push_str("\n\n");
-    }
-
-    prompt.push_str("New messages to incorporate:\n");
-    prompt.push_str(&truncated);
-
-    match llm.chat(
-        "You are a precise conversation summarizer. Output only the summary, no preamble.",
-        &prompt,
-        vec![],
-    ).await {
-        Ok(summary) => {
-            log::info!("compacted {} messages into {} chars", messages.len(), summary.len());
-            summary
-        }
+fn load_rig_history(path: &Path) -> Option<Vec<rig::completion::Message>> {
+    let raw = fs::read_to_string(path).ok()?;
+    match serde_json::from_str(&raw) {
+        Ok(h) => Some(h),
         Err(e) => {
-            log::error!("compaction LLM call failed: {e}");
-            // Fall back to keeping existing compact
-            existing_compact.to_string()
+            log::warn!("failed to parse rig_history.json: {e}");
+            None
         }
+    }
+}
+
+fn save_rig_history(path: &Path, history: &[rig::completion::Message]) {
+    match serde_json::to_string(history) {
+        Ok(body) => {
+            if let Err(e) = fs::write(path, body) {
+                log::warn!("failed to save rig_history.json: {e}");
+            }
+        }
+        Err(e) => log::warn!("failed to serialize rig history: {e}"),
     }
 }
 

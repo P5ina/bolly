@@ -26,6 +26,13 @@ pub struct ToolChatResult {
     pub text: String,
     /// True when the agent was cut short by the turn limit (still has work to do).
     pub hit_turn_limit: bool,
+    /// Text segments the agent produced between tool calls (before the final response).
+    /// These are saved so they don't disappear from the chat.
+    pub intermediate_texts: Vec<String>,
+    /// The full Rig message history (including ToolCall/ToolResult entries) from
+    /// the streaming multi-turn. Used to carry context between outer loop iterations
+    /// so the LLM doesn't forget its tool calls.
+    pub rig_history: Option<Vec<Message>>,
 }
 
 const MAX_RETRIES: u32 = 3;
@@ -192,7 +199,7 @@ impl LlmBackend {
 
         if tools.is_empty() {
             let text = self.chat(system_prompt, &prompt_text, history).await?;
-            return Ok(ToolChatResult { text, hit_turn_limit: false });
+            return Ok(ToolChatResult { text, hit_turn_limit: false, intermediate_texts: vec![], rig_history: None });
         }
 
         // Keep max_turns low so the agent returns text frequently.
@@ -235,7 +242,7 @@ impl LlmBackend {
         };
 
         match result {
-            Ok(response) => Ok(ToolChatResult { text: response, hit_turn_limit: false }),
+            Ok(response) => Ok(ToolChatResult { text: response, hit_turn_limit: false, intermediate_texts: vec![], rig_history: None }),
             Err(e) if is_rate_limit_error(&e.to_string()) => {
                 // Retry with exponential backoff, keeping tools
                 log::warn!("Rate limited during tool agent, retrying with backoff");
@@ -264,7 +271,7 @@ impl LlmBackend {
                     };
 
                     match retry_result {
-                        Ok(response) => return Ok(ToolChatResult { text: response, hit_turn_limit: false }),
+                        Ok(response) => return Ok(ToolChatResult { text: response, hit_turn_limit: false, intermediate_texts: vec![], rig_history: None }),
                         Err(e) if is_rate_limit_error(&e.to_string()) => continue,
                         Err(e) => return Err(e),
                     }
@@ -276,7 +283,7 @@ impl LlmBackend {
                 if is_max_turns_error(&e) {
                     let text = extract_last_assistant_text(&chat_history);
                     log::info!("Turn limit reached, extracted text: {:?}", text.chars().take(80).collect::<String>());
-                    return Ok(ToolChatResult { text, hit_turn_limit: true });
+                    return Ok(ToolChatResult { text, hit_turn_limit: true, intermediate_texts: vec![], rig_history: None });
                 }
                 log::error!("Tool agent failed: {e:?}");
                 Err(e.into())
@@ -305,7 +312,7 @@ impl LlmBackend {
         let has_dynamic = dynamic_tools.is_some();
         log::info!("chat_with_tools_streaming: {} static tools, dynamic_rag={}, memory_rag={}", static_tools.len(), has_dynamic, memory_index.is_some());
 
-        const AGENT_MAX_TURNS: usize = 4;
+        const AGENT_MAX_TURNS: usize = 16;
         const DYNAMIC_SAMPLE: usize = 6;
 
         let slug = instance_slug.to_string();
@@ -426,7 +433,9 @@ where
     R: Clone + Unpin,
 {
     let mut accumulated = String::new();
+    let mut intermediate_texts: Vec<String> = Vec::new();
     let mut hit_turn_limit = false;
+    let mut rig_history: Option<Vec<Message>> = None;
 
     // Per-item timeout: if the stream stalls for >8 minutes (e.g. tool hang),
     // break out instead of waiting forever. Must be long enough for sub-agent
@@ -454,12 +463,16 @@ where
                     });
                 }
             }
-            // When the agent calls a tool, discard any intermediate text so
-            // only the final response (after all tool rounds) is kept.
+            // When the agent calls a tool, save any intermediate text so it
+            // doesn't disappear from the chat, then reset for the next segment.
             Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall { .. })) |
             Ok(MultiTurnStreamItem::StreamUserItem(_)) => {
                 if !accumulated.is_empty() {
-                    log::debug!("tool round detected, resetting {} chars of intermediate text", accumulated.len());
+                    let text = accumulated.trim().to_string();
+                    if !text.is_empty() {
+                        log::debug!("tool round detected, saving {} chars of intermediate text", text.len());
+                        intermediate_texts.push(text);
+                    }
                     accumulated.clear();
                 }
             }
@@ -468,6 +481,12 @@ where
                 if msg.contains("MaxTurn") || msg.contains("max turn") {
                     log::info!("streaming hit turn limit, accumulated {} chars", accumulated.len());
                     hit_turn_limit = true;
+                    // Extract history from MaxTurnsError if available
+                    if let StreamingError::Prompt(ref prompt_err) = e {
+                        if let rig::completion::PromptError::MaxTurnsError { chat_history, .. } = prompt_err.as_ref() {
+                            rig_history = Some(*chat_history.clone());
+                        }
+                    }
                     break;
                 }
                 if is_rate_limit_error(&msg) && accumulated.is_empty() {
@@ -480,11 +499,16 @@ where
                 }
                 return Err(Box::new(e));
             }
-            _ => {} // Ignore tool call deltas, user items, final response
+            Ok(MultiTurnStreamItem::FinalResponse(ref final_resp)) => {
+                if let Some(h) = final_resp.history() {
+                    rig_history = Some(h.to_vec());
+                }
+            }
+            _ => {} // Ignore reasoning deltas, etc.
         }
     }
 
-    Ok(ToolChatResult { text: accumulated, hit_turn_limit })
+    Ok(ToolChatResult { text: accumulated, hit_turn_limit, intermediate_texts, rig_history })
 }
 
 fn is_max_turns_error(error: &(dyn std::error::Error + Send + Sync)) -> bool {

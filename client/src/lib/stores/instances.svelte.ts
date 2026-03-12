@@ -31,5 +31,8 @@ export function getInstances() {
 				instances = [...instances, instance];
 			}
 		},
+		remove(slug: string) {
+			instances = instances.filter((i) => i.slug !== slug);
+		},
 	};
 }

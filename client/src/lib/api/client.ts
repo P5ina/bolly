@@ -114,6 +114,14 @@ export function fetchInstances(): Promise<InstanceSummary[]> {
 	return json("/api/instances");
 }
 
+export async function deleteInstance(slug: string): Promise<void> {
+	const res = await authedFetch(`/api/instances/${encodeURIComponent(slug)}`, {
+		method: "DELETE",
+	});
+	if (res.status === 401) throw new AuthError();
+	if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
+}
+
 export function fetchChats(slug: string): Promise<ChatSummary[]> {
 	return json(`/api/chat/${encodeURIComponent(slug)}/chats`);
 }

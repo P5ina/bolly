@@ -1,4 +1,4 @@
-use axum::{Json, Router, extract::{Path, State}, http::StatusCode, routing::{get, put}};
+use axum::{Json, Router, extract::{Path, State}, http::StatusCode, routing::{delete, get, put}};
 use serde::{Deserialize, Serialize};
 use std::fs;
 
@@ -7,6 +7,7 @@ use crate::{app::state::AppState, domain::instance::InstanceSummary, services::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/instances", get(list_instances))
+        .route("/api/instances/{instance_slug}", delete(delete_instance))
         .route("/api/instances/{instance_slug}/mood", get(get_mood))
         .route("/api/instances/{instance_slug}/companion-name", get(get_companion_name))
         .route("/api/instances/{instance_slug}/companion-name", put(set_companion_name))
@@ -16,6 +17,26 @@ async fn list_instances(State(state): State<AppState>) -> Json<Vec<InstanceSumma
     let instances = workspace::read_instances(&state.workspace_dir.join("instances"))
         .unwrap_or_default();
     Json(instances)
+}
+
+async fn delete_instance(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> StatusCode {
+    // Validate slug to prevent path traversal
+    if instance_slug.contains('/') || instance_slug.contains('\\') || instance_slug == ".." || instance_slug == "." {
+        return StatusCode::BAD_REQUEST;
+    }
+
+    let instance_dir = state.workspace_dir.join("instances").join(&instance_slug);
+    if !instance_dir.exists() {
+        return StatusCode::NOT_FOUND;
+    }
+
+    match fs::remove_dir_all(&instance_dir) {
+        Ok(_) => StatusCode::NO_CONTENT,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
 }
 
 #[derive(Serialize)]

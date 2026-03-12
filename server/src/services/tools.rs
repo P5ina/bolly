@@ -509,7 +509,7 @@ fn unix_millis() -> u128 {
 }
 
 /// Append a single message to a chat's messages.json with file locking.
-fn append_message_to_chat(
+pub fn append_message_to_chat(
     workspace_dir: &Path,
     instance_slug: &str,
     chat_id: &str,
