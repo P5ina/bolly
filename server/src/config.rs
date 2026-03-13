@@ -23,6 +23,18 @@ pub struct Config {
     pub registry_url: String,
     #[serde(default)]
     pub plan: String,
+    #[serde(default)]
+    pub mcp_servers: Vec<McpServerConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct McpServerConfig {
+    /// Human-readable name for this MCP server.
+    pub name: String,
+    /// URL for HTTP/SSE transport (e.g. "https://mcp.excalidraw.com/mcp").
+    pub url: Option<String>,
+    /// Command for stdio transport (e.g. "node /path/to/server.js --stdio").
+    pub command: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -79,6 +91,7 @@ impl Default for Config {
             llm: LlmConfig::default(),
             registry_url: default_registry_url(),
             plan: String::new(),
+            mcp_servers: Vec::new(),
         }
     }
 }

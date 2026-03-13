@@ -10,6 +10,7 @@ use crate::{
     config::{self, Config},
     domain::events::ServerEvent,
     services::llm::LlmBackend,
+    services::mcp::McpRegistry,
 };
 
 /// A pending secret request waiting for user input.
@@ -32,12 +33,21 @@ pub struct AppState {
     pub instance_id: Option<String>,
     /// Pending secret requests awaiting user input.
     pub pending_secrets: Arc<Mutex<HashMap<String, PendingSecret>>>,
+    /// Connected MCP servers and their tools.
+    pub mcp_registry: McpRegistry,
 }
 
 impl AppState {
     pub async fn new(mut config: Config) -> Self {
         let (events, _) = broadcast::channel(256);
         let llm = LlmBackend::from_config(&config);
+
+        // Connect to configured MCP servers
+        let mcp_connections = crate::services::mcp::connect_all(&config.mcp_servers).await;
+        let mcp_registry = McpRegistry::new(mcp_connections);
+        if mcp_registry.tool_count() > 0 {
+            log::info!("MCP: {} tools from external servers", mcp_registry.tool_count());
+        }
 
         let (pg_pool, instance_id) = match std::env::var("DATABASE_URL") {
             Ok(url) if !url.is_empty() => {
@@ -76,6 +86,7 @@ impl AppState {
             pg_pool,
             instance_id,
             pending_secrets: Arc::new(Mutex::new(HashMap::new())),
+            mcp_registry,
         }
     }
 

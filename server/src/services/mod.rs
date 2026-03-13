@@ -4,6 +4,7 @@ pub mod rate_limit;
 pub mod drops;
 pub mod heartbeat;
 pub mod llm;
+pub mod mcp;
 pub mod memory;
 pub mod rhythm;
 pub mod scheduler;

@@ -240,4 +240,13 @@ export type ServerEvent =
 			instance_slug: string;
 			chat_id: string;
 			chunk: string;
+	  }
+	| {
+			type: "mcp_app_render";
+			instance_slug: string;
+			chat_id: string;
+			tool_name: string;
+			tool_input: string;
+			tool_output: string;
+			html: string;
 	  };

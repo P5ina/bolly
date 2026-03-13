@@ -111,6 +111,7 @@ pub async fn run_single_turn(
     pending_secrets: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>>,
     plan: &str,
     pdf_strategy: &llm::PdfStrategy,
+    mcp_registry: &crate::services::mcp::McpRegistry,
 ) -> io::Result<SingleTurnResult> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
@@ -333,6 +334,7 @@ pub async fn run_single_turn(
         plan,
         google,
         sent_files,
+        Some(mcp_registry),
     );
 
     let history_count = history_msgs.len();

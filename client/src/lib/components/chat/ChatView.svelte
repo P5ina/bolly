@@ -11,6 +11,7 @@
 	import ContextStats from "./ContextStats.svelte";
 	import HeartbeatUpdateBanner from "./HeartbeatUpdateBanner.svelte";
 	import ExcalidrawViewer from "$lib/components/ExcalidrawViewer.svelte";
+	import McpAppViewer from "./McpAppViewer.svelte";
 	import { play } from "$lib/sounds.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
@@ -23,7 +24,8 @@
 	type StreamItem =
 		| { type: "message"; data: ChatMessage }
 		| { type: "activity"; id: string; kind: "tool" | "mood" | "state" | "output"; label: string; timestamp: string }
-		| { type: "sketch"; id: string; title: string; scene: string; timestamp: string };
+		| { type: "sketch"; id: string; title: string; scene: string; timestamp: string }
+		| { type: "mcp_app"; id: string; toolName: string; toolInput: string; toolOutput: string; html: string };
 
 	let activeChatId = $derived(chatId);
 	let chats = $state<ChatSummary[]>([]);
@@ -365,6 +367,16 @@
 				startTypewriter();
 			} else if (event.type === "context_compacting") {
 				pushActivity("state", `compacting ${event.messages_compacted} messages...`);
+			} else if (event.type === "mcp_app_render") {
+				stream = [...stream, {
+					type: "mcp_app",
+					id: `mcp_app_${Date.now()}`,
+					toolName: event.tool_name,
+					toolInput: event.tool_input,
+					toolOutput: event.tool_output,
+					html: event.html,
+				}];
+				scrollToBottom();
 			}
 		});
 		return unsub;
@@ -529,6 +541,13 @@
 									<div class="chat-sketch-label">{item.title}</div>
 									<ExcalidrawViewer scene={item.scene} height="320px" />
 								</div>
+							{:else if item.type === "mcp_app"}
+								<McpAppViewer
+									html={item.html}
+									toolName={item.toolName}
+									toolInput={item.toolInput}
+									toolOutput={item.toolOutput}
+								/>
 							{:else if showToolActivity}
 								<StreamActivity kind={item.kind} label={item.label} timestamp={item.timestamp} />
 							{/if}

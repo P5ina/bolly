@@ -210,6 +210,7 @@ pub struct ObservableTool {
     workspace_dir: PathBuf,
     instance_slug: String,
     chat_id: String,
+    mcp_registry: Option<crate::services::mcp::McpRegistry>,
 }
 
 impl ObservableTool {
@@ -219,6 +220,7 @@ impl ObservableTool {
         workspace_dir: &Path,
         instance_slug: String,
         chat_id: String,
+        mcp_registry: Option<crate::services::mcp::McpRegistry>,
     ) -> Self {
         Self {
             inner,
@@ -226,6 +228,7 @@ impl ObservableTool {
             workspace_dir: workspace_dir.to_path_buf(),
             instance_slug,
             chat_id,
+            mcp_registry,
         }
     }
 }
@@ -268,6 +271,8 @@ impl ToolDyn for ObservableTool {
         let workspace_dir = self.workspace_dir.clone();
         let instance_slug = self.instance_slug.clone();
         let chat_id = self.chat_id.clone();
+        let mcp_registry = self.mcp_registry.clone();
+        let args_clone = args.clone();
         let fut = self.inner.call(args);
         Box::pin(async move {
             const MAX_TOOL_RESULT: usize = 12_000;
@@ -283,6 +288,25 @@ impl ToolDyn for ObservableTool {
                 }
                 Err(e) => Err(e),
             };
+            // Emit McpAppRender event for MCP Apps tools
+            if let Some(ref registry) = mcp_registry {
+                if registry.is_app_tool(&tool_name) {
+                    if let Some(html) = registry.get_app_html(&tool_name) {
+                        let tool_output = match &result {
+                            Ok(s) => s.clone(),
+                            Err(e) => format!("error: {e}"),
+                        };
+                        let _ = events.send(ServerEvent::McpAppRender {
+                            instance_slug: instance_slug.clone(),
+                            chat_id: chat_id.clone(),
+                            tool_name: tool_name.clone(),
+                            tool_input: args_clone.clone(),
+                            tool_output,
+                            html,
+                        });
+                    }
+                }
+            }
             if tool_name == "run_command" || tool_name == "install_package"
                 || tool_name == "interactive_session" || tool_name == "send_file"
             {
@@ -325,9 +349,11 @@ pub fn build_tools(
     plan: &str,
     google: Option<crate::services::google::GoogleClient>,
     sent_files: SentFiles,
+    mcp_registry: Option<&crate::services::mcp::McpRegistry>,
 ) -> (Vec<Box<dyn ToolDyn>>, SentFiles) {
+    let mcp_reg = mcp_registry.cloned();
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
-        Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), chat_id.to_string()))
+        Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), chat_id.to_string(), mcp_reg.clone()))
     };
 
     let browser_enabled = matches!(plan, "companion" | "unlimited");
@@ -400,6 +426,13 @@ pub fn build_tools(
         tools.push(wrap(Box::new(RequestSecretTool::new(
             workspace_dir, instance_slug, config_path, events.clone(), ps,
         ))));
+    }
+
+    // MCP tools from connected MCP servers
+    if let Some(registry) = mcp_registry {
+        for mcp_tool in registry.tools_as_dyn() {
+            tools.push(wrap(mcp_tool));
+        }
     }
 
     log::info!("built {} tools", tools.len());

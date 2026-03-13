@@ -173,6 +173,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             state.pending_secrets.clone(),
             &plan,
             &pdf_strategy,
+            &state.mcp_registry,
         );
 
         let result = tokio::select! {
