@@ -31,6 +31,7 @@
 	let actionSuccess = $state<string | null>(null);
 	let refreshing = $state(false);
 	let syncing = $state(false);
+	let updatingAll = $state(false);
 
 	function currentModel(tenant: (typeof data.tenants)[number]) {
 		if (tenant.machine?.model) return tenant.machine.model;
@@ -129,6 +130,34 @@
 
 		<div class="flex items-center justify-between mb-6">
 			<h2 class="font-display italic text-xl text-text">instances</h2>
+			<div class="flex items-center gap-2">
+				<form method="POST" action="?/updateAllImages" use:enhance={() => {
+					updatingAll = true;
+					actionError = null;
+					actionSuccess = null;
+					return async ({ result, update }) => {
+						updatingAll = false;
+						if (result.type === 'failure') {
+							actionError = (result.data as { error?: string })?.error ?? 'Update failed';
+						} else if (result.type === 'success') {
+							const data = result.data as { updated?: number };
+							actionSuccess = `Updated image on ${data?.updated ?? 0} machine(s)`;
+						}
+						await update();
+					};
+				}}>
+					<button
+						type="submit"
+						disabled={updatingAll}
+						class="text-xs py-1.5 px-4 rounded-lg transition-all duration-300 disabled:opacity-40 inline-flex items-center gap-1.5"
+						style="color: var(--color-text-dim); border: 1px solid var(--color-border);"
+					>
+						{#if updatingAll}
+							<Loader size={12} class="animate-spin" />
+						{/if}
+						update all images
+					</button>
+				</form>
 			<form method="POST" action="?/syncPlanLimits" use:enhance={() => {
 				syncing = true;
 				actionError = null;
@@ -156,6 +185,7 @@
 					sync plan limits
 				</button>
 			</form>
+			</div>
 		</div>
 
 		{#if data.tenants.length === 0}

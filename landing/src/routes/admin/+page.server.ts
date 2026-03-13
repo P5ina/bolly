@@ -163,6 +163,57 @@ export const actions: Actions = {
 		}
 	},
 
+	updateAllImages: async ({ locals }) => {
+		if (!locals.user || !isAdmin(locals.user.email)) error(403, 'Forbidden');
+
+		const allTenants = await db()
+			.select({
+				id: tenants.id,
+				slug: tenants.slug,
+				flyAppId: tenants.flyAppId,
+				flyMachineId: tenants.flyMachineId,
+				imageChannel: tenants.imageChannel,
+				status: tenants.status,
+			})
+			.from(tenants)
+			.where(eq(tenants.status, 'running'));
+
+		// Collect current API keys from landing env to push to all machines
+		const envPatch: Record<string, string> = {};
+		if (env.ANTHROPIC_API_KEY) envPatch.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
+		if (env.OPENAI_API_KEY) envPatch.OPENAI_API_KEY = env.OPENAI_API_KEY;
+		if (env.OPENROUTER_API_KEY) envPatch.OPENROUTER_API_KEY = env.OPENROUTER_API_KEY;
+		if (env.BRAVE_SEARCH_API_KEY) envPatch.BRAVE_SEARCH_API_KEY = env.BRAVE_SEARCH_API_KEY;
+		if (env.GOOGLE_CLIENT_ID) envPatch.GOOGLE_CLIENT_ID = env.GOOGLE_CLIENT_ID;
+		if (env.GOOGLE_CLIENT_SECRET) envPatch.GOOGLE_CLIENT_SECRET = env.GOOGLE_CLIENT_SECRET;
+
+		let updated = 0;
+		const errors: string[] = [];
+
+		for (const t of allTenants) {
+			if (!t.flyAppId || !t.flyMachineId) continue;
+			try {
+				// Sync env vars first (adds missing keys to old machines)
+				if (Object.keys(envPatch).length > 0) {
+					await fly.updateMachineEnv(t.flyAppId, t.flyMachineId, envPatch);
+				}
+				// Then update image
+				const image = fly.imageForChannel((t.imageChannel as fly.ImageChannel) ?? 'stable');
+				await fly.updateMachineImage(t.flyAppId, t.flyMachineId, image);
+				updated++;
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : 'Unknown error';
+				errors.push(`${t.slug}: ${msg}`);
+			}
+		}
+
+		if (errors.length > 0) {
+			return fail(500, { error: `Updated ${updated}, failed ${errors.length}: ${errors.join('; ')}` });
+		}
+
+		return { success: true, updated };
+	},
+
 	syncPlanLimits: async ({ locals }) => {
 		if (!locals.user || !isAdmin(locals.user.email)) error(403, 'Forbidden');
 
