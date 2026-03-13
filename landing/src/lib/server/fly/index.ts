@@ -159,6 +159,7 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 					BOLLY_PUBLIC_URL: opts.publicUrl,
 					DATABASE_URL: env.DATABASE_URL ?? '',
 					OPENROUTER_API_KEY: env.OPENROUTER_API_KEY ?? '',
+					ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
 					OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
 					BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY ?? '',
 					GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID ?? '',
@@ -246,10 +247,26 @@ export async function updateMachineEnv(
 	if (!res.ok) throw new Error(`Fly updateMachineEnv failed: ${res.status} ${await res.text()}`);
 }
 
-export async function getMachine(appName: string, machineId: string): Promise<{ id: string; state: string; private_ip: string }> {
+export async function getMachine(appName: string, machineId: string): Promise<{ id: string; state: string; private_ip: string; config?: { env?: Record<string, string> } }> {
 	const res = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}`, {
 		headers: headers(),
 	});
 	if (!res.ok) throw new Error(`Fly getMachine failed: ${res.status} ${await res.text()}`);
 	return res.json();
+}
+
+export async function stopMachine(appName: string, machineId: string): Promise<void> {
+	const res = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}/stop`, {
+		method: 'POST',
+		headers: headers(),
+	});
+	if (!res.ok) throw new Error(`Fly stopMachine failed: ${res.status} ${await res.text()}`);
+}
+
+export async function startMachine(appName: string, machineId: string): Promise<void> {
+	const res = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}/start`, {
+		method: 'POST',
+		headers: headers(),
+	});
+	if (!res.ok) throw new Error(`Fly startMachine failed: ${res.status} ${await res.text()}`);
 }

@@ -5,14 +5,14 @@
 		{
 			name: 'starter',
 			desc: 'See if it clicks',
-			price: 5,
+			price: 12,
 			features: ['1 companion', '150 messages / day', '1M tokens / month', '1 GB storage', 'Memory & mood tracking'],
 			featured: false,
 		},
 		{
 			name: 'companion',
 			desc: 'For everyday life',
-			price: 12,
+			price: 29,
 			features: ['3 companions', '500 messages / day', '3M tokens / month', '5 GB storage', 'Email integration'],
 			featured: true,
 			badge: 'popular',
@@ -20,7 +20,7 @@
 		{
 			name: 'unlimited',
 			desc: 'No limits',
-			price: 25,
+			price: 59,
 			features: ['Unlimited companions', 'Unlimited messages', '10M tokens / month', '20 GB storage', 'Early access to new features'],
 			featured: false,
 		},

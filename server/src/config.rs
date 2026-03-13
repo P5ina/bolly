@@ -185,12 +185,27 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
             config.llm.tokens.open_router = key;
             // OpenRouter takes priority over other providers for chat
             config.llm.provider = Some(LlmProvider::OpenRouter);
-            config.llm.model = Some("moonshotai/kimi-k2.5".to_string());
+            config.llm.model = Some("anthropic/claude-sonnet-4-6".to_string());
         }
     }
     if let Ok(key) = env::var("BRAVE_SEARCH_API_KEY") {
         if !key.is_empty() {
             config.llm.tokens.brave_search = key;
+        }
+    }
+
+    // Explicit provider/model override (set by admin panel via Fly env)
+    if let Ok(provider) = env::var("BOLLY_LLM_PROVIDER") {
+        match provider.as_str() {
+            "anthropic" => config.llm.provider = Some(LlmProvider::Anthropic),
+            "openai" => config.llm.provider = Some(LlmProvider::OpenAI),
+            "openrouter" => config.llm.provider = Some(LlmProvider::OpenRouter),
+            _ => {}
+        }
+    }
+    if let Ok(model) = env::var("BOLLY_LLM_MODEL") {
+        if !model.is_empty() {
+            config.llm.model = Some(model);
         }
     }
 

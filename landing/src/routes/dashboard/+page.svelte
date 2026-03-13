@@ -146,9 +146,9 @@
 							class="py-2.5 px-4 rounded-lg text-sm text-text outline-none"
 							style="background: var(--color-bg); border: 1px solid var(--color-border);"
 						>
-							<option value="starter">Starter ($5/mo) — 100 msgs/day</option>
-							<option value="companion">Companion ($12/mo) — 300 msgs/day</option>
-							<option value="unlimited">Unlimited ($25/mo) — no limits</option>
+							<option value="starter">Starter ($12/mo) — 150 msgs/day</option>
+							<option value="companion">Companion ($29/mo) — 500 msgs/day</option>
+							<option value="unlimited">Unlimited ($59/mo) — no limits</option>
 						</select>
 					</div>
 					<button

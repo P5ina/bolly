@@ -128,7 +128,7 @@ impl LlmBackend {
                     .llm
                     .model
                     .clone()
-                    .unwrap_or_else(|| "moonshotai/kimi-k2.5".to_string());
+                    .unwrap_or_else(|| "anthropic/claude-sonnet-4-6".to_string());
                 Some(LlmBackend::OpenRouter { client, model })
             }
         }
@@ -147,7 +147,7 @@ impl LlmBackend {
             },
             LlmBackend::OpenRouter { client, .. } => LlmBackend::OpenRouter {
                 client: client.clone(),
-                model: "moonshotai/kimi-k2.5".to_string(),
+                model: "anthropic/claude-sonnet-4-6".to_string(),
             },
         }
     }

@@ -132,7 +132,7 @@ async fn update_llm(
         .unwrap_or(match request.provider {
             LlmProvider::Anthropic => "claude-sonnet-4-6",
             LlmProvider::OpenAI => "gpt-4o",
-            LlmProvider::OpenRouter => "moonshotai/kimi-k2.5",
+            LlmProvider::OpenRouter => "anthropic/claude-sonnet-4-6",
         });
 
     Ok(Json(json!({

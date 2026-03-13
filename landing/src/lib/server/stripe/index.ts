@@ -16,7 +16,7 @@ export function stripe(): Stripe {
 export const PLANS = {
 	starter: {
 		name: 'Starter',
-		priceMonthly: 500, // cents
+		priceMonthly: 1200, // cents
 		storageLimit: 10240, // MB (10 GB)
 		cpus: 1,
 		memoryMb: 2048,
@@ -26,7 +26,7 @@ export const PLANS = {
 	},
 	companion: {
 		name: 'Companion',
-		priceMonthly: 1200,
+		priceMonthly: 2900,
 		storageLimit: 20480, // MB (20 GB)
 		cpus: 2,
 		memoryMb: 4096,
@@ -36,7 +36,7 @@ export const PLANS = {
 	},
 	unlimited: {
 		name: 'Unlimited',
-		priceMonthly: 2500,
+		priceMonthly: 5900,
 		storageLimit: 51200, // MB (50 GB)
 		cpus: 4,
 		memoryMb: 4096,
