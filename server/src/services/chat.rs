@@ -200,9 +200,9 @@ pub async fn run_single_turn(
             "\n\n## tools\nyou have built-in tools for{google_hint} code search, \
              project management, creative drops, and more. use them directly when needed — \
              they are automatically available based on the conversation.\n\n\
-             note: browser-based features (headless browsing, screenshots, slidev export) \
+             note: browser-based features (headless browsing, screenshots, slidev/PDF export) \
              require the Companion plan or higher. if the user asks for these, \
-             let them know they can upgrade their plan to unlock browser capabilities."
+             let them know they can upgrade their plan to unlock these capabilities."
         ));
     }
 
@@ -365,56 +365,43 @@ pub async fn run_single_turn(
     let reply = strip_leaked_tool_calls(&tool_result.text);
 
     // Save intermediate text segments (agent messages between tool calls)
-    // so they don't disappear from the chat.
     for intermediate in &tool_result.intermediate_texts {
         let cleaned = strip_leaked_tool_calls(intermediate);
         if cleaned.is_empty() {
             continue;
         }
-        let intermediate_chunks = split_into_messages(&cleaned);
-        for chunk in intermediate_chunks {
-            let msg = ChatMessage {
-                id: next_id(),
-                role: ChatRole::Assistant,
-                content: chunk,
-                created_at: timestamp(),
-                kind: Default::default(),
-                tool_name: None,
-            };
-            tools::append_message_to_chat(workspace_dir, &instance_slug, &chat_id, &msg);
-            let _ = events.send(ServerEvent::ChatMessageCreated {
-                instance_slug: instance_slug.clone(),
-                chat_id: chat_id.clone(),
-                message: msg,
-            });
-        }
+        let msg = ChatMessage {
+            id: next_id(),
+            role: ChatRole::Assistant,
+            content: cleaned,
+            created_at: timestamp(),
+            kind: Default::default(),
+            tool_name: None,
+        };
+        tools::append_message_to_chat(workspace_dir, &instance_slug, &chat_id, &msg);
+        let _ = events.send(ServerEvent::ChatMessageCreated {
+            instance_slug: instance_slug.clone(),
+            chat_id: chat_id.clone(),
+            message: msg,
+        });
     }
 
-    // Split reply into chat-like chunks (by double newline)
-    let mut chunks: Vec<String> = split_into_messages(&reply);
-
-    // Append any file attachments produced by send_file tool to the last chunk
+    // Build single assistant message from the reply
     let file_markers = sent_files.lock().unwrap_or_else(|e| e.into_inner()).drain(..).collect::<Vec<_>>();
-    log::info!("[run_single_turn] reply len={}, chunks={}, file_markers={}", reply.len(), chunks.len(), file_markers.len());
+    let mut full_reply = reply;
     if !file_markers.is_empty() {
-        let suffix = file_markers.join("\n");
-        if let Some(last) = chunks.last_mut() {
-            last.push('\n');
-            last.push_str(&suffix);
-        } else {
-            chunks.push(suffix);
+        if !full_reply.is_empty() {
+            full_reply.push('\n');
         }
+        full_reply.push_str(&file_markers.join("\n"));
     }
 
-    // Tool activity is now persisted incrementally by ObservableTool,
-    // so we only need to save the final response messages here.
     let mut assistant_messages = Vec::new();
-
-    for chunk in &chunks {
+    if !full_reply.is_empty() {
         assistant_messages.push(ChatMessage {
             id: next_id(),
             role: ChatRole::Assistant,
-            content: chunk.clone(),
+            content: full_reply,
             created_at: timestamp(),
             kind: Default::default(),
             tool_name: None,
@@ -772,37 +759,6 @@ fn strip_leaked_tool_calls(reply: &str) -> String {
     collapsed.trim().to_string()
 }
 
-fn split_into_messages(reply: &str) -> Vec<String> {
-    let parts: Vec<&str> = reply.split("\n\n").collect();
-    let mut messages: Vec<String> = Vec::new();
-
-    for part in parts {
-        let trimmed = part.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        // If the chunk is very short (< 20 chars) and there's a previous message,
-        // merge it to avoid single-word bubbles
-        if trimmed.len() < 20 && !messages.is_empty() {
-            let last = messages.last_mut().unwrap();
-            last.push('\n');
-            last.push_str(trimmed);
-        } else {
-            messages.push(trimmed.to_string());
-        }
-    }
-
-    // If nothing was split (no double-newlines), return the original as one message
-    if messages.is_empty() {
-        let trimmed = reply.trim();
-        if !trimmed.is_empty() {
-            messages.push(trimmed.to_string());
-        }
-    }
-
-    messages
-}
 
 /// Rough token estimate: ~4 chars per token for English, ~2 for code/mixed.
 /// Uses 3.2 as a balanced average.

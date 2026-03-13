@@ -46,7 +46,7 @@ RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
 # Install system packages, fonts, Playwright Chromium in one apt session
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      ca-certificates curl sudo \
+      ca-certificates curl sudo procps \
       python3 python3-pip python3-venv \
       git jq \
       fontconfig \

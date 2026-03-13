@@ -110,7 +110,13 @@ impl AppState {
             log::info!("config reloaded: LLM/embedding rebuilt");
         }
 
-        *self.config.write().await = new_config;
+        // Preserve plan from DB — it's not in config.toml
+        let mut cfg = self.config.write().await;
+        let plan = cfg.plan.clone();
+        *cfg = new_config;
+        if cfg.plan.is_empty() {
+            cfg.plan = plan;
+        }
     }
 
     pub async fn rebuild_llm(&self, config: &Config) {

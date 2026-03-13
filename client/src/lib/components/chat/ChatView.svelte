@@ -12,6 +12,7 @@
 	import { play } from "$lib/sounds.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
+	import TerminalSquare from "@lucide/svelte/icons/terminal-square";
 
 	const toast = getToasts();
 
@@ -35,6 +36,11 @@
 	let showChatList = $state(false);
 	let clearDialogOpen = $state(false);
 	let showContextStats = $state(false);
+	let showToolActivity = $state(
+		typeof localStorage !== "undefined"
+			? (localStorage.getItem("bolly:showToolActivity") ?? "true") === "true"
+			: true,
+	);
 	let streamingContent = $state("");
 	let displayedLength = $state(0);
 	let typewriterRaf = 0;
@@ -442,6 +448,9 @@
 					<path d="M8 3v10M3 8h10" stroke-linecap="round"/>
 				</svg>
 			</button> -->
+			<button onclick={() => { showToolActivity = !showToolActivity; localStorage.setItem("bolly:showToolActivity", String(showToolActivity)); }} onmousedown={(e) => e.preventDefault()} class="bar-btn" class:bar-btn-active={showToolActivity} title="Toggle tool activity">
+				<TerminalSquare size={12} />
+			</button>
 			<button onclick={() => showContextStats = true} onmousedown={(e) => e.preventDefault()} class="bar-btn" title="Context stats">
 				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
 					<rect x="2" y="9" width="3" height="5" rx="0.5" />
@@ -502,7 +511,7 @@
 						{#each stream as item, i (streamKey(item))}
 							{#if item.type === "message"}
 								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} streaming={item.data.id === "__streaming__"} />
-							{:else}
+							{:else if showToolActivity}
 								<StreamActivity kind={item.kind} label={item.label} timestamp={item.timestamp} />
 							{/if}
 						{/each}
@@ -625,6 +634,10 @@
 		color: oklch(0.55 0.02 280 / 35%);
 		border-radius: 4px;
 		transition: all 0.2s ease;
+	}
+
+	.bar-btn-active {
+		color: oklch(0.78 0.12 75 / 55%);
 	}
 
 	.bar-btn:hover {
