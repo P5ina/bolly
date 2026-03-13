@@ -1369,7 +1369,7 @@ fn build_static_tools(
         wrap(Box::new(RecallTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone()))),
         wrap(Box::new(JournalTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug, chat_id, events.clone()))),
         wrap(Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone()))),
         wrap(Box::new(ClearContextTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(ListSkillsTool::new(workspace_dir))),

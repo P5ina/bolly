@@ -102,10 +102,10 @@
 		return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 	}
 
-	function pushActivity(kind: "tool" | "mood" | "state" | "output", label: string) {
+	function pushActivity(kind: "tool" | "mood" | "state" | "output", label: string, idPrefix?: string) {
 		stream = [...stream, {
 			type: "activity",
-			id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+			id: `${idPrefix ?? ""}${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 			kind,
 			label,
 			timestamp: now(),
@@ -286,7 +286,22 @@
 					}
 					const item = toolActivityToStreamItem(msg);
 					if (item) {
-						stream = [...stream, item];
+						// If this is a tool_output and we have a live-streamed output,
+						// promote the live output (keep full content) and skip the truncated summary
+						if (item.type === "activity" && item.kind === "output") {
+							const liveIdx = stream.findLastIndex(
+								(s) => s.type === "activity" && s.kind === "output" && s.id.startsWith("__live_")
+							);
+							if (liveIdx >= 0) {
+								const live = stream[liveIdx] as typeof item;
+								live.id = item.id;
+								stream = stream;
+							} else {
+								stream = [...stream, item];
+							}
+						} else {
+							stream = [...stream, item];
+						}
 					}
 					scrollToBottom();
 				} else {
@@ -314,6 +329,19 @@
 			} else if (event.type === "drop_created") {
 				pushActivity("tool", `dropped: ${event.drop.title}`);
 				play("drop_received");
+			} else if (event.type === "tool_output_chunk") {
+				// Append chunk to live output activity, or create one
+				const liveIdx = stream.findLastIndex(
+					(s) => s.type === "activity" && s.kind === "output" && s.id.startsWith("__live_")
+				);
+				if (liveIdx >= 0) {
+					const item = stream[liveIdx] as StreamItem & { type: "activity" };
+					item.label += event.chunk;
+					stream = stream;
+				} else {
+					pushActivity("output", event.chunk, "__live_");
+				}
+				scrollToBottom();
 			} else if (event.type === "chat_stream_delta") {
 				streamingContent += event.delta;
 				startTypewriter();

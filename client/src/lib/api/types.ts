@@ -230,4 +230,10 @@ export type ServerEvent =
 			id: string;
 			prompt: string;
 			target: string;
+	  }
+	| {
+			type: "tool_output_chunk";
+			instance_slug: string;
+			chat_id: string;
+			chunk: string;
 	  };

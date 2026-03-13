@@ -55,4 +55,9 @@ pub enum ServerEvent {
         prompt: String,
         target: String,
     },
+    ToolOutputChunk {
+        instance_slug: String,
+        chat_id: String,
+        chunk: String,
+    },
 }

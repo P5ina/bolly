@@ -18,11 +18,16 @@
 		output: "act-output",
 	};
 
-	const isCollapsible = $derived(
-		(kind === "output" || kind === "tool") && label.includes("\n")
+	// Unescape literal \n and \t sequences that may come from JSON-escaped output
+	const displayLabel = $derived(
+		label.replace(/\\n/g, "\n").replace(/\\t/g, "\t")
 	);
 
-	const firstLine = $derived(label.split("\n")[0]);
+	const isCollapsible = $derived(
+		(kind === "output" || kind === "tool") && displayLabel.includes("\n")
+	);
+
+	const firstLine = $derived(displayLabel.split("\n")[0]);
 </script>
 
 <div class="act-row {accentMap[kind] ?? 'act-tool'}">
@@ -38,12 +43,12 @@
 				{/if}
 			</button>
 			{#if expanded}
-				<pre class="act-output-text act-expanded">{label}</pre>
+				<pre class="act-output-text act-expanded">{displayLabel}</pre>
 			{/if}
 		{:else if kind === "output"}
-			<pre class="act-output-text">{label}</pre>
+			<pre class="act-output-text">{displayLabel}</pre>
 		{:else}
-			<span class="act-label">{label}</span>
+			<span class="act-label">{displayLabel}</span>
 		{/if}
 		{#if timestamp}
 			<span class="act-time">{timestamp}</span>

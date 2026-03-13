@@ -21,12 +21,23 @@ use crate::domain::events::ServerEvent;
 
 pub struct RunCommandTool {
     instance_dir: PathBuf,
+    events: broadcast::Sender<ServerEvent>,
+    instance_slug: String,
+    chat_id: String,
 }
 
 impl RunCommandTool {
-    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+    pub fn new(
+        workspace_dir: &Path,
+        instance_slug: &str,
+        chat_id: &str,
+        events: broadcast::Sender<ServerEvent>,
+    ) -> Self {
         Self {
             instance_dir: workspace_dir.join("instances").join(instance_slug),
+            events,
+            instance_slug: instance_slug.to_string(),
+            chat_id: chat_id.to_string(),
         }
     }
 }
@@ -88,7 +99,17 @@ impl Tool for RunCommandTool {
         if use_pty {
             let cmd = command.clone();
             let dir = work_dir.clone();
-            tokio::task::spawn_blocking(move || run_command_pty(&cmd, &dir, timeout))
+            let events = self.events.clone();
+            let instance_slug = self.instance_slug.clone();
+            let chat_id = self.chat_id.clone();
+            let chunk_cb: Box<dyn Fn(&str) + Send> = Box::new(move |chunk: &str| {
+                let _ = events.send(ServerEvent::ToolOutputChunk {
+                    instance_slug: instance_slug.clone(),
+                    chat_id: chat_id.clone(),
+                    chunk: chunk.to_string(),
+                });
+            });
+            tokio::task::spawn_blocking(move || run_command_pty(&cmd, &dir, timeout, Some(&chunk_cb)))
                 .await
                 .map_err(|e| ToolExecError(format!("task join error: {e}")))?
                 .map_err(|e| ToolExecError(e))
@@ -138,7 +159,7 @@ impl Tool for RunCommandTool {
 }
 
 /// Execute a command inside a pseudo-terminal (PTY).
-fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64) -> Result<String, String> {
+fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64, on_chunk: Option<&dyn Fn(&str)>) -> Result<String, String> {
     use portable_pty::{CommandBuilder, PtySize, native_pty_system};
     use std::io::Read;
     use std::sync::mpsc;
@@ -217,6 +238,13 @@ fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64) -> Result<
 
         match rx.recv_timeout(wait) {
             Ok(Some(data)) => {
+                if let Some(cb) = &on_chunk {
+                    let raw = String::from_utf8_lossy(&data);
+                    let clean = strip_ansi_codes(&raw);
+                    if !clean.is_empty() {
+                        cb(&clean);
+                    }
+                }
                 output.extend_from_slice(&data);
                 last_data_at = Instant::now();
                 if output.len() > max_capture {

@@ -281,14 +281,7 @@ impl ToolDyn for ObservableTool {
                 || tool_name == "interactive_session" || tool_name == "send_file"
             {
                 let output = match &result {
-                    Ok(s) => {
-                        let short: String = s.chars().take(200).collect();
-                        if s.len() > 200 {
-                            format!("{short}...")
-                        } else {
-                            short
-                        }
-                    }
+                    Ok(s) => s.clone(),
                     Err(e) => format!("error: {e}"),
                 };
                 if !output.is_empty() {
