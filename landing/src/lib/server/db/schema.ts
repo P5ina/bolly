@@ -56,7 +56,7 @@ export const tenants = pgTable('tenants', {
 	stripeSubscriptionId: text('stripe_subscription_id'),
 
 	// Limits
-	storageLimit: integer('storage_limit').notNull().default(1024), // MB
+	storageLimit: integer('storage_limit').notNull().default(10240), // MB (10 GB)
 	maxInstances: integer('max_instances').notNull().default(1),
 	messagesPerDay: integer('messages_per_day').notNull().default(150),
 	tokensPerMonth: integer('tokens_per_month').notNull().default(1000000),
