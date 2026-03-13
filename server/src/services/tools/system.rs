@@ -183,19 +183,43 @@ enum PtyRunResult {
     WaitingForInput { output: String, session_id: String },
 }
 
-/// Check if the last line of output looks like an interactive prompt.
+/// Check if the last few lines of output look like an interactive prompt.
 fn looks_like_interactive_prompt(output: &str) -> bool {
-    let last_line = output.lines().last().unwrap_or("").trim();
-    if last_line.is_empty() { return false; }
-    last_line.ends_with("? ")
-        || last_line.ends_with(": ")
-        || last_line.ends_with("> ")
-        || last_line.ends_with("] ")
-        || last_line.ends_with("› ")
-        || last_line.contains("(y/n)")
-        || last_line.contains("[Y/n]")
-        || last_line.contains("[y/N]")
-        || last_line.to_lowercase().contains("password")
+    // Check last few non-empty lines (prompts may have trailing blank lines or box-drawing chars)
+    let lines: Vec<&str> = output.lines().rev().take(5).collect();
+    for raw_line in &lines {
+        let line = raw_line.trim();
+        if line.is_empty() || line.chars().all(|c| "│┃|".contains(c)) {
+            continue;
+        }
+        // Standard prompt patterns
+        if line.ends_with("? ")
+            || line.ends_with(": ")
+            || line.ends_with("> ")
+            || line.ends_with("] ")
+            || line.ends_with("› ")
+            || line.contains("(y/n)")
+            || line.contains("[Y/n]")
+            || line.contains("[y/N]")
+            || line.to_lowercase().contains("password")
+        {
+            return true;
+        }
+        // @clack/prompts style: "◆  Question text" or "◇  Question text"
+        if line.starts_with('◆') || line.starts_with('◇') || line.starts_with('●') {
+            return true;
+        }
+        // inquirer/prompts style: "? Question (option)" or "❯ Option"
+        if line.starts_with("? ") || line.starts_with("❯ ") || line.starts_with("❮ ") {
+            return true;
+        }
+        // Line ends with a cursor placeholder (common in TUI prompts)
+        if line.ends_with('_') || line.ends_with("▌") || line.ends_with("█") {
+            return true;
+        }
+        break; // Only check the first meaningful line from the end
+    }
+    false
 }
 
 /// Execute a command inside a pseudo-terminal (PTY).
@@ -289,15 +313,19 @@ fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64, on_chunk: 
         match rx.recv_timeout(wait) {
             Ok(data) if data.is_empty() => break, // EOF
             Ok(data) => {
-                if let Some(cb) = &on_chunk {
-                    let raw = String::from_utf8_lossy(&data);
-                    let clean = strip_ansi_codes(&raw);
-                    if !clean.is_empty() {
+                let raw = String::from_utf8_lossy(&data);
+                let clean = strip_ansi_codes(&raw);
+                let has_content = !clean.trim().is_empty();
+                if has_content {
+                    if let Some(cb) = &on_chunk {
                         cb(&clean);
                     }
                 }
                 output.extend_from_slice(&data);
-                last_data_at = Instant::now();
+                // Only reset idle timer for meaningful data (not just cursor/spinner ANSI codes)
+                if has_content {
+                    last_data_at = Instant::now();
+                }
                 if output.len() > max_capture {
                     break;
                 }
