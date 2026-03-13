@@ -53,58 +53,6 @@ pub struct LlmTokens {
     pub open_router: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct EmailAccount {
-    pub name: String,
-    #[serde(default)]
-    pub smtp_host: String,
-    #[serde(default = "default_smtp_port")]
-    pub smtp_port: u16,
-    #[serde(default)]
-    pub smtp_user: String,
-    #[serde(default)]
-    pub smtp_password: String,
-    #[serde(default)]
-    pub smtp_from: String,
-    #[serde(default)]
-    pub imap_host: String,
-    #[serde(default = "default_imap_port")]
-    pub imap_port: u16,
-    #[serde(default)]
-    pub imap_user: String,
-    #[serde(default)]
-    pub imap_password: String,
-}
-
-impl EmailAccount {
-    pub fn is_smtp_configured(&self) -> bool {
-        !self.smtp_host.is_empty() && !self.smtp_user.is_empty() && !self.smtp_password.is_empty()
-    }
-
-    pub fn is_imap_configured(&self) -> bool {
-        !self.imap_host.is_empty() && !self.imap_user.is_empty() && !self.imap_password.is_empty()
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct EmailConfig {
-    #[serde(default)]
-    pub accounts: Vec<EmailAccount>,
-}
-
-impl EmailConfig {
-    pub fn get_account(&self, name: &str) -> Option<&EmailAccount> {
-        self.accounts.iter().find(|a| a.name == name)
-    }
-
-    pub fn get_account_mut(&mut self, name: &str) -> Option<&mut EmailAccount> {
-        self.accounts.iter_mut().find(|a| a.name == name)
-    }
-
-    pub fn default_account(&self) -> Option<&EmailAccount> {
-        self.accounts.first()
-    }
-}
 
 fn default_host() -> String {
     "0.0.0.0".into()
@@ -112,14 +60,6 @@ fn default_host() -> String {
 
 fn default_port() -> u16 {
     8080
-}
-
-fn default_smtp_port() -> u16 {
-    587
-}
-
-fn default_imap_port() -> u16 {
-    993
 }
 
 fn default_registry_url() -> String {
@@ -157,14 +97,6 @@ impl Default for LlmTokens {
             anthropic: String::new(),
             brave_search: String::new(),
             open_router: String::new(),
-        }
-    }
-}
-
-impl Default for EmailConfig {
-    fn default() -> Self {
-        Self {
-            accounts: Vec::new(),
         }
     }
 }

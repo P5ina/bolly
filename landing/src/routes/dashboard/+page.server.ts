@@ -4,6 +4,9 @@ import type Stripe from 'stripe';
 import { getTenantsByUser, getTenantBySlug, provisionTenant, switchTenantChannel } from '$lib/server/tenants.js';
 import { invalidateSession, deleteSessionCookie } from '$lib/server/auth/index.js';
 import { stripe, createBillingPortalSession, ensureCustomer, PLANS, type PlanId } from '$lib/server/stripe/index.js';
+import { db } from '$lib/server/db/index.js';
+import { googleAccounts } from '$lib/server/db/schema.js';
+import { eq } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
 
 type SubscriptionInfo = {
@@ -135,6 +138,17 @@ export const load: PageServerLoad = async ({ locals }) => {
 			};
 		});
 
+	// Load Google account status
+	const googleRows = await db()
+		.select({ email: googleAccounts.email, scopes: googleAccounts.scopes })
+		.from(googleAccounts)
+		.where(eq(googleAccounts.userId, locals.user.id))
+		.limit(1);
+
+	const googleAccount = googleRows.length > 0
+		? { email: googleRows[0].email, scopes: googleRows[0].scopes }
+		: null;
+
 	return {
 		user: {
 			id: locals.user.id,
@@ -143,6 +157,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		},
 		tenants: tenantsWithSub,
 		orphanedSubscriptions,
+		googleAccount,
 	};
 };
 

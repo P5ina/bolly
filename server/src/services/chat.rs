@@ -159,43 +159,64 @@ pub async fn run_single_turn(
     let mood_prompt = load_mood_prompt(workspace_dir, &instance_slug);
     let rhythm_prompt = load_rhythm_prompt(workspace_dir, &instance_slug);
 
+    let auth_token = std::env::var("BOLLY_AUTH_TOKEN").unwrap_or_default();
+    let google = crate::services::google::GoogleClient::from_env(&auth_token);
+
     // Build system prompt with STABLE content first (for Anthropic prompt caching).
     // Anthropic caches the longest matching prefix, so put rarely-changing
     // sections at the top and dynamic/per-message sections at the bottom.
     let mut system_prompt = base_prompt;
 
-    // Stable: skills, capabilities, email, style (rarely change)
+    // Stable: skills, capabilities, style (rarely change)
     let skills_prompt = build_skills_prompt(workspace_dir);
     if !skills_prompt.is_empty() {
         system_prompt = format!("{system_prompt}\n\n{skills_prompt}");
     }
 
-    // Dynamic tool hint — tools are automatically selected via RAG
+    // Dynamic tool hint
     let browser_available = matches!(plan, "companion" | "unlimited");
+    let google_connected = google.is_some();
+    let google_hint = if google_connected {
+        " gmail, google calendar, google drive,"
+    } else {
+        ""
+    };
     if browser_available {
-        system_prompt.push_str(
-            "\n\n## tools\nyou have built-in tools for web browsing, email, code search, \
+        system_prompt.push_str(&format!(
+            "\n\n## tools\nyou have built-in tools for web browsing,{google_hint} code search, \
              project management, creative drops, and more. use them directly when needed — \
              they are automatically available based on the conversation."
-        );
+        ));
     } else {
-        system_prompt.push_str(
-            "\n\n## tools\nyou have built-in tools for email, code search, \
+        system_prompt.push_str(&format!(
+            "\n\n## tools\nyou have built-in tools for{google_hint} code search, \
              project management, creative drops, and more. use them directly when needed — \
              they are automatically available based on the conversation.\n\n\
              note: browser-based features (headless browsing, screenshots, slidev export) \
              require the Companion plan or higher. if the user asks for these, \
              let them know they can upgrade their plan to unlock browser capabilities."
+        ));
+    }
+
+    if google_connected {
+        system_prompt.push_str(
+            "\n\n## google integration\n\
+             you have Google connected. you can:\n\
+             - send_email / read_email: send and read Gmail messages\n\
+             - list_events / create_event: view and create Google Calendar events\n\
+             - list_drive_files / read_drive_file / upload_drive_file: browse, read, and upload Google Drive files\n\
+             use these tools directly when the user asks about email, calendar, or files."
+        );
+    } else {
+        system_prompt.push_str(
+            "\n\n## google integration\n\
+             google is not connected. if the user asks about email, calendar, or drive, \
+             tell them to connect their google account from the dashboard."
         );
     }
 
     let autonomy_prompt = load_autonomy_prompt(workspace_dir, &instance_slug);
     system_prompt = format!("{system_prompt}\n\n{autonomy_prompt}");
-
-    let email_status = load_email_status(workspace_dir, &instance_slug);
-    if !email_status.is_empty() {
-        system_prompt = format!("{system_prompt}\n\n{email_status}");
-    }
 
     system_prompt.push_str(
         "\n\n## style\n\
@@ -297,6 +318,7 @@ pub async fn run_single_turn(
         config_path, events.clone(), llm,
         Some(pending_secrets),
         plan,
+        google,
     );
     all_tools.extend(optional_tools);
 
@@ -824,8 +846,8 @@ pub fn compute_context_stats(
     }
 
     // 3. Tools hint (static string)
-    let tools_hint = "## tools\nyou have built-in tools for web browsing, email, code search, \
-         project management, creative drops, and more. use them directly when needed — \
+    let tools_hint = "## tools\nyou have built-in tools for web browsing, gmail, calendar, drive, \
+         code search, project management, creative drops, and more. use them directly when needed — \
          they are automatically available based on the conversation.";
     sections.push(ContextSection {
         name: "tools_hint".into(),
@@ -841,15 +863,13 @@ pub fn compute_context_stats(
         tokens: estimate_tokens(&autonomy_prompt),
     });
 
-    // 5. Email status
-    let email_status = load_email_status(workspace_dir, &instance_slug);
-    if !email_status.is_empty() {
-        sections.push(ContextSection {
-            name: "email".into(),
-            chars: email_status.len(),
-            tokens: estimate_tokens(&email_status),
-        });
-    }
+    // 5. Google integration status
+    let google_status = "## google integration\nstatus shown in system prompt";
+    sections.push(ContextSection {
+        name: "google".into(),
+        chars: google_status.len(),
+        tokens: estimate_tokens(google_status),
+    });
 
     // 6. Style (static)
     let style = "## style\n\
@@ -913,7 +933,10 @@ pub fn compute_context_stats(
     ].into_iter().map(String::from).collect();
 
     let optional_tool_names: Vec<String> = vec![
-        "web_search", "web_fetch", "send_email", "read_email",
+        "web_search", "web_fetch",
+        "send_email", "read_email",
+        "list_events", "create_event",
+        "list_drive_files", "read_drive_file", "upload_drive_file",
         "search_code", "explore_code",
         "get_project_state", "update_project_state",
         "create_task", "update_task", "list_tasks",
@@ -1214,7 +1237,8 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          ## capabilities\n\
          you have real tools: read_file, write_file, edit_file, list_files, search_code, explore_code, \
          run_command, install_package, web_search, web_fetch, current_time, send_file, \
-         send_email, read_email, remember/recall, journal/read_journal, set_mood/get_mood, \
+         send_email, read_email, list_events, create_event, list_drive_files, read_drive_file, \
+         upload_drive_file, remember/recall, journal/read_journal, set_mood/get_mood, \
          edit_soul, create_drop, schedule_message, update_config, get_project_state, \
          update_project_state, create_task/update_task/list_tasks, browse.\n\
          users can attach images, PDFs, and text files directly in chat — you see them automatically.\n\
@@ -1255,54 +1279,6 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
     )
 }
 
-fn load_email_status(workspace_dir: &Path, instance_slug: &str) -> String {
-    let instance_dir = workspace_dir.join("instances").join(instance_slug);
-    let email_path = instance_dir.join("email.toml");
-
-    if !email_path.exists() {
-        return String::new();
-    }
-
-    let config: crate::config::EmailConfig = match fs::read_to_string(&email_path)
-        .ok()
-        .and_then(|raw| toml::from_str(&raw).ok())
-    {
-        Some(c) => c,
-        None => return String::new(),
-    };
-
-    if config.accounts.is_empty() {
-        return String::new();
-    }
-
-    let mut status = String::from("## email accounts\n");
-    for account in &config.accounts {
-        let smtp = account.is_smtp_configured();
-        let imap = account.is_imap_configured();
-        if !smtp && !imap {
-            continue;
-        }
-        status.push_str(&format!("### {}\n", account.name));
-        if smtp {
-            let from = if account.smtp_from.is_empty() {
-                &account.smtp_user
-            } else {
-                &account.smtp_from
-            };
-            status.push_str(&format!(
-                "smtp: configured (host: {}, from: {}). use send_email with account=\"{}\".\n",
-                account.smtp_host, from, account.name
-            ));
-        }
-        if imap {
-            status.push_str(&format!(
-                "imap: configured (host: {}, user: {}). use read_email with account=\"{}\".\n",
-                account.imap_host, account.imap_user, account.name
-            ));
-        }
-    }
-    status
-}
 
 async fn extract_sentiment(
     workspace_dir: &Path,

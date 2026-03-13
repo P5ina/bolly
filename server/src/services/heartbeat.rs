@@ -21,7 +21,7 @@ use crate::domain::thought::Thought;
 use crate::services::{drops, llm::LlmBackend, memory, rhythm, thoughts};
 use crate::services::tools::{
     self, load_mood_state, save_mood_state, CreateDropTool, CreateTaskTool,
-    GetMoodTool, GetProjectStateTool, ListTasksTool, ReachOutTool, ReadEmailTool,
+    GetMoodTool, GetProjectStateTool, ListTasksTool, ReachOutTool,
     ReadJournalTool, RecallTool, RememberTool, SetMoodTool, UpdateProjectStateTool,
     WebFetchTool, WebSearchTool, ALLOWED_MOODS,
 };
@@ -154,7 +154,9 @@ async fn heartbeat_instance(
         .unwrap_or_default();
     let brave_api_key = if brave_key.is_empty() { None } else { Some(brave_key.as_str()) };
 
-    let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, brave_api_key, config_path, events.clone());
+    let auth_token = config::load_config().ok().map(|c| c.auth_token.clone()).unwrap_or_default();
+    let google = crate::services::google::GoogleClient::from_env(&auth_token);
+    let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, brave_api_key, config_path, events.clone(), google);
 
     let response = llm
         .chat_with_tools_only(&system, &reflection, vec![], heartbeat_tools)
@@ -544,8 +546,9 @@ fn build_heartbeat_tools(
     brave_api_key: Option<&str>,
     config_path: &Path,
     events: broadcast::Sender<ServerEvent>,
+    google: Option<crate::services::google::GoogleClient>,
 ) -> Vec<Box<dyn ToolDyn>> {
-    let raw_tools: Vec<Box<dyn ToolDyn>> = vec![
+    let mut raw_tools: Vec<Box<dyn ToolDyn>> = vec![
         // Memory
         Box::new(RememberTool::new(workspace_dir, instance_slug)),
         Box::new(RecallTool::new(workspace_dir, instance_slug)),
@@ -559,8 +562,6 @@ fn build_heartbeat_tools(
         Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
         // Reach out
         Box::new(ReachOutTool::new(workspace_dir, instance_slug, events.clone())),
-        // Email
-        Box::new(ReadEmailTool::new(workspace_dir, instance_slug)),
         // Tasks & project
         Box::new(ListTasksTool::new(workspace_dir, instance_slug)),
         Box::new(CreateTaskTool::new(workspace_dir, instance_slug)),
@@ -570,6 +571,12 @@ fn build_heartbeat_tools(
         Box::new(WebSearchTool::new(brave_api_key, config_path)),
         Box::new(WebFetchTool),
     ];
+
+    // Google tools (email, calendar) — only if connected
+    if let Some(g) = google {
+        raw_tools.push(Box::new(tools::ReadEmailTool::new(g.clone())));
+        raw_tools.push(Box::new(tools::ListEventsTool::new(g)));
+    }
 
     // Don't wrap in ObservableTool — heartbeat tool activity is private,
     // captured in the thought's actions list instead of broadcast.

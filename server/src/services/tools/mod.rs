@@ -20,8 +20,10 @@ use regex::Regex;
 use crate::domain::events::ServerEvent;
 
 // Sub-modules
+pub mod calendar;
 pub mod companion;
 pub mod communication;
+pub mod drive;
 pub mod files;
 pub mod memory_tools;
 pub mod project;
@@ -35,9 +37,11 @@ pub use companion::{
     GetMoodTool, JournalTool,
     ReadJournalTool, SetMoodTool, ALLOWED_MOODS,
 };
+pub use calendar::{CreateEventTool, ListEventsTool};
 pub use communication::{
     ReachOutTool, ReadEmailTool, ScheduleMessageTool, ScheduledMessage, SendEmailTool,
 };
+pub use drive::{ListDriveFilesTool, ReadDriveFileTool, UploadDriveFileTool};
 pub use files::{EditFileTool, ListFilesTool, ReadFileTool, SendFileTool, WriteFileTool};
 pub use memory_tools::{RecallTool, RememberTool};
 pub use project::{
@@ -165,14 +169,20 @@ pub fn tool_summary(name: &str, args: &str) -> String {
         "create_drop" => format!("creating drop: {}", v["title"].as_str().unwrap_or("?")),
         "send_email" => {
             let to = v["to"].as_str().unwrap_or("?");
-            let acct = v["account"].as_str().unwrap_or("default");
-            format!("sending email to {to} (via {acct})")
+            format!("sending email to {to}")
         }
         "read_email" => {
             let count = v["count"].as_u64().unwrap_or(5);
-            let acct = v["account"].as_str().unwrap_or("default");
-            format!("reading {count} emails (via {acct})")
+            format!("reading {count} emails")
         }
+        "list_events" => {
+            let days = v["days_ahead"].as_u64().unwrap_or(7);
+            format!("listing calendar events ({days} days)")
+        }
+        "create_event" => format!("creating event: {}", v["summary"].as_str().unwrap_or("?")),
+        "list_drive_files" => "listing drive files".into(),
+        "read_drive_file" => format!("reading drive file {}", v["file_id"].as_str().unwrap_or("?")),
+        "upload_drive_file" => format!("uploading {}", v["name"].as_str().unwrap_or("?")),
         "request_secret" => format!("requesting secret: {}", v["prompt"].as_str().unwrap_or("?")),
         "install_package" => format!("installing {}", v["packages"].as_str().unwrap_or("?")),
         "read_skill_reference" => format!("reading skill ref {}/{}", v["skill_id"].as_str().unwrap_or("?"), v["filename"].as_str().unwrap_or("?")),
@@ -313,6 +323,7 @@ pub fn build_optional_tools(
     llm: &crate::services::llm::LlmBackend,
     pending_secrets: Option<Arc<tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>>>,
     plan: &str,
+    google: Option<crate::services::google::GoogleClient>,
 ) -> Vec<Box<dyn ToolDyn>> {
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
         Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), chat_id.to_string()))
@@ -324,9 +335,6 @@ pub fn build_optional_tools(
         // Web
         wrap(Box::new(WebSearchTool::new(brave_api_key, config_path))),
         wrap(Box::new(WebFetchTool)),
-        // Email
-        wrap(Box::new(SendEmailTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(ReadEmailTool::new(workspace_dir, instance_slug))),
         // Code
         wrap(Box::new(SearchCodeTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone()))),
@@ -347,6 +355,17 @@ pub fn build_optional_tools(
         wrap(Box::new(ReadJournalTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(GetMoodTool::new(workspace_dir, instance_slug))),
     ];
+
+    // Google tools (Gmail, Calendar, Drive) — only if Google account is connected
+    if let Some(g) = google {
+        tools.push(wrap(Box::new(SendEmailTool::new(g.clone()))));
+        tools.push(wrap(Box::new(ReadEmailTool::new(g.clone()))));
+        tools.push(wrap(Box::new(ListEventsTool::new(g.clone()))));
+        tools.push(wrap(Box::new(CreateEventTool::new(g.clone()))));
+        tools.push(wrap(Box::new(ListDriveFilesTool::new(g.clone()))));
+        tools.push(wrap(Box::new(ReadDriveFileTool::new(g.clone()))));
+        tools.push(wrap(Box::new(UploadDriveFileTool::new(g))));
+    }
 
     // Browser tool only available on companion+ plans (needs more RAM for Playwright/Chromium)
     if browser_enabled {

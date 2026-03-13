@@ -161,6 +161,9 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 					OPENROUTER_API_KEY: env.OPENROUTER_API_KEY ?? '',
 					OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
 					BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY ?? '',
+					GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID ?? '',
+					GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET ?? '',
+					LANDING_URL: env.ORIGIN ?? '',
 				},
 				guest: {
 					cpus: opts.cpus ?? 1,

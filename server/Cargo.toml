@@ -15,7 +15,7 @@ rig-sqlite = "0.2.1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 tokio-rusqlite = "0.6"
 sqlite-vec = "0.1"
-reqwest = "0.13"
+reqwest = { version = "0.13", features = ["json", "query"] }
 dirs = "6.0"
 toml = "1.0"
 uuid = { version = "1.0", features = ["v4"] }
@@ -24,9 +24,6 @@ schemars = "1"
 tokio-util = { version = "0.7.18", features = ["rt", "compat"] }
 tower-http = { version = "0.6", features = ["fs"] }
 tower = "0.5"
-lettre = { version = "0.11", features = ["tokio1-native-tls", "smtp-transport", "builder"] }
-async-imap = "0.10"
-async-native-tls = "0.5"
 futures = "0.3"
 base64 = "0.22"
 regex = "1"

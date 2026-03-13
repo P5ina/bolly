@@ -65,6 +65,19 @@ export const tenants = pgTable('tenants', {
 	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ─── Google Accounts (OAuth tokens) ─────────────────────────────────────────
+
+export const googleAccounts = pgTable('google_accounts', {
+	id: text('id').primaryKey(), // nanoid
+	userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+	email: text('email').notNull(), // Google email address
+	accessToken: text('access_token').notNull(),
+	refreshToken: text('refresh_token').notNull(),
+	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+	scopes: text('scopes').notNull(), // space-separated OAuth scopes
+	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── Rate Limits ────────────────────────────────────────────────────────────
 
 export const rateLimits = pgTable('rate_limits', {
@@ -84,3 +97,5 @@ export type Tenant = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type RateLimit = typeof rateLimits.$inferSelect;
+export type GoogleAccount = typeof googleAccounts.$inferSelect;
+export type NewGoogleAccount = typeof googleAccounts.$inferInsert;
