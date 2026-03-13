@@ -1143,7 +1143,17 @@ impl Tool for CreateDropTool {
                 output you want to leave for the user. They persist independently of chat. \
                 You have a maximum of 3 drops per day — use them wisely. Don't waste drops on \
                 intermediate drafts or versions; only create a drop when the result is final and \
-                worth keeping. Avoid creating drops with similar titles to recent ones."
+                worth keeping. Avoid creating drops with similar titles to recent ones.\n\n\
+                SKETCH DROPS: When kind=\"sketch\", the content is rendered as an interactive \
+                Excalidraw diagram directly in the chat and drops view. The user can pan and zoom it. \
+                Content MUST be valid Excalidraw JSON: {\"elements\": [...], \"appState\": {}}. \
+                Each element needs: {\"type\": \"rectangle\"|\"ellipse\"|\"diamond\"|\"text\"|\"arrow\"|\"line\", \
+                \"x\": number, \"y\": number, \"width\": number, \"height\": number, \"id\": unique_string, \
+                \"strokeColor\": \"#color\", \"backgroundColor\": \"#color\" or \"transparent\", \
+                \"fillStyle\": \"solid\"|\"hachure\", \"strokeWidth\": 1|2, \"roughness\": 0|1|2}. \
+                For text elements add: {\"text\": \"...\", \"fontSize\": 16|20|28, \"textAlign\": \"center\"|\"left\"}. \
+                For arrows add: {\"points\": [[0,0],[dx,dy]], \"startBinding\": null, \"endBinding\": null}. \
+                Use sketches for architecture diagrams, flowcharts, mind maps, or any visual explanation."
                 .into(),
             parameters: openai_schema::<CreateDropArgs>(),
         }
