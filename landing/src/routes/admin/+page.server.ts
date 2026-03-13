@@ -2,9 +2,10 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types.js';
 import { db } from '$lib/server/db/index.js';
 import { tenants, users, rateLimits } from '$lib/server/db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, ne } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
 import * as fly from '$lib/server/fly/index.js';
+import { PLANS, type PlanId } from '$lib/server/stripe/index.js';
 
 function isAdmin(email?: string): boolean {
 	if (!email) return false;
@@ -160,5 +161,33 @@ export const actions: Actions = {
 			const msg = e instanceof Error ? e.message : 'Unknown error';
 			return fail(500, { error: `Failed to start machine: ${msg}` });
 		}
+	},
+
+	syncPlanLimits: async ({ locals }) => {
+		if (!locals.user || !isAdmin(locals.user.email)) error(403, 'Forbidden');
+
+		const allTenants = await db()
+			.select({ id: tenants.id, plan: tenants.plan })
+			.from(tenants)
+			.where(ne(tenants.status, 'destroyed'));
+
+		let updated = 0;
+		for (const t of allTenants) {
+			const config = PLANS[t.plan as PlanId];
+			if (!config) continue;
+			await db()
+				.update(tenants)
+				.set({
+					storageLimit: config.storageLimit,
+					maxInstances: config.maxInstances,
+					messagesPerDay: config.messagesPerDay,
+					tokensPerMonth: config.tokensPerMonth,
+					updatedAt: new Date(),
+				})
+				.where(eq(tenants.id, t.id));
+			updated++;
+		}
+
+		return { success: true, updated };
 	},
 };
