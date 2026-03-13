@@ -763,6 +763,175 @@ fn estimate_tokens(text: &str) -> usize {
     (text.len() as f64 / 3.2) as usize
 }
 
+/// A single section of the system prompt with its name and size.
+#[derive(serde::Serialize, Clone)]
+pub struct ContextSection {
+    pub name: String,
+    pub chars: usize,
+    pub tokens: usize,
+}
+
+/// Full context stats breakdown.
+#[derive(serde::Serialize)]
+pub struct ContextStats {
+    pub system_prompt: Vec<ContextSection>,
+    pub system_prompt_total_tokens: usize,
+    pub static_tools: Vec<String>,
+    pub optional_tools: Vec<String>,
+    pub static_tools_count: usize,
+    pub optional_tools_count: usize,
+    pub history_messages: usize,
+    pub history_tokens_estimate: usize,
+    pub total_input_tokens_estimate: usize,
+}
+
+/// Compute context stats for a given instance + chat without calling the LLM.
+pub fn compute_context_stats(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    chat_id: &str,
+) -> ContextStats {
+    let instance_slug = sanitize_slug(instance_slug);
+    let chat_id = sanitize_slug(chat_id);
+
+    let mut sections = Vec::new();
+
+    // 1. Soul / base prompt
+    let base_prompt = llm::load_system_prompt(workspace_dir, &instance_slug);
+    sections.push(ContextSection {
+        name: "soul".into(),
+        chars: base_prompt.len(),
+        tokens: estimate_tokens(&base_prompt),
+    });
+
+    // 2. Skills
+    let skills_prompt = build_skills_prompt(workspace_dir);
+    if !skills_prompt.is_empty() {
+        sections.push(ContextSection {
+            name: "skills".into(),
+            chars: skills_prompt.len(),
+            tokens: estimate_tokens(&skills_prompt),
+        });
+    }
+
+    // 3. Tools hint (static string)
+    let tools_hint = "## tools\nyou have built-in tools for web browsing, email, code search, \
+         project management, creative drops, and more. use them directly when needed — \
+         they are automatically available based on the conversation.";
+    sections.push(ContextSection {
+        name: "tools_hint".into(),
+        chars: tools_hint.len(),
+        tokens: estimate_tokens(tools_hint),
+    });
+
+    // 4. Autonomy / capabilities
+    let autonomy_prompt = load_autonomy_prompt(workspace_dir, &instance_slug);
+    sections.push(ContextSection {
+        name: "autonomy".into(),
+        chars: autonomy_prompt.len(),
+        tokens: estimate_tokens(&autonomy_prompt),
+    });
+
+    // 5. Email status
+    let email_status = load_email_status(workspace_dir, &instance_slug);
+    if !email_status.is_empty() {
+        sections.push(ContextSection {
+            name: "email".into(),
+            chars: email_status.len(),
+            tokens: estimate_tokens(&email_status),
+        });
+    }
+
+    // 6. Style (static)
+    let style = "## style\n\
+         write like texting a friend. short messages split by blank lines. \
+         1-2 sentences each. no walls of text, no bullet lists in conversation. \
+         lowercase, casual, warm.";
+    sections.push(ContextSection {
+        name: "style".into(),
+        chars: style.len(),
+        tokens: estimate_tokens(style),
+    });
+
+    // 7. Memory
+    let memory_prompt = memory::build_facts_md_prompt(workspace_dir, &instance_slug);
+    if !memory_prompt.is_empty() {
+        sections.push(ContextSection {
+            name: "memory".into(),
+            chars: memory_prompt.len(),
+            tokens: estimate_tokens(&memory_prompt),
+        });
+    }
+
+    // 8. Journal
+    let journal_prompt = load_recent_journal(workspace_dir, &instance_slug);
+    if !journal_prompt.is_empty() {
+        sections.push(ContextSection {
+            name: "journal".into(),
+            chars: journal_prompt.len(),
+            tokens: estimate_tokens(&journal_prompt),
+        });
+    }
+
+    // 9. Mood
+    let mood_prompt = load_mood_prompt(workspace_dir, &instance_slug);
+    if !mood_prompt.is_empty() {
+        sections.push(ContextSection {
+            name: "mood".into(),
+            chars: mood_prompt.len(),
+            tokens: estimate_tokens(&mood_prompt),
+        });
+    }
+
+    // 10. Rhythm
+    let rhythm_prompt = load_rhythm_prompt(workspace_dir, &instance_slug);
+    if !rhythm_prompt.is_empty() {
+        sections.push(ContextSection {
+            name: "rhythm".into(),
+            chars: rhythm_prompt.len(),
+            tokens: estimate_tokens(&rhythm_prompt),
+        });
+    }
+
+    let system_prompt_total_tokens: usize = sections.iter().map(|s| s.tokens).sum();
+
+    // Tools
+    let static_tool_names: Vec<String> = vec![
+        "read_file", "write_file", "edit_file", "list_files",
+        "remember", "recall", "set_mood", "journal",
+        "run_command", "send_file", "clear_context",
+        "list_skills", "activate_skill",
+    ].into_iter().map(String::from).collect();
+
+    let optional_tool_names: Vec<String> = tools::OPTIONAL_TOOL_EMBEDDINGS
+        .iter()
+        .map(|(name, _)| name.to_string())
+        .collect();
+
+    // History
+    let existing: Vec<ChatMessage> = load_messages_vec(
+        &messages_path(workspace_dir, &instance_slug, &chat_id),
+    ).unwrap_or_default();
+
+    let history_tokens_estimate: usize = existing.iter()
+        .map(|m| estimate_tokens(&m.content))
+        .sum();
+
+    let total_input_tokens_estimate = system_prompt_total_tokens + history_tokens_estimate;
+
+    ContextStats {
+        static_tools_count: static_tool_names.len(),
+        optional_tools_count: optional_tool_names.len(),
+        static_tools: static_tool_names,
+        optional_tools: optional_tool_names,
+        system_prompt: sections,
+        system_prompt_total_tokens,
+        history_messages: existing.len(),
+        history_tokens_estimate,
+        total_input_tokens_estimate,
+    }
+}
+
 fn compact_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> PathBuf {
     chat_dir(workspace_dir, instance_slug, chat_id).join("compact.md")
 }

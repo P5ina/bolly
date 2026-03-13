@@ -2,7 +2,7 @@ use axum::{Json, Router, extract::{Path, State}, http::StatusCode, routing::{del
 use serde::{Deserialize, Serialize};
 use std::fs;
 
-use crate::{app::state::AppState, domain::instance::InstanceSummary, services::{tools, workspace}};
+use crate::{app::state::AppState, domain::instance::InstanceSummary, services::{chat, tools, workspace}};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -12,6 +12,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/companion-name", get(get_companion_name))
         .route("/api/instances/{instance_slug}/companion-name", put(set_companion_name))
         .route("/api/instances/{instance_slug}/secret", post(submit_secret))
+        .route("/api/instances/{instance_slug}/context-stats", get(get_context_stats))
+        .route("/api/instances/{instance_slug}/{chat_id}/context-stats", get(get_context_stats_chat))
 }
 
 async fn list_instances(State(state): State<AppState>) -> Json<Vec<InstanceSummary>> {
@@ -136,4 +138,22 @@ async fn submit_secret(
         }
         None => StatusCode::NOT_FOUND,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Context stats endpoint
+// ---------------------------------------------------------------------------
+
+async fn get_context_stats(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> Json<chat::ContextStats> {
+    Json(chat::compute_context_stats(&state.workspace_dir, &instance_slug, "default"))
+}
+
+async fn get_context_stats_chat(
+    State(state): State<AppState>,
+    Path((instance_slug, chat_id)): Path<(String, String)>,
+) -> Json<chat::ContextStats> {
+    Json(chat::compute_context_stats(&state.workspace_dir, &instance_slug, &chat_id))
 }

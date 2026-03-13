@@ -8,6 +8,7 @@
 	import ChatInput from "./ChatInput.svelte";
 	import AsciiRenderer from "./AsciiRenderer.svelte";
 	import StreamActivity from "./StreamActivity.svelte";
+	import ContextStats from "./ContextStats.svelte";
 	import { play } from "$lib/sounds.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
@@ -33,6 +34,7 @@
 	let isConnected = $state(false);
 	let showChatList = $state(false);
 	let clearDialogOpen = $state(false);
+	let showContextStats = $state(false);
 	let streamingContent = $state("");
 	let displayedLength = $state(0);
 	let typewriterRaf = 0;
@@ -412,6 +414,13 @@
 					<path d="M8 3v10M3 8h10" stroke-linecap="round"/>
 				</svg>
 			</button> -->
+			<button onclick={() => showContextStats = true} onmousedown={(e) => e.preventDefault()} class="bar-btn" title="Context stats">
+				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
+					<rect x="2" y="9" width="3" height="5" rx="0.5" />
+					<rect x="6.5" y="5" width="3" height="9" rx="0.5" />
+					<rect x="11" y="2" width="3" height="12" rx="0.5" />
+				</svg>
+			</button>
 			<AlertDialog.Root bind:open={clearDialogOpen}>
 				<AlertDialog.Trigger class="bar-btn bar-clear" title="Clear context">
 					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
@@ -489,6 +498,10 @@
 		</aside>
 	</div>
 </div>
+
+{#if showContextStats}
+	<ContextStats {slug} chatId={activeChatId} onclose={() => showContextStats = false} />
+{/if}
 
 <style>
 	.chat-space {

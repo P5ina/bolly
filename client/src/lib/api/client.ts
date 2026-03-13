@@ -2,6 +2,7 @@ import type {
 	ChatMessage,
 	ChatResponse,
 	ChatSummary,
+	ContextStats,
 	Drop,
 	InstanceSummary,
 	RegistryEntry,
@@ -295,6 +296,10 @@ export function installRegistrySkill(id: string): Promise<Skill> {
 
 export function fetchUsage(): Promise<Usage> {
 	return json("/api/usage");
+}
+
+export function fetchContextStats(slug: string, chatId = "default"): Promise<ContextStats> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/${encodeURIComponent(chatId)}/context-stats`);
 }
 
 export async function submitSecret(slug: string, id: string, value: string): Promise<void> {
