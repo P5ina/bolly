@@ -57,6 +57,13 @@
       "when": 1773412751857,
       "tag": "0007_cooing_texas_twister",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1773422523580,
+      "tag": "0008_abandoned_william_stryker",
+      "breakpoints": true
     }
   ]
 }
