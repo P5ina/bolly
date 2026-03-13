@@ -19,6 +19,9 @@ pub struct McpConnection {
     pub resources: HashMap<String, String>,
     #[allow(dead_code)]
     pub sink: ServerSink,
+    /// Keep the RunningService alive — dropping this kills the transport.
+    #[allow(dead_code)]
+    _keepalive: tokio::task::JoinHandle<()>,
 }
 
 /// Connect to all configured MCP servers and return their tools.
@@ -72,6 +75,14 @@ async fn connect_one(config: &McpServerConfig) -> Result<McpConnection, Box<dyn 
         };
         let running = client_info.serve(transport).await?;
         let sink: ServerSink = running.peer().clone();
+        // Spawn a task that holds the RunningService alive for the lifetime of the connection.
+        // When McpConnection is dropped, this task is aborted via the JoinHandle.
+        let keepalive = tokio::spawn(async move {
+            // running is moved here to keep it alive
+            let _hold = running;
+            // Wait forever (or until the task is aborted)
+            std::future::pending::<()>().await;
+        });
 
         let raw_tools = sink.list_all_tools().await?;
 
@@ -118,6 +129,7 @@ async fn connect_one(config: &McpServerConfig) -> Result<McpConnection, Box<dyn 
             ui_tools,
             resources,
             sink,
+            _keepalive: keepalive,
         })
     } else if let Some(_command) = &config.command {
         Err("stdio transport not yet supported".into())
