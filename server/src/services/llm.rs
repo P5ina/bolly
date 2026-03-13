@@ -26,9 +26,6 @@ pub struct ToolChatResult {
     pub text: String,
     /// True when the agent was cut short by the turn limit (still has work to do).
     pub hit_turn_limit: bool,
-    /// Text segments the agent produced between tool calls (before the final response).
-    /// These are saved so they don't disappear from the chat.
-    pub intermediate_texts: Vec<String>,
     /// The full Rig message history (including ToolCall/ToolResult entries) from
     /// the streaming multi-turn. Used to carry context between outer loop iterations
     /// so the LLM doesn't forget its tool calls.
@@ -238,7 +235,7 @@ impl LlmBackend {
 
         if tools.is_empty() {
             let text = self.chat(system_prompt, &prompt_text, history).await?;
-            return Ok(ToolChatResult { text, hit_turn_limit: false, intermediate_texts: vec![], rig_history: None });
+            return Ok(ToolChatResult { text, hit_turn_limit: false, rig_history: None });
         }
 
         // Keep max_turns low so the agent returns text frequently.
@@ -297,7 +294,7 @@ impl LlmBackend {
         };
 
         match result {
-            Ok(response) => Ok(ToolChatResult { text: response, hit_turn_limit: false, intermediate_texts: vec![], rig_history: None }),
+            Ok(response) => Ok(ToolChatResult { text: response, hit_turn_limit: false, rig_history: None }),
             Err(e) if is_rate_limit_error(&e.to_string()) => {
                 // Retry with exponential backoff, keeping tools
                 log::warn!("Rate limited during tool agent, retrying with backoff");
@@ -334,7 +331,7 @@ impl LlmBackend {
                     };
 
                     match retry_result {
-                        Ok(response) => return Ok(ToolChatResult { text: response, hit_turn_limit: false, intermediate_texts: vec![], rig_history: None }),
+                        Ok(response) => return Ok(ToolChatResult { text: response, hit_turn_limit: false, rig_history: None }),
                         Err(e) if is_rate_limit_error(&e.to_string()) => continue,
                         Err(e) => return Err(e),
                     }
@@ -346,7 +343,7 @@ impl LlmBackend {
                 if is_max_turns_error(&e) {
                     let text = extract_last_assistant_text(&chat_history);
                     log::info!("Turn limit reached, extracted text: {:?}", text.chars().take(80).collect::<String>());
-                    return Ok(ToolChatResult { text, hit_turn_limit: true, intermediate_texts: vec![], rig_history: None });
+                    return Ok(ToolChatResult { text, hit_turn_limit: true, rig_history: None });
                 }
                 log::error!("Tool agent failed: {e:?}");
                 Err(e.into())
@@ -365,6 +362,7 @@ impl LlmBackend {
         events: broadcast::Sender<ServerEvent>,
         instance_slug: &str,
         chat_id: &str,
+        workspace_dir: &Path,
     ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>>
     where
         I: VectorStoreIndexDyn + Send + Sync + 'static,
@@ -393,7 +391,7 @@ impl LlmBackend {
                     .multi_turn(AGENT_MAX_TURNS)
                     .await;
 
-                consume_stream(stream, &events, &slug, &cid).await
+                consume_stream(stream, &events, &slug, &cid, workspace_dir).await
             }
             LlmBackend::OpenAI { client, model } => {
                 let mut builder = client
@@ -411,7 +409,7 @@ impl LlmBackend {
                     .multi_turn(AGENT_MAX_TURNS)
                     .await;
 
-                consume_stream(stream, &events, &slug, &cid).await
+                consume_stream(stream, &events, &slug, &cid, workspace_dir).await
             }
             LlmBackend::OpenRouter { client, model } => {
                 let mut builder = client
@@ -429,7 +427,7 @@ impl LlmBackend {
                     .multi_turn(AGENT_MAX_TURNS)
                     .await;
 
-                consume_stream(stream, &events, &slug, &cid).await
+                consume_stream(stream, &events, &slug, &cid, workspace_dir).await
             }
         }
     }
@@ -506,17 +504,19 @@ impl LlmBackend {
 }
 
 /// Consume a streaming response, broadcasting text deltas and accumulating the full text.
+/// Intermediate texts (between tool calls) are saved to disk immediately so they
+/// survive page reloads and appear in the correct chronological position.
 async fn consume_stream<R>(
     stream: std::pin::Pin<Box<dyn futures::Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send>>,
     events: &broadcast::Sender<ServerEvent>,
     instance_slug: &str,
     chat_id: &str,
+    workspace_dir: &Path,
 ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>>
 where
     R: Clone + Unpin,
 {
     let mut accumulated = String::new();
-    let mut intermediate_texts: Vec<String> = Vec::new();
     let mut hit_turn_limit = false;
     let mut rig_history: Option<Vec<Message>> = None;
 
@@ -546,15 +546,29 @@ where
                     });
                 }
             }
-            // When the agent calls a tool, save any intermediate text so it
-            // doesn't disappear from the chat, then reset for the next segment.
+            // When the agent calls a tool, save any intermediate text immediately
+            // so it survives page reloads and appears in the correct position.
             Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall { .. })) |
             Ok(MultiTurnStreamItem::StreamUserItem(_)) => {
                 if !accumulated.is_empty() {
                     let text = accumulated.trim().to_string();
                     if !text.is_empty() {
                         log::debug!("tool round detected, saving {} chars of intermediate text", text.len());
-                        intermediate_texts.push(text);
+                        let ts = super::tools::unix_millis();
+                        let msg = crate::domain::chat::ChatMessage {
+                            id: format!("im_{ts}"),
+                            role: crate::domain::chat::ChatRole::Assistant,
+                            content: text,
+                            created_at: ts.to_string(),
+                            kind: Default::default(),
+                            tool_name: None,
+                        };
+                        super::tools::append_message_to_chat(workspace_dir, instance_slug, chat_id, &msg);
+                        let _ = events.send(ServerEvent::ChatMessageCreated {
+                            instance_slug: instance_slug.to_string(),
+                            chat_id: chat_id.to_string(),
+                            message: msg,
+                        });
                     }
                     accumulated.clear();
                 }
@@ -591,7 +605,7 @@ where
         }
     }
 
-    Ok(ToolChatResult { text: accumulated, hit_turn_limit, intermediate_texts, rig_history })
+    Ok(ToolChatResult { text: accumulated, hit_turn_limit, rig_history })
 }
 
 fn is_max_turns_error(error: &(dyn std::error::Error + Send + Sync)) -> bool {

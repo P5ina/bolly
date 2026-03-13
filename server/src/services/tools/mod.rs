@@ -431,7 +431,7 @@ fn tool_call_counter() -> u64 {
     TOOL_CALL_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
-fn unix_millis() -> u128 {
+pub fn unix_millis() -> u128 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system time after epoch")

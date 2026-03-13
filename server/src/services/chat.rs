@@ -358,6 +358,7 @@ pub async fn run_single_turn(
         .chat_with_tools_streaming(
             &system_prompt, prompt_msg, history_msgs, all_tools,
             memory_index, events.clone(), &instance_slug, &chat_id,
+            workspace_dir,
         )
         .await
         .unwrap_or_else(|e| {
@@ -373,33 +374,11 @@ pub async fn run_single_turn(
                 log::error!("LLM error details: {e:?}");
                 "something went wrong on my end — try again?".to_string()
             };
-            llm::ToolChatResult { text, hit_turn_limit: false, intermediate_texts: vec![], rig_history: None }
+            llm::ToolChatResult { text, hit_turn_limit: false, rig_history: None }
         });
 
     // Strip any leaked tool-call JSON the model may have output as text
     let reply = strip_leaked_tool_calls(&tool_result.text);
-
-    // Save intermediate text segments (agent messages between tool calls)
-    for intermediate in &tool_result.intermediate_texts {
-        let cleaned = strip_leaked_tool_calls(intermediate);
-        if cleaned.is_empty() {
-            continue;
-        }
-        let msg = ChatMessage {
-            id: next_id(),
-            role: ChatRole::Assistant,
-            content: cleaned,
-            created_at: timestamp(),
-            kind: Default::default(),
-            tool_name: None,
-        };
-        tools::append_message_to_chat(workspace_dir, &instance_slug, &chat_id, &msg);
-        let _ = events.send(ServerEvent::ChatMessageCreated {
-            instance_slug: instance_slug.clone(),
-            chat_id: chat_id.clone(),
-            message: msg,
-        });
-    }
 
     // Build single assistant message from the reply
     let file_markers = sent_files.lock().unwrap_or_else(|e| e.into_inner()).drain(..).collect::<Vec<_>>();
