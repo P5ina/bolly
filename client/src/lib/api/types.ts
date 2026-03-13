@@ -167,6 +167,12 @@ export interface ContextStats {
 	total_input_tokens_estimate: number;
 }
 
+export interface HeartbeatUpdate {
+	id: string;
+	description: string;
+	preview: string;
+}
+
 export type ServerEvent =
 	| {
 			type: "chat_message_created";

@@ -317,6 +317,32 @@ export async function cancelSecret(slug: string, id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Heartbeat updates
+// ---------------------------------------------------------------------------
+
+export function fetchHeartbeatUpdates(slug: string): Promise<import("./types.js").HeartbeatUpdate[]> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/heartbeat/updates`);
+}
+
+export async function applyHeartbeatUpdate(slug: string, updateId: string): Promise<void> {
+	const res = await authedFetch(
+		`/api/instances/${encodeURIComponent(slug)}/heartbeat/updates/${encodeURIComponent(updateId)}/apply`,
+		{ method: "POST" },
+	);
+	if (res.status === 401) throw new AuthError();
+	if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
+}
+
+export async function dismissHeartbeatUpdate(slug: string, updateId: string): Promise<void> {
+	const res = await authedFetch(
+		`/api/instances/${encodeURIComponent(slug)}/heartbeat/updates/${encodeURIComponent(updateId)}/dismiss`,
+		{ method: "POST" },
+	);
+	if (res.status === 401) throw new AuthError();
+	if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
+}
+
+// ---------------------------------------------------------------------------
 // Google Accounts
 // ---------------------------------------------------------------------------
 

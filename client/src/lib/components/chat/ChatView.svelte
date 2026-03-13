@@ -9,6 +9,7 @@
 	import AsciiRenderer from "./AsciiRenderer.svelte";
 	import StreamActivity from "./StreamActivity.svelte";
 	import ContextStats from "./ContextStats.svelte";
+	import HeartbeatUpdateBanner from "./HeartbeatUpdateBanner.svelte";
 	import { play } from "$lib/sounds.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
@@ -506,6 +507,7 @@
 		<div class="chat-main">
 			<div class="chat-stream" bind:this={scrollContainer}>
 				<div class="stream-inner">
+					<HeartbeatUpdateBanner {slug} />
 					{#if loading}
 						<div class="chat-loading"><div class="loading-dot"></div></div>
 					{:else if stream.length === 0}

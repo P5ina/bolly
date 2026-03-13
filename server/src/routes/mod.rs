@@ -4,6 +4,7 @@ pub mod config;
 pub mod drops;
 pub mod google;
 pub mod health;
+pub mod heartbeat;
 pub mod instances;
 pub mod meta;
 pub mod pwa;
