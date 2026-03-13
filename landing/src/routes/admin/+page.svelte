@@ -15,13 +15,24 @@
 		RefreshCw,
 	} from 'lucide-svelte';
 
-	const MODEL_PRESETS = [
-		{ provider: 'openrouter', model: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6', cost: '$3 / $15' },
-		{ provider: 'openrouter', model: 'anthropic/claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', cost: '$0.80 / $4' },
-		{ provider: 'openrouter', model: 'moonshotai/kimi-k2.5', label: 'Kimi K2.5', cost: '$0.14 / $0.42' },
-		{ provider: 'openrouter', model: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash', cost: '$0.15 / $0.60' },
-		{ provider: 'anthropic', model: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (direct)', cost: '$3 / $15' },
-	] as const;
+	const PROVIDERS = ['anthropic', 'openrouter', 'openai'] as const;
+
+	const MODELS: Record<string, { id: string; label: string }[]> = {
+		anthropic: [
+			{ id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+			{ id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+		],
+		openrouter: [
+			{ id: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+			{ id: 'anthropic/claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+			{ id: 'moonshotai/kimi-k2.5', label: 'Kimi K2.5' },
+			{ id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+		],
+		openai: [
+			{ id: 'gpt-4o', label: 'GPT-4o' },
+			{ id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+		],
+	};
 
 	let { data } = $props();
 	let updating = $state<string | null>(null);
@@ -32,6 +43,7 @@
 	let refreshing = $state(false);
 	let syncing = $state(false);
 	let updatingAll = $state(false);
+	let resetting = $state<string | null>(null);
 
 	function currentModel(tenant: (typeof data.tenants)[number]) {
 		if (tenant.machine?.model) return tenant.machine.model;
@@ -158,33 +170,33 @@
 						update all images
 					</button>
 				</form>
-			<form method="POST" action="?/syncPlanLimits" use:enhance={() => {
-				syncing = true;
-				actionError = null;
-				actionSuccess = null;
-				return async ({ result, update }) => {
-					syncing = false;
-					if (result.type === 'failure') {
-						actionError = (result.data as { error?: string })?.error ?? 'Sync failed';
-					} else if (result.type === 'success') {
-						const data = result.data as { updated?: number };
-						actionSuccess = `Synced plan limits for ${data?.updated ?? 0} tenant(s)`;
-					}
-					await update();
-				};
-			}}>
-				<button
-					type="submit"
-					disabled={syncing}
-					class="text-xs py-1.5 px-4 rounded-lg transition-all duration-300 disabled:opacity-40 inline-flex items-center gap-1.5"
-					style="color: var(--color-text-dim); border: 1px solid var(--color-border);"
-				>
-					{#if syncing}
-						<Loader size={12} class="animate-spin" />
-					{/if}
-					sync plan limits
-				</button>
-			</form>
+				<form method="POST" action="?/syncPlanLimits" use:enhance={() => {
+					syncing = true;
+					actionError = null;
+					actionSuccess = null;
+					return async ({ result, update }) => {
+						syncing = false;
+						if (result.type === 'failure') {
+							actionError = (result.data as { error?: string })?.error ?? 'Sync failed';
+						} else if (result.type === 'success') {
+							const data = result.data as { updated?: number };
+							actionSuccess = `Synced plan limits for ${data?.updated ?? 0} tenant(s)`;
+						}
+						await update();
+					};
+				}}>
+					<button
+						type="submit"
+						disabled={syncing}
+						class="text-xs py-1.5 px-4 rounded-lg transition-all duration-300 disabled:opacity-40 inline-flex items-center gap-1.5"
+						style="color: var(--color-text-dim); border: 1px solid var(--color-border);"
+					>
+						{#if syncing}
+							<Loader size={12} class="animate-spin" />
+						{/if}
+						sync plan limits
+					</button>
+				</form>
 			</div>
 		</div>
 
@@ -320,20 +332,45 @@
 										<MessageSquare size={12} />
 										{tenant.rateLimit.messagesToday} today / {formatTokens(tenant.rateLimit.tokensThisMonth)} tokens
 									</span>
+									<form method="POST" action="?/resetLimits" class="inline-flex" use:enhance={() => {
+										resetting = tenant.id;
+										actionError = null;
+										actionSuccess = null;
+										return async ({ result, update }) => {
+											resetting = null;
+											if (result.type === 'failure') {
+												actionError = (result.data as { error?: string })?.error ?? 'Reset failed';
+											} else if (result.type === 'success') {
+												actionSuccess = `Limits reset for ${tenant.slug}`;
+											}
+											await update();
+										};
+									}}>
+										<input type="hidden" name="tenantId" value={tenant.id} />
+										<button
+											type="submit"
+											disabled={resetting === tenant.id}
+											class="inline-flex items-center gap-1 text-[0.625rem] py-0.5 px-2 rounded-md transition-all duration-300 disabled:opacity-40"
+											style="color: oklch(0.78 0.12 75 / 60%); border: 1px solid oklch(0.78 0.12 75 / 15%);"
+										>
+											{#if resetting === tenant.id}
+												<Loader size={10} class="animate-spin" />
+											{/if}
+											reset
+										</button>
+									</form>
 								{/if}
 							</div>
 
 							<!-- Model selector -->
 							{#if tenant.status === 'running' || tenant.status === 'stopped'}
 								<div class="mt-4 pt-4" style="border-top: 1px solid var(--color-border);">
-									<div class="flex items-center gap-2 mb-2">
+									<div class="flex items-center gap-2 mb-3">
 										<Server size={12} class="text-text-ghost" />
-										<span class="text-xs text-text-ghost">model</span>
-										{#if tenant.machine?.model}
-											<span class="text-xs font-mono text-text-dim">{tenant.machine.model}</span>
-										{:else}
-											<span class="text-xs font-mono text-text-ghost italic">default (from env)</span>
-										{/if}
+										<span class="text-xs text-text-ghost">current:</span>
+										<span class="text-xs font-mono text-text-dim">{currentProvider(tenant)}</span>
+										<span class="text-xs text-text-ghost">/</span>
+										<span class="text-xs font-mono text-text-dim">{currentModel(tenant)}</span>
 									</div>
 									<form
 										method="POST"
@@ -356,33 +393,38 @@
 									>
 										<input type="hidden" name="tenantId" value={tenant.id} />
 										<select
+											name="provider"
+											class="py-2 px-3 rounded-lg text-xs text-text outline-none font-mono"
+											style="background: var(--color-bg-raised); border: 1px solid var(--color-border); min-width: 8rem;"
+											value={currentProvider(tenant)}
+											onchange={(e) => {
+												const form = (e.target as HTMLElement).closest('form')!;
+												const modelSelect = form.querySelector('select[name="model"]') as HTMLSelectElement;
+												const provider = (e.target as HTMLSelectElement).value;
+												const models = MODELS[provider] ?? [];
+												modelSelect.innerHTML = models.map(m =>
+													`<option value="${m.id}">${m.label}</option>`
+												).join('');
+											}}
+										>
+											{#each PROVIDERS as p}
+												<option value={p} selected={currentProvider(tenant) === p}>{p}</option>
+											{/each}
+										</select>
+										<select
 											name="model"
 											class="flex-1 py-2 px-3 rounded-lg text-xs text-text outline-none font-mono"
 											style="background: var(--color-bg-raised); border: 1px solid var(--color-border);"
 										>
-											{#each MODEL_PRESETS as preset}
-												<option
-													value={preset.model}
-													selected={currentModel(tenant) === preset.model}
-												>
-													{preset.label} — {preset.cost}
-												</option>
+											{#each (MODELS[currentProvider(tenant)] ?? []) as m}
+												<option value={m.id} selected={currentModel(tenant) === m.id}>{m.label}</option>
 											{/each}
 										</select>
-										<input type="hidden" name="provider" value="" />
 										<button
 											type="submit"
 											disabled={updating === tenant.id}
 											class="py-2 px-4 rounded-lg text-xs font-medium text-warm transition-all duration-300 disabled:opacity-40"
 											style="background: oklch(0.78 0.12 75 / 12%); border: 1px solid oklch(0.78 0.12 75 / 20%);"
-											onclick={(e) => {
-												const form = (e.target as HTMLElement).closest('form')!;
-												const select = form.querySelector('select[name="model"]') as HTMLSelectElement;
-												const preset = MODEL_PRESETS.find(p => p.model === select.value);
-												if (preset) {
-													(form.querySelector('input[name="provider"]') as HTMLInputElement).value = preset.provider;
-												}
-											}}
 										>
 											{#if updating === tenant.id}
 												<Loader size={12} class="animate-spin" />

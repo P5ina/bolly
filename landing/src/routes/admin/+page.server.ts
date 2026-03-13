@@ -241,4 +241,32 @@ export const actions: Actions = {
 
 		return { success: true, updated };
 	},
+
+	resetLimits: async ({ request, locals }) => {
+		if (!locals.user || !isAdmin(locals.user.email)) error(403, 'Forbidden');
+
+		const form = await request.formData();
+		const tenantId = form.get('tenantId') as string;
+		if (!tenantId) return fail(400, { error: 'Missing tenantId' });
+
+		const [existing] = await db()
+			.select({ instanceId: rateLimits.instanceId })
+			.from(rateLimits)
+			.where(eq(rateLimits.instanceId, tenantId))
+			.limit(1);
+
+		if (!existing) return fail(404, { error: 'No rate limit record found' });
+
+		await db()
+			.update(rateLimits)
+			.set({
+				messagesToday: 0,
+				tokensThisMonth: 0,
+				lastResetDaily: new Date(),
+				lastResetMonthly: new Date(),
+			})
+			.where(eq(rateLimits.instanceId, tenantId));
+
+		return { success: true, tenantId };
+	},
 };
