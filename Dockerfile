@@ -56,7 +56,8 @@ RUN apt-get update && \
       fonts-inter fonts-font-awesome && \
     fc-cache -f && \
     npx playwright@1.52.0 install --with-deps chromium && \
-    curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb && \
+    ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}.deb -o /tmp/cloudflared.deb && \
     dpkg -i /tmp/cloudflared.deb && rm /tmp/cloudflared.deb && \
     rm -rf /var/lib/apt/lists/* /root/.cache/ms-playwright/.links
 
