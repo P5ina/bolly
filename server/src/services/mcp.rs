@@ -127,22 +127,36 @@ async fn connect_one(config: &McpServerConfig) -> Result<McpConnection, Box<dyn 
 }
 
 /// A shared handle holding all active MCP connections.
-/// Cloneable and safe to pass around.
+/// Cloneable and safe to pass around. Supports dynamic reconnection.
 #[derive(Clone, Default)]
 pub struct McpRegistry {
-    connections: Arc<Vec<McpConnection>>,
+    connections: Arc<tokio::sync::RwLock<Vec<McpConnection>>>,
 }
 
 impl McpRegistry {
     pub fn new(connections: Vec<McpConnection>) -> Self {
         Self {
-            connections: Arc::new(connections),
+            connections: Arc::new(tokio::sync::RwLock::new(connections)),
         }
     }
 
+    /// Replace all connections with newly connected ones.
+    pub async fn reconnect(&self, configs: &[McpServerConfig]) {
+        let new_connections = connect_all(configs).await;
+        let mut guard = self.connections.write().await;
+        *guard = new_connections;
+    }
+
+    /// List connected server names.
+    pub async fn server_names(&self) -> Vec<String> {
+        self.connections.read().await.iter().map(|c| c.name.clone()).collect()
+    }
+
     /// Get all MCP tools as boxed ToolDyn, ready to be wrapped in ObservableTool.
-    pub fn tools_as_dyn(&self) -> Vec<Box<dyn rig::tool::ToolDyn>> {
+    pub async fn tools_as_dyn(&self) -> Vec<Box<dyn rig::tool::ToolDyn>> {
         self.connections
+            .read()
+            .await
             .iter()
             .flat_map(|conn| {
                 conn.tools.iter().map(|t| {
@@ -153,24 +167,37 @@ impl McpRegistry {
             .collect()
     }
 
-    /// Get the cached HTML for a tool with MCP Apps UI, if any.
-    pub fn get_app_html(&self, tool_name: &str) -> Option<String> {
-        for conn in self.connections.iter() {
-            if let Some(uri) = conn.ui_tools.get(tool_name) {
+    /// Snapshot app tool info for sync access (used by ObservableTool at call time).
+    pub async fn snapshot_app_tools(&self) -> McpAppSnapshot {
+        let guard = self.connections.read().await;
+        let mut tool_html = HashMap::new();
+        for conn in guard.iter() {
+            for (tool_name, uri) in &conn.ui_tools {
                 if let Some(html) = conn.resources.get(uri) {
-                    return Some(html.clone());
+                    tool_html.insert(tool_name.clone(), html.clone());
                 }
             }
         }
-        None
+        McpAppSnapshot { tool_html }
     }
 
-    /// Check if a tool has MCP Apps UI.
+    pub async fn tool_count(&self) -> usize {
+        self.connections.read().await.iter().map(|c| c.tools.len()).sum()
+    }
+}
+
+/// A sync-safe snapshot of MCP app tool info, captured once per turn.
+#[derive(Clone, Default)]
+pub struct McpAppSnapshot {
+    tool_html: HashMap<String, String>,
+}
+
+impl McpAppSnapshot {
     pub fn is_app_tool(&self, tool_name: &str) -> bool {
-        self.connections.iter().any(|c| c.ui_tools.contains_key(tool_name))
+        self.tool_html.contains_key(tool_name)
     }
 
-    pub fn tool_count(&self) -> usize {
-        self.connections.iter().map(|c| c.tools.len()).sum()
+    pub fn get_app_html(&self, tool_name: &str) -> Option<String> {
+        self.tool_html.get(tool_name).cloned()
     }
 }

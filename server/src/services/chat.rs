@@ -327,6 +327,8 @@ pub async fn run_single_turn(
     );
 
     let sent_files = tools::SentFiles::default();
+    let mcp_snapshot = mcp_registry.snapshot_app_tools().await;
+    let mcp_tools = mcp_registry.tools_as_dyn().await;
     let (all_tools, sent_files) = tools::build_tools(
         workspace_dir, &instance_slug, &chat_id, brave_api_key,
         config_path, events.clone(), llm,
@@ -334,7 +336,8 @@ pub async fn run_single_turn(
         plan,
         google,
         sent_files,
-        Some(mcp_registry),
+        Some(mcp_snapshot),
+        mcp_tools,
     );
 
     let history_count = history_msgs.len();

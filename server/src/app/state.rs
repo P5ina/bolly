@@ -45,8 +45,9 @@ impl AppState {
         // Connect to configured MCP servers
         let mcp_connections = crate::services::mcp::connect_all(&config.mcp_servers).await;
         let mcp_registry = McpRegistry::new(mcp_connections);
-        if mcp_registry.tool_count() > 0 {
-            log::info!("MCP: {} tools from external servers", mcp_registry.tool_count());
+        let mcp_tool_count = mcp_registry.tool_count().await;
+        if mcp_tool_count > 0 {
+            log::info!("MCP: {} tools from external servers", mcp_tool_count);
         }
 
         let (pg_pool, instance_id) = match std::env::var("DATABASE_URL") {
@@ -100,18 +101,27 @@ impl AppState {
             }
         };
 
-        let tokens_changed = {
+        let (tokens_changed, mcp_changed) = {
             let old = self.config.read().await;
-            old.llm.tokens.anthropic != new_config.llm.tokens.anthropic
+            let tokens = old.llm.tokens.anthropic != new_config.llm.tokens.anthropic
                 || old.llm.tokens.open_ai != new_config.llm.tokens.open_ai
                 || old.llm.provider != new_config.llm.provider
-                || old.llm.model != new_config.llm.model
+                || old.llm.model != new_config.llm.model;
+            let mcp = old.mcp_servers.len() != new_config.mcp_servers.len()
+                || old.mcp_servers.iter().zip(new_config.mcp_servers.iter())
+                    .any(|(a, b)| a.name != b.name || a.url != b.url);
+            (tokens, mcp)
         };
 
         if tokens_changed {
             let new_llm = LlmBackend::from_config(&new_config);
             *self.llm.write().await = new_llm;
             log::info!("config reloaded: LLM rebuilt");
+        }
+
+        if mcp_changed {
+            self.mcp_registry.reconnect(&new_config.mcp_servers).await;
+            log::info!("config reloaded: MCP servers reconnected ({} tools)", self.mcp_registry.tool_count().await);
         }
 
         // Preserve plan from DB — it's not in config.toml

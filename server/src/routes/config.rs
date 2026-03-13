@@ -1,9 +1,10 @@
-use axum::{Json, Router, extract::State, http::StatusCode, routing::{get, put}};
+use axum::{Json, Router, extract::State, http::StatusCode, routing::{delete, get, post, put}};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{
     app::state::AppState,
-    config::{self, LlmProvider},
+    config::{self, LlmProvider, McpServerConfig},
     domain::config::UpdateLlmRequest,
 };
 
@@ -11,6 +12,9 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/config/llm", put(update_llm))
         .route("/api/config/status", get(get_status))
+        .route("/api/config/mcp", get(list_mcp_servers))
+        .route("/api/config/mcp", post(add_mcp_server))
+        .route("/api/config/mcp/{name}", delete(remove_mcp_server))
 }
 
 async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -140,4 +144,105 @@ async fn update_llm(
         "provider": provider_str,
         "model": model,
     })))
+}
+
+// ---------------------------------------------------------------------------
+// MCP server management
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct McpServerInfo {
+    name: String,
+    url: Option<String>,
+    connected: bool,
+}
+
+async fn list_mcp_servers(State(state): State<AppState>) -> Json<Vec<McpServerInfo>> {
+    let config = state.config.read().await;
+    let connected_names = state.mcp_registry.server_names().await;
+    let servers: Vec<McpServerInfo> = config
+        .mcp_servers
+        .iter()
+        .map(|s| McpServerInfo {
+            name: s.name.clone(),
+            url: s.url.clone(),
+            connected: connected_names.contains(&s.name),
+        })
+        .collect();
+    Json(servers)
+}
+
+#[derive(Deserialize)]
+struct AddMcpServerRequest {
+    name: String,
+    url: String,
+}
+
+async fn add_mcp_server(
+    State(state): State<AppState>,
+    Json(request): Json<AddMcpServerRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let name = request.name.trim().to_string();
+    let url = request.url.trim().to_string();
+    if name.is_empty() || url.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "name and url are required".into()));
+    }
+
+    // Update config
+    {
+        let mut config = state.config.write().await;
+        if config.mcp_servers.iter().any(|s| s.name == name) {
+            return Err((StatusCode::CONFLICT, format!("MCP server '{name}' already exists")));
+        }
+        config.mcp_servers.push(McpServerConfig {
+            name: name.clone(),
+            url: Some(url.clone()),
+            command: None,
+        });
+        save_config(&config)?;
+    }
+
+    // Reconnect all MCP servers
+    let configs = state.config.read().await.mcp_servers.clone();
+    state.mcp_registry.reconnect(&configs).await;
+    let tool_count = state.mcp_registry.tool_count().await;
+
+    Ok(Json(json!({
+        "status": "ok",
+        "name": name,
+        "tool_count": tool_count,
+    })))
+}
+
+async fn remove_mcp_server(
+    State(state): State<AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    {
+        let mut config = state.config.write().await;
+        let before = config.mcp_servers.len();
+        config.mcp_servers.retain(|s| s.name != name);
+        if config.mcp_servers.len() == before {
+            return Err((StatusCode::NOT_FOUND, format!("MCP server '{name}' not found")));
+        }
+        save_config(&config)?;
+    }
+
+    // Reconnect
+    let configs = state.config.read().await.mcp_servers.clone();
+    state.mcp_registry.reconnect(&configs).await;
+
+    Ok(Json(json!({ "status": "ok" })))
+}
+
+/// Write the current config back to disk.
+fn save_config(config: &config::Config) -> Result<(), (StatusCode, String)> {
+    let config_path = config::config_path();
+    let raw = toml::to_string_pretty(config).map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("failed to serialize config: {e}"))
+    })?;
+    std::fs::write(&config_path, &raw).map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("failed to write config: {e}"))
+    })?;
+    Ok(())
 }

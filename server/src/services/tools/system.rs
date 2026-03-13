@@ -931,6 +931,18 @@ pub struct UpdateConfigArgs {
     pub anthropic_key: Option<String>,
     /// Brave Search API key. Leave null to keep current.
     pub brave_search_key: Option<String>,
+    /// Add an MCP server. Provide as {"name": "...", "url": "..."}. Leave null to skip.
+    pub add_mcp_server: Option<McpServerArg>,
+    /// Remove an MCP server by name. Leave null to skip.
+    pub remove_mcp_server: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct McpServerArg {
+    /// Human-readable name for the MCP server (e.g. "excalidraw").
+    pub name: String,
+    /// HTTP URL of the MCP server (e.g. "https://mcp.excalidraw.com/mcp").
+    pub url: String,
 }
 
 impl Tool for UpdateConfigTool {
@@ -942,10 +954,12 @@ impl Tool for UpdateConfigTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "update_config".into(),
-            description: "Update server configuration: LLM provider, model, and API keys. \
+            description: "Update server configuration: LLM provider, model, API keys, and MCP servers. \
                 Only provided fields are changed; null fields keep their current value. \
                 Changes take effect on the next message. Use this when the user wants to \
-                switch models, set API keys, or change providers."
+                switch models, set API keys, change providers, or add/remove MCP servers. \
+                To add an MCP server, set add_mcp_server with name and url. \
+                To remove one, set remove_mcp_server to the server name."
                 .into(),
             parameters: openai_schema::<UpdateConfigArgs>(),
         }
@@ -1010,6 +1024,33 @@ impl Tool for UpdateConfigTool {
             changes.push("brave search key updated".into());
         }
 
+        if let Some(server) = &args.add_mcp_server {
+            let name = server.name.trim().to_string();
+            let url = server.url.trim().to_string();
+            if name.is_empty() || url.is_empty() {
+                return Err(ToolExecError("MCP server name and url cannot be empty".into()));
+            }
+            if config.mcp_servers.iter().any(|s| s.name == name) {
+                return Err(ToolExecError(format!("MCP server '{name}' already exists")));
+            }
+            config.mcp_servers.push(crate::config::McpServerConfig {
+                name: name.clone(),
+                url: Some(url),
+                command: None,
+            });
+            changes.push(format!("added MCP server '{name}'"));
+        }
+
+        if let Some(name) = &args.remove_mcp_server {
+            let name = name.trim().to_string();
+            let before = config.mcp_servers.len();
+            config.mcp_servers.retain(|s| s.name != name);
+            if config.mcp_servers.len() == before {
+                return Err(ToolExecError(format!("MCP server '{name}' not found")));
+            }
+            changes.push(format!("removed MCP server '{name}'"));
+        }
+
         if changes.is_empty() {
             return Ok("nothing to change — all fields were null".into());
         }
@@ -1019,10 +1060,13 @@ impl Tool for UpdateConfigTool {
         fs::write(&self.config_path, &output)
             .map_err(|e| ToolExecError(format!("failed to write config: {e}")))?;
 
-        Ok(format!(
-            "config updated: {}. changes take effect on next message.",
-            changes.join(", ")
-        ))
+        let mcp_changed = changes.iter().any(|c| c.contains("MCP server"));
+        let suffix = if mcp_changed {
+            ". MCP servers will reconnect on next message."
+        } else {
+            ". changes take effect on next message."
+        };
+        Ok(format!("config updated: {}{suffix}", changes.join(", ")))
     }
 }
 

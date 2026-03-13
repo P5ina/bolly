@@ -4,15 +4,30 @@
 		fetchGoogleAccounts,
 		getGoogleConnectUrl,
 		disconnectGoogleAccount,
+		fetchMcpServers,
+		addMcpServer,
+		removeMcpServer,
 	} from "$lib/api/client.js";
+	import type { McpServerInfo } from "$lib/api/client.js";
 
 	const slug = $derived(page.params.slug!);
 
+	// Google state
 	let accounts = $state<{ email: string }[]>([]);
 	let loading = $state(true);
 	let disconnecting = $state<string | null>(null);
 	let connecting = $state(false);
 	let error = $state("");
+
+	// MCP state
+	let mcpServers = $state<McpServerInfo[]>([]);
+	let mcpLoading = $state(true);
+	let mcpRemoving = $state<string | null>(null);
+	let mcpAdding = $state(false);
+	let mcpError = $state("");
+	let mcpNewName = $state("");
+	let mcpNewUrl = $state("");
+	let showAddForm = $state(false);
 
 	async function loadAccounts() {
 		loading = true;
@@ -51,17 +66,147 @@
 		}
 	}
 
+	async function loadMcpServers() {
+		mcpLoading = true;
+		mcpError = "";
+		try {
+			mcpServers = await fetchMcpServers();
+		} catch (e) {
+			console.error("Failed to load MCP servers:", e);
+		} finally {
+			mcpLoading = false;
+		}
+	}
+
+	async function handleAddMcp() {
+		const name = mcpNewName.trim();
+		const url = mcpNewUrl.trim();
+		if (!name || !url) {
+			mcpError = "name and url are required";
+			return;
+		}
+		mcpAdding = true;
+		mcpError = "";
+		try {
+			await addMcpServer(name, url);
+			mcpNewName = "";
+			mcpNewUrl = "";
+			showAddForm = false;
+			await loadMcpServers();
+		} catch (e: any) {
+			mcpError = e?.message || "Failed to add MCP server";
+		} finally {
+			mcpAdding = false;
+		}
+	}
+
+	async function handleRemoveMcp(name: string) {
+		mcpRemoving = name;
+		mcpError = "";
+		try {
+			await removeMcpServer(name);
+			mcpServers = mcpServers.filter((s) => s.name !== name);
+		} catch (e) {
+			mcpError = `Failed to remove ${name}`;
+		} finally {
+			mcpRemoving = null;
+		}
+	}
+
 	$effect(() => {
 		slug;
 		loadAccounts();
+		loadMcpServers();
 	});
 </script>
 
 <div class="settings-page">
 	<h2 class="settings-title">settings</h2>
 
-	<!-- Google Accounts -->
+	<!-- MCP Servers -->
 	<section class="settings-section">
+		<div class="section-header">
+			<div class="section-icon mcp-icon">
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M12 2L2 7l10 5 10-5-10-5z" />
+					<path d="M2 17l10 5 10-5" />
+					<path d="M2 12l10 5 10-5" />
+				</svg>
+			</div>
+			<div>
+				<h3 class="section-label">mcp servers</h3>
+				<p class="section-desc">
+					Connect external tool servers to extend your companion's capabilities.
+				</p>
+			</div>
+		</div>
+
+		{#if mcpLoading}
+			<div class="accounts-loading">
+				<div class="loading-dot"></div>
+			</div>
+		{:else}
+			{#if mcpServers.length > 0}
+				<div class="accounts-list">
+					{#each mcpServers as server}
+						<div class="account-row">
+							<div class="mcp-server-info">
+								<span class="account-email">{server.name}</span>
+								<span class="mcp-status" class:mcp-connected={server.connected}>
+									{server.connected ? "connected" : "disconnected"}
+								</span>
+							</div>
+							<button
+								class="account-disconnect"
+								disabled={mcpRemoving === server.name}
+								onclick={() => handleRemoveMcp(server.name)}
+							>
+								{mcpRemoving === server.name ? "removing..." : "remove"}
+							</button>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<p class="no-accounts">no mcp servers configured</p>
+			{/if}
+
+			{#if showAddForm}
+				<div class="mcp-add-form">
+					<input
+						class="mcp-input"
+						type="text"
+						placeholder="name (e.g. excalidraw)"
+						bind:value={mcpNewName}
+					/>
+					<input
+						class="mcp-input"
+						type="url"
+						placeholder="url (e.g. https://mcp.excalidraw.com/mcp)"
+						bind:value={mcpNewUrl}
+					/>
+					<div class="mcp-add-actions">
+						<button class="connect-btn" disabled={mcpAdding} onclick={handleAddMcp}>
+							{mcpAdding ? "connecting..." : "add"}
+						</button>
+						<button class="mcp-cancel-btn" onclick={() => { showAddForm = false; mcpError = ""; }}>
+							cancel
+						</button>
+					</div>
+				</div>
+			{:else}
+				<button class="connect-btn" onclick={() => showAddForm = true}>
+					+ add mcp server
+				</button>
+			{/if}
+		{/if}
+
+		{#if mcpError}
+			<p class="error-msg">{mcpError}</p>
+		{/if}
+	</section>
+
+	<!-- Google Accounts -->
+	<section class="settings-section" style="margin-top: 1rem;">
 		<div class="section-header">
 			<div class="section-icon">
 				<svg width="18" height="18" viewBox="0 0 24 24"
@@ -171,6 +316,10 @@
 		flex-shrink: 0;
 	}
 
+	.mcp-icon {
+		color: oklch(0.78 0.12 75 / 60%);
+	}
+
 	.section-label {
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
@@ -206,6 +355,22 @@
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
 		color: oklch(0.88 0.02 75 / 60%);
+	}
+
+	.mcp-server-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+
+	.mcp-status {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: oklch(0.55 0.02 280 / 40%);
+	}
+
+	.mcp-connected {
+		color: oklch(0.70 0.12 145 / 70%);
 	}
 
 	.account-disconnect {
@@ -255,6 +420,51 @@
 	.connect-btn:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+
+	.mcp-add-form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.mcp-input {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: oklch(0.88 0.02 75 / 80%);
+		background: oklch(1 0 0 / 3%);
+		border: 1px solid oklch(1 0 0 / 8%);
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.5rem;
+		outline: none;
+		transition: border-color 0.2s ease;
+	}
+	.mcp-input:focus {
+		border-color: oklch(0.78 0.12 75 / 30%);
+	}
+	.mcp-input::placeholder {
+		color: oklch(0.88 0.02 75 / 25%);
+	}
+
+	.mcp-add-actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.mcp-cancel-btn {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: oklch(0.70 0.02 280 / 50%);
+		background: none;
+		border: 1px solid oklch(1 0 0 / 8%);
+		padding: 0.5rem 1rem;
+		border-radius: 0.5rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+	.mcp-cancel-btn:hover {
+		color: oklch(0.85 0.02 280 / 70%);
+		background: oklch(1 0 0 / 4%);
 	}
 
 	.accounts-loading {

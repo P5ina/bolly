@@ -210,7 +210,7 @@ pub struct ObservableTool {
     workspace_dir: PathBuf,
     instance_slug: String,
     chat_id: String,
-    mcp_registry: Option<crate::services::mcp::McpRegistry>,
+    mcp_snapshot: Option<crate::services::mcp::McpAppSnapshot>,
 }
 
 impl ObservableTool {
@@ -220,7 +220,7 @@ impl ObservableTool {
         workspace_dir: &Path,
         instance_slug: String,
         chat_id: String,
-        mcp_registry: Option<crate::services::mcp::McpRegistry>,
+        mcp_snapshot: Option<crate::services::mcp::McpAppSnapshot>,
     ) -> Self {
         Self {
             inner,
@@ -228,7 +228,7 @@ impl ObservableTool {
             workspace_dir: workspace_dir.to_path_buf(),
             instance_slug,
             chat_id,
-            mcp_registry,
+            mcp_snapshot,
         }
     }
 }
@@ -271,7 +271,7 @@ impl ToolDyn for ObservableTool {
         let workspace_dir = self.workspace_dir.clone();
         let instance_slug = self.instance_slug.clone();
         let chat_id = self.chat_id.clone();
-        let mcp_registry = self.mcp_registry.clone();
+        let mcp_snapshot = self.mcp_snapshot.clone();
         let args_clone = args.clone();
         let fut = self.inner.call(args);
         Box::pin(async move {
@@ -289,9 +289,9 @@ impl ToolDyn for ObservableTool {
                 Err(e) => Err(e),
             };
             // Emit McpAppRender event for MCP Apps tools
-            if let Some(ref registry) = mcp_registry {
-                if registry.is_app_tool(&tool_name) {
-                    if let Some(html) = registry.get_app_html(&tool_name) {
+            if let Some(ref snapshot) = mcp_snapshot {
+                if snapshot.is_app_tool(&tool_name) {
+                    if let Some(html) = snapshot.get_app_html(&tool_name) {
                         let tool_output = match &result {
                             Ok(s) => s.clone(),
                             Err(e) => format!("error: {e}"),
@@ -349,11 +349,12 @@ pub fn build_tools(
     plan: &str,
     google: Option<crate::services::google::GoogleClient>,
     sent_files: SentFiles,
-    mcp_registry: Option<&crate::services::mcp::McpRegistry>,
+    mcp_snapshot: Option<crate::services::mcp::McpAppSnapshot>,
+    mcp_tools: Vec<Box<dyn ToolDyn>>,
 ) -> (Vec<Box<dyn ToolDyn>>, SentFiles) {
-    let mcp_reg = mcp_registry.cloned();
+    let snap = mcp_snapshot;
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
-        Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), chat_id.to_string(), mcp_reg.clone()))
+        Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), chat_id.to_string(), snap.clone()))
     };
 
     let browser_enabled = matches!(plan, "companion" | "unlimited");
@@ -429,10 +430,8 @@ pub fn build_tools(
     }
 
     // MCP tools from connected MCP servers
-    if let Some(registry) = mcp_registry {
-        for mcp_tool in registry.tools_as_dyn() {
-            tools.push(wrap(mcp_tool));
-        }
+    for mcp_tool in mcp_tools {
+        tools.push(wrap(mcp_tool));
     }
 
     log::info!("built {} tools", tools.len());

@@ -155,6 +155,30 @@ export function fetchConfigStatus(): Promise<{ llm_configured: boolean; provider
 	return json("/api/config/status");
 }
 
+export interface McpServerInfo {
+	name: string;
+	url?: string;
+	connected: boolean;
+}
+
+export function fetchMcpServers(): Promise<McpServerInfo[]> {
+	return json("/api/config/mcp");
+}
+
+export function addMcpServer(name: string, url: string): Promise<{ status: string; name: string; tool_count: number }> {
+	return json("/api/config/mcp", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ name, url }),
+	});
+}
+
+export function removeMcpServer(name: string): Promise<void> {
+	return json(`/api/config/mcp/${encodeURIComponent(name)}`, {
+		method: "DELETE",
+	});
+}
+
 export function fetchSoul(slug: string): Promise<Soul> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/soul`);
 }
