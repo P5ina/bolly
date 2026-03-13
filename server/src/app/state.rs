@@ -57,7 +57,7 @@ impl AppState {
 
         // Fetch plan from landing DB if we have a pool + instance ID
         if let (Some(pool), Some(id)) = (&pg_pool, &instance_id) {
-            match sqlx::query_scalar::<_, String>("SELECT plan FROM tenants WHERE id = $1")
+            match sqlx::query_scalar::<_, String>("SELECT plan::text FROM tenants WHERE id = $1")
                 .bind(id)
                 .fetch_optional(pool)
                 .await
