@@ -32,8 +32,8 @@
 		try {
 			const url = await getGoogleConnectUrl(slug);
 			window.location.href = url;
-		} catch (e) {
-			error = "Failed to start Google connection";
+		} catch (e: any) {
+			error = e?.message || "Failed to start Google connection";
 			connecting = false;
 		}
 	}

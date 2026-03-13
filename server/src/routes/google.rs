@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{delete, get},
     Json, Router,
@@ -56,6 +56,7 @@ async fn list_google_accounts(
 async fn google_connect_url(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let config = state.config.read().await;
     let auth_token = &config.auth_token;
@@ -71,15 +72,22 @@ async fn google_connect_url(
         }
     };
 
+    // Build the redirect URL back to the client settings page
+    let host = headers.get("host")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost");
+    let proto = headers.get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("http");
+    let client_redirect = format!("{proto}://{host}/{slug}/settings");
+
     // Build the connect URL that points to the landing OAuth flow
-    // The redirect should bring the user back to the client settings page
     let connect_url = format!(
-        "{}/dashboard/connect-google?token={}&instance={}&redirect=/{}",
+        "{}/dashboard/connect-google?token={}&instance={}&redirect={}",
         landing_url.trim_end_matches('/'),
         auth_token,
         slug,
-        // Redirect back to instance settings after OAuth
-        format!("{slug}/settings")
+        client_redirect,
     );
 
     Json(serde_json::json!({ "url": connect_url })).into_response()
