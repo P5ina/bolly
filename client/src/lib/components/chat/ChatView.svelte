@@ -109,6 +109,9 @@
 	}
 
 	function pushActivity(kind: "tool" | "mood" | "state" | "output", label: string, idPrefix?: string) {
+		// Dedup: skip if the last activity of the same kind has the same label
+		const last = stream.findLast((s) => s.type === "activity" && s.kind === kind);
+		if (last && last.type === "activity" && last.label === label) return;
 		stream = [...stream, {
 			type: "activity",
 			id: `${idPrefix ?? ""}${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
