@@ -125,3 +125,72 @@ impl Tool for ActivateSkillTool {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// read_skill_reference
+// ---------------------------------------------------------------------------
+
+pub struct ReadSkillReferenceTool {
+    workspace_dir: PathBuf,
+}
+
+impl ReadSkillReferenceTool {
+    pub fn new(workspace_dir: &Path) -> Self {
+        Self {
+            workspace_dir: workspace_dir.to_path_buf(),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ReadSkillReferenceArgs {
+    /// The skill ID (directory name) of the installed skill.
+    pub skill_id: String,
+    /// The resource path to read, e.g. "references/core-exporting.md".
+    pub filename: String,
+}
+
+impl Tool for ReadSkillReferenceTool {
+    const NAME: &'static str = "read_skill_reference";
+    type Error = ToolExecError;
+    type Args = ReadSkillReferenceArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "read_skill_reference".into(),
+            description: "Read a reference file bundled with an installed skill. \
+                Use this to access detailed documentation when a skill's instructions \
+                mention reference files."
+                .into(),
+            parameters: openai_schema::<ReadSkillReferenceArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let skill = crate::services::skills::get_skill(&self.workspace_dir, &args.skill_id)
+            .ok_or_else(|| ToolExecError(format!("skill '{}' not found", args.skill_id)))?;
+
+        if !skill.resources.contains(&args.filename) {
+            let available = if skill.resources.is_empty() {
+                "this skill has no reference files".to_string()
+            } else {
+                format!("available: {}", skill.resources.join(", "))
+            };
+            return Err(ToolExecError(format!(
+                "'{}' not found in skill '{}'. {}",
+                args.filename, args.skill_id, available
+            )));
+        }
+
+        let path = self
+            .workspace_dir
+            .join("skills")
+            .join(&args.skill_id)
+            .join(&args.filename);
+
+        std::fs::read_to_string(&path).map_err(|e| {
+            ToolExecError(format!("failed to read '{}': {}", args.filename, e))
+        })
+    }
+}

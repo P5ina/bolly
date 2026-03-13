@@ -19,7 +19,7 @@ use crate::{
         memory,
         rhythm,
         tools::{
-            self, ActivateSkillTool, EditFileTool, JournalTool, ListFilesTool, ListSkillsTool, ClearContextTool, ObservableTool,
+            self, ActivateSkillTool, EditFileTool, JournalTool, ListFilesTool, ListSkillsTool, ReadSkillReferenceTool, ClearContextTool, ObservableTool,
             ReadFileTool, RecallTool, RememberTool,
             RunCommandTool, SendFileTool,
             SetMoodTool, WriteFileTool,
@@ -900,7 +900,7 @@ pub fn compute_context_stats(
         "read_file", "write_file", "edit_file", "list_files",
         "remember", "recall", "set_mood", "journal",
         "run_command", "send_file", "clear_context",
-        "list_skills", "activate_skill",
+        "list_skills", "activate_skill", "read_skill_reference",
     ].into_iter().map(String::from).collect();
 
     let optional_tool_names: Vec<String> = tools::OPTIONAL_TOOL_EMBEDDINGS
@@ -1085,6 +1085,19 @@ fn build_skills_prompt(workspace_dir: &Path) -> String {
             "\n### {}\n{}\n",
             skill.name, skill.instructions
         ));
+        let refs: Vec<_> = skill
+            .resources
+            .iter()
+            .filter(|r| r.starts_with("references/"))
+            .collect();
+        if !refs.is_empty() {
+            out.push_str("\navailable reference files (use `read_skill_reference` tool with skill_id=\"");
+            out.push_str(&skill.id);
+            out.push_str("\" to read detailed docs):\n");
+            for r in refs {
+                out.push_str(&format!("- {}\n", r));
+            }
+        }
     }
     out
 }
@@ -1359,6 +1372,7 @@ fn build_static_tools(
         wrap(Box::new(ClearContextTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(ListSkillsTool::new(workspace_dir))),
         wrap(Box::new(ActivateSkillTool::new(workspace_dir))),
+        wrap(Box::new(ReadSkillReferenceTool::new(workspace_dir))),
     ];
 
     log::info!("built {} static tools", all_tools.len());

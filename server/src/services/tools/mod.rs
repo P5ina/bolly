@@ -47,7 +47,7 @@ pub use project::{
     CreateTaskTool, GetProjectStateTool, ListTasksTool,
     TaskItem, TaskStatus, UpdateProjectStateTool, UpdateTaskTool,
 };
-pub use skills::{ActivateSkillTool, ListSkillsTool};
+pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
 pub use system::{
     ClearContextTool, CreateDropTool, ExploreCodeTool, InstallPackageTool,
     InteractiveSessionTool, RequestSecretTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
@@ -179,6 +179,7 @@ pub fn tool_summary(name: &str, args: &str) -> String {
         }
         "request_secret" => format!("requesting secret: {}", v["prompt"].as_str().unwrap_or("?")),
         "install_package" => format!("installing {}", v["packages"].as_str().unwrap_or("?")),
+        "read_skill_reference" => format!("reading skill ref {}/{}", v["skill_id"].as_str().unwrap_or("?"), v["filename"].as_str().unwrap_or("?")),
         "send_file" => format!("sharing {}", v["path"].as_str().unwrap_or("?")),
         "browse" => {
             let url = v["actions"]
