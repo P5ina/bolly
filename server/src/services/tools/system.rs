@@ -195,9 +195,14 @@ fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64) -> Result<
         }
     });
 
+    let child_pid = child.process_id();
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
     let mut output = Vec::new();
     let max_capture = 6000usize;
+    // How long to wait with no new data before checking if the process tree
+    // is blocked waiting for TTY input.
+    let idle_check_interval = Duration::from_secs(3);
+    let mut last_data_at = Instant::now();
 
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -208,19 +213,34 @@ fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64) -> Result<
             ));
         }
 
-        match rx.recv_timeout(remaining) {
+        let wait = remaining.min(idle_check_interval);
+
+        match rx.recv_timeout(wait) {
             Ok(Some(data)) => {
                 output.extend_from_slice(&data);
+                last_data_at = Instant::now();
                 if output.len() > max_capture {
                     break;
                 }
             }
             Ok(None) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                let _ = child.kill();
-                return Err(format!(
-                    "command timed out after {timeout_secs}s: {command}"
-                ));
+                // No data for a while — check if the process tree is blocked
+                // on a TTY read (i.e. waiting for interactive input).
+                if !output.is_empty()
+                    && last_data_at.elapsed() >= idle_check_interval
+                    && child_pid.map_or(false, |pid| is_process_tree_waiting_on_tty(pid))
+                {
+                    let _ = child.kill();
+                    let raw = String::from_utf8_lossy(&output);
+                    let clean = strip_ansi_codes(&raw);
+                    let truncated: String = clean.chars().take(4000).collect();
+                    return Err(format!(
+                        "Command is waiting for interactive input and was killed. \
+                         This command requires user interaction (prompts/menus) which cannot \
+                         be provided automatically. Output before it stalled:\n{truncated}"
+                    ));
+                }
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
@@ -244,6 +264,66 @@ fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64) -> Result<
         }
         Ok(result)
     }
+}
+
+/// Check whether any process in the tree rooted at `pid` is blocked waiting
+/// for TTY input.  On Linux we inspect `/proc/PID/wchan` — when a process is
+/// blocked in the kernel's TTY line-discipline read path, wchan shows
+/// `n_tty_read` (or `wait_woken` which is called from within it).
+///
+/// We walk the whole process tree because `sh -c "some_command"` means the
+/// shell is the direct child but the *actual* interactive process is a
+/// grandchild.
+///
+/// On non-Linux platforms this always returns false (falls back to timeout).
+#[cfg(target_os = "linux")]
+fn is_process_tree_waiting_on_tty(root_pid: u32) -> bool {
+    // Collect all descendant PIDs via /proc/*/stat ppid field.
+    let mut pids = vec![root_pid];
+    if let Ok(entries) = std::fs::read_dir("/proc") {
+        for entry in entries.flatten() {
+            if let Ok(name) = entry.file_name().into_string() {
+                if let Ok(pid) = name.parse::<u32>() {
+                    if pid == root_pid {
+                        continue;
+                    }
+                    // Read ppid (field 4) from /proc/PID/stat
+                    if let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+                        // Fields after comm (which is in parens and may contain spaces)
+                        if let Some(after_comm) = stat.rfind(')') {
+                            let fields: Vec<&str> =
+                                stat[after_comm + 2..].split_whitespace().collect();
+                            // field[0] = state, field[1] = ppid
+                            if let Some(ppid_str) = fields.get(1) {
+                                if let Ok(ppid) = ppid_str.parse::<u32>() {
+                                    if pids.contains(&ppid) {
+                                        pids.push(pid);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check wchan for each process in the tree.
+    for pid in &pids {
+        if let Ok(wchan) = std::fs::read_to_string(format!("/proc/{pid}/wchan")) {
+            let wchan = wchan.trim();
+            if wchan == "n_tty_read" || wchan == "wait_woken" {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_process_tree_waiting_on_tty(_root_pid: u32) -> bool {
+    false
 }
 
 /// Strip ANSI escape sequences from a string.
