@@ -19,7 +19,7 @@ use crate::{
         memory,
         rhythm,
         tools::{
-            self, EditFileTool, JournalTool, ListFilesTool, ClearContextTool, ObservableTool,
+            self, ActivateSkillTool, EditFileTool, JournalTool, ListFilesTool, ListSkillsTool, ClearContextTool, ObservableTool,
             ReadFileTool, RecallTool, RememberTool,
             RunCommandTool, SendFileTool,
             SetMoodTool, WriteFileTool,
@@ -907,7 +907,8 @@ fn build_skills_prompt(workspace_dir: &Path) -> String {
         return String::new();
     }
 
-    let mut out = String::from("## skills\nyou have the following skills installed:\n");
+    let mut out = String::from("## skills\nyou have the following skills installed. \
+        when you decide to use a skill, call the `activate_skill` tool first so the user can see which skill is guiding your response.\n");
     for skill in &active {
         out.push_str(&format!(
             "\n### {}\n{}\n",
@@ -1180,6 +1181,8 @@ fn build_static_tools(
         wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone()))),
         wrap(Box::new(ClearContextTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(ListSkillsTool::new(workspace_dir))),
+        wrap(Box::new(ActivateSkillTool::new(workspace_dir))),
     ];
 
     log::info!("built {} static tools", all_tools.len());
