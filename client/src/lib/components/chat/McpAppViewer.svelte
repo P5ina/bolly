@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { AppBridge, PostMessageTransport } from "@modelcontextprotocol/ext-apps/app-bridge";
+
 	let {
 		html,
 		toolName,
@@ -12,49 +14,90 @@
 	} = $props();
 
 	let iframe: HTMLIFrameElement | undefined = $state();
-
-	function handleMessage(event: MessageEvent) {
-		if (!iframe || event.source !== iframe.contentWindow) return;
-
-		const msg = event.data;
-		if (msg?.type === "ui/ready") {
-			// App is ready — send initialize, then tool input + result
-			iframe.contentWindow?.postMessage(
-				{
-					type: "ui/initialize",
-					toolName,
-				},
-				"*",
-			);
-			iframe.contentWindow?.postMessage(
-				{
-					type: "ui/notifications/tool-input",
-					input: JSON.parse(toolInput),
-				},
-				"*",
-			);
-			iframe.contentWindow?.postMessage(
-				{
-					type: "ui/notifications/tool-result",
-					result: toolOutput,
-				},
-				"*",
-			);
-		}
-	}
-
-	$effect(() => {
-		window.addEventListener("message", handleMessage);
-		return () => window.removeEventListener("message", handleMessage);
-	});
+	let ready = $state(false);
 
 	$effect(() => {
 		if (!iframe) return;
+
+		// Write HTML into iframe first
 		const doc = iframe.contentDocument;
 		if (!doc) return;
 		doc.open();
 		doc.write(html);
 		doc.close();
+
+		// Create AppBridge with null client (MCP connection is on the Rust server)
+		const bridge = new AppBridge(
+			null,
+			{ name: "bolly", version: "1.0.0" },
+			{ openLinks: {} },
+			{
+				hostContext: {
+					theme: "dark",
+					platform: "web",
+					containerDimensions: { maxHeight: 6000 },
+					displayMode: "inline",
+				},
+			},
+		);
+
+		// When view finishes initialization handshake, send tool data
+		bridge.oninitialized = () => {
+			ready = true;
+
+			// Send tool input arguments
+			let args: Record<string, unknown> = {};
+			try {
+				args = JSON.parse(toolInput);
+			} catch {}
+			bridge.sendToolInput({ arguments: args });
+
+			// Send tool result
+			try {
+				const parsed = JSON.parse(toolOutput);
+				// If it looks like a CallToolResult ({ content: [...] }), send as-is
+				if (parsed && Array.isArray(parsed.content)) {
+					bridge.sendToolResult(parsed);
+				} else {
+					// Wrap plain text in CallToolResult format
+					bridge.sendToolResult({
+						content: [{ type: "text", text: typeof parsed === "string" ? parsed : JSON.stringify(parsed) }],
+					});
+				}
+			} catch {
+				bridge.sendToolResult({
+					content: [{ type: "text", text: toolOutput }],
+				});
+			}
+		};
+
+		// Handle size changes from the app
+		bridge.onsizechange = ({ width, height }) => {
+			if (!iframe) return;
+			if (height !== undefined) {
+				iframe.style.height = `${height}px`;
+			}
+			if (width !== undefined) {
+				iframe.style.minWidth = `min(${width}px, 100%)`;
+			}
+		};
+
+		// Handle open link requests
+		bridge.onopenlink = async (params) => {
+			window.open(params.url, "_blank", "noopener,noreferrer");
+			return {};
+		};
+
+		// Connect transport — this starts the JSON-RPC handshake
+		const transport = new PostMessageTransport(
+			iframe.contentWindow!,
+			iframe.contentWindow!,
+		);
+		bridge.connect(transport);
+
+		return () => {
+			bridge.close();
+		};
 	});
 </script>
 
@@ -65,6 +108,7 @@
 		sandbox="allow-scripts allow-same-origin"
 		title={toolName}
 		class="mcp-app-frame"
+		class:loaded={ready}
 	></iframe>
 </div>
 
@@ -101,5 +145,11 @@
 		border: 1px solid oklch(0.78 0.12 75 / 10%);
 		border-radius: 8px;
 		background: oklch(0.10 0.01 280);
+		opacity: 0;
+		transition: opacity 0.3s ease;
+	}
+
+	.mcp-app-frame.loaded {
+		opacity: 1;
 	}
 </style>
