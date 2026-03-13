@@ -186,6 +186,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             state.events.clone(),
             tool_store.as_ref().map(|s| s.to_index()),
             prev_rig_history.take(),
+            state.pending_secrets.clone(),
         );
 
         let result = tokio::select! {

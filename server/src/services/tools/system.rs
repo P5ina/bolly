@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
-    sync::{LazyLock, Mutex},
+    sync::{Arc, LazyLock, Mutex},
 };
 
 use rig::{completion::ToolDefinition, tool::{Tool, ToolDyn}};
@@ -12,6 +12,7 @@ use tokio::sync::broadcast;
 
 use super::{openai_schema, ToolExecError};
 use super::companion::{load_mood_state};
+use crate::app::state::PendingSecret;
 use crate::domain::events::ServerEvent;
 
 // ---------------------------------------------------------------------------
@@ -733,6 +734,8 @@ pub struct UpdateConfigArgs {
     pub anthropic_key: Option<String>,
     /// Brave Search API key. Leave null to keep current.
     pub brave_search_key: Option<String>,
+    /// Email account name to create or update. Required when changing email settings.
+    pub email_account: Option<String>,
     /// SMTP server hostname (e.g. "smtp.gmail.com"). Leave null to keep current.
     pub smtp_host: Option<String>,
     /// SMTP server port (e.g. 587). Leave null to keep current.
@@ -832,20 +835,18 @@ impl Tool for UpdateConfigTool {
             changes.push("brave search key updated".into());
         }
 
-        if changes.is_empty() {
-            let has_email_changes = args.smtp_host.is_some()
-                || args.smtp_port.is_some()
-                || args.smtp_user.is_some()
-                || args.smtp_password.is_some()
-                || args.smtp_from.is_some()
-                || args.imap_host.is_some()
-                || args.imap_port.is_some()
-                || args.imap_user.is_some()
-                || args.imap_password.is_some();
+        let has_email_changes = args.smtp_host.is_some()
+            || args.smtp_port.is_some()
+            || args.smtp_user.is_some()
+            || args.smtp_password.is_some()
+            || args.smtp_from.is_some()
+            || args.imap_host.is_some()
+            || args.imap_port.is_some()
+            || args.imap_user.is_some()
+            || args.imap_password.is_some();
 
-            if !has_email_changes {
-                return Ok("nothing to change — all fields were null".into());
-            }
+        if changes.is_empty() && !has_email_changes {
+            return Ok("nothing to change — all fields were null".into());
         }
 
         if !changes.is_empty() {
@@ -855,46 +856,81 @@ impl Tool for UpdateConfigTool {
                 .map_err(|e| ToolExecError(format!("failed to write config: {e}")))?;
         }
 
-        let mut email_config = load_instance_email_config(&self.instance_dir).unwrap_or_default();
+        let has_email_fields = args.smtp_host.is_some()
+            || args.smtp_port.is_some()
+            || args.smtp_user.is_some()
+            || args.smtp_password.is_some()
+            || args.smtp_from.is_some()
+            || args.imap_host.is_some()
+            || args.imap_port.is_some()
+            || args.imap_user.is_some()
+            || args.imap_password.is_some();
 
-        if let Some(v) = &args.smtp_host {
-            email_config.smtp_host = v.trim().to_string();
-            changes.push(format!("smtp_host → {}", v.trim()));
-        }
-        if let Some(v) = args.smtp_port {
-            email_config.smtp_port = v;
-            changes.push(format!("smtp_port → {v}"));
-        }
-        if let Some(v) = &args.smtp_user {
-            email_config.smtp_user = v.trim().to_string();
-            changes.push("smtp_user updated".into());
-        }
-        if let Some(v) = &args.smtp_password {
-            email_config.smtp_password = v.trim().to_string();
-            changes.push("smtp_password updated".into());
-        }
-        if let Some(v) = &args.smtp_from {
-            email_config.smtp_from = v.trim().to_string();
-            changes.push(format!("smtp_from → {}", v.trim()));
-        }
-        if let Some(v) = &args.imap_host {
-            email_config.imap_host = v.trim().to_string();
-            changes.push(format!("imap_host → {}", v.trim()));
-        }
-        if let Some(v) = args.imap_port {
-            email_config.imap_port = v;
-            changes.push(format!("imap_port → {v}"));
-        }
-        if let Some(v) = &args.imap_user {
-            email_config.imap_user = v.trim().to_string();
-            changes.push("imap_user updated".into());
-        }
-        if let Some(v) = &args.imap_password {
-            email_config.imap_password = v.trim().to_string();
-            changes.push("imap_password updated".into());
-        }
+        if has_email_fields {
+            let account_name = args.email_account.as_deref().ok_or_else(|| {
+                ToolExecError("email_account is required when updating email settings".into())
+            })?;
 
-        save_instance_email_config(&self.instance_dir, &email_config)?;
+            let mut email_config = load_instance_email_config(&self.instance_dir).unwrap_or_default();
+
+            // Find or create the named account
+            if email_config.get_account(account_name).is_none() {
+                email_config.accounts.push(crate::config::EmailAccount {
+                    name: account_name.to_string(),
+                    smtp_host: String::new(),
+                    smtp_port: 587,
+                    smtp_user: String::new(),
+                    smtp_password: String::new(),
+                    smtp_from: String::new(),
+                    imap_host: String::new(),
+                    imap_port: 993,
+                    imap_user: String::new(),
+                    imap_password: String::new(),
+                });
+                changes.push(format!("created email account '{account_name}'"));
+            }
+
+            let account = email_config.get_account_mut(account_name).unwrap();
+
+            if let Some(v) = &args.smtp_host {
+                account.smtp_host = v.trim().to_string();
+                changes.push(format!("{account_name}: smtp_host → {}", v.trim()));
+            }
+            if let Some(v) = args.smtp_port {
+                account.smtp_port = v;
+                changes.push(format!("{account_name}: smtp_port → {v}"));
+            }
+            if let Some(v) = &args.smtp_user {
+                account.smtp_user = v.trim().to_string();
+                changes.push(format!("{account_name}: smtp_user updated"));
+            }
+            if let Some(v) = &args.smtp_password {
+                account.smtp_password = v.trim().to_string();
+                changes.push(format!("{account_name}: smtp_password updated"));
+            }
+            if let Some(v) = &args.smtp_from {
+                account.smtp_from = v.trim().to_string();
+                changes.push(format!("{account_name}: smtp_from → {}", v.trim()));
+            }
+            if let Some(v) = &args.imap_host {
+                account.imap_host = v.trim().to_string();
+                changes.push(format!("{account_name}: imap_host → {}", v.trim()));
+            }
+            if let Some(v) = args.imap_port {
+                account.imap_port = v;
+                changes.push(format!("{account_name}: imap_port → {v}"));
+            }
+            if let Some(v) = &args.imap_user {
+                account.imap_user = v.trim().to_string();
+                changes.push(format!("{account_name}: imap_user updated"));
+            }
+            if let Some(v) = &args.imap_password {
+                account.imap_password = v.trim().to_string();
+                changes.push(format!("{account_name}: imap_password updated"));
+            }
+
+            save_instance_email_config(&self.instance_dir, &email_config)?;
+        }
 
         Ok(format!(
             "config updated: {}. changes take effect on next message.",
@@ -1317,5 +1353,184 @@ impl Tool for ExploreCodeTool {
 
         log::info!("[explore_code] completed in {:?}, result: {} chars", start.elapsed(), result.len());
         Ok(result)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// request_secret
+// ---------------------------------------------------------------------------
+
+/// Allowed target paths for secrets. Extensible for future MCP connectors.
+fn is_allowed_secret_target(target: &str) -> bool {
+    static PATTERNS: LazyLock<Vec<regex::Regex>> = LazyLock::new(|| {
+        vec![
+            regex::Regex::new(r"^email\.accounts\.[a-zA-Z0-9_-]+\.smtp_password$").unwrap(),
+            regex::Regex::new(r"^email\.accounts\.[a-zA-Z0-9_-]+\.imap_password$").unwrap(),
+            regex::Regex::new(r"^llm\.tokens\.[a-zA-Z0-9_-]+$").unwrap(),
+        ]
+    });
+    PATTERNS.iter().any(|p| p.is_match(target))
+}
+
+/// Write a secret value to the appropriate config file based on the dotted target path.
+fn write_secret_to_config(
+    instance_dir: &Path,
+    config_path: &Path,
+    target: &str,
+    value: &str,
+) -> Result<(), ToolExecError> {
+    use super::communication::{load_instance_email_config, save_instance_email_config};
+
+    let parts: Vec<&str> = target.split('.').collect();
+    match parts.as_slice() {
+        ["email", "accounts", name, field] => {
+            let mut email_config = load_instance_email_config(instance_dir)?;
+            let account = email_config.get_account_mut(name).ok_or_else(|| {
+                ToolExecError(format!(
+                    "email account '{name}' not found. create it first with update_config."
+                ))
+            })?;
+            match *field {
+                "smtp_password" => account.smtp_password = value.to_string(),
+                "imap_password" => account.imap_password = value.to_string(),
+                _ => return Err(ToolExecError(format!("unsupported email field: {field}"))),
+            }
+            save_instance_email_config(instance_dir, &email_config)?;
+        }
+        ["llm", "tokens", provider] => {
+            let raw = fs::read_to_string(config_path)
+                .map_err(|e| ToolExecError(format!("failed to read config: {e}")))?;
+            let mut config: crate::config::Config = toml::from_str(&raw)
+                .map_err(|e| ToolExecError(format!("failed to parse config: {e}")))?;
+            match *provider {
+                "openai" | "open_ai" => config.llm.tokens.open_ai = value.to_string(),
+                "anthropic" => config.llm.tokens.anthropic = value.to_string(),
+                "openrouter" | "open_router" => config.llm.tokens.open_router = value.to_string(),
+                "brave_search" | "brave" => config.llm.tokens.brave_search = value.to_string(),
+                _ => return Err(ToolExecError(format!("unsupported token provider: {provider}"))),
+            }
+            let output = toml::to_string_pretty(&config)
+                .map_err(|e| ToolExecError(format!("failed to serialize config: {e}")))?;
+            fs::write(config_path, &output)
+                .map_err(|e| ToolExecError(format!("failed to write config: {e}")))?;
+        }
+        _ => return Err(ToolExecError(format!("unsupported target path: {target}"))),
+    }
+    Ok(())
+}
+
+pub struct RequestSecretTool {
+    instance_slug: String,
+    instance_dir: PathBuf,
+    config_path: PathBuf,
+    events: broadcast::Sender<ServerEvent>,
+    pending_secrets: Arc<tokio::sync::Mutex<HashMap<String, PendingSecret>>>,
+}
+
+impl RequestSecretTool {
+    pub fn new(
+        workspace_dir: &Path,
+        instance_slug: &str,
+        config_path: &Path,
+        events: broadcast::Sender<ServerEvent>,
+        pending_secrets: Arc<tokio::sync::Mutex<HashMap<String, PendingSecret>>>,
+    ) -> Self {
+        Self {
+            instance_slug: instance_slug.to_string(),
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
+            config_path: config_path.to_path_buf(),
+            events,
+            pending_secrets,
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct RequestSecretArgs {
+    /// A user-facing prompt explaining what secret is needed (e.g. "Enter IMAP password for work account").
+    pub prompt: String,
+    /// Dotted target path where the secret will be stored. Allowed patterns:
+    /// - email.accounts.<name>.smtp_password
+    /// - email.accounts.<name>.imap_password
+    /// - llm.tokens.<provider>
+    pub target: String,
+}
+
+impl Tool for RequestSecretTool {
+    const NAME: &'static str = "request_secret";
+    type Error = ToolExecError;
+    type Args = RequestSecretArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "request_secret".into(),
+            description: "Ask the user to provide a sensitive value (password, API key) via a \
+                secure prompt. The value is written directly to config — you never see it. \
+                Use this instead of asking the user to paste secrets in chat. The target must \
+                be a whitelisted config path like email.accounts.<name>.smtp_password or \
+                llm.tokens.<provider>."
+                .into(),
+            parameters: openai_schema::<RequestSecretArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let target = args.target.trim().to_string();
+        if !is_allowed_secret_target(&target) {
+            return Err(ToolExecError(format!(
+                "target '{target}' is not allowed. allowed patterns: \
+                 email.accounts.<name>.smtp_password, email.accounts.<name>.imap_password, \
+                 llm.tokens.<provider>"
+            )));
+        }
+
+        let id = uuid::Uuid::new_v4().to_string();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        {
+            let mut secrets = self.pending_secrets.lock().await;
+            secrets.insert(
+                id.clone(),
+                PendingSecret {
+                    target: target.clone(),
+                    responder: tx,
+                },
+            );
+        }
+
+        // Broadcast the request to the client
+        let _ = self.events.send(ServerEvent::SecretRequest {
+            instance_slug: self.instance_slug.clone(),
+            id: id.clone(),
+            prompt: args.prompt.clone(),
+            target: target.clone(),
+        });
+
+        log::info!(
+            "[request_secret] waiting for user input (id={}, target={})",
+            &id[..8],
+            target
+        );
+
+        // Wait for the user's response with a 5-minute timeout
+        let value = tokio::time::timeout(std::time::Duration::from_secs(300), rx)
+            .await
+            .map_err(|_| {
+                // Clean up on timeout
+                let pending = self.pending_secrets.clone();
+                let id_clone = id.clone();
+                tokio::spawn(async move {
+                    pending.lock().await.remove(&id_clone);
+                });
+                ToolExecError("secret request timed out after 5 minutes".into())
+            })?
+            .map_err(|_| ToolExecError("secret request was cancelled".into()))?;
+
+        // Write to config
+        write_secret_to_config(&self.instance_dir, &self.config_path, &target, &value)?;
+
+        log::info!("[request_secret] secret saved to {target}");
+        Ok(format!("secret saved to {target}"))
     }
 }

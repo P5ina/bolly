@@ -49,4 +49,10 @@ pub enum ServerEvent {
         chat_id: String,
         delta: String,
     },
+    SecretRequest {
+        instance_slug: String,
+        id: String,
+        prompt: String,
+        target: String,
+    },
 }

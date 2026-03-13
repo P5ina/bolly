@@ -117,6 +117,7 @@ pub async fn run_single_turn(
     events: broadcast::Sender<ServerEvent>,
     tool_index: Option<tools::ToolIndex>,
     prev_history: Option<Vec<rig::completion::Message>>,
+    pending_secrets: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>>,
 ) -> io::Result<SingleTurnResult> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
@@ -276,6 +277,7 @@ pub async fn run_single_turn(
     let optional_tools = tools::build_optional_tools(
         workspace_dir, &instance_slug, &chat_id, brave_api_key,
         config_path, events.clone(), llm,
+        Some(pending_secrets),
     );
 
     let dynamic_tools = if let Some(idx) = tool_index {
@@ -1069,30 +1071,35 @@ fn load_email_status(workspace_dir: &Path, instance_slug: &str) -> String {
         None => return String::new(),
     };
 
-    let smtp = config.is_smtp_configured();
-    let imap = config.is_imap_configured();
-
-    if !smtp && !imap {
+    if config.accounts.is_empty() {
         return String::new();
     }
 
-    let mut status = String::from("## email\n");
-    if smtp {
-        let from = if config.smtp_from.is_empty() {
-            &config.smtp_user
-        } else {
-            &config.smtp_from
-        };
-        status.push_str(&format!(
-            "smtp: configured (host: {}, from: {}). you can send emails with send_email.\n",
-            config.smtp_host, from
-        ));
-    }
-    if imap {
-        status.push_str(&format!(
-            "imap: configured (host: {}, user: {}). you can read emails with read_email.\n",
-            config.imap_host, config.imap_user
-        ));
+    let mut status = String::from("## email accounts\n");
+    for account in &config.accounts {
+        let smtp = account.is_smtp_configured();
+        let imap = account.is_imap_configured();
+        if !smtp && !imap {
+            continue;
+        }
+        status.push_str(&format!("### {}\n", account.name));
+        if smtp {
+            let from = if account.smtp_from.is_empty() {
+                &account.smtp_user
+            } else {
+                &account.smtp_from
+            };
+            status.push_str(&format!(
+                "smtp: configured (host: {}, from: {}). use send_email with account=\"{}\".\n",
+                account.smtp_host, from, account.name
+            ));
+        }
+        if imap {
+            status.push_str(&format!(
+                "imap: configured (host: {}, user: {}). use read_email with account=\"{}\".\n",
+                account.imap_host, account.imap_user, account.name
+            ));
+        }
     }
     status
 }

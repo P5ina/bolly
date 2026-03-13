@@ -297,6 +297,14 @@ export function fetchUsage(): Promise<Usage> {
 	return json("/api/usage");
 }
 
+export async function submitSecret(slug: string, id: string, value: string): Promise<void> {
+	await authedFetch(`/api/instances/${encodeURIComponent(slug)}/secret`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ id, value }),
+	});
+}
+
 export function createWebSocket(): WebSocket {
 	const proto = location.protocol === "https:" ? "wss:" : "ws:";
 	const token = getAuthToken();

@@ -14,6 +14,12 @@ use crate::{
     services::llm::LlmBackend,
 };
 
+/// A pending secret request waiting for user input.
+pub struct PendingSecret {
+    pub target: String,
+    pub responder: tokio::sync::oneshot::Sender<String>,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<RwLock<Config>>,
@@ -27,6 +33,8 @@ pub struct AppState {
     pub pg_pool: Option<PgPool>,
     /// Instance identifier for rate limit tracking.
     pub instance_id: Option<String>,
+    /// Pending secret requests awaiting user input.
+    pub pending_secrets: Arc<Mutex<HashMap<String, PendingSecret>>>,
 }
 
 impl AppState {
@@ -56,6 +64,7 @@ impl AppState {
             agent_tasks: Arc::new(Mutex::new(HashMap::new())),
             pg_pool,
             instance_id,
+            pending_secrets: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 

@@ -7,6 +7,7 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
+
 use rig::{
     completion::ToolDefinition,
     embeddings::{EmbeddingsBuilder, ToolSchema},
@@ -49,7 +50,7 @@ pub use project::{
 pub use skills::{ActivateSkillTool, ListSkillsTool};
 pub use system::{
     ClearContextTool, CreateDropTool, ExploreCodeTool, InstallPackageTool,
-    InteractiveSessionTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
+    InteractiveSessionTool, RequestSecretTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
 };
 pub use web::{BrowseTool, WebFetchTool, WebSearchTool};
 
@@ -166,8 +167,17 @@ pub fn tool_summary(name: &str, args: &str) -> String {
         "web_fetch" => format!("fetching {}", v["url"].as_str().unwrap_or("?")),
         "update_config" => "updating config".into(),
         "create_drop" => format!("creating drop: {}", v["title"].as_str().unwrap_or("?")),
-        "send_email" => format!("sending email to {}", v["to"].as_str().unwrap_or("?")),
-        "read_email" => format!("reading {} emails", v["count"].as_u64().unwrap_or(5)),
+        "send_email" => {
+            let to = v["to"].as_str().unwrap_or("?");
+            let acct = v["account"].as_str().unwrap_or("default");
+            format!("sending email to {to} (via {acct})")
+        }
+        "read_email" => {
+            let count = v["count"].as_u64().unwrap_or(5);
+            let acct = v["account"].as_str().unwrap_or("default");
+            format!("reading {count} emails (via {acct})")
+        }
+        "request_secret" => format!("requesting secret: {}", v["prompt"].as_str().unwrap_or("?")),
         "install_package" => format!("installing {}", v["packages"].as_str().unwrap_or("?")),
         "send_file" => format!("sharing {}", v["path"].as_str().unwrap_or("?")),
         "browse" => {
@@ -325,10 +335,12 @@ pub const OPTIONAL_TOOL_EMBEDDINGS: &[(&str, &[&str])] = &[
     ("send_email", &[
         "send an email message to someone",
         "write and deliver email via SMTP",
+        "send email from a specific account",
     ]),
     ("read_email", &[
         "check email inbox for new messages",
         "read incoming emails via IMAP",
+        "read email from a specific account",
     ]),
     ("search_code", &[
         "search through source code for a pattern",
@@ -377,6 +389,11 @@ pub const OPTIONAL_TOOL_EMBEDDINGS: &[(&str, &[&str])] = &[
     ("update_config", &[
         "update server configuration or settings",
         "change LLM provider, API keys, model, or email settings",
+    ]),
+    ("request_secret", &[
+        "ask the user for a password or API key securely",
+        "collect sensitive credentials without seeing the value",
+        "prompt user for a secret like an email password or token",
     ]),
     ("schedule_message", &[
         "schedule a message to send later",
@@ -450,12 +467,13 @@ pub fn build_optional_tools(
     config_path: &Path,
     events: broadcast::Sender<ServerEvent>,
     llm: &crate::services::llm::LlmBackend,
+    pending_secrets: Option<Arc<tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>>>,
 ) -> Vec<Box<dyn ToolDyn>> {
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
         Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), chat_id.to_string()))
     };
 
-    vec![
+    let mut tools: Vec<Box<dyn ToolDyn>> = vec![
         // Web
         wrap(Box::new(WebSearchTool::new(brave_api_key, config_path))),
         wrap(Box::new(WebFetchTool)),
@@ -483,7 +501,16 @@ pub fn build_optional_tools(
         wrap(Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(ReadJournalTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(GetMoodTool::new(workspace_dir, instance_slug))),
-    ]
+    ];
+
+    // Secret tool only available when pending_secrets is provided (interactive chat, not heartbeat)
+    if let Some(ps) = pending_secrets {
+        tools.push(wrap(Box::new(RequestSecretTool::new(
+            workspace_dir, instance_slug, config_path, events.clone(), ps,
+        ))));
+    }
+
+    tools
 }
 
 // ---------------------------------------------------------------------------

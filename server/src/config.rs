@@ -17,8 +17,6 @@ pub struct Config {
     pub static_dir: String,
     #[serde(default)]
     pub llm: LlmConfig,
-    #[serde(default)]
-    pub email: EmailConfig,
     #[serde(default = "default_registry_url")]
     pub registry_url: String,
 }
@@ -54,7 +52,8 @@ pub struct LlmTokens {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct EmailConfig {
+pub struct EmailAccount {
+    pub name: String,
     #[serde(default)]
     pub smtp_host: String,
     #[serde(default = "default_smtp_port")]
@@ -75,13 +74,33 @@ pub struct EmailConfig {
     pub imap_password: String,
 }
 
-impl EmailConfig {
+impl EmailAccount {
     pub fn is_smtp_configured(&self) -> bool {
         !self.smtp_host.is_empty() && !self.smtp_user.is_empty() && !self.smtp_password.is_empty()
     }
 
     pub fn is_imap_configured(&self) -> bool {
         !self.imap_host.is_empty() && !self.imap_user.is_empty() && !self.imap_password.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EmailConfig {
+    #[serde(default)]
+    pub accounts: Vec<EmailAccount>,
+}
+
+impl EmailConfig {
+    pub fn get_account(&self, name: &str) -> Option<&EmailAccount> {
+        self.accounts.iter().find(|a| a.name == name)
+    }
+
+    pub fn get_account_mut(&mut self, name: &str) -> Option<&mut EmailAccount> {
+        self.accounts.iter_mut().find(|a| a.name == name)
+    }
+
+    pub fn default_account(&self) -> Option<&EmailAccount> {
+        self.accounts.first()
     }
 }
 
@@ -113,7 +132,6 @@ impl Default for Config {
             auth_token: String::new(),
             static_dir: String::new(),
             llm: LlmConfig::default(),
-            email: EmailConfig::default(),
             registry_url: default_registry_url(),
         }
     }
@@ -143,15 +161,7 @@ impl Default for LlmTokens {
 impl Default for EmailConfig {
     fn default() -> Self {
         Self {
-            smtp_host: String::new(),
-            smtp_port: default_smtp_port(),
-            smtp_user: String::new(),
-            smtp_password: String::new(),
-            smtp_from: String::new(),
-            imap_host: String::new(),
-            imap_port: default_imap_port(),
-            imap_user: String::new(),
-            imap_password: String::new(),
+            accounts: Vec::new(),
         }
     }
 }

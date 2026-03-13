@@ -1,4 +1,4 @@
-use axum::{Json, Router, extract::{Path, State}, http::StatusCode, routing::{delete, get, put}};
+use axum::{Json, Router, extract::{Path, State}, http::StatusCode, routing::{delete, get, post, put}};
 use serde::{Deserialize, Serialize};
 use std::fs;
 
@@ -11,6 +11,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/mood", get(get_mood))
         .route("/api/instances/{instance_slug}/companion-name", get(get_companion_name))
         .route("/api/instances/{instance_slug}/companion-name", put(set_companion_name))
+        .route("/api/instances/{instance_slug}/secret", post(submit_secret))
 }
 
 async fn list_instances(State(state): State<AppState>) -> Json<Vec<InstanceSummary>> {
@@ -110,4 +111,29 @@ fn read_identity_name(instance_dir: &std::path::Path) -> Option<String> {
     let state: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let name = state.get("identity")?.get("name")?.as_str()?;
     if name.is_empty() { None } else { Some(name.to_string()) }
+}
+
+// ---------------------------------------------------------------------------
+// Secret submission endpoint
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct SubmitSecretRequest {
+    id: String,
+    value: String,
+}
+
+async fn submit_secret(
+    State(state): State<AppState>,
+    Path(_instance_slug): Path<String>,
+    Json(req): Json<SubmitSecretRequest>,
+) -> StatusCode {
+    let mut secrets = state.pending_secrets.lock().await;
+    match secrets.remove(&req.id) {
+        Some(pending) => {
+            let _ = pending.responder.send(req.value);
+            StatusCode::OK
+        }
+        None => StatusCode::NOT_FOUND,
+    }
 }

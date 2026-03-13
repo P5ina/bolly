@@ -205,4 +205,11 @@ export type ServerEvent =
 			instance_slug: string;
 			chat_id: string;
 			delta: string;
+	  }
+	| {
+			type: "secret_request";
+			instance_slug: string;
+			id: string;
+			prompt: string;
+			target: string;
 	  };

@@ -9,6 +9,7 @@
 	import { pwaInfo } from "virtual:pwa-info";
 	import AuthGate from "$lib/components/auth/AuthGate.svelte";
 	import Toast from "$lib/components/layout/Toast.svelte";
+	import SecretDialog from "$lib/components/layout/SecretDialog.svelte";
 
 	let { children } = $props();
 
@@ -31,6 +32,14 @@
 	let updateAvailable = $state(false);
 	let updateSW: ((reloadPage?: boolean) => Promise<void>) | undefined;
 
+	// Secret request state
+	let secretRequest = $state<{
+		instanceSlug: string;
+		id: string;
+		prompt: string;
+		target: string;
+	} | null>(null);
+
 	function init() {
 		needsAuth = false;
 		instances.refresh().catch((e: unknown) => {
@@ -45,6 +54,13 @@
 		const unsub = ws.subscribe((event: ServerEvent) => {
 			if (event.type === "instance_discovered") {
 				instances.upsert(event.instance);
+			} else if (event.type === "secret_request") {
+				secretRequest = {
+					instanceSlug: event.instance_slug,
+					id: event.id,
+					prompt: event.prompt,
+					target: event.target,
+				};
 			}
 		});
 
@@ -90,6 +106,16 @@
 	{/if}
 
 	<Toast />
+
+	{#if secretRequest}
+		<SecretDialog
+			instanceSlug={secretRequest.instanceSlug}
+			requestId={secretRequest.id}
+			prompt={secretRequest.prompt}
+			target={secretRequest.target}
+			onclose={() => (secretRequest = null)}
+		/>
+	{/if}
 
 	<!-- connection lost banner -->
 	{#if ws.reconnecting}
