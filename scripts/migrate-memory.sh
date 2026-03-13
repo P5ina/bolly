@@ -31,7 +31,8 @@ auth_header() {
 # Plan -> cpus mapping (must match landing/src/lib/server/stripe/index.ts)
 plan_cpus() {
   case "$1" in
-    unlimited) echo 2    ;;
+    companion) echo 2    ;;
+    unlimited) echo 4    ;;
     *)         echo 1    ;;
   esac
 }
@@ -39,10 +40,10 @@ plan_cpus() {
 # Plan -> memory mapping (must match landing/src/lib/server/stripe/index.ts)
 plan_memory() {
   case "$1" in
-    starter)   echo 512  ;;
-    companion) echo 1024 ;;
+    starter)   echo 2048 ;;
+    companion) echo 2048 ;;
     unlimited) echo 4096 ;;
-    *)         echo 512  ;;
+    *)         echo 2048 ;;
   esac
 }
 
