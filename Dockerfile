@@ -43,12 +43,20 @@ RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
     ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx && \
     npm install -g pnpm
 
-# Install system packages + Playwright Chromium with deps in one apt session
+# Install system packages, fonts, Playwright Chromium in one apt session
 RUN apt-get update && \
+    echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | debconf-set-selections && \
     apt-get install -y --no-install-recommends \
       ca-certificates curl sudo \
       python3 python3-pip python3-venv \
-      git jq && \
+      git jq \
+      fontconfig \
+      fonts-liberation fonts-dejavu-core fonts-noto-core fonts-noto-cjk \
+      fonts-noto-color-emoji fonts-noto-mono \
+      fonts-firacode fonts-open-sans fonts-roboto fonts-lato \
+      fonts-inter fonts-font-awesome \
+      ttf-mscorefonts-installer && \
+    fc-cache -f && \
     npx playwright@1.52.0 install --with-deps chromium && \
     curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb && \
     dpkg -i /tmp/cloudflared.deb && rm /tmp/cloudflared.deb && \
