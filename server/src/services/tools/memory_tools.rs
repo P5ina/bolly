@@ -205,3 +205,108 @@ impl Tool for RecallTool {
         Ok(result)
     }
 }
+
+// ---------------------------------------------------------------------------
+// forget
+// ---------------------------------------------------------------------------
+
+pub struct ForgetTool {
+    instance_dir: PathBuf,
+}
+
+impl ForgetTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
+        }
+    }
+}
+
+/// Arguments for forget tool.
+#[derive(Deserialize, JsonSchema)]
+pub struct ForgetArgs {
+    /// Search query — all facts containing this text will be removed.
+    /// Use a specific phrase to remove a single fact, or a broad term to remove all related facts.
+    pub query: String,
+}
+
+impl Tool for ForgetTool {
+    const NAME: &'static str = "forget";
+    type Error = ToolExecError;
+    type Args = ForgetArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "forget".into(),
+            description: "Remove facts from long-term memory that match a query. \
+                Use this when the user asks you to forget something, or when you need to \
+                clean up outdated, contradictory, or irrelevant memories. \
+                All facts containing the query text will be deleted."
+                .into(),
+            parameters: openai_schema::<ForgetArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let query = args.query.trim().to_lowercase();
+        if query.is_empty() {
+            return Err(ToolExecError("query cannot be empty".into()));
+        }
+
+        let facts_path = self.instance_dir.join("memory").join("facts.md");
+        let content = fs::read_to_string(&facts_path).unwrap_or_default();
+
+        let query_words: Vec<&str> = query.split_whitespace().collect();
+        let mut kept = Vec::new();
+        let mut removed = Vec::new();
+
+        for line in content.lines() {
+            if line.starts_with("- ") {
+                let fact_lower = line.to_lowercase();
+                if query_words.iter().any(|w| fact_lower.contains(w)) {
+                    removed.push(line.trim_start_matches("- ").to_string());
+                    continue;
+                }
+            }
+            kept.push(line.to_string());
+        }
+
+        // Clean up empty sections (## header followed by nothing or another ##)
+        let mut cleaned = Vec::new();
+        for (i, line) in kept.iter().enumerate() {
+            if line.starts_with("## ") {
+                let next_non_empty = kept[i + 1..].iter().find(|l| !l.trim().is_empty());
+                if next_non_empty.is_some_and(|l| l.starts_with("## ") || l.starts_with("# ")) || next_non_empty.is_none() {
+                    continue; // skip empty section header
+                }
+            }
+            cleaned.push(line.as_str());
+        }
+
+        if removed.is_empty() {
+            return Ok(format!("no memories matched \"{query}\""));
+        }
+
+        let new_content = cleaned.join("\n") + "\n";
+        fs::write(&facts_path, &new_content).map_err(|e| ToolExecError(e.to_string()))?;
+
+        // Also try to remove matching episodic memories
+        let workspace_dir = self.instance_dir.parent().and_then(|p| p.parent());
+        let slug = self.instance_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        let episodes_removed = if let Some(ws) = workspace_dir {
+            crate::services::memory::forget_episodes(ws, slug, &query)
+        } else {
+            0
+        };
+
+        let mut result = format!("forgot {} fact(s):\n", removed.len());
+        for fact in &removed {
+            result.push_str(&format!("- {fact}\n"));
+        }
+        if episodes_removed > 0 {
+            result.push_str(&format!("also removed {episodes_removed} episodic memory/memories."));
+        }
+        Ok(result)
+    }
+}

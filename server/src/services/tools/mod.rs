@@ -43,7 +43,7 @@ pub use communication::{
 };
 pub use drive::{ListDriveFilesTool, ReadDriveFileTool, UploadDriveFileTool};
 pub use files::{EditFileTool, ListFilesTool, ReadFileTool, SendFileTool, WriteFileTool};
-pub use memory_tools::{RecallTool, RememberTool};
+pub use memory_tools::{ForgetTool, RecallTool, RememberTool};
 pub use project::{
     CreateTaskTool, GetProjectStateTool, ListTasksTool,
     TaskItem, TaskStatus, UpdateProjectStateTool, UpdateTaskTool,
@@ -341,6 +341,7 @@ pub fn build_tools(
         // Memory
         wrap(Box::new(RememberTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(RecallTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(ForgetTool::new(workspace_dir, instance_slug))),
         // Companion
         wrap(Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone()))),
         wrap(Box::new(JournalTool::new(workspace_dir, instance_slug))),

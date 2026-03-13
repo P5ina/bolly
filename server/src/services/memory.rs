@@ -610,6 +610,24 @@ pub fn search_episodes(workspace_dir: &Path, instance_slug: &str, query: &str) -
     scored.into_iter().map(|(ep, _)| ep).collect()
 }
 
+/// Remove episodic memories matching a query. Returns the number removed.
+pub fn forget_episodes(workspace_dir: &Path, instance_slug: &str, query: &str) -> usize {
+    let episodes = retrieve_from_episodes_md(workspace_dir, instance_slug);
+    let query_lower = query.to_lowercase();
+    let query_words: Vec<&str> = query_lower.split_whitespace().collect();
+
+    let (keep, remove): (Vec<_>, Vec<_>) = episodes.into_iter().partition(|ep| {
+        let combined = format!("{} {} {}", ep.content, ep.emotion, ep.significance).to_lowercase();
+        !query_words.iter().any(|w| combined.contains(*w))
+    });
+
+    let removed = remove.len();
+    if removed > 0 {
+        regenerate_episodes_md(workspace_dir, instance_slug, &keep);
+    }
+    removed
+}
+
 // ---------------------------------------------------------------------------
 // Deduplication
 // ---------------------------------------------------------------------------
