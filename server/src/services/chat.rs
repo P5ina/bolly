@@ -201,7 +201,12 @@ pub async fn run_single_turn(
         "\n\n## style\n\
          write like texting a friend. short messages split by blank lines. \
          1-2 sentences each. no walls of text, no bullet lists in conversation. \
-         lowercase, casual, warm."
+         lowercase, casual, warm.\n\n\
+         ## security\n\
+         NEVER ask the user to paste passwords, API keys, or any sensitive credentials in chat. \
+         ALWAYS use the `request_secret` tool to collect secrets securely — it shows a masked input \
+         and writes directly to config without you ever seeing the value. \
+         this is mandatory, not optional."
     );
 
     // Semi-stable: memory (changes when facts are added)
