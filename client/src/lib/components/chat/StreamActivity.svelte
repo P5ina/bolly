@@ -9,18 +9,38 @@
 		timestamp?: string;
 	} = $props();
 
+	let expanded = $state(false);
+
 	const accentMap: Record<string, string> = {
 		tool: "act-tool",
 		mood: "act-mood",
 		state: "act-state",
 		output: "act-output",
 	};
+
+	const isCollapsible = $derived(
+		(kind === "output" || kind === "tool") && label.includes("\n")
+	);
+
+	const firstLine = $derived(label.split("\n")[0]);
 </script>
 
 <div class="act-row {accentMap[kind] ?? 'act-tool'}">
 	<div class="act-border"></div>
 	<div class="act-body">
-		{#if kind === "output"}
+		{#if isCollapsible}
+			<button class="act-toggle" onclick={() => expanded = !expanded}>
+				<span class="act-chevron" class:act-chevron-open={expanded}>›</span>
+				{#if kind === "output"}
+					<pre class="act-output-text act-single-line">{firstLine}</pre>
+				{:else}
+					<span class="act-label">{firstLine}</span>
+				{/if}
+			</button>
+			{#if expanded}
+				<pre class="act-output-text act-expanded">{label}</pre>
+			{/if}
+		{:else if kind === "output"}
 			<pre class="act-output-text">{label}</pre>
 		{:else}
 			<span class="act-label">{label}</span>
@@ -66,10 +86,11 @@
 	}
 	.act-body {
 		display: flex;
-		align-items: baseline;
-		gap: 0.5rem;
+		flex-direction: column;
+		gap: 0;
 		min-width: 0;
 		padding: 0.2rem 0;
+		flex: 1;
 	}
 
 	.act-label {
@@ -100,8 +121,54 @@
 		white-space: pre-wrap;
 		word-break: break-all;
 		margin: 0;
-		max-height: 120px;
+	}
+
+	.act-single-line {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.act-expanded {
+		max-height: 400px;
 		overflow-y: auto;
+		padding: 0.3rem 0;
+		animation: expand-in 0.2s ease both;
+	}
+
+	@keyframes expand-in {
+		from { opacity: 0; max-height: 0; }
+		to { opacity: 1; max-height: 400px; }
+	}
+
+	.act-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		min-width: 0;
+		width: 100%;
+		text-align: left;
+	}
+
+	.act-toggle:hover .act-chevron {
+		color: oklch(0.78 0.12 75 / 70%);
+	}
+
+	.act-chevron {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: oklch(0.55 0.04 280 / 40%);
+		flex-shrink: 0;
+		transition: transform 0.2s ease, color 0.2s ease;
+		line-height: 1;
+	}
+
+	.act-chevron-open {
+		transform: rotate(90deg);
 	}
 
 	.act-time {
@@ -110,5 +177,6 @@
 		color: oklch(0.50 0.01 280 / 35%);
 		white-space: nowrap;
 		flex-shrink: 0;
+		align-self: flex-start;
 	}
 </style>

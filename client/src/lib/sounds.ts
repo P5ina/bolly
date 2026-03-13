@@ -17,6 +17,20 @@ function getContext(): AudioContext {
 	return ctx;
 }
 
+if (typeof document !== "undefined") {
+	document.addEventListener("visibilitychange", () => {
+		if (document.visibilityState === "visible" && ctx?.state === "suspended") {
+			ctx.resume();
+		}
+	});
+}
+
+async function ensureContext(): Promise<AudioContext> {
+	if (!ctx) ctx = new AudioContext();
+	if (ctx.state === "suspended") await ctx.resume();
+	return ctx;
+}
+
 async function loadBuffer(name: string): Promise<AudioBuffer | null> {
 	const existing = buffers.get(name);
 	if (existing) return existing;
@@ -24,7 +38,8 @@ async function loadBuffer(name: string): Promise<AudioBuffer | null> {
 	try {
 		const res = await fetch(`/sounds/${name}.mp3`);
 		const data = await res.arrayBuffer();
-		const buffer = await getContext().decodeAudioData(data);
+		const ac = await ensureContext();
+		const buffer = await ac.decodeAudioData(data);
 		buffers.set(name, buffer);
 		return buffer;
 	} catch {
@@ -32,10 +47,10 @@ async function loadBuffer(name: string): Promise<AudioBuffer | null> {
 	}
 }
 
-export function play(name: string) {
+export async function play(name: string) {
 	if (typeof window === "undefined") return;
 
-	const ac = getContext();
+	const ac = await ensureContext();
 
 	const cached = buffers.get(name);
 	if (cached) {
@@ -48,15 +63,14 @@ export function play(name: string) {
 		return;
 	}
 
-	loadBuffer(name).then((buffer) => {
-		if (!buffer) return;
-		const source = ac.createBufferSource();
-		const gain = ac.createGain();
-		gain.gain.value = volumes[name] ?? 0.25;
-		source.buffer = buffer;
-		source.connect(gain).connect(ac.destination);
-		source.start();
-	});
+	const buffer = await loadBuffer(name);
+	if (!buffer) return;
+	const source = ac.createBufferSource();
+	const gain = ac.createGain();
+	gain.gain.value = volumes[name] ?? 0.25;
+	source.buffer = buffer;
+	source.connect(gain).connect(ac.destination);
+	source.start();
 }
 
 export function preload(...names: string[]) {

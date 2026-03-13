@@ -1091,9 +1091,11 @@ fn build_skills_prompt(workspace_dir: &Path) -> String {
             .filter(|r| r.starts_with("references/"))
             .collect();
         if !refs.is_empty() {
-            out.push_str("\navailable reference files (use `read_skill_reference` tool with skill_id=\"");
+            out.push_str("\n**IMPORTANT**: before attempting skill-specific tasks (especially export, build, deploy, or any operation you're unsure about), \
+                read the relevant reference files first. do not guess — the references contain exact commands, flags, and workflows.\n");
+            out.push_str("reference files (use `read_skill_reference` tool with skill_id=\"");
             out.push_str(&skill.id);
-            out.push_str("\" to read detailed docs):\n");
+            out.push_str("\"):\n");
             for r in refs {
                 out.push_str(&format!("- {}\n", r));
             }
