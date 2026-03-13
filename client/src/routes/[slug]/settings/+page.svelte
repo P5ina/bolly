@@ -12,6 +12,25 @@
 
 	const slug = $derived(page.params.slug!);
 
+	// --- catalog of known extensions ---
+	interface ExtensionEntry {
+		name: string;
+		label: string;
+		description: string;
+		url: string;
+		icon: string;
+	}
+
+	const catalog: ExtensionEntry[] = [
+		{
+			name: "excalidraw",
+			label: "Excalidraw",
+			description: "draw diagrams, flowcharts, and sketches right in chat",
+			url: "https://mcp.excalidraw.com/mcp",
+			icon: "pencil",
+		},
+	];
+
 	// Google state
 	let accounts = $state<{ email: string }[]>([]);
 	let loading = $state(true);
@@ -22,12 +41,24 @@
 	// MCP state
 	let mcpServers = $state<McpServerInfo[]>([]);
 	let mcpLoading = $state(true);
-	let mcpRemoving = $state<string | null>(null);
-	let mcpAdding = $state(false);
+	let mcpBusy = $state<string | null>(null);
 	let mcpError = $state("");
 	let mcpNewName = $state("");
 	let mcpNewUrl = $state("");
-	let showAddForm = $state(false);
+	let showCustomForm = $state(false);
+
+	function isInstalled(name: string): boolean {
+		return mcpServers.some((s) => s.name === name);
+	}
+
+	function isConnected(name: string): boolean {
+		return mcpServers.some((s) => s.name === name && s.connected);
+	}
+
+	// Custom servers = installed servers that aren't in the catalog
+	let customServers = $derived(
+		mcpServers.filter((s) => !catalog.some((c) => c.name === s.name)),
+	);
 
 	async function loadAccounts() {
 		loading = true;
@@ -78,38 +109,55 @@
 		}
 	}
 
-	async function handleAddMcp() {
+	async function toggleExtension(entry: ExtensionEntry) {
+		mcpBusy = entry.name;
+		mcpError = "";
+		try {
+			if (isInstalled(entry.name)) {
+				await removeMcpServer(entry.name);
+			} else {
+				await addMcpServer(entry.name, entry.url);
+			}
+			await loadMcpServers();
+		} catch (e: any) {
+			mcpError = e?.message || "something went wrong";
+		} finally {
+			mcpBusy = null;
+		}
+	}
+
+	async function handleAddCustom() {
 		const name = mcpNewName.trim();
 		const url = mcpNewUrl.trim();
 		if (!name || !url) {
 			mcpError = "name and url are required";
 			return;
 		}
-		mcpAdding = true;
+		mcpBusy = name;
 		mcpError = "";
 		try {
 			await addMcpServer(name, url);
 			mcpNewName = "";
 			mcpNewUrl = "";
-			showAddForm = false;
+			showCustomForm = false;
 			await loadMcpServers();
 		} catch (e: any) {
-			mcpError = e?.message || "Failed to add MCP server";
+			mcpError = e?.message || "failed to add server";
 		} finally {
-			mcpAdding = false;
+			mcpBusy = null;
 		}
 	}
 
-	async function handleRemoveMcp(name: string) {
-		mcpRemoving = name;
+	async function handleRemoveCustom(name: string) {
+		mcpBusy = name;
 		mcpError = "";
 		try {
 			await removeMcpServer(name);
 			mcpServers = mcpServers.filter((s) => s.name !== name);
 		} catch (e) {
-			mcpError = `Failed to remove ${name}`;
+			mcpError = `failed to remove ${name}`;
 		} finally {
-			mcpRemoving = null;
+			mcpBusy = null;
 		}
 	}
 
@@ -123,10 +171,10 @@
 <div class="settings-page">
 	<h2 class="settings-title">settings</h2>
 
-	<!-- MCP Servers -->
+	<!-- Extensions (MCP Servers) -->
 	<section class="settings-section">
 		<div class="section-header">
-			<div class="section-icon mcp-icon">
+			<div class="section-icon ext-icon">
 				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 					<path d="M12 2L2 7l10 5 10-5-10-5z" />
 					<path d="M2 17l10 5 10-5" />
@@ -134,70 +182,110 @@
 				</svg>
 			</div>
 			<div>
-				<h3 class="section-label">mcp servers</h3>
+				<h3 class="section-label">extensions</h3>
 				<p class="section-desc">
-					Connect external tool servers to extend your companion's capabilities.
+					Give your companion new abilities. Extensions add tools like drawing, data visualization, and more.
 				</p>
 			</div>
 		</div>
 
 		{#if mcpLoading}
-			<div class="accounts-loading">
+			<div class="ext-loading">
 				<div class="loading-dot"></div>
 			</div>
 		{:else}
-			{#if mcpServers.length > 0}
-				<div class="accounts-list">
-					{#each mcpServers as server}
-						<div class="account-row">
-							<div class="mcp-server-info">
-								<span class="account-email">{server.name}</span>
-								<span class="mcp-status" class:mcp-connected={server.connected}>
+			<!-- Catalog cards -->
+			<div class="ext-catalog">
+				{#each catalog as entry}
+					{@const installed = isInstalled(entry.name)}
+					{@const connected = isConnected(entry.name)}
+					{@const busy = mcpBusy === entry.name}
+					<div class="ext-card" class:ext-card-active={installed}>
+						<div class="ext-card-icon">
+							{#if entry.icon === "pencil"}
+								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+									<path d="m15 5 4 4" />
+								</svg>
+							{/if}
+						</div>
+						<div class="ext-card-body">
+							<span class="ext-card-name">{entry.label}</span>
+							<span class="ext-card-desc">{entry.description}</span>
+						</div>
+						<button
+							class="ext-toggle"
+							class:ext-toggle-active={installed}
+							disabled={busy}
+							onclick={() => toggleExtension(entry)}
+						>
+							{#if busy}
+								<span class="ext-spinner"></span>
+							{:else if installed}
+								{connected ? "connected" : "reconnecting..."}
+							{:else}
+								connect
+							{/if}
+						</button>
+					</div>
+				{/each}
+			</div>
+
+			<!-- Custom servers (installed but not in catalog) -->
+			{#if customServers.length > 0}
+				<div class="ext-custom-list">
+					{#each customServers as server}
+						<div class="ext-custom-row">
+							<div class="ext-custom-info">
+								<span class="ext-custom-name">{server.name}</span>
+								<span class="ext-custom-status" class:ext-custom-connected={server.connected}>
 									{server.connected ? "connected" : "disconnected"}
 								</span>
 							</div>
 							<button
-								class="account-disconnect"
-								disabled={mcpRemoving === server.name}
-								onclick={() => handleRemoveMcp(server.name)}
+								class="ext-remove-btn"
+								disabled={mcpBusy === server.name}
+								onclick={() => handleRemoveCustom(server.name)}
 							>
-								{mcpRemoving === server.name ? "removing..." : "remove"}
+								{mcpBusy === server.name ? "..." : "remove"}
 							</button>
 						</div>
 					{/each}
 				</div>
-			{:else}
-				<p class="no-accounts">no mcp servers configured</p>
 			{/if}
 
-			{#if showAddForm}
-				<div class="mcp-add-form">
-					<input
-						class="mcp-input"
-						type="text"
-						placeholder="name (e.g. excalidraw)"
-						bind:value={mcpNewName}
-					/>
-					<input
-						class="mcp-input"
-						type="url"
-						placeholder="url (e.g. https://mcp.excalidraw.com/mcp)"
-						bind:value={mcpNewUrl}
-					/>
-					<div class="mcp-add-actions">
-						<button class="connect-btn" disabled={mcpAdding} onclick={handleAddMcp}>
-							{mcpAdding ? "connecting..." : "add"}
-						</button>
-						<button class="mcp-cancel-btn" onclick={() => { showAddForm = false; mcpError = ""; }}>
-							cancel
-						</button>
+			<!-- Advanced: custom server -->
+			<div class="ext-advanced">
+				{#if showCustomForm}
+					<div class="ext-custom-form">
+						<div class="ext-custom-form-title">add custom server</div>
+						<input
+							class="ext-input"
+							type="text"
+							placeholder="name"
+							bind:value={mcpNewName}
+						/>
+						<input
+							class="ext-input"
+							type="url"
+							placeholder="server url"
+							bind:value={mcpNewUrl}
+						/>
+						<div class="ext-form-actions">
+							<button class="ext-form-btn ext-form-add" disabled={mcpBusy !== null} onclick={handleAddCustom}>
+								{mcpBusy ? "connecting..." : "add"}
+							</button>
+							<button class="ext-form-btn ext-form-cancel" onclick={() => { showCustomForm = false; mcpError = ""; }}>
+								cancel
+							</button>
+						</div>
 					</div>
-				</div>
-			{:else}
-				<button class="connect-btn" onclick={() => showAddForm = true}>
-					+ add mcp server
-				</button>
-			{/if}
+				{:else}
+					<button class="ext-advanced-toggle" onclick={() => showCustomForm = true}>
+						+ add custom server
+					</button>
+				{/if}
+			</div>
 		{/if}
 
 		{#if mcpError}
@@ -234,7 +322,7 @@
 		</div>
 
 		{#if loading}
-			<div class="accounts-loading">
+			<div class="ext-loading">
 				<div class="loading-dot"></div>
 			</div>
 		{:else}
@@ -244,12 +332,12 @@
 						<div class="account-row">
 							<span class="account-email">{account.email}</span>
 							<button
-								class="account-disconnect"
+								class="ext-remove-btn"
 								disabled={disconnecting === account.email}
 								onclick={() => disconnect(account.email)}
 							>
 								{disconnecting === account.email
-									? "disconnecting..."
+									? "..."
 									: "disconnect"}
 							</button>
 						</div>
@@ -260,7 +348,7 @@
 			{/if}
 
 			<button
-				class="connect-btn"
+				class="ext-form-btn ext-form-add"
 				disabled={connecting}
 				onclick={connectGoogle}
 			>
@@ -316,7 +404,7 @@
 		flex-shrink: 0;
 	}
 
-	.mcp-icon {
+	.ext-icon {
 		color: oklch(0.78 0.12 75 / 60%);
 	}
 
@@ -333,6 +421,286 @@
 		font-size: 0.7rem;
 		color: oklch(0.88 0.02 75 / 35%);
 	}
+
+	/* --- extension catalog --- */
+
+	.ext-loading {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 1rem;
+	}
+
+	.ext-catalog {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.ext-card {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.75rem;
+		border-radius: 0.625rem;
+		background: oklch(1 0 0 / 2.5%);
+		border: 1px solid oklch(1 0 0 / 6%);
+		transition: all 0.25s ease;
+	}
+
+	.ext-card-active {
+		border-color: oklch(0.78 0.12 75 / 15%);
+		background: oklch(0.78 0.12 75 / 4%);
+	}
+
+	.ext-card-icon {
+		width: 2.5rem;
+		height: 2.5rem;
+		border-radius: 0.5rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: oklch(0.78 0.12 75 / 6%);
+		color: oklch(0.78 0.12 75 / 50%);
+		flex-shrink: 0;
+	}
+
+	.ext-card-active .ext-card-icon {
+		background: oklch(0.78 0.12 75 / 10%);
+		color: oklch(0.78 0.12 75 / 70%);
+	}
+
+	.ext-card-body {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+
+	.ext-card-name {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: oklch(0.88 0.02 75 / 75%);
+		letter-spacing: 0.01em;
+	}
+
+	.ext-card-desc {
+		font-family: var(--font-body);
+		font-size: 0.65rem;
+		color: oklch(0.88 0.02 75 / 35%);
+		line-height: 1.4;
+	}
+
+	.ext-toggle {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		letter-spacing: 0.03em;
+		padding: 0.375rem 0.75rem;
+		border-radius: 0.375rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		flex-shrink: 0;
+		color: oklch(0.78 0.12 75 / 70%);
+		background: oklch(0.78 0.12 75 / 8%);
+		border: 1px solid oklch(0.78 0.12 75 / 15%);
+	}
+
+	.ext-toggle:hover:not(:disabled) {
+		background: oklch(0.78 0.12 75 / 14%);
+		border-color: oklch(0.78 0.12 75 / 25%);
+	}
+
+	.ext-toggle-active {
+		color: oklch(0.70 0.12 145 / 70%);
+		background: oklch(0.70 0.12 145 / 6%);
+		border-color: oklch(0.70 0.12 145 / 15%);
+	}
+
+	.ext-toggle-active:hover:not(:disabled) {
+		color: oklch(0.65 0.12 25 / 70%);
+		background: oklch(0.65 0.12 25 / 8%);
+		border-color: oklch(0.65 0.12 25 / 20%);
+	}
+
+	.ext-toggle:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.ext-spinner {
+		display: inline-block;
+		width: 10px;
+		height: 10px;
+		border: 1.5px solid oklch(0.78 0.12 75 / 25%);
+		border-top-color: oklch(0.78 0.12 75 / 70%);
+		border-radius: 50%;
+		animation: spin 0.6s linear infinite;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+
+	/* --- custom servers list --- */
+
+	.ext-custom-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.ext-custom-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.5rem;
+		background: oklch(1 0 0 / 3%);
+		border: 1px solid oklch(1 0 0 / 5%);
+	}
+
+	.ext-custom-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+	}
+
+	.ext-custom-name {
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		color: oklch(0.88 0.02 75 / 60%);
+	}
+
+	.ext-custom-status {
+		font-family: var(--font-mono);
+		font-size: 0.58rem;
+		color: oklch(0.55 0.02 280 / 40%);
+	}
+
+	.ext-custom-connected {
+		color: oklch(0.70 0.12 145 / 70%);
+	}
+
+	.ext-remove-btn {
+		font-family: var(--font-body);
+		font-size: 0.62rem;
+		color: oklch(0.65 0.12 25 / 50%);
+		background: none;
+		border: none;
+		cursor: pointer;
+		padding: 0.25rem 0.5rem;
+		border-radius: 0.25rem;
+		transition: all 0.2s ease;
+	}
+	.ext-remove-btn:hover:not(:disabled) {
+		color: oklch(0.65 0.15 25 / 90%);
+		background: oklch(0.65 0.15 25 / 8%);
+	}
+	.ext-remove-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	/* --- advanced / custom form --- */
+
+	.ext-advanced {
+		margin-top: 0.25rem;
+	}
+
+	.ext-advanced-toggle {
+		font-family: var(--font-mono);
+		font-size: 0.62rem;
+		color: oklch(0.55 0.02 280 / 35%);
+		background: none;
+		border: none;
+		cursor: pointer;
+		padding: 0.25rem 0;
+		transition: color 0.2s ease;
+		letter-spacing: 0.03em;
+	}
+	.ext-advanced-toggle:hover {
+		color: oklch(0.78 0.12 75 / 55%);
+	}
+
+	.ext-custom-form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 0.75rem;
+		border-radius: 0.5rem;
+		background: oklch(1 0 0 / 2%);
+		border: 1px solid oklch(1 0 0 / 6%);
+	}
+
+	.ext-custom-form-title {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: oklch(0.55 0.02 280 / 45%);
+		letter-spacing: 0.04em;
+		margin-bottom: 0.15rem;
+	}
+
+	.ext-input {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: oklch(0.88 0.02 75 / 80%);
+		background: oklch(1 0 0 / 3%);
+		border: 1px solid oklch(1 0 0 / 8%);
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.5rem;
+		outline: none;
+		transition: border-color 0.2s ease;
+	}
+	.ext-input:focus {
+		border-color: oklch(0.78 0.12 75 / 30%);
+	}
+	.ext-input::placeholder {
+		color: oklch(0.88 0.02 75 / 20%);
+	}
+
+	.ext-form-actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.ext-form-btn {
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		padding: 0.4rem 0.85rem;
+		border-radius: 0.375rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		letter-spacing: 0.02em;
+	}
+
+	.ext-form-add {
+		color: oklch(0.78 0.12 75 / 70%);
+		background: oklch(0.78 0.12 75 / 8%);
+		border: 1px solid oklch(0.78 0.12 75 / 15%);
+	}
+	.ext-form-add:hover:not(:disabled) {
+		background: oklch(0.78 0.12 75 / 14%);
+		border-color: oklch(0.78 0.12 75 / 25%);
+	}
+	.ext-form-add:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.ext-form-cancel {
+		color: oklch(0.70 0.02 280 / 45%);
+		background: none;
+		border: 1px solid oklch(1 0 0 / 6%);
+	}
+	.ext-form-cancel:hover {
+		color: oklch(0.80 0.02 280 / 60%);
+		background: oklch(1 0 0 / 3%);
+	}
+
+	/* --- google / shared --- */
 
 	.accounts-list {
 		display: flex;
@@ -357,121 +725,12 @@
 		color: oklch(0.88 0.02 75 / 60%);
 	}
 
-	.mcp-server-info {
-		display: flex;
-		flex-direction: column;
-		gap: 0.15rem;
-	}
-
-	.mcp-status {
-		font-family: var(--font-mono);
-		font-size: 0.6rem;
-		color: oklch(0.55 0.02 280 / 40%);
-	}
-
-	.mcp-connected {
-		color: oklch(0.70 0.12 145 / 70%);
-	}
-
-	.account-disconnect {
-		font-family: var(--font-body);
-		font-size: 0.65rem;
-		color: oklch(0.65 0.12 25 / 60%);
-		background: none;
-		border: none;
-		cursor: pointer;
-		padding: 0.25rem 0.5rem;
-		border-radius: 0.25rem;
-		transition: all 0.2s ease;
-	}
-	.account-disconnect:hover:not(:disabled) {
-		color: oklch(0.65 0.15 25 / 90%);
-		background: oklch(0.65 0.15 25 / 8%);
-	}
-	.account-disconnect:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-
 	.no-accounts {
 		font-family: var(--font-body);
 		font-size: 0.75rem;
 		color: oklch(0.88 0.02 75 / 30%);
 		font-style: italic;
 		margin-bottom: 0.75rem;
-	}
-
-	.connect-btn {
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 70%);
-		background: oklch(0.78 0.12 75 / 8%);
-		border: 1px solid oklch(0.78 0.12 75 / 15%);
-		padding: 0.5rem 1rem;
-		border-radius: 0.5rem;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		letter-spacing: 0.02em;
-	}
-	.connect-btn:hover:not(:disabled) {
-		background: oklch(0.78 0.12 75 / 14%);
-		border-color: oklch(0.78 0.12 75 / 25%);
-	}
-	.connect-btn:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-
-	.mcp-add-form {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.mcp-input {
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: oklch(0.88 0.02 75 / 80%);
-		background: oklch(1 0 0 / 3%);
-		border: 1px solid oklch(1 0 0 / 8%);
-		padding: 0.5rem 0.75rem;
-		border-radius: 0.5rem;
-		outline: none;
-		transition: border-color 0.2s ease;
-	}
-	.mcp-input:focus {
-		border-color: oklch(0.78 0.12 75 / 30%);
-	}
-	.mcp-input::placeholder {
-		color: oklch(0.88 0.02 75 / 25%);
-	}
-
-	.mcp-add-actions {
-		display: flex;
-		gap: 0.5rem;
-	}
-
-	.mcp-cancel-btn {
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: oklch(0.70 0.02 280 / 50%);
-		background: none;
-		border: 1px solid oklch(1 0 0 / 8%);
-		padding: 0.5rem 1rem;
-		border-radius: 0.5rem;
-		cursor: pointer;
-		transition: all 0.2s ease;
-	}
-	.mcp-cancel-btn:hover {
-		color: oklch(0.85 0.02 280 / 70%);
-		background: oklch(1 0 0 / 4%);
-	}
-
-	.accounts-loading {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 1rem;
 	}
 
 	.loading-dot {
@@ -482,15 +741,8 @@
 		animation: pulse 1.5s ease-in-out infinite;
 	}
 	@keyframes pulse {
-		0%,
-		100% {
-			opacity: 1;
-			transform: scale(1);
-		}
-		50% {
-			opacity: 0.3;
-			transform: scale(0.7);
-		}
+		0%, 100% { opacity: 1; transform: scale(1); }
+		50% { opacity: 0.3; transform: scale(0.7); }
 	}
 
 	.error-msg {
