@@ -152,6 +152,20 @@ impl LlmBackend {
         }
     }
 
+    /// Build the PDF handling strategy for this backend.
+    pub fn pdf_strategy(&self, public_url: Option<&str>, auth_token: &str) -> PdfStrategy {
+        match self {
+            LlmBackend::Anthropic { .. } => PdfStrategy::NativeDocument,
+            _ => match public_url {
+                Some(url) if !url.is_empty() => PdfStrategy::Url {
+                    base_url: url.to_string(),
+                    auth_token: auth_token.to_string(),
+                },
+                _ => PdfStrategy::ExtractText,
+            },
+        }
+    }
+
     pub fn model_name(&self) -> &str {
         match self {
             LlmBackend::Anthropic { model, .. } => model,
@@ -615,12 +629,23 @@ fn extract_last_assistant_text(history: &[Message]) -> String {
     String::new()
 }
 
+/// How to send PDFs to the LLM provider.
+pub enum PdfStrategy {
+    /// Anthropic: send base64 document block (server-side processing, no token cost).
+    NativeDocument,
+    /// OpenRouter/others: send a public URL so the provider fetches it server-side.
+    Url { base_url: String, auth_token: String },
+    /// Fallback: extract text from PDF (when no public URL available).
+    ExtractText,
+}
+
 /// Build a multimodal Message from text + file attachments.
 /// Parses [attached: name (upload_id)] references and loads the actual files.
 pub fn build_multimodal_prompt(
     text: &str,
     workspace_dir: &Path,
     instance_slug: &str,
+    pdf_strategy: &PdfStrategy,
 ) -> Message {
     let re = regex::Regex::new(r"\[attached:\s*(.+?)\s*\((\w+)\)\]").unwrap();
 
@@ -667,9 +692,32 @@ pub fn build_multimodal_prompt(
             contents.push(UserContent::image_base64(b64, media, None));
             log::info!("attached image: {name} ({}, {} bytes)", meta.mime_type, bytes.len());
         } else if meta.mime_type == "application/pdf" {
-            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-            contents.push(UserContent::document(b64, Some(DocumentMediaType::PDF)));
-            log::info!("attached PDF: {name} ({} bytes)", bytes.len());
+            match pdf_strategy {
+                PdfStrategy::NativeDocument => {
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                    contents.push(UserContent::document(b64, Some(DocumentMediaType::PDF)));
+                    log::info!("attached PDF (native document): {name} ({} bytes)", bytes.len());
+                }
+                PdfStrategy::Url { base_url, auth_token } => {
+                    let url = format!(
+                        "{base_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}"
+                    );
+                    contents.push(UserContent::document_url(url, Some(DocumentMediaType::PDF)));
+                    log::info!("attached PDF (URL): {name} ({} bytes)", bytes.len());
+                }
+                PdfStrategy::ExtractText => {
+                    let extracted = pdf_extract::extract_text_from_mem(&bytes)
+                        .unwrap_or_default();
+                    if extracted.trim().is_empty() {
+                        contents.push(UserContent::text(format!("[PDF: {name} — could not extract text, {} bytes]", bytes.len())));
+                    } else {
+                        let truncated: String = extracted.chars().take(15_000).collect();
+                        let suffix = if extracted.chars().count() > 15_000 { "\n...(truncated)" } else { "" };
+                        contents.push(UserContent::text(format!("\n--- PDF: {name} ---\n{truncated}{suffix}\n---")));
+                    }
+                    log::info!("attached PDF (text extracted): {name} ({} bytes)", bytes.len());
+                }
+            }
         } else if meta.mime_type.starts_with("text/") || meta.mime_type == "application/json" {
             // Inline text files directly
             let text_content = String::from_utf8_lossy(&bytes);

@@ -119,6 +119,7 @@ pub async fn run_single_turn(
     prev_history: Option<Vec<rig::completion::Message>>,
     pending_secrets: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>>,
     plan: &str,
+    pdf_strategy: &llm::PdfStrategy,
 ) -> io::Result<SingleTurnResult> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
@@ -235,7 +236,7 @@ pub async fn run_single_turn(
             if matches!(last_msg.role, ChatRole::User) {
                 let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
                 let content_with_time = format!("[{now}]\n{}", last_msg.content);
-                let prompt = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug);
+                let prompt = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
                 (history, prompt)
             } else {
                 return Err(io::Error::new(ErrorKind::InvalidInput, "no user message to process"));
@@ -260,7 +261,7 @@ pub async fn run_single_turn(
         let last_display = display_msgs.last().unwrap();
         let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
         let content_with_time = format!("[{now}]\n{}", last_display.content);
-        let prompt = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug);
+        let prompt = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
 
         let history = if let Some(h) = loaded_history {
             log::info!("loaded {} rig history messages from disk", h.len());

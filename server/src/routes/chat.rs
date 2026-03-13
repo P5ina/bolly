@@ -152,9 +152,9 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         iteration += 1;
 
         let config_path = config::config_path();
-        let (brave_key, plan) = {
+        let (brave_key, plan, auth_token) = {
             let cfg = state.config.read().await;
-            (cfg.llm.tokens.brave_search.clone(), cfg.plan.clone())
+            (cfg.llm.tokens.brave_search.clone(), cfg.plan.clone(), cfg.auth_token.clone())
         };
 
         let llm_guard = state.llm.read().await;
@@ -175,6 +175,9 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         // Must exceed stream item timeout (480s) to allow sub-agent tools to complete.
         const TURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
 
+        let public_url = std::env::var("BOLLY_PUBLIC_URL").ok();
+        let pdf_strategy = llm_ref.pdf_strategy(public_url.as_deref(), &auth_token);
+
         let turn_fut = chat::run_single_turn(
             &state.workspace_dir,
             &config_path,
@@ -188,6 +191,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             prev_rig_history.take(),
             state.pending_secrets.clone(),
             &plan,
+            &pdf_strategy,
         );
 
         let result = tokio::select! {

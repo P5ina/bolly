@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
     body::Body,
-    extract::{DefaultBodyLimit, Multipart, Path, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{HeaderValue, StatusCode, header},
     response::Response,
     routing::get,
@@ -28,6 +28,15 @@ pub fn router() -> Router<AppState> {
             "/api/instances/{instance_slug}/uploads/{upload_id}/file",
             get(serve_file),
         )
+}
+
+/// Public file-serving route (no auth middleware) — uses ?token= query param.
+/// Used by LLM providers (OpenRouter) to fetch uploaded files via URL.
+pub fn public_router() -> Router<AppState> {
+    Router::new().route(
+        "/public/files/{instance_slug}/{upload_id}",
+        get(serve_file_public),
+    )
 }
 
 async fn upload_file(
@@ -94,18 +103,45 @@ async fn serve_file(
     State(state): State<AppState>,
     Path((instance_slug, upload_id)): Path<(String, String)>,
 ) -> Result<Response, StatusCode> {
-    let meta = uploads::get_upload(&state.workspace_dir, &instance_slug, &upload_id)
+    serve_file_inner(&state, &instance_slug, &upload_id).await
+}
+
+#[derive(serde::Deserialize)]
+struct TokenQuery {
+    token: Option<String>,
+}
+
+async fn serve_file_public(
+    State(state): State<AppState>,
+    Path((instance_slug, upload_id)): Path<(String, String)>,
+    Query(query): Query<TokenQuery>,
+) -> Result<Response, StatusCode> {
+    // Verify token matches auth_token
+    let expected = state.config.read().await.auth_token.clone();
+    if expected.is_empty() || query.token.as_deref() != Some(&expected) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    serve_file_inner(&state, &instance_slug, &upload_id).await
+}
+
+async fn serve_file_inner(
+    state: &AppState,
+    instance_slug: &str,
+    upload_id: &str,
+) -> Result<Response, StatusCode> {
+    let meta = uploads::get_upload(&state.workspace_dir, instance_slug, upload_id)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let file_path = uploads::get_upload_file_path(&state.workspace_dir, &instance_slug, &upload_id)
+    let file_path = uploads::get_upload_file_path(&state.workspace_dir, instance_slug, upload_id)
         .ok_or(StatusCode::NOT_FOUND)?;
 
     let bytes = tokio::fs::read(&file_path)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let response = Response::builder()
+    Response::builder()
         .header(
             header::CONTENT_TYPE,
             HeaderValue::from_str(&meta.mime_type).unwrap_or_else(|_| {
@@ -117,9 +153,7 @@ async fn serve_file(
             HeaderValue::from_static("public, max-age=31536000, immutable"),
         )
         .body(Body::from(bytes))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok(response)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn delete_upload(

@@ -132,6 +132,7 @@ export interface CreateMachineOpts {
 	volumeId: string;
 	authToken: string;
 	instanceId: string;
+	publicUrl: string;
 	channel?: ImageChannel;
 	region?: string;
 	cpus?: number;
@@ -155,6 +156,7 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 					RUST_LOG: 'info,rig=warn',
 					BOLLY_AUTH_TOKEN: opts.authToken,
 					BOLLY_INSTANCE_ID: opts.instanceId,
+					BOLLY_PUBLIC_URL: opts.publicUrl,
 					DATABASE_URL: env.DATABASE_URL ?? '',
 					OPENROUTER_API_KEY: env.OPENROUTER_API_KEY ?? '',
 					OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',

@@ -84,6 +84,7 @@ export async function provisionTenant(opts: {
 			volumeId: volume.id,
 			authToken,
 			instanceId: id,
+			publicUrl: `https://${hostname}`,
 			channel: (tenant.imageChannel as fly.ImageChannel) ?? 'stable',
 			cpus: planConfig.cpus,
 			memoryMb: planConfig.memoryMb,
