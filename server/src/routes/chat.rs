@@ -125,19 +125,6 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
     let mut iteration = 0;
     let mut prev_rig_history: Option<Vec<rig::completion::Message>> = None;
 
-    // Build RAG tool embedding store once (expensive API call), reuse per iteration
-    let tool_store = {
-        let emb_guard = state.embedding_model.read().await;
-        if let Some(ref emb) = *emb_guard {
-            crate::services::tools::build_tool_embedding_store(emb).await
-        } else {
-            None
-        }
-    };
-    if tool_store.is_some() {
-        log::info!("[agent] {instance_slug}/{chat_id} — dynamic tool RAG store built");
-    }
-
     loop {
         if cancel.is_cancelled() {
             log::info!("[agent] {instance_slug}/{chat_id} — cancelled by user");
@@ -187,7 +174,6 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             emb_clone.as_ref(),
             if brave_key.is_empty() { None } else { Some(brave_key.as_str()) },
             state.events.clone(),
-            tool_store.as_ref().map(|s| s.to_index()),
             prev_rig_history.take(),
             state.pending_secrets.clone(),
             &plan,

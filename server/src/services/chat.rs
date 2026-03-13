@@ -115,7 +115,6 @@ pub async fn run_single_turn(
     embedding_model: Option<&openai::EmbeddingModel>,
     brave_api_key: Option<&str>,
     events: broadcast::Sender<ServerEvent>,
-    tool_index: Option<tools::ToolIndex>,
     prev_history: Option<Vec<rig::completion::Message>>,
     pending_secrets: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>>,
     plan: &str,
@@ -290,31 +289,21 @@ pub async fn run_single_turn(
     );
 
     let sent_files = tools::SentFiles::default();
-    let (mut static_tools, sent_files) = build_static_tools(workspace_dir, &instance_slug, &chat_id, events.clone(), sent_files);
+    let (mut all_tools, sent_files) = build_static_tools(workspace_dir, &instance_slug, &chat_id, events.clone(), sent_files);
 
-    // Build optional tools and either use RAG selection or register all statically
+    // Add optional tools (all registered statically)
     let optional_tools = tools::build_optional_tools(
         workspace_dir, &instance_slug, &chat_id, brave_api_key,
         config_path, events.clone(), llm,
         Some(pending_secrets),
         plan,
     );
-
-    let dynamic_tools = if let Some(idx) = tool_index {
-        // RAG mode: put optional tools in a ToolSet for dynamic selection
-        let toolset = rig::tool::ToolSet::from_tools_boxed(optional_tools);
-        Some((toolset, idx))
-    } else {
-        // No embedding model — add all optional tools as static (always available)
-        log::info!("no tool index available, registering all {} tools as static", optional_tools.len());
-        static_tools.extend(optional_tools);
-        None
-    };
+    all_tools.extend(optional_tools);
 
     let history_count = history_msgs.len();
     let tool_result = llm
         .chat_with_tools_streaming(
-            &system_prompt, prompt_msg, history_msgs, static_tools, dynamic_tools,
+            &system_prompt, prompt_msg, history_msgs, all_tools,
             memory_index, events.clone(), &instance_slug, &chat_id,
         )
         .await
@@ -923,10 +912,15 @@ pub fn compute_context_stats(
         "list_skills", "activate_skill", "read_skill_reference",
     ].into_iter().map(String::from).collect();
 
-    let optional_tool_names: Vec<String> = tools::OPTIONAL_TOOL_EMBEDDINGS
-        .iter()
-        .map(|(name, _)| name.to_string())
-        .collect();
+    let optional_tool_names: Vec<String> = vec![
+        "web_search", "web_fetch", "send_email", "read_email",
+        "search_code", "explore_code",
+        "get_project_state", "update_project_state",
+        "create_task", "update_task", "list_tasks",
+        "create_drop", "edit_soul",
+        "install_package", "update_config", "request_secret",
+        "schedule_message", "read_journal", "get_mood", "browse",
+    ].into_iter().map(String::from).collect();
 
     // History
     let existing: Vec<ChatMessage> = load_messages_vec(
