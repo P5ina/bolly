@@ -12,6 +12,77 @@ use std::{
 
 use crate::domain::drop::{Drop, DropKind};
 
+/// Max drops per instance per 24h window.
+const MAX_DROPS_PER_DAY: usize = 3;
+
+/// Check how many drops were created in the last 24 hours and whether a
+/// similar title already exists among recent drops.
+fn check_drop_limits(drops_dir: &Path, title: &str) -> io::Result<()> {
+    if !drops_dir.is_dir() {
+        return Ok(());
+    }
+
+    let now = unix_millis();
+    let day_ms: u128 = 24 * 60 * 60 * 1000;
+    let cutoff = now.saturating_sub(day_ms);
+
+    let title_lower = title.to_lowercase();
+    // Extract significant words (>3 chars) for fuzzy matching
+    let title_words: Vec<&str> = title_lower
+        .split_whitespace()
+        .filter(|w| w.len() > 3)
+        .collect();
+
+    let mut recent_count = 0usize;
+
+    for entry in fs::read_dir(drops_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let raw = match fs::read_to_string(&path) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let drop: Drop = match serde_json::from_str(&raw) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+
+        let created: u128 = drop.created_at.parse().unwrap_or(0);
+        if created < cutoff {
+            continue;
+        }
+
+        recent_count += 1;
+
+        // Check title similarity — if most significant words overlap, it's a duplicate
+        if !title_words.is_empty() {
+            let existing_lower = drop.title.to_lowercase();
+            let matching = title_words
+                .iter()
+                .filter(|w| existing_lower.contains(**w))
+                .count();
+            if matching >= title_words.len().max(1) / 2 + 1 {
+                return Err(io::Error::new(
+                    ErrorKind::Other,
+                    format!("a similar drop already exists: \"{}\"", drop.title),
+                ));
+            }
+        }
+    }
+
+    if recent_count >= MAX_DROPS_PER_DAY {
+        return Err(io::Error::new(
+            ErrorKind::Other,
+            format!("daily drop limit reached ({MAX_DROPS_PER_DAY} per day)"),
+        ));
+    }
+
+    Ok(())
+}
+
 /// Create a new drop and save it to disk.
 pub fn create_drop(
     workspace_dir: &Path,
@@ -26,6 +97,8 @@ pub fn create_drop(
         .join(instance_slug)
         .join("drops");
     fs::create_dir_all(&drops_dir)?;
+
+    check_drop_limits(&drops_dir, title)?;
 
     let ts = unix_millis();
     let id = format!("drop_{ts}");

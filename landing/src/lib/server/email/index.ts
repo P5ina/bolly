@@ -35,3 +35,37 @@ export async function sendPasswordResetEmail(to: string, token: string) {
 		`,
 	});
 }
+
+export async function sendPriceChangeEmail(to: string, name?: string, planName?: string, message?: string) {
+	const greeting = name ? `Hi ${name},` : 'Hi,';
+	const planLine = planName ? ` for the <strong>${planName}</strong> plan` : '';
+	const customMessage = message
+		? `<p style="color: #444; font-size: 14px; line-height: 1.6;">${message}</p>`
+		: '';
+
+	await resend().emails.send({
+		from: FROM,
+		to,
+		subject: 'Upcoming pricing update — Bolly',
+		html: `
+			<div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
+				<h2 style="font-size: 20px; margin-bottom: 16px;">Pricing update</h2>
+				<p style="color: #444; font-size: 14px; line-height: 1.6;">
+					${greeting}
+				</p>
+				<p style="color: #444; font-size: 14px; line-height: 1.6;">
+					We're writing to let you know about an upcoming change to our pricing${planLine}.
+					The new pricing will take effect on your next billing cycle.
+				</p>
+				${customMessage}
+				<p style="color: #444; font-size: 14px; line-height: 1.6;">
+					You can manage your subscription anytime from your
+					<a href="${env.ORIGIN ?? 'https://bollyai.dev'}/dashboard" style="color: #1a1a1a;">dashboard</a>.
+				</p>
+				<p style="color: #999; font-size: 12px; margin-top: 32px;">
+					If you have any questions, just reply to this email.
+				</p>
+			</div>
+		`,
+	});
+}

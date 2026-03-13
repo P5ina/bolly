@@ -5,7 +5,8 @@ import { tenants, users, rateLimits } from '$lib/server/db/schema.js';
 import { eq, ne } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
 import * as fly from '$lib/server/fly/index.js';
-import { PLANS, type PlanId } from '$lib/server/stripe/index.js';
+import { PLANS, type PlanId, stripe, priceIdForPlan } from '$lib/server/stripe/index.js';
+import { sendPriceChangeEmail } from '$lib/server/email/index.js';
 
 function isAdmin(email?: string): boolean {
 	if (!email) return false;
@@ -268,5 +269,96 @@ export const actions: Actions = {
 			.where(eq(rateLimits.instanceId, tenantId));
 
 		return { success: true, tenantId };
+	},
+
+	migrateSubscriptions: async ({ locals }) => {
+		if (!locals.user || !isAdmin(locals.user.email)) error(403, 'Forbidden');
+
+		const activeTenants = await db()
+			.select({
+				id: tenants.id,
+				slug: tenants.slug,
+				plan: tenants.plan,
+				stripeSubscriptionId: tenants.stripeSubscriptionId,
+			})
+			.from(tenants)
+			.where(ne(tenants.status, 'destroyed'));
+
+		let migrated = 0;
+		const errors: string[] = [];
+
+		for (const t of activeTenants) {
+			if (!t.stripeSubscriptionId) continue;
+			try {
+				const sub = await stripe().subscriptions.retrieve(t.stripeSubscriptionId);
+				if (sub.status !== 'active' && sub.status !== 'trialing') continue;
+
+				const item = sub.items.data[0];
+				if (!item) continue;
+
+				const newPriceId = priceIdForPlan(t.plan as PlanId);
+				if (!newPriceId || item.price.id === newPriceId) continue;
+
+				await stripe().subscriptions.update(t.stripeSubscriptionId, {
+					items: [{ id: item.id, price: newPriceId }],
+					proration_behavior: 'create_prorations',
+				});
+				migrated++;
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : 'Unknown error';
+				errors.push(`${t.slug}: ${msg}`);
+			}
+		}
+
+		if (errors.length > 0) {
+			return fail(500, { error: `Migrated ${migrated}, failed ${errors.length}: ${errors.join('; ')}` });
+		}
+
+		return { success: true, migrated };
+	},
+
+	notifyPriceChange: async ({ request, locals }) => {
+		if (!locals.user || !isAdmin(locals.user.email)) error(403, 'Forbidden');
+
+		const form = await request.formData();
+		const message = (form.get('message') as string) || '';
+
+		const activeTenants = await db()
+			.select({
+				slug: tenants.slug,
+				plan: tenants.plan,
+				userEmail: users.email,
+				userName: users.name,
+			})
+			.from(tenants)
+			.innerJoin(users, eq(tenants.userId, users.id))
+			.where(ne(tenants.status, 'destroyed'));
+
+		// Deduplicate by email
+		const seen = new Set<string>();
+		let sent = 0;
+		const errors: string[] = [];
+
+		for (const t of activeTenants) {
+			if (seen.has(t.userEmail)) continue;
+			seen.add(t.userEmail);
+
+			const plan = PLANS[t.plan as PlanId];
+			if (!plan) continue;
+
+			try {
+				await sendPriceChangeEmail(t.userEmail, t.userName ?? undefined, plan.name, message);
+				sent++;
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : 'Unknown error';
+				errors.push(`${t.userEmail}: ${msg}`);
+			}
+		}
+
+		if (errors.length > 0) {
+			return fail(500, { error: `Sent ${sent}, failed ${errors.length}: ${errors.join('; ')}` });
+		}
+
+		return { success: true, sent };
 	},
 };

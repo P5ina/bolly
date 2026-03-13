@@ -44,6 +44,9 @@
 	let syncing = $state(false);
 	let updatingAll = $state(false);
 	let resetting = $state<string | null>(null);
+	let migrating = $state(false);
+	let notifying = $state(false);
+	let priceMessage = $state('');
 
 	function currentModel(tenant: (typeof data.tenants)[number]) {
 		if (tenant.machine?.model) return tenant.machine.model;
@@ -197,6 +200,82 @@
 						sync plan limits
 					</button>
 				</form>
+			</div>
+		</div>
+
+		<!-- Billing actions -->
+		<div class="mb-10 p-5 rounded-xl border border-border" style="background: var(--color-bg);">
+			<h3 class="font-display italic text-base text-text mb-4">billing</h3>
+			<div class="flex flex-col gap-4">
+				<form method="POST" action="?/notifyPriceChange" class="flex items-end gap-2" use:enhance={() => {
+					notifying = true;
+					actionError = null;
+					actionSuccess = null;
+					return async ({ result, update }) => {
+						notifying = false;
+						if (result.type === 'failure') {
+							actionError = (result.data as { error?: string })?.error ?? 'Notify failed';
+						} else if (result.type === 'success') {
+							const data = result.data as { sent?: number };
+							actionSuccess = `Sent price change email to ${data?.sent ?? 0} user(s)`;
+						}
+						await update();
+					};
+				}}>
+					<div class="flex-1">
+						<label class="block text-xs text-text-ghost mb-1">custom message (optional)</label>
+						<input
+							type="text"
+							name="message"
+							bind:value={priceMessage}
+							placeholder="e.g. New pricing reflects increased model costs..."
+							class="w-full py-2 px-3 rounded-lg text-xs text-text outline-none"
+							style="background: var(--color-bg-raised); border: 1px solid var(--color-border);"
+						/>
+					</div>
+					<button
+						type="submit"
+						disabled={notifying}
+						class="text-xs py-2 px-4 rounded-lg transition-all duration-300 disabled:opacity-40 inline-flex items-center gap-1.5 whitespace-nowrap"
+						style="color: var(--color-text-dim); border: 1px solid var(--color-border);"
+					>
+						{#if notifying}
+							<Loader size={12} class="animate-spin" />
+						{/if}
+						notify price change
+					</button>
+				</form>
+				<div class="flex items-center gap-2 pt-3" style="border-top: 1px solid var(--color-border);">
+					<span class="text-xs text-text-ghost flex-1">migrate all active subscriptions to current Stripe price IDs</span>
+					<form method="POST" action="?/migrateSubscriptions" use:enhance={() => {
+						if (!confirm('This will update all active subscriptions to the new prices. Continue?')) { return async () => {}; }
+						migrating = true;
+						actionError = null;
+						actionSuccess = null;
+						return async ({ result, update }) => {
+							migrating = false;
+							if (result.type === 'failure') {
+								actionError = (result.data as { error?: string })?.error ?? 'Migration failed';
+							} else if (result.type === 'success') {
+								const data = result.data as { migrated?: number };
+								actionSuccess = `Migrated ${data?.migrated ?? 0} subscription(s)`;
+							}
+							await update();
+						};
+					}}>
+						<button
+							type="submit"
+							disabled={migrating}
+							class="text-xs py-2 px-4 rounded-lg transition-all duration-300 disabled:opacity-40 inline-flex items-center gap-1.5 whitespace-nowrap"
+							style="color: oklch(0.65 0.15 25); background: oklch(0.65 0.15 25 / 8%); border: 1px solid oklch(0.65 0.15 25 / 20%);"
+						>
+							{#if migrating}
+								<Loader size={12} class="animate-spin" />
+							{/if}
+							migrate subscriptions
+						</button>
+					</form>
+				</div>
 			</div>
 		</div>
 

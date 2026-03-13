@@ -1138,8 +1138,9 @@ impl Tool for CreateDropTool {
             description: "Create a 'drop' — a creative artifact that lives in your drops collection. \
                 Drops are ideas, poems, observations, reflections, sketches, stories, or any creative \
                 output you want to leave for the user. They persist independently of chat. \
-                Use this when inspiration strikes, when you want to share something beyond \
-                the conversation, or when the user asks you to create something lasting."
+                You have a maximum of 3 drops per day — use them wisely. Don't waste drops on \
+                intermediate drafts or versions; only create a drop when the result is final and \
+                worth keeping. Avoid creating drops with similar titles to recent ones."
                 .into(),
             parameters: openai_schema::<CreateDropArgs>(),
         }
