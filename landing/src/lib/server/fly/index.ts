@@ -152,7 +152,7 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 				image: env.BOLLY_IMAGE ?? imageForChannel(opts.channel ?? 'stable'),
 				env: {
 					BOLLY_HOME: '/data',
-					RUST_LOG: 'info',
+					RUST_LOG: 'info,rig=warn',
 					BOLLY_AUTH_TOKEN: opts.authToken,
 					BOLLY_INSTANCE_ID: opts.instanceId,
 					DATABASE_URL: env.DATABASE_URL ?? '',

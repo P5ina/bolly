@@ -68,7 +68,7 @@ COPY --from=server-build /app/target/release/server /usr/local/bin/bolly
 COPY --from=client-build /app/client/build /opt/bolly/static
 
 ENV BOLLY_HOME=/data
-ENV RUST_LOG=info
+ENV RUST_LOG=info,rig=warn
 ENV BOLLY_SCRIPTS_DIR=/opt/bolly/scripts
 
 EXPOSE 8080
