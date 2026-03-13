@@ -385,6 +385,14 @@
 			} else if (event.type === "chat_stream_delta") {
 				streamingContent += event.delta;
 				startTypewriter();
+			} else if (event.type === "mcp_app_result") {
+				// Tool result arrived — update the matching mcp_app stream item
+				const idx = stream.findIndex((s) => s.type === "mcp_app" && s.id === event.message_id);
+				if (idx >= 0) {
+					const item = stream[idx] as StreamItem & { type: "mcp_app" };
+					item.toolOutput = event.tool_output;
+					stream = stream; // trigger reactivity
+				}
 			} else if (event.type === "context_compacting") {
 				pushActivity("state", `compacting ${event.messages_compacted} messages...`);
 			}

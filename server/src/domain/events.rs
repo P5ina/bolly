@@ -60,4 +60,12 @@ pub enum ServerEvent {
         chat_id: String,
         chunk: String,
     },
+    /// Tool result arrived for an MCP App — viewer should send it to the iframe.
+    McpAppResult {
+        instance_slug: String,
+        chat_id: String,
+        /// The message id of the McpApp chat message to update.
+        message_id: String,
+        tool_output: String,
+    },
 }

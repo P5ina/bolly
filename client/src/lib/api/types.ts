@@ -243,4 +243,11 @@ export type ServerEvent =
 			chat_id: string;
 			chunk: string;
 	  }
+	| {
+			type: "mcp_app_result";
+			instance_slug: string;
+			chat_id: string;
+			message_id: string;
+			tool_output: string;
+	  }
 ;

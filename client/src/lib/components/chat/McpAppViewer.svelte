@@ -5,12 +5,12 @@
 		html,
 		toolName,
 		toolInput,
-		toolOutput,
+		toolOutput = "",
 	}: {
 		html: string;
 		toolName: string;
 		toolInput: string;
-		toolOutput: string;
+		toolOutput?: string;
 	} = $props();
 
 	let iframe: HTMLIFrameElement | undefined = $state();
@@ -18,11 +18,38 @@
 	let fullscreen = $state(false);
 	let collapsed = $state(false);
 	let bridgeRef: AppBridge | undefined = $state();
+	let resultSent = false;
 
 	function toggleFullscreen() {
 		fullscreen = !fullscreen;
 		bridgeRef?.sendHostContextChange({ displayMode: fullscreen ? "fullscreen" : "inline" });
 	}
+
+	function sendResult(bridge: AppBridge, output: string) {
+		if (resultSent || !output) return;
+		resultSent = true;
+		try {
+			const parsed = JSON.parse(output);
+			if (parsed && Array.isArray(parsed.content)) {
+				bridge.sendToolResult(parsed);
+			} else {
+				bridge.sendToolResult({
+					content: [{ type: "text", text: typeof parsed === "string" ? parsed : JSON.stringify(parsed) }],
+				});
+			}
+		} catch {
+			bridge.sendToolResult({
+				content: [{ type: "text", text: output }],
+			});
+		}
+	}
+
+	// When toolOutput arrives later (via WebSocket), send it to the bridge
+	$effect(() => {
+		if (toolOutput && ready && bridgeRef && !resultSent) {
+			sendResult(bridgeRef, toolOutput);
+		}
+	});
 
 	$effect(() => {
 		if (!iframe) return;
@@ -33,7 +60,6 @@
 		doc.write(html);
 		doc.close();
 
-		// Dark mode hint
 		try {
 			const style = doc.createElement("style");
 			style.textContent = `:root { color-scheme: dark; }`;
@@ -57,6 +83,7 @@
 			},
 		);
 		bridgeRef = bridge;
+		resultSent = false;
 
 		bridge.oninitialized = () => {
 			ready = true;
@@ -65,19 +92,9 @@
 			try { args = JSON.parse(toolInput); } catch {}
 			bridge.sendToolInput({ arguments: args });
 
-			try {
-				const parsed = JSON.parse(toolOutput);
-				if (parsed && Array.isArray(parsed.content)) {
-					bridge.sendToolResult(parsed);
-				} else {
-					bridge.sendToolResult({
-						content: [{ type: "text", text: typeof parsed === "string" ? parsed : JSON.stringify(parsed) }],
-					});
-				}
-			} catch {
-				bridge.sendToolResult({
-					content: [{ type: "text", text: toolOutput }],
-				});
+			// Send result immediately if already available (e.g. page reload)
+			if (toolOutput) {
+				sendResult(bridge, toolOutput);
 			}
 		};
 
@@ -203,12 +220,10 @@
 		opacity: 1;
 	}
 
-	/* Collapsed: just show header */
 	.collapsed .mcp-app-header {
 		margin-bottom: 0;
 	}
 
-	/* Fullscreen overlay */
 	.fullscreen {
 		position: fixed;
 		inset: 0;

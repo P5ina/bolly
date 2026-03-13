@@ -267,12 +267,37 @@ impl ToolDyn for ObservableTool {
             message: start_msg,
         });
 
+        // Emit MCP App BEFORE the tool call so the viewer appears immediately
+        let mut mcp_app_msg_id: Option<String> = None;
+        if let Some(ref snapshot) = self.mcp_snapshot {
+            if snapshot.is_app_tool(&tool_name) {
+                if let Some(html) = snapshot.get_app_html(&tool_name) {
+                    let msg_id = format!("mcp_app_{}_{}", tool_call_counter(), unix_millis());
+                    mcp_app_msg_id = Some(msg_id.clone());
+                    let app_msg = crate::domain::chat::ChatMessage {
+                        id: msg_id,
+                        role: crate::domain::chat::ChatRole::Assistant,
+                        content: String::new(), // result not yet available
+                        created_at: unix_millis().to_string(),
+                        kind: crate::domain::chat::MessageKind::McpApp,
+                        tool_name: Some(tool_name.clone()),
+                        mcp_app_html: Some(html),
+                        mcp_app_input: Some(args.clone()),
+                    };
+                    append_message_to_chat(&self.workspace_dir, &self.instance_slug, &self.chat_id, &app_msg);
+                    let _ = self.events.send(ServerEvent::ChatMessageCreated {
+                        instance_slug: self.instance_slug.clone(),
+                        chat_id: self.chat_id.clone(),
+                        message: app_msg,
+                    });
+                }
+            }
+        }
+
         let events = self.events.clone();
         let workspace_dir = self.workspace_dir.clone();
         let instance_slug = self.instance_slug.clone();
         let chat_id = self.chat_id.clone();
-        let mcp_snapshot = self.mcp_snapshot.clone();
-        let args_clone = args.clone();
         let fut = self.inner.call(args);
         Box::pin(async move {
             const MAX_TOOL_RESULT: usize = 12_000;
@@ -288,32 +313,20 @@ impl ToolDyn for ObservableTool {
                 }
                 Err(e) => Err(e),
             };
-            // Persist MCP App as a chat message so it survives page reload
-            if let Some(ref snapshot) = mcp_snapshot {
-                if snapshot.is_app_tool(&tool_name) {
-                    if let Some(html) = snapshot.get_app_html(&tool_name) {
-                        let tool_output = match &result {
-                            Ok(s) => s.clone(),
-                            Err(e) => format!("error: {e}"),
-                        };
-                        let app_msg = crate::domain::chat::ChatMessage {
-                            id: format!("mcp_app_{}_{}", tool_call_counter(), unix_millis()),
-                            role: crate::domain::chat::ChatRole::Assistant,
-                            content: tool_output,
-                            created_at: unix_millis().to_string(),
-                            kind: crate::domain::chat::MessageKind::McpApp,
-                            tool_name: Some(tool_name.clone()),
-                            mcp_app_html: Some(html),
-                            mcp_app_input: Some(args_clone.clone()),
-                        };
-                        append_message_to_chat(&workspace_dir, &instance_slug, &chat_id, &app_msg);
-                        let _ = events.send(ServerEvent::ChatMessageCreated {
-                            instance_slug: instance_slug.clone(),
-                            chat_id: chat_id.clone(),
-                            message: app_msg,
-                        });
-                    }
-                }
+            // Send tool result to the MCP App viewer
+            if let Some(msg_id) = mcp_app_msg_id {
+                let tool_output = match &result {
+                    Ok(s) => s.clone(),
+                    Err(e) => format!("error: {e}"),
+                };
+                // Update the persisted message with the result
+                update_mcp_app_result(&workspace_dir, &instance_slug, &chat_id, &msg_id, &tool_output);
+                let _ = events.send(ServerEvent::McpAppResult {
+                    instance_slug: instance_slug.clone(),
+                    chat_id: chat_id.clone(),
+                    message_id: msg_id,
+                    tool_output,
+                });
             }
             if tool_name == "run_command" || tool_name == "install_package"
                 || tool_name == "interactive_session" || tool_name == "send_file"
@@ -504,6 +517,38 @@ pub fn append_message_to_chat(
         .unwrap_or_default();
 
     messages.push(message.clone());
+
+    if let Ok(json) = serde_json::to_string_pretty(&messages) {
+        let _ = fs::write(&path, json);
+    }
+}
+
+/// Update an MCP App message's content (tool result) after the tool call completes.
+fn update_mcp_app_result(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    chat_id: &str,
+    message_id: &str,
+    tool_output: &str,
+) {
+    let chat_dir = workspace_dir
+        .join("instances")
+        .join(instance_slug)
+        .join("chats")
+        .join(chat_id);
+    let path = chat_dir.join("messages.json");
+
+    let lock = chat_file_lock(&path);
+    let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+
+    let mut messages: Vec<crate::domain::chat::ChatMessage> = fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default();
+
+    if let Some(msg) = messages.iter_mut().find(|m| m.id == message_id) {
+        msg.content = tool_output.to_string();
+    }
 
     if let Ok(json) = serde_json::to_string_pretty(&messages) {
         let _ = fs::write(&path, json);
