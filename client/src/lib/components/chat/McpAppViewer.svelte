@@ -21,12 +21,18 @@
 	$effect(() => {
 		if (!iframe) return;
 
-		// Write HTML into iframe first
+		// Write HTML into iframe, injecting dark color-scheme hint
 		const doc = iframe.contentDocument;
 		if (!doc) return;
 		doc.open();
 		doc.write(html);
 		doc.close();
+		// Hint dark mode preference to the embedded app
+		try {
+			const style = doc.createElement("style");
+			style.textContent = `:root { color-scheme: dark; }`;
+			doc.head?.appendChild(style);
+		} catch {};
 
 		// Capture contentWindow AFTER doc.write — reference may change
 		const iframeWindow = iframe.contentWindow!;
