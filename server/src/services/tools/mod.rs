@@ -371,10 +371,7 @@ pub const OPTIONAL_TOOL_EMBEDDINGS: &[(&str, &[&str])] = &[
         "change personality traits, voice, or character",
         "edit soul.md to update who you are",
     ]),
-    ("interactive_session", &[
-        "run a persistent interactive terminal session",
-        "long-running shell that keeps state between commands",
-    ]),
+    // interactive_session moved to static tools
     ("install_package", &[
         "install a system package or dependency",
         "apt install, brew install, pip install, npm install",
@@ -486,8 +483,7 @@ pub fn build_optional_tools(
         // Creative
         wrap(Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone()))),
         wrap(Box::new(EditSoulTool::new(workspace_dir, instance_slug))),
-        // System
-        wrap(Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug))),
+        // System (interactive_session moved to static tools)
         wrap(Box::new(InstallPackageTool)),
         wrap(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug))),
         // Scheduling

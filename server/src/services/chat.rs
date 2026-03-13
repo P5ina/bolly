@@ -21,7 +21,7 @@ use crate::{
         tools::{
             self, ActivateSkillTool, EditFileTool, JournalTool, ListFilesTool, ListSkillsTool, ReadSkillReferenceTool, ClearContextTool, ObservableTool,
             ReadFileTool, RecallTool, RememberTool,
-            RunCommandTool, SendFileTool,
+            InteractiveSessionTool, RunCommandTool, SendFileTool,
             SetMoodTool, WriteFileTool,
         },
         skills,
@@ -899,7 +899,7 @@ pub fn compute_context_stats(
     let static_tool_names: Vec<String> = vec![
         "read_file", "write_file", "edit_file", "list_files",
         "remember", "recall", "set_mood", "journal",
-        "run_command", "send_file", "clear_context",
+        "run_command", "interactive_session", "send_file", "clear_context",
         "list_skills", "activate_skill", "read_skill_reference",
     ].into_iter().map(String::from).collect();
 
@@ -1372,6 +1372,7 @@ fn build_static_tools(
         wrap(Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone()))),
         wrap(Box::new(JournalTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug, chat_id, events.clone()))),
+        wrap(Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone()))),
         wrap(Box::new(ClearContextTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(ListSkillsTool::new(workspace_dir))),

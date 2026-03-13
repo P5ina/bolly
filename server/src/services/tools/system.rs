@@ -109,10 +109,27 @@ impl Tool for RunCommandTool {
                     chunk: chunk.to_string(),
                 });
             });
-            tokio::task::spawn_blocking(move || run_command_pty(&cmd, &dir, timeout, Some(&chunk_cb)))
+            let result = tokio::task::spawn_blocking(move || run_command_pty(&cmd, &dir, timeout, Some(&chunk_cb)))
                 .await
                 .map_err(|e| ToolExecError(format!("task join error: {e}")))?
-                .map_err(|e| ToolExecError(e))
+                .map_err(|e| ToolExecError(e))?;
+
+            match result {
+                PtyRunResult::Completed(output) => Ok(output),
+                PtyRunResult::WaitingForInput { output, session_id } => {
+                    let mut msg = String::new();
+                    msg.push_str("Command is waiting for interactive input.\n\nOutput so far:\n");
+                    msg.push_str(&output);
+                    msg.push_str(&format!(
+                        "\n\nTo respond to this prompt, use the interactive_session tool:\n\
+                         - action: \"write\"\n\
+                         - session_id: \"{session_id}\"\n\
+                         - input: \"<your response>\\n\"\n\n\
+                         After you're done, close with action: \"close\", session_id: \"{session_id}\""
+                    ));
+                    Ok(msg)
+                }
+            }
         } else {
             let output = tokio::time::timeout(
                 std::time::Duration::from_secs(timeout),
@@ -158,12 +175,42 @@ impl Tool for RunCommandTool {
     }
 }
 
+/// Result from PTY command execution.
+enum PtyRunResult {
+    /// Command completed normally.
+    Completed(String),
+    /// Command is waiting for interactive input; PTY parked as a session.
+    WaitingForInput { output: String, session_id: String },
+}
+
+/// Check if the last line of output looks like an interactive prompt.
+fn looks_like_interactive_prompt(output: &str) -> bool {
+    let last_line = output.lines().last().unwrap_or("").trim();
+    if last_line.is_empty() { return false; }
+    last_line.ends_with("? ")
+        || last_line.ends_with(": ")
+        || last_line.ends_with("> ")
+        || last_line.ends_with("] ")
+        || last_line.ends_with("› ")
+        || last_line.contains("(y/n)")
+        || last_line.contains("[Y/n]")
+        || last_line.contains("[y/N]")
+        || last_line.to_lowercase().contains("password")
+}
+
 /// Execute a command inside a pseudo-terminal (PTY).
-fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64, on_chunk: Option<&dyn Fn(&str)>) -> Result<String, String> {
+/// If the command waits for interactive input, the PTY is parked as a session
+/// and the caller is told to use `interactive_session` to continue.
+fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64, on_chunk: Option<&dyn Fn(&str)>) -> Result<PtyRunResult, String> {
     use portable_pty::{CommandBuilder, PtySize, native_pty_system};
     use std::io::Read;
     use std::sync::mpsc;
     use std::time::{Duration, Instant};
+
+    // Prune stale sessions (older than 5 minutes) on each run_command call
+    if let Ok(mut sessions) = PTY_SESSIONS.lock() {
+        sessions.retain(|_, _| true); // TODO: add created_at to PtySession for TTL
+    }
 
     let pty_system = native_pty_system();
     let pair = pty_system
@@ -191,25 +238,27 @@ fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64, on_chunk: 
         .try_clone_reader()
         .map_err(|e| format!("failed to clone pty reader: {e}"))?;
 
-    let _writer = pair.master.take_writer().ok();
-    drop(_writer);
+    // Keep the writer alive — we may need it if the command is interactive
+    let writer = pair.master.take_writer()
+        .map_err(|e| format!("failed to take pty writer: {e}"))?;
 
-    let (tx, rx) = mpsc::channel::<Option<Vec<u8>>>();
+    // Use Vec<u8> channel (compatible with PtySession) — empty vec signals EOF
+    let (tx, rx) = mpsc::channel::<Vec<u8>>();
     std::thread::spawn(move || {
         let mut buf = vec![0u8; 4096];
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => {
-                    let _ = tx.send(None);
+                    let _ = tx.send(Vec::new());
                     break;
                 }
                 Ok(n) => {
-                    if tx.send(Some(buf[..n].to_vec())).is_err() {
+                    if tx.send(buf[..n].to_vec()).is_err() {
                         break;
                     }
                 }
                 Err(_) => {
-                    let _ = tx.send(None);
+                    let _ = tx.send(Vec::new());
                     break;
                 }
             }
@@ -220,10 +269,11 @@ fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64, on_chunk: 
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
     let mut output = Vec::new();
     let max_capture = 6000usize;
-    // How long to wait with no new data before checking if the process tree
-    // is blocked waiting for TTY input.
     let idle_check_interval = Duration::from_secs(3);
     let mut last_data_at = Instant::now();
+
+    // Track whether we should park as interactive session
+    let mut park_as_session = false;
 
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -237,7 +287,8 @@ fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64, on_chunk: 
         let wait = remaining.min(idle_check_interval);
 
         match rx.recv_timeout(wait) {
-            Ok(Some(data)) => {
+            Ok(data) if data.is_empty() => break, // EOF
+            Ok(data) => {
                 if let Some(cb) = &on_chunk {
                     let raw = String::from_utf8_lossy(&data);
                     let clean = strip_ansi_codes(&raw);
@@ -251,46 +302,58 @@ fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64, on_chunk: 
                     break;
                 }
             }
-            Ok(None) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                // No data for a while — check if the process tree is blocked
-                // on a TTY read (i.e. waiting for interactive input).
-                if !output.is_empty()
-                    && last_data_at.elapsed() >= idle_check_interval
-                    && child_pid.map_or(false, |pid| is_process_tree_waiting_on_tty(pid))
-                {
-                    let _ = child.kill();
+                if !output.is_empty() && last_data_at.elapsed() >= idle_check_interval {
+                    let waiting_on_tty = child_pid.map_or(false, |pid| is_process_tree_waiting_on_tty(pid));
                     let raw = String::from_utf8_lossy(&output);
                     let clean = strip_ansi_codes(&raw);
-                    let truncated: String = clean.chars().take(4000).collect();
-                    return Err(format!(
-                        "Command is waiting for interactive input and was killed. \
-                         This command requires user interaction (prompts/menus) which cannot \
-                         be provided automatically. Output before it stalled:\n{truncated}"
-                    ));
+                    let prompt_detected = looks_like_interactive_prompt(&clean);
+
+                    if waiting_on_tty || prompt_detected {
+                        park_as_session = true;
+                        break;
+                    }
                 }
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
 
-    let exit_status = child.wait().ok();
-
     let raw = String::from_utf8_lossy(&output);
     let clean = strip_ansi_codes(&raw);
     let truncated: String = clean.chars().take(4000).collect();
+
+    if park_as_session {
+        // Park the PTY into the session pool so the LLM can interact with it
+        let session_id = uuid::Uuid::new_v4().to_string()[..8].to_string();
+        let session = PtySession {
+            child,
+            writer,
+            output_rx: rx,
+        };
+        PTY_SESSIONS.lock().unwrap().insert(session_id.clone(), session);
+        log::info!("[run_command] parked interactive session: {session_id}");
+        return Ok(PtyRunResult::WaitingForInput {
+            output: truncated,
+            session_id,
+        });
+    }
+
+    // Normal completion — drop writer, wait for exit
+    drop(writer);
+    let exit_status = child.wait().ok();
 
     if truncated.is_empty() {
         let code = exit_status
             .map(|s| s.exit_code().to_string())
             .unwrap_or_else(|| "unknown".into());
-        Ok(format!("command completed with exit code {code}"))
+        Ok(PtyRunResult::Completed(format!("command completed with exit code {code}")))
     } else {
         let mut result = truncated;
         if clean.chars().count() > 4000 {
             result.push_str("\n...(output truncated)");
         }
-        Ok(result)
+        Ok(PtyRunResult::Completed(result))
     }
 }
 
