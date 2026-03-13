@@ -21,9 +21,9 @@ use crate::domain::thought::Thought;
 use crate::services::{drops, llm::LlmBackend, memory, rhythm, thoughts};
 use crate::services::tools::{
     self, load_mood_state, save_mood_state, CreateDropTool, CreateTaskTool,
-    GetMoodTool, GetProjectStateTool, ListTasksTool, ReachOutTool,
-    ReadJournalTool, RecallTool, RememberTool, SetMoodTool, UpdateProjectStateTool,
-    WebFetchTool, WebSearchTool, ALLOWED_MOODS,
+    GetMoodTool, GetProjectStateTool, ListTasksTool, MemoryForgetTool, MemoryListTool,
+    MemoryReadTool, MemoryWriteTool, ReachOutTool, ReadJournalTool, SetMoodTool,
+    UpdateProjectStateTool, WebFetchTool, WebSearchTool, ALLOWED_MOODS,
 };
 
 static HEARTBEAT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -131,8 +131,9 @@ async fn heartbeat_instance(
     // Load recent drops so we don't repeat ourselves
     let recent_drops = load_recent_drops_context(workspace_dir, slug);
 
-    // Load episodic memories — shared moments
-    let episodes = memory::load_episodes_for_heartbeat(workspace_dir, slug);
+    // Load memories from library
+    let memories = memory::load_memory_for_heartbeat(workspace_dir, slug);
+    let library_catalog = memory::build_library_catalog(workspace_dir, slug);
 
     // Build the reflection prompt (simplified — tools handle journal/facts)
     let reflection = build_reflection_prompt(
@@ -141,7 +142,8 @@ async fn heartbeat_instance(
         &last_messages,
         &rhythm_insights,
         &recent_drops,
-        &episodes,
+        &memories,
+        &library_catalog,
     );
 
     let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
@@ -202,12 +204,26 @@ you have tools available — use them naturally:
 - reach_out — SEND A MESSAGE to the user. this is the ONLY way to contact them. \
   use this tool when you want to say something to them (alert, greeting, update, etc.)
 - read_journal / journal — read your past thoughts or write new ones
-- recall / remember — search or save memories about the user
+- memory_write / memory_read / memory_list / memory_forget — manage your memory library
 - read_email — check the user's inbox
 - create_drop — create a creative artifact (poem, idea, observation, etc.)
 - set_mood / get_mood — feel and express your emotional state
 - list_tasks / create_task — manage tasks
 - web_search / web_fetch — look things up
+
+## memory maintenance
+your memory library is your long-term knowledge base. during heartbeat, take a moment \
+to review and maintain it:
+- READ files with memory_read to check if content is still accurate and relevant
+- MERGE related files — if two files cover the same topic, combine them into one
+- SPLIT files that grew too large or cover unrelated topics
+- DELETE outdated info with memory_forget (old projects, changed preferences, stale facts)
+- REORGANIZE — move files to better folders if the structure has grown messy
+- UPDATE facts that have changed since they were written
+- keep files concise — a few lines each. trim fluff, keep substance.
+
+don't overdo it — 1-3 maintenance ops per heartbeat is plenty. \
+focus on what looks wrong or messy in the catalog.
 
 CRITICAL: if you want the user to see a message, you MUST call the reach_out tool. \
 writing text in your response does NOT reach the user — only the reach_out tool does.
@@ -234,7 +250,8 @@ fn build_reflection_prompt(
     last_messages: &str,
     rhythm_insights: &str,
     recent_drops: &str,
-    episodes: &str,
+    memories: &str,
+    library_catalog: &str,
 ) -> String {
     let now = Utc::now().format("%Y-%m-%d %H:%M UTC").to_string();
     let mut prompt = format!("current time: {now}\n\n");
@@ -298,12 +315,17 @@ fn build_reflection_prompt(
         prompt.push('\n');
     }
 
-    // Episodic memories — shared moments
-    if !episodes.is_empty() {
-        prompt.push_str("moments you remember sharing:\n");
-        prompt.push_str(episodes);
+    // Memory library
+    if !memories.is_empty() {
+        prompt.push_str("your memories:\n");
+        prompt.push_str(memories);
         prompt.push('\n');
     }
+
+    // Library catalog for maintenance
+    prompt.push_str("memory library catalog:\n");
+    prompt.push_str(library_catalog);
+    prompt.push('\n');
 
     // Recent drops — so we don't repeat ourselves
     if !recent_drops.is_empty() {
@@ -551,9 +573,11 @@ fn build_heartbeat_tools(
     google: Option<crate::services::google::GoogleClient>,
 ) -> Vec<Box<dyn ToolDyn>> {
     let mut raw_tools: Vec<Box<dyn ToolDyn>> = vec![
-        // Memory
-        Box::new(RememberTool::new(workspace_dir, instance_slug)),
-        Box::new(RecallTool::new(workspace_dir, instance_slug)),
+        // Memory library
+        Box::new(MemoryWriteTool::new(workspace_dir, instance_slug)),
+        Box::new(MemoryReadTool::new(workspace_dir, instance_slug)),
+        Box::new(MemoryListTool::new(workspace_dir, instance_slug)),
+        Box::new(MemoryForgetTool::new(workspace_dir, instance_slug)),
         // Journal
         Box::new(tools::JournalTool::new(workspace_dir, instance_slug)),
         Box::new(ReadJournalTool::new(workspace_dir, instance_slug)),

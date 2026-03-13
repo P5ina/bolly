@@ -154,10 +154,6 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         };
         drop(llm_guard);
 
-        let emb_guard = state.embedding_model.read().await;
-        let emb_clone = emb_guard.clone();
-        drop(emb_guard);
-
         // Wrap single turn in timeout + cancellation so we never hang forever.
         // Must exceed stream item timeout (480s) to allow sub-agent tools to complete.
         const TURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
@@ -171,7 +167,6 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             &instance_slug,
             &chat_id,
             &llm_ref,
-            emb_clone.as_ref(),
             if brave_key.is_empty() { None } else { Some(brave_key.as_str()) },
             state.events.clone(),
             prev_rig_history.take(),

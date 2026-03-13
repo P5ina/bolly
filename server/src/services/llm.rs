@@ -11,7 +11,6 @@ use rig::one_or_many::OneOrMany;
 use rig::providers::{anthropic, openai, openrouter};
 use rig::streaming::{StreamingPrompt, StreamedAssistantContent};
 use rig::tool::ToolDyn;
-use rig::vector_store::VectorStoreIndexDyn;
 use tokio::sync::broadcast;
 
 use crate::domain::events::ServerEvent;
@@ -208,18 +207,15 @@ impl LlmBackend {
 
     /// Result of a tool-using LLM call: the final text response plus any tool
     /// interactions that happened during Rig's internal loop.
-    pub async fn chat_with_tools<I>(
+    pub async fn chat_with_tools(
         &self,
         system_prompt: &str,
         prompt: Message,
         history: Vec<Message>,
         tools: Vec<Box<dyn ToolDyn>>,
-        memory_index: Option<I>,
     ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>>
-    where
-        I: VectorStoreIndexDyn + Send + Sync + 'static,
     {
-        log::info!("chat_with_tools: {} tools registered, memory_rag={}", tools.len(), memory_index.is_some());
+        log::info!("chat_with_tools: {} tools registered", tools.len());
         for t in &tools {
             log::debug!("  tool: {}", t.name());
         }
@@ -245,13 +241,10 @@ impl LlmBackend {
         let (result, chat_history) = match self {
             LlmBackend::Anthropic { client, model } => {
                 let cm = client.completion_model(model).with_prompt_caching();
-                let mut builder = AgentBuilder::new(cm)
+                let agent = AgentBuilder::new(cm)
                     .preamble(system_prompt)
-                    .tools(tools);
-                if let Some(index) = memory_index {
-                    builder = builder.dynamic_context(8, index);
-                }
-                let agent = builder.build();
+                    .tools(tools)
+                    .build();
                 let mut chat_history = history.clone();
                 let res = agent.prompt(prompt)
                     .with_history(&mut chat_history)
@@ -260,14 +253,11 @@ impl LlmBackend {
                 (res, chat_history)
             }
             LlmBackend::OpenAI { client, model } => {
-                let mut builder = client
+                let agent = client
                     .agent(model)
                     .preamble(system_prompt)
-                    .tools(tools);
-                if let Some(index) = memory_index {
-                    builder = builder.dynamic_context(8, index);
-                }
-                let agent = builder.build();
+                    .tools(tools)
+                    .build();
                 let mut chat_history = history.clone();
                 let res = agent.prompt(prompt)
                     .with_history(&mut chat_history)
@@ -276,14 +266,11 @@ impl LlmBackend {
                 (res, chat_history)
             }
             LlmBackend::OpenRouter { client, model } => {
-                let mut builder = client
+                let agent = client
                     .agent(model)
                     .preamble(system_prompt)
-                    .tools(tools);
-                if let Some(index) = memory_index {
-                    builder = builder.dynamic_context(8, index);
-                }
-                let agent = builder.build();
+                    .tools(tools)
+                    .build();
                 let mut chat_history = history.clone();
                 let res = agent.prompt(prompt)
                     .with_history(&mut chat_history)
@@ -352,22 +339,19 @@ impl LlmBackend {
     }
 
     /// Streaming variant of chat_with_tools: sends text deltas via events channel.
-    pub async fn chat_with_tools_streaming<I>(
+    pub async fn chat_with_tools_streaming(
         &self,
         system_prompt: &str,
         prompt: Message,
         history: Vec<Message>,
         tools: Vec<Box<dyn ToolDyn>>,
-        memory_index: Option<I>,
         events: broadcast::Sender<ServerEvent>,
         instance_slug: &str,
         chat_id: &str,
         workspace_dir: &Path,
     ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>>
-    where
-        I: VectorStoreIndexDyn + Send + Sync + 'static,
     {
-        log::info!("chat_with_tools_streaming: {} tools, memory_rag={}", tools.len(), memory_index.is_some());
+        log::info!("chat_with_tools_streaming: {} tools", tools.len());
 
         const AGENT_MAX_TURNS: usize = 16;
 
@@ -377,13 +361,10 @@ impl LlmBackend {
         match self {
             LlmBackend::Anthropic { client, model } => {
                 let cm = client.completion_model(model).with_prompt_caching();
-                let mut builder = AgentBuilder::new(cm)
+                let agent = AgentBuilder::new(cm)
                     .preamble(system_prompt)
-                    .tools(tools);
-                if let Some(index) = memory_index {
-                    builder = builder.dynamic_context(8, index);
-                }
-                let agent = builder.build();
+                    .tools(tools)
+                    .build();
 
                 let stream = agent
                     .stream_prompt(prompt)
@@ -394,14 +375,11 @@ impl LlmBackend {
                 consume_stream(stream, &events, &slug, &cid, workspace_dir).await
             }
             LlmBackend::OpenAI { client, model } => {
-                let mut builder = client
+                let agent = client
                     .agent(model)
                     .preamble(system_prompt)
-                    .tools(tools);
-                if let Some(index) = memory_index {
-                    builder = builder.dynamic_context(8, index);
-                }
-                let agent = builder.build();
+                    .tools(tools)
+                    .build();
 
                 let stream = agent
                     .stream_prompt(prompt)
@@ -412,14 +390,11 @@ impl LlmBackend {
                 consume_stream(stream, &events, &slug, &cid, workspace_dir).await
             }
             LlmBackend::OpenRouter { client, model } => {
-                let mut builder = client
+                let agent = client
                     .agent(model)
                     .preamble(system_prompt)
-                    .tools(tools);
-                if let Some(index) = memory_index {
-                    builder = builder.dynamic_context(8, index);
-                }
-                let agent = builder.build();
+                    .tools(tools)
+                    .build();
 
                 let stream = agent
                     .stream_prompt(prompt)

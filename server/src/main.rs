@@ -35,6 +35,9 @@ async fn main() {
 
     let state = app::state::AppState::new(config).await;
 
+    // Migrate legacy memory (facts.md + episodes.md → library) for all instances
+    services::memory::migrate_all_instances(&state.workspace_dir);
+
     let addr: SocketAddr = format!("{host}:{port}")
         .parse()
         .unwrap_or_else(|_| {

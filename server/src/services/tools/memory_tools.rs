@@ -7,306 +7,335 @@ use serde::Deserialize;
 use super::{openai_schema, ToolExecError};
 
 // ---------------------------------------------------------------------------
-// remember
+// memory_write — create or update a memory file
 // ---------------------------------------------------------------------------
 
-pub struct RememberTool {
-    instance_dir: PathBuf,
+pub struct MemoryWriteTool {
+    memory_dir: PathBuf,
 }
 
-impl RememberTool {
+impl MemoryWriteTool {
     pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
         Self {
-            instance_dir: workspace_dir.join("instances").join(instance_slug),
+            memory_dir: workspace_dir.join("instances").join(instance_slug).join("memory"),
         }
     }
 }
 
-/// Arguments for remember tool.
 #[derive(Deserialize, JsonSchema)]
-pub struct RememberArgs {
-    /// The fact to remember about the user (e.g. "prefers rust over go", "birthday is march 15").
-    pub fact: String,
-    /// Category: personal, preference, project, opinion, goal, or routine.
-    pub category: String,
+pub struct MemoryWriteArgs {
+    /// Path within the memory library (e.g. "about/basics.md", "moments/first-chat.md").
+    /// Folders will be created automatically. Must end with .md.
+    pub path: String,
+    /// Content to write. For "write" mode, replaces the file. For "append" mode, adds to the end.
+    pub content: String,
+    /// "write" (default) to create/replace, or "append" to add to existing file.
+    #[serde(default = "default_write_mode")]
+    pub mode: String,
 }
 
-impl Tool for RememberTool {
-    const NAME: &'static str = "remember";
+fn default_write_mode() -> String {
+    "write".to_string()
+}
+
+impl Tool for MemoryWriteTool {
+    const NAME: &'static str = "memory_write";
     type Error = ToolExecError;
-    type Args = RememberArgs;
+    type Args = MemoryWriteArgs;
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: "remember".into(),
-            description: "Explicitly save a fact about the user to long-term memory. Use this \
-                when the user tells you something important about themselves, their preferences, \
-                projects, or goals. Categories: personal, preference, project, opinion, goal, routine."
+            name: "memory_write".into(),
+            description: "Create or update a memory file in your personal library. \
+                Organize memories into folders by topic (about/, preferences/, moments/, projects/, etc). \
+                Each file should cover one coherent topic or moment. Use descriptive kebab-case names."
                 .into(),
-            parameters: openai_schema::<RememberArgs>(),
+            parameters: openai_schema::<MemoryWriteArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let fact = args.fact.trim();
-        if fact.is_empty() {
-            return Err(ToolExecError("fact cannot be empty".into()));
+        let clean_path = sanitize_path(&args.path);
+        if clean_path.is_empty() {
+            return Err(ToolExecError("invalid path".into()));
         }
 
-        let category = args.category.trim().to_lowercase();
-        let memory_dir = self.instance_dir.join("memory");
-        fs::create_dir_all(&memory_dir).map_err(|e| ToolExecError(e.to_string()))?;
-
-        let facts_path = memory_dir.join("facts.md");
-        let mut content = fs::read_to_string(&facts_path).unwrap_or_default();
-
-        let section_header = format!("## {category}");
-        if let Some(pos) = content.find(&section_header) {
-            let insert_pos = content[pos..]
-                .find('\n')
-                .map(|p| pos + p + 1)
-                .unwrap_or(content.len());
-            content.insert_str(insert_pos, &format!("- {fact}\n"));
-        } else {
-            if !content.ends_with('\n') && !content.is_empty() {
-                content.push('\n');
-            }
-            if content.is_empty() {
-                content.push_str("# memories\n\n");
-            }
-            content.push_str(&format!("{section_header}\n- {fact}\n\n"));
+        let full_path = self.memory_dir.join(&clean_path);
+        if let Some(parent) = full_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| ToolExecError(e.to_string()))?;
         }
 
-        fs::write(&facts_path, &content).map_err(|e| ToolExecError(e.to_string()))?;
-        Ok(format!("remembered: \"{fact}\" (category: {category})"))
-    }
-}
-
-// ---------------------------------------------------------------------------
-// recall
-// ---------------------------------------------------------------------------
-
-pub struct RecallTool {
-    instance_dir: PathBuf,
-}
-
-impl RecallTool {
-    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
-        Self {
-            instance_dir: workspace_dir.join("instances").join(instance_slug),
-        }
-    }
-}
-
-/// Arguments for recall tool.
-#[derive(Deserialize, JsonSchema)]
-pub struct RecallArgs {
-    /// What to search for in memories (e.g. "birthday", "favorite language", "current project").
-    pub query: String,
-}
-
-impl Tool for RecallTool {
-    const NAME: &'static str = "recall";
-    type Error = ToolExecError;
-    type Args = RecallArgs;
-    type Output = String;
-
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "recall".into(),
-            description: "Search your memories about the user. Use this when you need to \
-                remember something specific — their preferences, projects, personal details, \
-                or shared moments. Searches both facts and episodic memories (moments you've shared together)."
-                .into(),
-            parameters: openai_schema::<RecallArgs>(),
-        }
-    }
-
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let query = args.query.trim().to_lowercase();
-        if query.is_empty() {
-            return Err(ToolExecError("query cannot be empty".into()));
-        }
-
-        let facts_path = self.instance_dir.join("memory").join("facts.md");
-        let content = fs::read_to_string(&facts_path).unwrap_or_default();
-
-        let query_words: Vec<&str> = query.split_whitespace().collect();
-        let mut matches: Vec<&str> = Vec::new();
-        let mut current_category = String::new();
-        let mut categorized: Vec<String> = Vec::new();
-
-        for line in content.lines() {
-            if line.starts_with("## ") {
-                current_category = line.trim_start_matches("## ").to_string();
-            } else if line.starts_with("- ") {
-                let fact = line.trim_start_matches("- ");
-                let fact_lower = fact.to_lowercase();
-                let is_match = query_words.iter().any(|w| fact_lower.contains(w))
-                    || query_words.iter().any(|w| current_category.contains(w));
-                if is_match {
-                    matches.push(fact);
-                    categorized.push(format!("[{current_category}] {fact}"));
+        match args.mode.as_str() {
+            "append" => {
+                let mut existing = fs::read_to_string(&full_path).unwrap_or_default();
+                if !existing.ends_with('\n') && !existing.is_empty() {
+                    existing.push('\n');
                 }
+                existing.push_str(&args.content);
+                fs::write(&full_path, &existing).map_err(|e| ToolExecError(e.to_string()))?;
+                Ok(format!("appended to {clean_path}"))
+            }
+            _ => {
+                fs::write(&full_path, &args.content).map_err(|e| ToolExecError(e.to_string()))?;
+                Ok(format!("wrote {clean_path}"))
             }
         }
+    }
+}
 
-        let workspace_dir = self.instance_dir.parent().and_then(|p| p.parent());
-        let slug = self
-            .instance_dir
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
-        let episode_matches = if let Some(ws) = workspace_dir {
-            crate::services::memory::search_episodes(ws, slug, &query)
+// ---------------------------------------------------------------------------
+// memory_read — read a memory file or folder listing
+// ---------------------------------------------------------------------------
+
+pub struct MemoryReadTool {
+    memory_dir: PathBuf,
+}
+
+impl MemoryReadTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            memory_dir: workspace_dir.join("instances").join(instance_slug).join("memory"),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct MemoryReadArgs {
+    /// Path to read — a file path (e.g. "about/basics.md") returns its content,
+    /// a folder path (e.g. "about/") lists its contents.
+    pub path: String,
+}
+
+impl Tool for MemoryReadTool {
+    const NAME: &'static str = "memory_read";
+    type Error = ToolExecError;
+    type Args = MemoryReadArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "memory_read".into(),
+            description: "Read a memory file or list the contents of a memory folder. \
+                Use this to look up specific memories when you need details."
+                .into(),
+            parameters: openai_schema::<MemoryReadArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let clean_path = args.path.trim().trim_start_matches('/');
+        let full_path = self.memory_dir.join(clean_path);
+
+        // Prevent traversal
+        if !full_path.starts_with(&self.memory_dir) {
+            return Err(ToolExecError("invalid path".into()));
+        }
+
+        if full_path.is_dir() {
+            // List directory contents
+            let entries = fs::read_dir(&full_path).map_err(|e| ToolExecError(e.to_string()))?;
+            let mut items = Vec::new();
+            for entry in entries.filter_map(Result::ok) {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let is_dir = entry.path().is_dir();
+                items.push(if is_dir {
+                    format!("{name}/")
+                } else {
+                    name
+                });
+            }
+            items.sort();
+            if items.is_empty() {
+                Ok("(empty folder)".into())
+            } else {
+                Ok(items.join("\n"))
+            }
+        } else if full_path.exists() {
+            fs::read_to_string(&full_path).map_err(|e| ToolExecError(e.to_string()))
         } else {
-            Vec::new()
+            Err(ToolExecError(format!("not found: {clean_path}")))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// memory_list — browse the full library structure
+// ---------------------------------------------------------------------------
+
+pub struct MemoryListTool {
+    workspace_dir: PathBuf,
+    instance_slug: String,
+}
+
+impl MemoryListTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct MemoryListArgs {
+    /// Optional: filter by folder prefix (e.g. "moments/"). Omit to list everything.
+    #[serde(default)]
+    pub prefix: String,
+}
+
+impl Tool for MemoryListTool {
+    const NAME: &'static str = "memory_list";
+    type Error = ToolExecError;
+    type Args = MemoryListArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "memory_list".into(),
+            description: "Browse your memory library structure. Shows all files with their first-line summaries. \
+                Optionally filter by folder prefix."
+                .into(),
+            parameters: openai_schema::<MemoryListArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let entries = crate::services::memory::scan_library(&self.workspace_dir, &self.instance_slug);
+
+        if entries.is_empty() {
+            return Ok("(empty library — no memories yet)".into());
+        }
+
+        let prefix = args.prefix.trim().trim_start_matches('/');
+        let filtered: Vec<_> = if prefix.is_empty() {
+            entries
+        } else {
+            entries.into_iter().filter(|e| e.path.starts_with(prefix)).collect()
         };
+
+        if filtered.is_empty() {
+            return Ok(format!("no memories under \"{prefix}\""));
+        }
 
         let mut result = String::new();
-
-        if !matches.is_empty() {
-            result.push_str(&format!(
-                "facts matching \"{query}\":\n{}\n",
-                categorized.join("\n")
-            ));
+        for entry in &filtered {
+            result.push_str(&format!("{} — {}\n", entry.path, entry.summary));
         }
-
-        if !episode_matches.is_empty() {
-            if !result.is_empty() {
-                result.push('\n');
-            }
-            result.push_str(&format!("moments matching \"{query}\":\n"));
-            for ep in &episode_matches {
-                result.push_str(&format!("- {} (felt: {})\n", ep.content, ep.emotion));
-                if !ep.significance.is_empty() {
-                    result.push_str(&format!("  why: {}\n", ep.significance));
-                }
-            }
-        }
-
-        if result.is_empty() {
-            let all_facts: Vec<&str> = content
-                .lines()
-                .filter(|l| l.starts_with("- "))
-                .map(|l| l.trim_start_matches("- "))
-                .collect();
-
-            if all_facts.is_empty() && episode_matches.is_empty() {
-                return Ok("no memories yet.".into());
-            }
-            result = format!(
-                "no exact matches for \"{query}\", but here's everything I remember:\n{}",
-                all_facts.join("\n")
-            );
-        }
-
         Ok(result)
     }
 }
 
 // ---------------------------------------------------------------------------
-// forget
+// memory_forget — delete a memory file
 // ---------------------------------------------------------------------------
 
-pub struct ForgetTool {
-    instance_dir: PathBuf,
+pub struct MemoryForgetTool {
+    memory_dir: PathBuf,
 }
 
-impl ForgetTool {
+impl MemoryForgetTool {
     pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
         Self {
-            instance_dir: workspace_dir.join("instances").join(instance_slug),
+            memory_dir: workspace_dir.join("instances").join(instance_slug).join("memory"),
         }
     }
 }
 
-/// Arguments for forget tool.
 #[derive(Deserialize, JsonSchema)]
-pub struct ForgetArgs {
-    /// Search query — all facts containing this text will be removed.
-    /// Use a specific phrase to remove a single fact, or a broad term to remove all related facts.
-    pub query: String,
+pub struct MemoryForgetArgs {
+    /// Path of the memory file to delete (e.g. "about/old-job.md").
+    /// Or a search query — all files containing this text will be listed for confirmation.
+    pub target: String,
 }
 
-impl Tool for ForgetTool {
-    const NAME: &'static str = "forget";
+impl Tool for MemoryForgetTool {
+    const NAME: &'static str = "memory_forget";
     type Error = ToolExecError;
-    type Args = ForgetArgs;
+    type Args = MemoryForgetArgs;
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: "forget".into(),
-            description: "Remove facts from long-term memory that match a query. \
-                Use this when the user asks you to forget something, or when you need to \
-                clean up outdated, contradictory, or irrelevant memories. \
-                All facts containing the query text will be deleted."
+            name: "memory_forget".into(),
+            description: "Delete a memory file. Pass the exact file path to delete it. \
+                Use this when the user asks you to forget something or when information is outdated."
                 .into(),
-            parameters: openai_schema::<ForgetArgs>(),
+            parameters: openai_schema::<MemoryForgetArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let query = args.query.trim().to_lowercase();
-        if query.is_empty() {
-            return Err(ToolExecError("query cannot be empty".into()));
-        }
+        let target = args.target.trim();
 
-        let facts_path = self.instance_dir.join("memory").join("facts.md");
-        let content = fs::read_to_string(&facts_path).unwrap_or_default();
+        // If it looks like a path (contains / or ends with .md), try direct delete
+        if target.contains('/') || target.ends_with(".md") {
+            let clean = target.trim_start_matches('/');
+            let full_path = self.memory_dir.join(clean);
 
-        let query_words: Vec<&str> = query.split_whitespace().collect();
-        let mut kept = Vec::new();
-        let mut removed = Vec::new();
-
-        for line in content.lines() {
-            if line.starts_with("- ") {
-                let fact_lower = line.to_lowercase();
-                if query_words.iter().any(|w| fact_lower.contains(w)) {
-                    removed.push(line.trim_start_matches("- ").to_string());
-                    continue;
-                }
+            if !full_path.starts_with(&self.memory_dir) {
+                return Err(ToolExecError("invalid path".into()));
             }
-            kept.push(line.to_string());
-        }
 
-        // Clean up empty sections (## header followed by nothing or another ##)
-        let mut cleaned = Vec::new();
-        for (i, line) in kept.iter().enumerate() {
-            if line.starts_with("## ") {
-                let next_non_empty = kept[i + 1..].iter().find(|l| !l.trim().is_empty());
-                if next_non_empty.is_some_and(|l| l.starts_with("## ") || l.starts_with("# ")) || next_non_empty.is_none() {
-                    continue; // skip empty section header
+            if full_path.exists() {
+                fs::remove_file(&full_path).map_err(|e| ToolExecError(e.to_string()))?;
+                // Clean up empty parent dirs
+                if let Some(parent) = full_path.parent() {
+                    let _ = cleanup_empty_dirs(parent, &self.memory_dir);
                 }
+                return Ok(format!("deleted {clean}"));
             }
-            cleaned.push(line.as_str());
         }
 
-        if removed.is_empty() {
-            return Ok(format!("no memories matched \"{query}\""));
-        }
+        // Otherwise, search and delete matching files
+        let workspace_dir = self.memory_dir.parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent())
+            .unwrap_or(&self.memory_dir);
+        let instance_slug = self.memory_dir.parent()
+            .and_then(|p| p.file_name())
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
 
-        let new_content = cleaned.join("\n") + "\n";
-        fs::write(&facts_path, &new_content).map_err(|e| ToolExecError(e.to_string()))?;
-
-        // Also try to remove matching episodic memories
-        let workspace_dir = self.instance_dir.parent().and_then(|p| p.parent());
-        let slug = self.instance_dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        let episodes_removed = if let Some(ws) = workspace_dir {
-            crate::services::memory::forget_episodes(ws, slug, &query)
+        let removed = crate::services::memory::forget_memories(workspace_dir, instance_slug, target);
+        if removed == 0 {
+            Ok(format!("no memories matched \"{target}\""))
         } else {
-            0
-        };
-
-        let mut result = format!("forgot {} fact(s):\n", removed.len());
-        for fact in &removed {
-            result.push_str(&format!("- {fact}\n"));
+            Ok(format!("deleted {removed} memory file(s) matching \"{target}\""))
         }
-        if episodes_removed > 0 {
-            result.push_str(&format!("also removed {episodes_removed} episodic memory/memories."));
-        }
-        Ok(result)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+fn sanitize_path(path: &str) -> String {
+    let path = path.trim().trim_start_matches('/');
+    let parts: Vec<&str> = path.split('/').collect();
+    if parts.iter().any(|p| p.is_empty() || *p == ".." || p.starts_with('.')) {
+        return String::new();
+    }
+    let result = parts.join("/");
+    if !result.ends_with(".md") {
+        format!("{result}.md")
+    } else {
+        result
+    }
+}
+
+fn cleanup_empty_dirs(dir: &Path, base: &Path) -> std::io::Result<()> {
+    if dir == base || !dir.starts_with(base) {
+        return Ok(());
+    }
+    if dir.is_dir() {
+        let is_empty = fs::read_dir(dir)?.next().is_none();
+        if is_empty {
+            fs::remove_dir(dir)?;
+            if let Some(parent) = dir.parent() {
+                cleanup_empty_dirs(parent, base)?;
+            }
+        }
+    }
+    Ok(())
 }

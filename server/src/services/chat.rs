@@ -6,7 +6,6 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use rig::providers::openai;
 use tokio::sync::broadcast;
 
 use crate::{
@@ -106,7 +105,6 @@ pub async fn run_single_turn(
     instance_slug: &str,
     chat_id: &str,
     llm: &LlmBackend,
-    embedding_model: Option<&openai::EmbeddingModel>,
     brave_api_key: Option<&str>,
     events: broadcast::Sender<ServerEvent>,
     prev_history: Option<Vec<rig::completion::Message>>,
@@ -122,7 +120,7 @@ pub async fn run_single_turn(
     let existing: Vec<ChatMessage> =
         load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
 
-    // Find last real user message for memory retrieval
+    // Find last real user message for context
     let last_user_content = existing
         .iter()
         .rev()
@@ -130,24 +128,8 @@ pub async fn run_single_turn(
         .map(|m| m.content.as_str())
         .unwrap_or("");
 
-    // Build RAG memory index if embedding model is available,
-    // otherwise fall back to injecting facts.md into system prompt
-    let memory_index = if let Some(model) = embedding_model {
-        memory::build_memory_index(workspace_dir, &instance_slug, model).await
-    } else {
-        None
-    };
-
-    let memory_prompt = if memory_index.is_none() {
-        // No RAG — inject all facts + episodes into system prompt as fallback
-        memory::build_facts_md_prompt(workspace_dir, &instance_slug)
-    } else {
-        // RAG handles facts via dynamic_context; episodes are always injected directly
-        let episodes = memory::build_episodes_prompt(workspace_dir, &instance_slug);
-        format!(
-            "## memory\nyou have persistent memory. relevant facts are loaded automatically based on the conversation.{episodes}"
-        )
-    };
+    // Build memory prompt from library
+    let memory_prompt = memory::build_memory_prompt(workspace_dir, &instance_slug);
 
     let journal_prompt = load_recent_journal(workspace_dir, &instance_slug);
     let mood_prompt = load_mood_prompt(workspace_dir, &instance_slug);
@@ -357,7 +339,7 @@ pub async fn run_single_turn(
     let tool_result = llm
         .chat_with_tools_streaming(
             &system_prompt, prompt_msg, history_msgs, all_tools,
-            memory_index, events.clone(), &instance_slug, &chat_id,
+            events.clone(), &instance_slug, &chat_id,
             workspace_dir,
         )
         .await
@@ -410,7 +392,6 @@ pub async fn run_single_turn(
     // Background memory + sentiment extraction
     if let Some(last_msg) = assistant_messages.last().cloned() {
         let backend = llm.clone();
-        let emb = embedding_model.cloned();
         let ws = workspace_dir.to_path_buf();
         let slug = instance_slug.clone();
         let user_content = last_user_content.to_string();
@@ -424,7 +405,7 @@ pub async fn run_single_turn(
         let events_bg = events.clone();
         tokio::spawn(async move {
             if let Err(e) =
-                memory::extract_and_store(&ws, &slug, &recent_pair, &backend, emb.as_ref()).await
+                memory::extract_and_store(&ws, &slug, &recent_pair, &backend).await
             {
                 log::warn!("memory extraction failed: {e}");
             }
@@ -847,7 +828,7 @@ pub fn compute_context_stats(
     });
 
     // 7. Memory
-    let memory_prompt = memory::build_facts_md_prompt(workspace_dir, &instance_slug);
+    let memory_prompt = memory::build_memory_prompt(workspace_dir, &instance_slug);
     if !memory_prompt.is_empty() {
         sections.push(ContextSection {
             name: "memory".into(),
