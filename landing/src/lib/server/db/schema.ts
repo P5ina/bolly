@@ -58,8 +58,8 @@ export const tenants = pgTable('tenants', {
 	// Limits
 	storageLimit: integer('storage_limit').notNull().default(1024), // MB
 	maxInstances: integer('max_instances').notNull().default(1),
-	messagesPerDay: integer('messages_per_day').notNull().default(100),
-	tokensPerMonth: integer('tokens_per_month').notNull().default(500000),
+	messagesPerDay: integer('messages_per_day').notNull().default(150),
+	tokensPerMonth: integer('tokens_per_month').notNull().default(1000000),
 
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
