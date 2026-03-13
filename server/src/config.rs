@@ -183,9 +183,9 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     if let Ok(key) = env::var("OPENROUTER_API_KEY") {
         if !key.is_empty() {
             config.llm.tokens.open_router = key;
-            // OpenRouter takes priority over other providers for chat
-            config.llm.provider = Some(LlmProvider::OpenRouter);
-            config.llm.model = Some("anthropic/claude-sonnet-4-6".to_string());
+            if config.llm.provider.is_none() {
+                config.llm.provider = Some(LlmProvider::OpenRouter);
+            }
         }
     }
     if let Ok(key) = env::var("BRAVE_SEARCH_API_KEY") {
