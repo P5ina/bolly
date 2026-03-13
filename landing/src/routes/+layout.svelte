@@ -1,7 +1,11 @@
 <script lang="ts">
-	import '../app.css';
+import "../app.css";
+import { dev } from "$app/environment";
+import { injectAnalytics } from "@vercel/analytics/sveltekit";
 
-	let { children } = $props();
+injectAnalytics({ mode: dev ? "development" : "production" });
+
+let { children } = $props();
 </script>
 
 <svelte:head>

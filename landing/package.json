@@ -19,6 +19,7 @@
 		"@neondatabase/serverless": "^1.0.0",
 		"@oslojs/crypto": "^1.0.0",
 		"@oslojs/encoding": "^1.0.0",
+		"@vercel/analytics": "^2.0.1",
 		"drizzle-orm": "^0.44.0",
 		"lucide-svelte": "^0.577.0",
 		"resend": "^6.9.3",
