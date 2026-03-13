@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Drop } from "$lib/api/types.js";
+	import ExcalidrawViewer from "$lib/components/ExcalidrawViewer.svelte";
 
 	let {
 		drop,
@@ -16,6 +17,8 @@
 		onexpand: () => void;
 		ondelete: () => void;
 	} = $props();
+
+	const isSketch = $derived(drop.kind === "sketch" && drop.content.trimStart().startsWith("{"));
 
 	const moodColors: Record<string, string> = {
 		calm: "oklch(0.70 0.08 220)",
@@ -58,9 +61,15 @@
 
 	<h3 class="drop-card-title">{drop.title}</h3>
 
-	<div class="drop-card-content" class:drop-card-content-expanded={expanded}>
-		{drop.content}
-	</div>
+	{#if isSketch}
+		<div class="drop-card-sketch" class:drop-card-sketch-expanded={expanded}>
+			<ExcalidrawViewer scene={drop.content} height={expanded ? "400px" : "180px"} />
+		</div>
+	{:else}
+		<div class="drop-card-content" class:drop-card-content-expanded={expanded}>
+			{drop.content}
+		</div>
+	{/if}
 
 	{#if drop.mood}
 		<div class="drop-card-mood">
@@ -171,6 +180,12 @@
 	.drop-card-content-expanded {
 		-webkit-line-clamp: unset;
 		color: oklch(0.78 0.12 75 / 65%);
+	}
+
+	.drop-card-sketch {
+		border-radius: 0.5rem;
+		overflow: hidden;
+		transition: height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	.drop-card-mood {

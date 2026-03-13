@@ -1122,7 +1122,10 @@ pub struct CreateDropArgs {
     pub kind: String,
     /// A short title for this drop (a few words).
     pub title: String,
-    /// The creative content — the actual drop. Can be as long as needed.
+    /// The creative content. For most drop kinds this is text/markdown.
+    /// For kind="sketch", this MUST be valid Excalidraw JSON: {"elements": [...], "appState": {...}}.
+    /// Each element needs type, x, y, width, height, and type-specific fields.
+    /// Common element types: rectangle, ellipse, diamond, arrow, line, text.
     pub content: String,
 }
 
