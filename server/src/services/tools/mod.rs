@@ -312,8 +312,8 @@ impl ToolDyn for ObservableTool {
     }
 }
 
-/// Build all optional tools, each wrapped in ObservableTool.
-pub fn build_optional_tools(
+/// Build all tools, each wrapped in ObservableTool.
+pub fn build_tools(
     workspace_dir: &Path,
     instance_slug: &str,
     chat_id: &str,
@@ -324,7 +324,8 @@ pub fn build_optional_tools(
     pending_secrets: Option<Arc<tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>>>,
     plan: &str,
     google: Option<crate::services::google::GoogleClient>,
-) -> Vec<Box<dyn ToolDyn>> {
+    sent_files: SentFiles,
+) -> (Vec<Box<dyn ToolDyn>>, SentFiles) {
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
         Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), chat_id.to_string()))
     };
@@ -332,6 +333,31 @@ pub fn build_optional_tools(
     let browser_enabled = matches!(plan, "companion" | "unlimited");
 
     let mut tools: Vec<Box<dyn ToolDyn>> = vec![
+        // Files
+        wrap(Box::new(ReadFileTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(WriteFileTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(EditFileTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(ListFilesTool::new(workspace_dir, instance_slug))),
+        // Memory
+        wrap(Box::new(RememberTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(RecallTool::new(workspace_dir, instance_slug))),
+        // Companion
+        wrap(Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone()))),
+        wrap(Box::new(JournalTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(ReadJournalTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(GetMoodTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(EditSoulTool::new(workspace_dir, instance_slug))),
+        // System
+        wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug, chat_id, events.clone()))),
+        wrap(Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone()))),
+        wrap(Box::new(ClearContextTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(InstallPackageTool)),
+        wrap(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug))),
+        // Skills
+        wrap(Box::new(ListSkillsTool::new(workspace_dir))),
+        wrap(Box::new(ActivateSkillTool::new(workspace_dir))),
+        wrap(Box::new(ReadSkillReferenceTool::new(workspace_dir))),
         // Web
         wrap(Box::new(WebSearchTool::new(brave_api_key, config_path))),
         wrap(Box::new(WebFetchTool)),
@@ -346,14 +372,8 @@ pub fn build_optional_tools(
         wrap(Box::new(ListTasksTool::new(workspace_dir, instance_slug))),
         // Creative
         wrap(Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone()))),
-        wrap(Box::new(EditSoulTool::new(workspace_dir, instance_slug))),
-        // System (interactive_session moved to static tools)
-        wrap(Box::new(InstallPackageTool)),
-        wrap(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug))),
         // Scheduling
         wrap(Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(ReadJournalTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(GetMoodTool::new(workspace_dir, instance_slug))),
     ];
 
     // Google tools (Gmail, Calendar, Drive) — only if Google account is connected
@@ -379,7 +399,8 @@ pub fn build_optional_tools(
         ))));
     }
 
-    tools
+    log::info!("built {} tools", tools.len());
+    (tools, sent_files)
 }
 
 // ---------------------------------------------------------------------------

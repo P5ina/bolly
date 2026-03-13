@@ -7,7 +7,6 @@ use std::{
 };
 
 use rig::providers::openai;
-use rig::tool::ToolDyn;
 use tokio::sync::broadcast;
 
 use crate::{
@@ -18,12 +17,7 @@ use crate::{
         llm::{self, LlmBackend},
         memory,
         rhythm,
-        tools::{
-            self, ActivateSkillTool, EditFileTool, JournalTool, ListFilesTool, ListSkillsTool, ReadSkillReferenceTool, ClearContextTool, ObservableTool,
-            ReadFileTool, RecallTool, RememberTool,
-            InteractiveSessionTool, RunCommandTool, SendFileTool,
-            SetMoodTool, WriteFileTool,
-        },
+        tools,
         skills,
         workspace,
     },
@@ -210,8 +204,11 @@ pub async fn run_single_turn(
     } else {
         system_prompt.push_str(
             "\n\n## google integration\n\
-             google is not connected. if the user asks about email, calendar, or drive, \
-             tell them to connect their google account from the dashboard."
+             google is NOT connected. you do NOT have email, calendar, or drive tools.\n\
+             NEVER pretend to read email or access google services.\n\
+             NEVER fabricate email contents, calendar events, or file listings.\n\
+             if the user asks about email, calendar, or drive, tell them to connect \
+             their google account from the dashboard first."
         );
     }
 
@@ -310,17 +307,14 @@ pub async fn run_single_turn(
     );
 
     let sent_files = tools::SentFiles::default();
-    let (mut all_tools, sent_files) = build_static_tools(workspace_dir, &instance_slug, &chat_id, events.clone(), sent_files);
-
-    // Add optional tools (all registered statically)
-    let optional_tools = tools::build_optional_tools(
+    let (all_tools, sent_files) = tools::build_tools(
         workspace_dir, &instance_slug, &chat_id, brave_api_key,
         config_path, events.clone(), llm,
         Some(pending_secrets),
         plan,
         google,
+        sent_files,
     );
-    all_tools.extend(optional_tools);
 
     let history_count = history_msgs.len();
     let tool_result = llm
@@ -807,10 +801,8 @@ pub struct ContextSection {
 pub struct ContextStats {
     pub system_prompt: Vec<ContextSection>,
     pub system_prompt_total_tokens: usize,
-    pub static_tools: Vec<String>,
-    pub optional_tools: Vec<String>,
-    pub static_tools_count: usize,
-    pub optional_tools_count: usize,
+    pub tools: Vec<String>,
+    pub tools_count: usize,
     pub history_messages: usize,
     pub history_tokens_estimate: usize,
     pub total_input_tokens_estimate: usize,
@@ -925,24 +917,22 @@ pub fn compute_context_stats(
     let system_prompt_total_tokens: usize = sections.iter().map(|s| s.tokens).sum();
 
     // Tools
-    let static_tool_names: Vec<String> = vec![
+    let tool_names: Vec<String> = vec![
         "read_file", "write_file", "edit_file", "list_files",
         "remember", "recall", "set_mood", "journal",
+        "read_journal", "get_mood", "edit_soul",
         "run_command", "interactive_session", "send_file", "clear_context",
+        "install_package", "update_config",
         "list_skills", "activate_skill", "read_skill_reference",
-    ].into_iter().map(String::from).collect();
-
-    let optional_tool_names: Vec<String> = vec![
         "web_search", "web_fetch",
-        "send_email", "read_email",
-        "list_events", "create_event",
-        "list_drive_files", "read_drive_file", "upload_drive_file",
         "search_code", "explore_code",
         "get_project_state", "update_project_state",
         "create_task", "update_task", "list_tasks",
-        "create_drop", "edit_soul",
-        "install_package", "update_config", "request_secret",
-        "schedule_message", "read_journal", "get_mood", "browse",
+        "create_drop", "schedule_message",
+        "send_email", "read_email",
+        "list_events", "create_event",
+        "list_drive_files", "read_drive_file", "upload_drive_file",
+        "request_secret", "browse",
     ].into_iter().map(String::from).collect();
 
     // History
@@ -957,10 +947,8 @@ pub fn compute_context_stats(
     let total_input_tokens_estimate = system_prompt_total_tokens + history_tokens_estimate;
 
     ContextStats {
-        static_tools_count: static_tool_names.len(),
-        optional_tools_count: optional_tool_names.len(),
-        static_tools: static_tool_names,
-        optional_tools: optional_tool_names,
+        tools_count: tool_names.len(),
+        tools: tool_names,
         system_prompt: sections,
         system_prompt_total_tokens,
         history_messages: existing.len(),
@@ -1340,36 +1328,3 @@ fn load_rhythm_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
     rhythm::build_rhythm_insights(workspace_dir, instance_slug, &rhythm_data)
 }
 
-/// Build core tools that are always available (static, not RAG-selected).
-fn build_static_tools(
-    workspace_dir: &Path,
-    instance_slug: &str,
-    chat_id: &str,
-    events: broadcast::Sender<ServerEvent>,
-    sent_files: tools::SentFiles,
-) -> (Vec<Box<dyn ToolDyn>>, tools::SentFiles) {
-    let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
-        Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), chat_id.to_string()))
-    };
-
-    let all_tools: Vec<Box<dyn ToolDyn>> = vec![
-        wrap(Box::new(ReadFileTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(WriteFileTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(EditFileTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(ListFilesTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(RememberTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(RecallTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone()))),
-        wrap(Box::new(JournalTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug, chat_id, events.clone()))),
-        wrap(Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone()))),
-        wrap(Box::new(ClearContextTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(ListSkillsTool::new(workspace_dir))),
-        wrap(Box::new(ActivateSkillTool::new(workspace_dir))),
-        wrap(Box::new(ReadSkillReferenceTool::new(workspace_dir))),
-    ];
-
-    log::info!("built {} static tools", all_tools.len());
-    (all_tools, sent_files)
-}

@@ -160,10 +160,8 @@ export interface ContextSection {
 export interface ContextStats {
 	system_prompt: ContextSection[];
 	system_prompt_total_tokens: number;
-	static_tools: string[];
-	optional_tools: string[];
-	static_tools_count: number;
-	optional_tools_count: number;
+	tools: string[];
+	tools_count: number;
 	history_messages: number;
 	history_tokens_estimate: number;
 	total_input_tokens_estimate: number;

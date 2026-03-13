@@ -114,14 +114,11 @@
 			<!-- tools -->
 			<div class="section-header">
 				<span>tools</span>
-				<span class="section-total">{stats.static_tools_count} static + {stats.optional_tools_count} optional</span>
+				<span class="section-total">{stats.tools_count}</span>
 			</div>
 			<div class="tools-grid">
-				{#each stats.static_tools as name}
-					<span class="tool-tag static">{name}</span>
-				{/each}
-				{#each stats.optional_tools as name}
-					<span class="tool-tag optional">{name}</span>
+				{#each stats.tools as name}
+					<span class="tool-tag">{name}</span>
 				{/each}
 			</div>
 		{/if}
@@ -341,15 +338,8 @@
 		padding: 0.15rem 0.4rem;
 		border-radius: 0.25rem;
 		white-space: nowrap;
-	}
-	.tool-tag.static {
 		background: oklch(0.78 0.12 75 / 8%);
 		color: oklch(0.78 0.12 75 / 70%);
 		border: 1px solid oklch(0.78 0.12 75 / 15%);
-	}
-	.tool-tag.optional {
-		background: oklch(0.12 0.015 280);
-		color: oklch(0.5 0.02 280);
-		border: 1px solid oklch(0.2 0.02 280);
 	}
 </style>
