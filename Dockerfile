@@ -54,6 +54,9 @@ RUN apt-get update && \
     dpkg -i /tmp/cloudflared.deb && rm /tmp/cloudflared.deb && \
     rm -rf /var/lib/apt/lists/* /root/.cache/ms-playwright/.links
 
+# Install slidev globally so PDF export uses the pre-installed Chromium
+RUN npm install -g @slidev/cli playwright-chromium@1.52.0
+
 # Copy browse tool scripts and install deps
 COPY server/scripts/ /opt/bolly/scripts/
 RUN cd /opt/bolly/scripts && npm install --omit=dev
@@ -64,6 +67,9 @@ COPY --from=client-build /app/client/build /opt/bolly/static
 ENV BOLLY_HOME=/data
 ENV RUST_LOG=info
 ENV BOLLY_SCRIPTS_DIR=/opt/bolly/scripts
+# Prevent playwright-chromium from re-downloading browsers at runtime;
+# the matching Chromium is already installed during the Docker build.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 EXPOSE 8080
 VOLUME /data
