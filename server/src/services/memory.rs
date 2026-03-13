@@ -61,18 +61,38 @@ pub async fn build_memory_index(
 }
 
 /// Build the full memory prompt (facts + episodes) for when no embedding model is available.
+/// Caps facts at 50 and episodes at 20 (most recent) to avoid ballooning context.
 pub fn build_facts_md_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
-    let facts = retrieve_from_facts_md(workspace_dir, instance_slug);
-    let episodes = retrieve_from_episodes_md(workspace_dir, instance_slug);
+    let mut facts = retrieve_from_facts_md(workspace_dir, instance_slug);
+    let mut episodes = retrieve_from_episodes_md(workspace_dir, instance_slug);
+
+    const MAX_FACTS: usize = 50;
+    const MAX_EPISODES: usize = 20;
+
+    // Keep most recent entries when over the cap
+    if facts.len() > MAX_FACTS {
+        facts.drain(..facts.len() - MAX_FACTS);
+    }
+    if episodes.len() > MAX_EPISODES {
+        episodes.drain(..episodes.len() - MAX_EPISODES);
+    }
+
     build_memory_prompt(&facts, &episodes)
 }
 
 /// Build just the episodes prompt for injection alongside RAG facts.
+/// Caps at 20 most recent episodes to avoid ballooning context.
 pub fn build_episodes_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
-    let episodes = retrieve_from_episodes_md(workspace_dir, instance_slug);
+    let mut episodes = retrieve_from_episodes_md(workspace_dir, instance_slug);
     if episodes.is_empty() {
         return String::new();
     }
+
+    const MAX_EPISODES: usize = 20;
+    if episodes.len() > MAX_EPISODES {
+        episodes.drain(..episodes.len() - MAX_EPISODES);
+    }
+
     let mut prompt = String::from("\n\nmoments we've shared:\n");
     for ep in &episodes {
         prompt.push_str(&format!("- {} (felt: {})\n", ep.content, ep.emotion));
