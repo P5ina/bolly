@@ -20,9 +20,49 @@
 	let bridgeRef: AppBridge | undefined = $state();
 	let resultSent = false;
 
-	function toggleFullscreen() {
-		fullscreen = !fullscreen;
-		bridgeRef?.sendHostContextChange({ displayMode: fullscreen ? "fullscreen" : "inline" });
+	// Fullscreen overlay element — lives in document.body to escape stacking contexts
+	let overlay: HTMLDivElement | undefined;
+
+	function enterFullscreen() {
+		if (fullscreen) return;
+		fullscreen = true;
+		bridgeRef?.sendHostContextChange({ displayMode: "fullscreen" });
+
+		// Create overlay in body
+		overlay = document.createElement("div");
+		overlay.className = "mcp-fullscreen-overlay";
+		overlay.innerHTML = `
+			<div class="mcp-fs-header">
+				<span class="mcp-fs-label">${toolName}</span>
+				<button class="mcp-fs-close" title="Close fullscreen">✕ close</button>
+			</div>
+			<div class="mcp-fs-body"></div>
+		`;
+		overlay.querySelector(".mcp-fs-close")!.addEventListener("click", exitFullscreen);
+		document.body.appendChild(overlay);
+
+		// Move iframe into overlay
+		if (iframe) {
+			overlay.querySelector(".mcp-fs-body")!.appendChild(iframe);
+		}
+	}
+
+	function exitFullscreen() {
+		if (!fullscreen) return;
+		fullscreen = false;
+		bridgeRef?.sendHostContextChange({ displayMode: "inline" });
+
+		// Move iframe back to inline container
+		const inlineSlot = document.getElementById(`mcp-inline-${toolName}`);
+		if (iframe && inlineSlot) {
+			inlineSlot.appendChild(iframe);
+		}
+
+		// Remove overlay
+		if (overlay) {
+			overlay.remove();
+			overlay = undefined;
+		}
 	}
 
 	function sendResult(bridge: AppBridge, output: string) {
@@ -44,7 +84,6 @@
 		}
 	}
 
-	// When toolOutput arrives later (via WebSocket), send it to the bridge
 	$effect(() => {
 		if (toolOutput && ready && bridgeRef && !resultSent) {
 			sendResult(bridgeRef, toolOutput);
@@ -92,7 +131,6 @@
 			try { args = JSON.parse(toolInput); } catch {}
 			bridge.sendToolInput({ arguments: args });
 
-			// Send result immediately if already available (e.g. page reload)
 			if (toolOutput) {
 				sendResult(bridge, toolOutput);
 			}
@@ -109,10 +147,12 @@
 		};
 
 		bridge.onrequestdisplaymode = async (params) => {
-			const mode = params.mode === "fullscreen" ? "fullscreen" : "inline";
-			fullscreen = mode === "fullscreen";
-			bridge.sendHostContextChange({ displayMode: mode });
-			return { mode };
+			if (params.mode === "fullscreen") {
+				enterFullscreen();
+			} else {
+				exitFullscreen();
+			}
+			return { mode: params.mode === "fullscreen" ? "fullscreen" : "inline" };
 		};
 
 		bridge.onopenlink = async (params) => {
@@ -124,27 +164,26 @@
 		bridge.connect(transport);
 
 		return () => {
+			if (overlay) { overlay.remove(); overlay = undefined; }
 			bridgeRef = undefined;
 			bridge.close();
 		};
 	});
 </script>
 
-<div class="mcp-app" class:fullscreen class:collapsed>
+<div class="mcp-app" class:collapsed>
 	<div class="mcp-app-header">
 		<span class="mcp-app-label">{toolName}</span>
 		<div class="mcp-app-controls">
 			{#if !collapsed}
-				<button class="mcp-app-btn" onclick={toggleFullscreen} title={fullscreen ? "Exit fullscreen" : "Fullscreen"}>
-					{fullscreen ? "⊡" : "⊞"}
-				</button>
+				<button class="mcp-app-btn" onclick={enterFullscreen} title="Fullscreen">⊞</button>
 			{/if}
-			<button class="mcp-app-btn" onclick={() => { if (fullscreen) { fullscreen = false; bridgeRef?.sendHostContextChange({ displayMode: "inline" }); } collapsed = !collapsed; }} title={collapsed ? "Expand" : "Collapse"}>
+			<button class="mcp-app-btn" onclick={() => collapsed = !collapsed} title={collapsed ? "Expand" : "Collapse"}>
 				{collapsed ? "+" : "−"}
 			</button>
 		</div>
 	</div>
-	{#if !collapsed}
+	<div id="mcp-inline-{toolName}" class="mcp-inline-slot" class:hidden={collapsed}>
 		<iframe
 			bind:this={iframe}
 			sandbox="allow-scripts allow-same-origin"
@@ -152,8 +191,62 @@
 			class="mcp-app-frame"
 			class:loaded={ready}
 		></iframe>
-	{/if}
+	</div>
 </div>
+
+<svelte:head>
+	{@html `<style>
+		.mcp-fullscreen-overlay {
+			position: fixed;
+			inset: 0;
+			z-index: 99999;
+			background: #111;
+			display: flex;
+			flex-direction: column;
+		}
+		.mcp-fs-header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 0.5rem 1rem;
+			background: #1a1a1a;
+			border-bottom: 1px solid #333;
+			flex-shrink: 0;
+		}
+		.mcp-fs-label {
+			font-family: monospace;
+			font-size: 0.7rem;
+			color: #888;
+			letter-spacing: 0.06em;
+		}
+		.mcp-fs-close {
+			background: #333;
+			border: 1px solid #555;
+			border-radius: 6px;
+			color: #eee;
+			font-size: 0.8rem;
+			cursor: pointer;
+			padding: 0.3rem 0.75rem;
+			font-family: monospace;
+		}
+		.mcp-fs-close:hover {
+			background: #c44;
+			border-color: #c44;
+			color: #fff;
+		}
+		.mcp-fs-body {
+			flex: 1;
+			display: flex;
+		}
+		.mcp-fs-body iframe {
+			flex: 1;
+			width: 100%;
+			height: 100% !important;
+			border: none;
+			border-radius: 0;
+		}
+	</style>`}
+</svelte:head>
 
 <style>
 	.mcp-app {
@@ -205,6 +298,14 @@
 		border-color: oklch(0.78 0.12 75 / 30%);
 	}
 
+	.mcp-inline-slot {
+		display: contents;
+	}
+
+	.hidden {
+		display: none;
+	}
+
 	.mcp-app-frame {
 		width: 100%;
 		height: 480px;
@@ -222,31 +323,5 @@
 
 	.collapsed .mcp-app-header {
 		margin-bottom: 0;
-	}
-
-	.fullscreen {
-		position: fixed;
-		inset: 0;
-		z-index: 9999;
-		margin: 0;
-		background: oklch(0.08 0.01 280);
-		display: flex;
-		flex-direction: column;
-		animation: none;
-		padding: 0;
-	}
-
-	.fullscreen .mcp-app-header {
-		padding: 0.4rem 0.75rem;
-		margin: 0;
-		border-bottom: 1px solid oklch(0.78 0.12 75 / 10%);
-		flex-shrink: 0;
-	}
-
-	.fullscreen .mcp-app-frame {
-		flex: 1;
-		height: auto;
-		border: none;
-		border-radius: 0;
 	}
 </style>
