@@ -155,7 +155,7 @@
 	}
 
 	function isToolActivity(msg: ChatMessage): boolean {
-		if (msg.kind === "tool_call" || msg.kind === "tool_output") return true;
+		if (msg.kind === "tool_call" || msg.kind === "tool_output" || msg.kind === "mcp_app") return true;
 		if (msg.content.startsWith("[restart]")) return true;
 		return msg.role === "assistant" && (
 			msg.content.startsWith("[tool activity]") ||
@@ -209,6 +209,16 @@
 
 	function messagesToStream(msgs: ChatMessage[]): StreamItem[] {
 		return msgs.flatMap((m) => {
+			if (m.kind === "mcp_app" && m.mcp_app_html && m.tool_name) {
+				return [{
+					type: "mcp_app" as const,
+					id: m.id,
+					toolName: m.tool_name,
+					toolInput: m.mcp_app_input ?? "{}",
+					toolOutput: m.content,
+					html: m.mcp_app_html,
+				}];
+			}
 			if (isToolActivity(m)) {
 				const item = toolActivityToStreamItem(m);
 				return item ? [item] : [];
@@ -284,7 +294,17 @@
 
 			if (event.type === "chat_message_created") {
 				const msg = event.message;
-				if (isToolActivity(msg)) {
+				if (msg.kind === "mcp_app" && msg.mcp_app_html && msg.tool_name) {
+					stream = [...stream, {
+						type: "mcp_app" as const,
+						id: msg.id,
+						toolName: msg.tool_name,
+						toolInput: msg.mcp_app_input ?? "{}",
+						toolOutput: msg.content,
+						html: msg.mcp_app_html,
+					}];
+					scrollToBottom();
+				} else if (isToolActivity(msg)) {
 					// Promote streaming bubble to a real message so it doesn't vanish
 					if (streamingContent) {
 						const snapshotContent = streamingContent;
@@ -367,16 +387,6 @@
 				startTypewriter();
 			} else if (event.type === "context_compacting") {
 				pushActivity("state", `compacting ${event.messages_compacted} messages...`);
-			} else if (event.type === "mcp_app_render") {
-				stream = [...stream, {
-					type: "mcp_app",
-					id: `mcp_app_${Date.now()}`,
-					toolName: event.tool_name,
-					toolInput: event.tool_input,
-					toolOutput: event.tool_output,
-					html: event.html,
-				}];
-				scrollToBottom();
 			}
 		});
 		return unsub;

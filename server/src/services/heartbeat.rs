@@ -482,7 +482,7 @@ fn deliver_spontaneous_message(
         content: message.to_string(),
         created_at: unix_millis().to_string(),
         kind: Default::default(),
-        tool_name: None,
+        tool_name: None, mcp_app_html: None, mcp_app_input: None,
     };
 
     // Append to the default chat thread (same path the client reads from)

@@ -60,16 +60,4 @@ pub enum ServerEvent {
         chat_id: String,
         chunk: String,
     },
-    /// An MCP Apps tool was called — client should render an iframe with the app.
-    McpAppRender {
-        instance_slug: String,
-        chat_id: String,
-        tool_name: String,
-        /// The complete tool arguments (e.g. elements JSON for Excalidraw).
-        tool_input: String,
-        /// The tool result text.
-        tool_output: String,
-        /// The full HTML content of the MCP App resource.
-        html: String,
-    },
 }

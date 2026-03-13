@@ -258,7 +258,7 @@ impl ToolDyn for ObservableTool {
             content: summary.clone(),
             created_at: unix_millis().to_string(),
             kind: crate::domain::chat::MessageKind::ToolCall,
-            tool_name: Some(tool_name.clone()),
+            tool_name: Some(tool_name.clone()), mcp_app_html: None, mcp_app_input: None,
         };
         append_message_to_chat(&self.workspace_dir, &self.instance_slug, &self.chat_id, &start_msg);
         let _ = self.events.send(ServerEvent::ChatMessageCreated {
@@ -288,7 +288,7 @@ impl ToolDyn for ObservableTool {
                 }
                 Err(e) => Err(e),
             };
-            // Emit McpAppRender event for MCP Apps tools
+            // Persist MCP App as a chat message so it survives page reload
             if let Some(ref snapshot) = mcp_snapshot {
                 if snapshot.is_app_tool(&tool_name) {
                     if let Some(html) = snapshot.get_app_html(&tool_name) {
@@ -296,13 +296,21 @@ impl ToolDyn for ObservableTool {
                             Ok(s) => s.clone(),
                             Err(e) => format!("error: {e}"),
                         };
-                        let _ = events.send(ServerEvent::McpAppRender {
+                        let app_msg = crate::domain::chat::ChatMessage {
+                            id: format!("mcp_app_{}_{}", tool_call_counter(), unix_millis()),
+                            role: crate::domain::chat::ChatRole::Assistant,
+                            content: tool_output,
+                            created_at: unix_millis().to_string(),
+                            kind: crate::domain::chat::MessageKind::McpApp,
+                            tool_name: Some(tool_name.clone()),
+                            mcp_app_html: Some(html),
+                            mcp_app_input: Some(args_clone.clone()),
+                        };
+                        append_message_to_chat(&workspace_dir, &instance_slug, &chat_id, &app_msg);
+                        let _ = events.send(ServerEvent::ChatMessageCreated {
                             instance_slug: instance_slug.clone(),
                             chat_id: chat_id.clone(),
-                            tool_name: tool_name.clone(),
-                            tool_input: args_clone.clone(),
-                            tool_output,
-                            html,
+                            message: app_msg,
                         });
                     }
                 }
@@ -321,7 +329,7 @@ impl ToolDyn for ObservableTool {
                         content: output,
                         created_at: unix_millis().to_string(),
                         kind: crate::domain::chat::MessageKind::ToolOutput,
-                        tool_name: Some(tool_name.clone()),
+                        tool_name: Some(tool_name.clone()), mcp_app_html: None, mcp_app_input: None,
                     };
                     append_message_to_chat(&workspace_dir, &instance_slug, &chat_id, &output_msg);
                     let _ = events.send(ServerEvent::ChatMessageCreated {
@@ -516,7 +524,7 @@ pub fn inject_system_message(
         content: content.to_string(),
         created_at: unix_millis().to_string(),
         kind: Default::default(),
-        tool_name: None,
+        tool_name: None, mcp_app_html: None, mcp_app_input: None,
     };
     append_message_to_chat(workspace_dir, instance_slug, chat_id, &message);
     let _ = events.send(ServerEvent::ChatMessageCreated {

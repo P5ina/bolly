@@ -1,6 +1,6 @@
 export type ChatRole = "user" | "assistant";
 
-export type MessageKind = "message" | "tool_call" | "tool_output";
+export type MessageKind = "message" | "tool_call" | "tool_output" | "mcp_app";
 
 export interface ChatMessage {
 	id: string;
@@ -9,6 +9,8 @@ export interface ChatMessage {
 	created_at: string;
 	kind?: MessageKind;
 	tool_name?: string;
+	mcp_app_html?: string;
+	mcp_app_input?: string;
 }
 
 export interface ChatRequest {
@@ -241,12 +243,4 @@ export type ServerEvent =
 			chat_id: string;
 			chunk: string;
 	  }
-	| {
-			type: "mcp_app_render";
-			instance_slug: string;
-			chat_id: string;
-			tool_name: string;
-			tool_input: string;
-			tool_output: string;
-			html: string;
-	  };
+;

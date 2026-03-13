@@ -536,7 +536,7 @@ where
                             content: text,
                             created_at: ts.to_string(),
                             kind: Default::default(),
-                            tool_name: None,
+                            tool_name: None, mcp_app_html: None, mcp_app_input: None,
                         };
                         super::tools::append_message_to_chat(workspace_dir, instance_slug, chat_id, &msg);
                         let _ = events.send(ServerEvent::ChatMessageCreated {

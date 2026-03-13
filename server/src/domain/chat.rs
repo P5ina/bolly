@@ -13,6 +13,12 @@ pub struct ChatMessage {
     /// Tool name, present only when kind is tool_call or tool_output.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_name: Option<String>,
+    /// HTML content for MCP App rendering (kind = mcp_app only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_app_html: Option<String>,
+    /// Tool input JSON for MCP App rendering (kind = mcp_app only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_app_input: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -22,6 +28,7 @@ pub enum MessageKind {
     Message,
     ToolCall,
     ToolOutput,
+    McpApp,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

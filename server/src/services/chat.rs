@@ -42,7 +42,7 @@ pub fn save_user_message(
         content: content.to_string(),
         created_at: timestamp(),
         kind: Default::default(),
-        tool_name: None,
+        tool_name: None, mcp_app_html: None, mcp_app_input: None,
     };
 
     let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
@@ -75,7 +75,7 @@ pub fn save_system_message(
         content: content.to_string(),
         created_at: timestamp(),
         kind: Default::default(),
-        tool_name: None,
+        tool_name: None, mcp_app_html: None, mcp_app_input: None,
     };
 
     let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
@@ -385,7 +385,7 @@ pub async fn run_single_turn(
             content: full_reply,
             created_at: timestamp(),
             kind: Default::default(),
-            tool_name: None,
+            tool_name: None, mcp_app_html: None, mcp_app_input: None,
         });
     }
 
