@@ -3,3 +3,5 @@ target/
 .zed/
 .vscode/
 .vercel
+
+.DS_Store
