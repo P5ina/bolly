@@ -154,8 +154,10 @@ async fn heartbeat_instance(
         .unwrap_or_default();
     let brave_api_key = if brave_key.is_empty() { None } else { Some(brave_key.as_str()) };
 
-    let auth_token = config::load_config().ok().map(|c| c.auth_token.clone()).unwrap_or_default();
-    let google = crate::services::google::GoogleClient::from_env(&auth_token);
+    let cfg = config::load_config().ok();
+    let auth_token = cfg.as_ref().map(|c| c.auth_token.clone()).unwrap_or_default();
+    let landing_url = cfg.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
+    let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
     let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, brave_api_key, config_path, events.clone(), google);
 
     let response = llm

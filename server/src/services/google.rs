@@ -29,13 +29,12 @@ pub struct GoogleClient {
 }
 
 impl GoogleClient {
-    /// Try to build a GoogleClient from environment variables.
-    /// Returns None if LANDING_URL is not set or auth_token is empty.
-    pub fn from_env(auth_token: &str) -> Option<Self> {
-        let landing_url = std::env::var("LANDING_URL").ok()?;
+    /// Build a GoogleClient. Returns None if landing_url or auth_token is empty.
+    pub fn new(landing_url: &str, auth_token: &str) -> Option<Self> {
         if landing_url.is_empty() || auth_token.is_empty() {
             return None;
         }
+        let landing_url = landing_url.to_string();
         Some(Self {
             landing_url,
             auth_token: auth_token.to_string(),

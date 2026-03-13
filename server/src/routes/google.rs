@@ -31,7 +31,7 @@ async fn list_google_accounts(
     Path(slug): Path<String>,
 ) -> impl IntoResponse {
     let config = state.config.read().await;
-    let google = GoogleClient::from_env(&config.auth_token);
+    let google = GoogleClient::new(&config.landing_url, &config.auth_token);
 
     let Some(google) = google else {
         return Json(serde_json::json!({ "accounts": [] })).into_response();
@@ -61,16 +61,14 @@ async fn google_connect_url(
     let config = state.config.read().await;
     let auth_token = &config.auth_token;
 
-    let landing_url = match std::env::var("LANDING_URL") {
-        Ok(url) if !url.is_empty() => url,
-        _ => {
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(serde_json::json!({ "error": "LANDING_URL not configured" })),
-            )
-                .into_response()
-        }
-    };
+    let landing_url = &config.landing_url;
+    if landing_url.is_empty() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({ "error": "landing_url not configured in config.toml" })),
+        )
+            .into_response();
+    }
 
     // Build the redirect URL back to the client settings page
     let host = headers.get("host")
@@ -98,19 +96,18 @@ async fn disconnect_google_account(
     State(state): State<AppState>,
     Path((slug, email)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let config = state.config.read().await;
-    let auth_token = config.auth_token.clone();
-
-    let landing_url = match std::env::var("LANDING_URL") {
-        Ok(url) if !url.is_empty() => url,
-        _ => {
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(serde_json::json!({ "error": "LANDING_URL not configured" })),
-            )
-                .into_response()
-        }
+    let (auth_token, landing_url) = {
+        let config = state.config.read().await;
+        (config.auth_token.clone(), config.landing_url.clone())
     };
+
+    if landing_url.is_empty() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({ "error": "landing_url not configured in config.toml" })),
+        )
+            .into_response();
+    }
 
     // Call the landing disconnect endpoint
     let client = reqwest::Client::new();

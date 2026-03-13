@@ -153,8 +153,14 @@ pub async fn run_single_turn(
     let mood_prompt = load_mood_prompt(workspace_dir, &instance_slug);
     let rhythm_prompt = load_rhythm_prompt(workspace_dir, &instance_slug);
 
-    let auth_token = std::env::var("BOLLY_AUTH_TOKEN").unwrap_or_default();
-    let google = crate::services::google::GoogleClient::from_env(&auth_token);
+    let chat_config = crate::config::load_config().ok();
+    let auth_token = std::env::var("BOLLY_AUTH_TOKEN")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| chat_config.as_ref().map(|c| c.auth_token.clone()))
+        .unwrap_or_default();
+    let landing_url = chat_config.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
+    let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
 
     // Build system prompt with STABLE content first (for Anthropic prompt caching).
     // Anthropic caches the longest matching prefix, so put rarely-changing

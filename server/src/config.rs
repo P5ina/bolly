@@ -16,6 +16,8 @@ pub struct Config {
     #[serde(default)]
     pub static_dir: String,
     #[serde(default)]
+    pub landing_url: String,
+    #[serde(default)]
     pub llm: LlmConfig,
     #[serde(default = "default_registry_url")]
     pub registry_url: String,
@@ -73,6 +75,7 @@ impl Default for Config {
             port: 8080,
             auth_token: String::new(),
             static_dir: String::new(),
+            landing_url: String::new(),
             llm: LlmConfig::default(),
             registry_url: default_registry_url(),
             plan: String::new(),
@@ -147,6 +150,12 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     if let Ok(token) = env::var("BOLLY_AUTH_TOKEN") {
         if !token.is_empty() {
             config.auth_token = token;
+        }
+    }
+
+    if let Ok(url) = env::var("LANDING_URL") {
+        if !url.is_empty() {
+            config.landing_url = url;
         }
     }
 
