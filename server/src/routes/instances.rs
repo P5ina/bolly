@@ -12,6 +12,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/companion-name", get(get_companion_name))
         .route("/api/instances/{instance_slug}/companion-name", put(set_companion_name))
         .route("/api/instances/{instance_slug}/secret", post(submit_secret))
+        .route("/api/instances/{instance_slug}/secret/{secret_id}", delete(cancel_secret))
         .route("/api/instances/{instance_slug}/context-stats", get(get_context_stats))
         .route("/api/instances/{instance_slug}/{chat_id}/context-stats", get(get_context_stats_chat))
 }
@@ -134,6 +135,21 @@ async fn submit_secret(
     match secrets.remove(&req.id) {
         Some(pending) => {
             let _ = pending.responder.send(req.value);
+            StatusCode::OK
+        }
+        None => StatusCode::NOT_FOUND,
+    }
+}
+
+async fn cancel_secret(
+    State(state): State<AppState>,
+    Path((_instance_slug, secret_id)): Path<(String, String)>,
+) -> StatusCode {
+    let mut secrets = state.pending_secrets.lock().await;
+    match secrets.remove(&secret_id) {
+        Some(_pending) => {
+            // Dropping the PendingSecret drops the oneshot Sender,
+            // which causes the tool's rx.await to return Err → "cancelled"
             StatusCode::OK
         }
         None => StatusCode::NOT_FOUND,

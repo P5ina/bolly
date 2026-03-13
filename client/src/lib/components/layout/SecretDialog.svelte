@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { submitSecret } from "$lib/api/client.js";
+	import { submitSecret, cancelSecret } from "$lib/api/client.js";
 
 	interface Props {
 		instanceSlug: string;
@@ -29,8 +29,13 @@
 		}
 	}
 
+	function handleCancel() {
+		cancelSecret(instanceSlug, requestId).catch(() => {});
+		onclose();
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === "Escape") onclose();
+		if (e.key === "Escape") handleCancel();
 	}
 </script>
 
@@ -38,7 +43,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="overlay" onclick={onclose}>
+<div class="overlay" onclick={handleCancel}>
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="dialog" onclick={(e) => e.stopPropagation()}>
@@ -65,7 +70,7 @@
 				<p class="error">{error}</p>
 			{/if}
 			<div class="actions">
-				<button type="button" class="btn-cancel" onclick={onclose} disabled={submitting}>
+				<button type="button" class="btn-cancel" onclick={handleCancel} disabled={submitting}>
 					cancel
 				</button>
 				<button type="submit" class="btn-submit" disabled={submitting || !value.trim()}>

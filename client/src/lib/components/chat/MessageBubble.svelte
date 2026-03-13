@@ -371,6 +371,7 @@
 	}
 
 	.msg-time {
+		display: block;
 		font-size: 0.5625rem;
 		color: oklch(0.78 0.12 75 / 12%);
 		margin-top: 0.125rem;

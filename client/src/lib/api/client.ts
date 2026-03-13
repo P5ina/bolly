@@ -310,6 +310,12 @@ export async function submitSecret(slug: string, id: string, value: string): Pro
 	});
 }
 
+export async function cancelSecret(slug: string, id: string): Promise<void> {
+	await authedFetch(`/api/instances/${encodeURIComponent(slug)}/secret/${encodeURIComponent(id)}`, {
+		method: "DELETE",
+	});
+}
+
 export function createWebSocket(): WebSocket {
 	const proto = location.protocol === "https:" ? "wss:" : "ws:";
 	const token = getAuthToken();
