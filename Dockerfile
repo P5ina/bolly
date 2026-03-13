@@ -45,7 +45,6 @@ RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
 
 # Install system packages, fonts, Playwright Chromium in one apt session
 RUN apt-get update && \
-    echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | debconf-set-selections && \
     apt-get install -y --no-install-recommends \
       ca-certificates curl sudo \
       python3 python3-pip python3-venv \
@@ -54,8 +53,7 @@ RUN apt-get update && \
       fonts-liberation fonts-dejavu-core fonts-noto-core fonts-noto-cjk \
       fonts-noto-color-emoji fonts-noto-mono \
       fonts-firacode fonts-open-sans fonts-roboto fonts-lato \
-      fonts-inter fonts-font-awesome \
-      ttf-mscorefonts-installer && \
+      fonts-inter fonts-font-awesome && \
     fc-cache -f && \
     npx playwright@1.52.0 install --with-deps chromium && \
     curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb && \
