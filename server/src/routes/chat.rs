@@ -152,9 +152,9 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         iteration += 1;
 
         let config_path = config::config_path();
-        let brave_key = {
+        let (brave_key, plan) = {
             let cfg = state.config.read().await;
-            cfg.llm.tokens.brave_search.clone()
+            (cfg.llm.tokens.brave_search.clone(), cfg.plan.clone())
         };
 
         let llm_guard = state.llm.read().await;
@@ -187,6 +187,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             tool_store.as_ref().map(|s| s.to_index()),
             prev_rig_history.take(),
             state.pending_secrets.clone(),
+            &plan,
         );
 
         let result = tokio::select! {

@@ -458,16 +458,18 @@ pub fn build_optional_tools(
     events: broadcast::Sender<ServerEvent>,
     llm: &crate::services::llm::LlmBackend,
     pending_secrets: Option<Arc<tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>>>,
+    plan: &str,
 ) -> Vec<Box<dyn ToolDyn>> {
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
         Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), chat_id.to_string()))
     };
 
+    let browser_enabled = matches!(plan, "companion" | "unlimited");
+
     let mut tools: Vec<Box<dyn ToolDyn>> = vec![
         // Web
         wrap(Box::new(WebSearchTool::new(brave_api_key, config_path))),
         wrap(Box::new(WebFetchTool)),
-        wrap(Box::new(BrowseTool::new(workspace_dir, instance_slug))),
         // Email
         wrap(Box::new(SendEmailTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(ReadEmailTool::new(workspace_dir, instance_slug))),
@@ -491,6 +493,11 @@ pub fn build_optional_tools(
         wrap(Box::new(ReadJournalTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(GetMoodTool::new(workspace_dir, instance_slug))),
     ];
+
+    // Browser tool only available on companion+ plans (needs more RAM for Playwright/Chromium)
+    if browser_enabled {
+        tools.push(wrap(Box::new(BrowseTool::new(workspace_dir, instance_slug))));
+    }
 
     // Secret tool only available when pending_secrets is provided (interactive chat, not heartbeat)
     if let Some(ps) = pending_secrets {

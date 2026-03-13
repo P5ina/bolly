@@ -38,7 +38,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub async fn new(config: Config) -> Self {
+    pub async fn new(mut config: Config) -> Self {
         let (events, _) = broadcast::channel(256);
         let llm = LlmBackend::from_config(&config);
         let embedding_model = build_embedding_model(&config);
@@ -54,6 +54,22 @@ impl AppState {
             }
             _ => (None, None),
         };
+
+        // Fetch plan from landing DB if we have a pool + instance ID
+        if let (Some(pool), Some(id)) = (&pg_pool, &instance_id) {
+            match sqlx::query_scalar::<_, String>("SELECT plan FROM tenants WHERE id = $1")
+                .bind(id)
+                .fetch_optional(pool)
+                .await
+            {
+                Ok(Some(plan)) => {
+                    log::info!("fetched plan from DB: {plan}");
+                    config.plan = plan;
+                }
+                Ok(None) => log::warn!("instance {id} not found in tenants table"),
+                Err(e) => log::warn!("failed to fetch plan from DB: {e}"),
+            }
+        }
 
         Self {
             config: Arc::new(RwLock::new(config)),

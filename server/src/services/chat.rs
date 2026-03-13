@@ -118,6 +118,7 @@ pub async fn run_single_turn(
     tool_index: Option<tools::ToolIndex>,
     prev_history: Option<Vec<rig::completion::Message>>,
     pending_secrets: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>>,
+    plan: &str,
 ) -> io::Result<SingleTurnResult> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
@@ -170,11 +171,23 @@ pub async fn run_single_turn(
     }
 
     // Dynamic tool hint — tools are automatically selected via RAG
-    system_prompt.push_str(
-        "\n\n## tools\nyou have built-in tools for web browsing, email, code search, \
-         project management, creative drops, and more. use them directly when needed — \
-         they are automatically available based on the conversation."
-    );
+    let browser_available = matches!(plan, "companion" | "unlimited");
+    if browser_available {
+        system_prompt.push_str(
+            "\n\n## tools\nyou have built-in tools for web browsing, email, code search, \
+             project management, creative drops, and more. use them directly when needed — \
+             they are automatically available based on the conversation."
+        );
+    } else {
+        system_prompt.push_str(
+            "\n\n## tools\nyou have built-in tools for email, code search, \
+             project management, creative drops, and more. use them directly when needed — \
+             they are automatically available based on the conversation.\n\n\
+             note: browser-based features (headless browsing, screenshots, slidev export) \
+             require the Companion plan or higher. if the user asks for these, \
+             let them know they can upgrade their plan to unlock browser capabilities."
+        );
+    }
 
     let autonomy_prompt = load_autonomy_prompt(workspace_dir, &instance_slug);
     system_prompt = format!("{system_prompt}\n\n{autonomy_prompt}");
@@ -278,6 +291,7 @@ pub async fn run_single_turn(
         workspace_dir, &instance_slug, &chat_id, brave_api_key,
         config_path, events.clone(), llm,
         Some(pending_secrets),
+        plan,
     );
 
     let dynamic_tools = if let Some(idx) = tool_index {

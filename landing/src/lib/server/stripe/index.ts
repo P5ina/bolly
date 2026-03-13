@@ -29,7 +29,7 @@ export const PLANS = {
 		priceMonthly: 1200,
 		storageLimit: 20480, // MB (20 GB)
 		cpus: 2,
-		memoryMb: 2048,
+		memoryMb: 4096,
 		maxInstances: 3,
 		messagesPerDay: 500,
 		tokensPerMonth: 3_000_000,

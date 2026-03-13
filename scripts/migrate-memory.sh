@@ -41,7 +41,7 @@ plan_cpus() {
 plan_memory() {
   case "$1" in
     starter)   echo 2048 ;;
-    companion) echo 2048 ;;
+    companion) echo 4096 ;;
     unlimited) echo 4096 ;;
     *)         echo 2048 ;;
   esac

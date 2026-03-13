@@ -19,6 +19,8 @@ pub struct Config {
     pub llm: LlmConfig,
     #[serde(default = "default_registry_url")]
     pub registry_url: String,
+    #[serde(default)]
+    pub plan: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -133,6 +135,7 @@ impl Default for Config {
             static_dir: String::new(),
             llm: LlmConfig::default(),
             registry_url: default_registry_url(),
+            plan: String::new(),
         }
     }
 }
