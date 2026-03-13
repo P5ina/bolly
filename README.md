@@ -71,20 +71,31 @@ The dev server proxies API requests to `localhost:8080`.
 - No tool calls needed — your companion sees attachments immediately in the conversation
 
 ### Acts
-- **26 tools** with full system access:
+- **28+ tools** with full system access:
 
 | Category | Tools |
 |----------|-------|
-| Filesystem | `read_file`, `write_file`, `list_files`, `search_code` |
-| Shell | `run_command` |
-| System | `install_package` (auto-detects apt/dnf/brew/pacman/apk) |
+| Filesystem | `read_file`, `write_file`, `edit_file`, `list_files`, `search_code`, `explore_code` |
+| Shell | `run_command`, `interactive_session` (responds to prompts) |
+| System | `install_package` (auto-detects apt/dnf/brew/pacman/apk), `update_config` |
+| Web | `web_search`, `web_fetch`, `browse` (headless Chromium, companion+ plans) |
 | Email | `send_email` (SMTP), `read_email` (IMAP) |
 | Memory | `remember`, `recall` |
 | Self | `edit_soul`, `set_mood`, `get_mood`, `journal`, `read_journal` |
 | Creative | `create_drop` |
 | Project | `get_project_state`, `update_project_state`, `create_task`, `update_task`, `list_tasks` |
-| Chat | `clear_context`, `schedule_message` |
-| Other | `web_search`, `current_time`, `update_config` |
+| Chat | `clear_context`, `schedule_message`, `send_file` |
+| Skills | `list_skills`, `activate_skill`, `read_skill_reference` |
+| Security | `request_secret` (masked input for passwords/API keys) |
+
+### Learns new skills
+- **Skills system** — install, enable, and manage skills that extend your companion's capabilities
+- **Skills marketplace** — browse and install from a [public registry](https://github.com/triangle-int/bolly-skills) with search
+- Skills are markdown-based instruction sets with optional bundled resources (reference docs, scripts, assets)
+- Your companion reads skill references before acting — no guessing
+- Publish your own skills by opening a PR to the registry
+- Each skill lives in `instances/{slug}/skills/{skill_id}/` with a `SKILL.md` file
+- Built-in `skill_creator` skill lets your companion write new skills for itself
 
 ### Thinks autonomously
 - **Heartbeat** — wakes every 45 minutes to reflect, journal, update mood, and create drops
@@ -166,12 +177,16 @@ Everything is a file. No black boxes.
 │       ├── journal/             daily reflections (YYYY-MM-DD.md)
 │       ├── drops/               creative artifacts (JSON)
 │       ├── uploads/             user-uploaded files + metadata
+│       ├── skills/
+│       │   └── {skill_id}/
+│       │       ├── SKILL.md        skill definition (YAML frontmatter + instructions)
+│       │       ├── .source.json    registry install tracking
+│       │       └── references/     bundled reference docs
 │       └── chats/
 │           └── {chat_id}/
 │               ├── messages.json
 │               ├── meta.json
 │               └── compact.md   compressed older context
-└── skills/
 ```
 
 ### Stack
@@ -194,6 +209,7 @@ WebSocket at `/api/ws` broadcasts:
 - `mood_updated` — mood change
 - `agent_running` / `agent_stopped` — thinking state
 - `tool_activity` — tool execution with summary
+- `tool_output_chunk` — real-time streaming CLI output
 - `drop_created` — new autonomous drop
 - `instance_discovered` — new companion found
 
@@ -271,9 +287,11 @@ All endpoints require `Authorization: Bearer {token}` when `auth_token` is confi
 - [x] Mood system with visual feedback
 - [x] Heartbeat — autonomous reflection and journaling
 - [x] Customizable heartbeat prompt (heartbeat.md)
-- [x] 26 LLM tools (filesystem, shell, memory, project management)
+- [x] 28+ LLM tools (filesystem, shell, web, memory, project management)
 - [x] Multi-chat support per instance
-- [x] Streaming activity UI (real-time tool visibility)
+- [x] Streaming activity UI (real-time tool visibility + collapsible output)
+- [x] Real-time CLI output streaming via WebSocket
+- [x] Interactive command support (responds to prompts like `y/n`, password inputs)
 - [x] Drops engine (autonomous creative output)
 - [x] Email tools (SMTP send, IMAP read)
 - [x] System package installation
@@ -283,10 +301,14 @@ All endpoints require `Authorization: Bearer {token}` when `auth_token` is confi
 - [x] Docker deployment (multi-arch)
 - [x] Static file serving from Axum
 - [x] Version + commit hash display
+- [x] Skills system (install, manage, create skills with bundled resources)
+- [x] Headless browser tool (Playwright/Chromium, companion+ plans)
+- [x] Plan-based feature gating (browser tools require companion+)
+- [x] Secure secret collection (masked input, never exposed in chat)
 - [ ] PWA + push notifications
 - [ ] Tamagotchi polish (richer mood-driven visuals)
 - [ ] Skins system (.glb custom models)
-- [ ] Skills marketplace (OpenClaw compatible)
+- [x] Skills marketplace (browsable registry with search, GitHub-hosted)
 
 ---
 
