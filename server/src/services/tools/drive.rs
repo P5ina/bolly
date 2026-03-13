@@ -11,11 +11,15 @@ use crate::services::google::GoogleClient;
 
 pub struct ListDriveFilesTool {
     google: GoogleClient,
+    instance_slug: String,
 }
 
 impl ListDriveFilesTool {
-    pub fn new(google: GoogleClient) -> Self {
-        Self { google }
+    pub fn new(google: GoogleClient, instance_slug: &str) -> Self {
+        Self {
+            google,
+            instance_slug: instance_slug.to_string(),
+        }
     }
 }
 
@@ -28,6 +32,8 @@ pub struct ListDriveFilesArgs {
     /// Number of files to return (default 10, max 50).
     #[serde(default = "default_file_count")]
     pub count: u32,
+    /// Email address of the Google account to use. Leave empty to use default.
+    pub account: Option<String>,
 }
 
 fn default_file_count() -> u32 {
@@ -44,14 +50,16 @@ impl Tool for ListDriveFilesTool {
         ToolDefinition {
             name: "list_drive_files".into(),
             description: "List files in Google Drive. Supports search queries and folder filtering. \
-                Returns file name, ID, type, and last modified date."
+                Returns file name, ID, type, and last modified date. \
+                If multiple Google accounts are connected, use the 'account' parameter \
+                to specify which Drive to search."
                 .into(),
             parameters: openai_schema::<ListDriveFilesArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let (token, _) = self.google.access_token().await
+        let (token, _) = self.google.access_token(&self.instance_slug, args.account.as_deref()).await
             .map_err(|e| ToolExecError(e))?;
 
         let count = args.count.min(50).max(1);
@@ -119,11 +127,15 @@ impl Tool for ListDriveFilesTool {
 
 pub struct ReadDriveFileTool {
     google: GoogleClient,
+    instance_slug: String,
 }
 
 impl ReadDriveFileTool {
-    pub fn new(google: GoogleClient) -> Self {
-        Self { google }
+    pub fn new(google: GoogleClient, instance_slug: &str) -> Self {
+        Self {
+            google,
+            instance_slug: instance_slug.to_string(),
+        }
     }
 }
 
@@ -131,6 +143,8 @@ impl ReadDriveFileTool {
 pub struct ReadDriveFileArgs {
     /// The file ID from Google Drive (from list_drive_files output).
     pub file_id: String,
+    /// Email address of the Google account to use. Leave empty to use default.
+    pub account: Option<String>,
 }
 
 impl Tool for ReadDriveFileTool {
@@ -144,14 +158,16 @@ impl Tool for ReadDriveFileTool {
             name: "read_drive_file".into(),
             description: "Read the contents of a Google Drive file. For Google Docs, returns \
                 plain text. For Google Sheets, returns CSV. For other files, returns raw content \
-                (text only — binary files will be truncated)."
+                (text only — binary files will be truncated). \
+                If multiple Google accounts are connected, use the 'account' parameter \
+                to specify which Drive to read from."
                 .into(),
             parameters: openai_schema::<ReadDriveFileArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let (token, _) = self.google.access_token().await
+        let (token, _) = self.google.access_token(&self.instance_slug, args.account.as_deref()).await
             .map_err(|e| ToolExecError(e))?;
 
         let client = reqwest::Client::new();
@@ -237,11 +253,15 @@ impl Tool for ReadDriveFileTool {
 
 pub struct UploadDriveFileTool {
     google: GoogleClient,
+    instance_slug: String,
 }
 
 impl UploadDriveFileTool {
-    pub fn new(google: GoogleClient) -> Self {
-        Self { google }
+    pub fn new(google: GoogleClient, instance_slug: &str) -> Self {
+        Self {
+            google,
+            instance_slug: instance_slug.to_string(),
+        }
     }
 }
 
@@ -255,6 +275,8 @@ pub struct UploadDriveFileArgs {
     pub mime_type: Option<String>,
     /// Folder ID to upload into. Optional.
     pub folder_id: Option<String>,
+    /// Email address of the Google account to use. Leave empty to use default.
+    pub account: Option<String>,
 }
 
 impl Tool for UploadDriveFileTool {
@@ -267,14 +289,16 @@ impl Tool for UploadDriveFileTool {
         ToolDefinition {
             name: "upload_drive_file".into(),
             description: "Upload a text file to Google Drive. Specify a name, content, \
-                and optionally a MIME type and folder ID."
+                and optionally a MIME type and folder ID. \
+                If multiple Google accounts are connected, use the 'account' parameter \
+                to specify which Drive to upload to."
                 .into(),
             parameters: openai_schema::<UploadDriveFileArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let (token, _) = self.google.access_token().await
+        let (token, _) = self.google.access_token(&self.instance_slug, args.account.as_deref()).await
             .map_err(|e| ToolExecError(e))?;
 
         let mime = args.mime_type.as_deref().unwrap_or("text/plain");

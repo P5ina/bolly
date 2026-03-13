@@ -20,6 +20,7 @@ pub fn build_router(state: AppState, static_dir: Option<PathBuf>) -> Router {
         .merge(routes::uploads::router())
         .merge(routes::skills::router())
         .merge(routes::usage::router())
+        .merge(routes::google::router())
         .merge(routes::ws::router())
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 

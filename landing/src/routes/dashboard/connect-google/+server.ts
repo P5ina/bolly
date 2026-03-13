@@ -1,18 +1,47 @@
-import { redirect } from '@sveltejs/kit';
+import { redirect, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { getGoogleAuthUrl } from '$lib/server/google.js';
 import { generateId } from '$lib/server/auth/index.js';
+import { db } from '$lib/server/db/index.js';
+import { tenants } from '$lib/server/db/schema.js';
+import { eq } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
 
-export const GET: RequestHandler = async ({ locals, cookies, url }) => {
-	if (!locals.user) redirect(302, '/login');
+/**
+ * GET /dashboard/connect-google?token={tenantAuthToken}&instance={slug}&redirect={clientUrl}
+ * Initiates Google OAuth flow. Auth via tenant token (no login required).
+ */
+export const GET: RequestHandler = async ({ url, cookies }) => {
+	const token = url.searchParams.get('token');
+	const instance = url.searchParams.get('instance') ?? 'default';
+	const clientRedirect = url.searchParams.get('redirect') ?? '/dashboard';
+
+	if (!token) {
+		throw error(400, 'Missing token parameter');
+	}
+
+	// Validate tenant auth token
+	const tenant = await db()
+		.select()
+		.from(tenants)
+		.where(eq(tenants.authToken, token))
+		.limit(1);
+
+	if (tenant.length === 0) {
+		throw error(401, 'Invalid auth token');
+	}
 
 	const origin = env.ORIGIN ?? url.origin;
 	const redirectUri = `${origin}/auth/google/callback`;
-	const state = generateId(32);
+	const nonce = generateId(32);
 
-	// Encode userId in state so callback can associate the tokens
-	const statePayload = JSON.stringify({ userId: locals.user.id, nonce: state });
+	// Encode tenant info in state so callback can associate the tokens
+	const statePayload = JSON.stringify({
+		tenantId: tenant[0].id,
+		instanceSlug: instance,
+		redirect: clientRedirect,
+		nonce,
+	});
 	const stateEncoded = Buffer.from(statePayload).toString('base64url');
 
 	cookies.set('google_oauth_state', stateEncoded, {

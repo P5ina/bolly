@@ -4,7 +4,7 @@ import { exchangeCode, getGoogleUserInfo } from '$lib/server/google.js';
 import { generateId } from '$lib/server/auth/index.js';
 import { db } from '$lib/server/db/index.js';
 import { googleAccounts } from '$lib/server/db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
 
 export const GET: RequestHandler = async ({ url, cookies }) => {
@@ -18,12 +18,16 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 
 	cookies.delete('google_oauth_state', { path: '/' });
 
-	// Decode state to get userId
-	let userId: string;
+	// Decode state to get tenantId, instanceSlug, redirect
+	let tenantId: string;
+	let instanceSlug: string;
+	let redirectUrl: string;
 	try {
 		const payload = JSON.parse(Buffer.from(stateParam, 'base64url').toString());
-		userId = payload.userId;
-		if (!userId) throw new Error('missing userId');
+		tenantId = payload.tenantId;
+		instanceSlug = payload.instanceSlug ?? 'default';
+		redirectUrl = payload.redirect ?? '/dashboard';
+		if (!tenantId) throw new Error('missing tenantId');
 	} catch {
 		throw error(400, 'Invalid state payload');
 	}
@@ -36,11 +40,21 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 
 	const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
-	// Upsert: delete existing Google account for this user, then insert
-	await db().delete(googleAccounts).where(eq(googleAccounts.userId, userId));
+	// Upsert: delete existing row for this (tenantId, instanceSlug, email), then insert
+	await db()
+		.delete(googleAccounts)
+		.where(
+			and(
+				eq(googleAccounts.tenantId, tenantId),
+				eq(googleAccounts.instanceSlug, instanceSlug),
+				eq(googleAccounts.email, userInfo.email),
+			)
+		);
+
 	await db().insert(googleAccounts).values({
 		id: generateId(),
-		userId,
+		tenantId,
+		instanceSlug,
 		email: userInfo.email,
 		accessToken: tokens.access_token,
 		refreshToken: tokens.refresh_token,
@@ -48,5 +62,5 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 		scopes: tokens.scope,
 	});
 
-	redirect(302, '/dashboard');
+	redirect(302, redirectUrl);
 };

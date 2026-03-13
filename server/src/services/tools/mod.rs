@@ -376,15 +376,16 @@ pub fn build_tools(
         wrap(Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug))),
     ];
 
-    // Google tools (Gmail, Calendar, Drive) — only if Google account is connected
+    // Google tools (Gmail, Calendar, Drive) — always registered.
+    // Tools return helpful error if no accounts connected.
     if let Some(g) = google {
-        tools.push(wrap(Box::new(SendEmailTool::new(g.clone()))));
-        tools.push(wrap(Box::new(ReadEmailTool::new(g.clone()))));
-        tools.push(wrap(Box::new(ListEventsTool::new(g.clone()))));
-        tools.push(wrap(Box::new(CreateEventTool::new(g.clone()))));
-        tools.push(wrap(Box::new(ListDriveFilesTool::new(g.clone()))));
-        tools.push(wrap(Box::new(ReadDriveFileTool::new(g.clone()))));
-        tools.push(wrap(Box::new(UploadDriveFileTool::new(g))));
+        tools.push(wrap(Box::new(SendEmailTool::new(g.clone(), instance_slug))));
+        tools.push(wrap(Box::new(ReadEmailTool::new(g.clone(), instance_slug))));
+        tools.push(wrap(Box::new(ListEventsTool::new(g.clone(), instance_slug))));
+        tools.push(wrap(Box::new(CreateEventTool::new(g.clone(), instance_slug))));
+        tools.push(wrap(Box::new(ListDriveFilesTool::new(g.clone(), instance_slug))));
+        tools.push(wrap(Box::new(ReadDriveFileTool::new(g.clone(), instance_slug))));
+        tools.push(wrap(Box::new(UploadDriveFileTool::new(g, instance_slug))));
     }
 
     // Browser tool only available on companion+ plans (needs more RAM for Playwright/Chromium)

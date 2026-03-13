@@ -223,11 +223,15 @@ impl Tool for ReachOutTool {
 
 pub struct SendEmailTool {
     google: GoogleClient,
+    instance_slug: String,
 }
 
 impl SendEmailTool {
-    pub fn new(google: GoogleClient) -> Self {
-        Self { google }
+    pub fn new(google: GoogleClient, instance_slug: &str) -> Self {
+        Self {
+            google,
+            instance_slug: instance_slug.to_string(),
+        }
     }
 }
 
@@ -243,6 +247,8 @@ pub struct SendEmailArgs {
     pub cc: Option<String>,
     /// BCC recipients (comma-separated). Optional.
     pub bcc: Option<String>,
+    /// Email address of the Google account to use. Leave empty to use default.
+    pub account: Option<String>,
 }
 
 impl Tool for SendEmailTool {
@@ -256,14 +262,16 @@ impl Tool for SendEmailTool {
             name: "send_email".into(),
             description: "Send an email via Gmail. Uses the connected Google account. \
                 Use this to communicate with people outside the chat — send updates, \
-                share ideas, follow up on conversations."
+                share ideas, follow up on conversations. \
+                If multiple Google accounts are connected, use the 'account' parameter \
+                to specify which one to send from."
                 .into(),
             parameters: openai_schema::<SendEmailArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let (token, email) = self.google.access_token().await
+        let (token, email) = self.google.access_token(&self.instance_slug, args.account.as_deref()).await
             .map_err(|e| ToolExecError(e))?;
 
         // Build RFC 2822 message
@@ -307,11 +315,15 @@ impl Tool for SendEmailTool {
 
 pub struct ReadEmailTool {
     google: GoogleClient,
+    instance_slug: String,
 }
 
 impl ReadEmailTool {
-    pub fn new(google: GoogleClient) -> Self {
-        Self { google }
+    pub fn new(google: GoogleClient, instance_slug: &str) -> Self {
+        Self {
+            google,
+            instance_slug: instance_slug.to_string(),
+        }
     }
 }
 
@@ -324,6 +336,8 @@ pub struct ReadEmailArgs {
     pub query: Option<String>,
     /// Gmail label to filter by (e.g. "INBOX", "SENT", "STARRED"). Optional, defaults to INBOX.
     pub label: Option<String>,
+    /// Email address of the Google account to use. Leave empty to use default.
+    pub account: Option<String>,
 }
 
 fn default_email_count() -> u32 {
@@ -341,14 +355,16 @@ impl Tool for ReadEmailTool {
             name: "read_email".into(),
             description:
                 "Read recent emails via Gmail. Returns subject, from, date, and snippet \
-                for the most recent messages. Supports Gmail search queries."
+                for the most recent messages. Supports Gmail search queries. \
+                If multiple Google accounts are connected, use the 'account' parameter \
+                to specify which inbox to read."
                     .into(),
             parameters: openai_schema::<ReadEmailArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let (token, _email) = self.google.access_token().await
+        let (token, _email) = self.google.access_token(&self.instance_slug, args.account.as_deref()).await
             .map_err(|e| ToolExecError(e))?;
 
         let count = args.count.min(20).max(1);

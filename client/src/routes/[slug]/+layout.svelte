@@ -14,7 +14,7 @@
 	);
 	const checking = $derived(instances.loading);
 
-	const tabs = ["chat", "drops", "thoughts", "skills"] as const;
+	const tabs = ["chat", "drops", "thoughts", "skills", "settings"] as const;
 	const activeTab = $derived(
 		tabs.find((t) => page.url.pathname.includes(`/${slug}/${t}`)) ?? "chat"
 	);

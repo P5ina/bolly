@@ -316,6 +316,37 @@ export async function cancelSecret(slug: string, id: string): Promise<void> {
 	});
 }
 
+// ---------------------------------------------------------------------------
+// Google Accounts
+// ---------------------------------------------------------------------------
+
+export async function fetchGoogleAccounts(slug: string): Promise<{ email: string }[]> {
+	const data = await json<{ accounts: { email: string }[] }>(
+		`/api/instances/${encodeURIComponent(slug)}/google/accounts`,
+	);
+	return data.accounts;
+}
+
+export async function getGoogleConnectUrl(slug: string): Promise<string> {
+	const data = await json<{ url: string }>(
+		`/api/instances/${encodeURIComponent(slug)}/google/connect`,
+	);
+	return data.url;
+}
+
+export async function disconnectGoogleAccount(slug: string, email: string): Promise<void> {
+	const res = await authedFetch(
+		`/api/instances/${encodeURIComponent(slug)}/google/accounts/${encodeURIComponent(email)}`,
+		{ method: "DELETE" },
+	);
+	if (res.status === 401) throw new AuthError();
+	if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket
+// ---------------------------------------------------------------------------
+
 export function createWebSocket(): WebSocket {
 	const proto = location.protocol === "https:" ? "wss:" : "ws:";
 	const token = getAuthToken();

@@ -169,7 +169,15 @@ pub async fn run_single_turn(
 
     // Dynamic tool hint
     let browser_available = matches!(plan, "companion" | "unlimited");
-    let google_connected = google.is_some();
+
+    // Check connected Google accounts for this instance
+    let google_accounts = if let Some(ref g) = google {
+        g.accounts(&instance_slug).await.unwrap_or_default()
+    } else {
+        vec![]
+    };
+    let google_connected = !google_accounts.is_empty();
+
     let google_hint = if google_connected {
         " gmail, google calendar, google drive,"
     } else {
@@ -193,14 +201,22 @@ pub async fn run_single_turn(
     }
 
     if google_connected {
-        system_prompt.push_str(
+        let account_list: String = google_accounts.iter()
+            .map(|a| format!("- {}", a.email))
+            .collect::<Vec<_>>()
+            .join("\n");
+        system_prompt.push_str(&format!(
             "\n\n## google integration\n\
-             you have Google connected. you can:\n\
+             connected google accounts:\n\
+             {account_list}\n\
+             use the `account` parameter on google tools to pick which account.\n\
+             if not specified, the first account is used.\n\
+             available tools:\n\
              - send_email / read_email: send and read Gmail messages\n\
              - list_events / create_event: view and create Google Calendar events\n\
              - list_drive_files / read_drive_file / upload_drive_file: browse, read, and upload Google Drive files\n\
              use these tools directly when the user asks about email, calendar, or files."
-        );
+        ));
     } else {
         system_prompt.push_str(
             "\n\n## google integration\n\
@@ -208,7 +224,7 @@ pub async fn run_single_turn(
              NEVER pretend to read email or access google services.\n\
              NEVER fabricate email contents, calendar events, or file listings.\n\
              if the user asks about email, calendar, or drive, tell them to connect \
-             their google account from the dashboard first."
+             their google account from the settings page first."
         );
     }
 

@@ -572,10 +572,11 @@ fn build_heartbeat_tools(
         Box::new(WebFetchTool),
     ];
 
-    // Google tools (email, calendar) — only if connected
+    // Google tools (email, calendar) — always registered if client available.
+    // Tools return helpful error if no accounts connected.
     if let Some(g) = google {
-        raw_tools.push(Box::new(tools::ReadEmailTool::new(g.clone())));
-        raw_tools.push(Box::new(tools::ListEventsTool::new(g)));
+        raw_tools.push(Box::new(tools::ReadEmailTool::new(g.clone(), instance_slug)));
+        raw_tools.push(Box::new(tools::ListEventsTool::new(g, instance_slug)));
     }
 
     // Don't wrap in ObservableTool — heartbeat tool activity is private,

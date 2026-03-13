@@ -11,11 +11,15 @@ use crate::services::google::GoogleClient;
 
 pub struct ListEventsTool {
     google: GoogleClient,
+    instance_slug: String,
 }
 
 impl ListEventsTool {
-    pub fn new(google: GoogleClient) -> Self {
-        Self { google }
+    pub fn new(google: GoogleClient, instance_slug: &str) -> Self {
+        Self {
+            google,
+            instance_slug: instance_slug.to_string(),
+        }
     }
 }
 
@@ -26,6 +30,8 @@ pub struct ListEventsArgs {
     pub days_ahead: u32,
     /// Free-text search query to filter events. Optional.
     pub query: Option<String>,
+    /// Email address of the Google account to use. Leave empty to use default.
+    pub account: Option<String>,
 }
 
 fn default_days() -> u32 {
@@ -42,14 +48,16 @@ impl Tool for ListEventsTool {
         ToolDefinition {
             name: "list_events".into(),
             description: "List upcoming Google Calendar events. Returns event title, time, \
-                location, and attendees for the next N days."
+                location, and attendees for the next N days. \
+                If multiple Google accounts are connected, use the 'account' parameter \
+                to specify which calendar to check."
                 .into(),
             parameters: openai_schema::<ListEventsArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let (token, _) = self.google.access_token().await
+        let (token, _) = self.google.access_token(&self.instance_slug, args.account.as_deref()).await
             .map_err(|e| ToolExecError(e))?;
 
         let days = args.days_ahead.min(30).max(1);
@@ -138,11 +146,15 @@ impl Tool for ListEventsTool {
 
 pub struct CreateEventTool {
     google: GoogleClient,
+    instance_slug: String,
 }
 
 impl CreateEventTool {
-    pub fn new(google: GoogleClient) -> Self {
-        Self { google }
+    pub fn new(google: GoogleClient, instance_slug: &str) -> Self {
+        Self {
+            google,
+            instance_slug: instance_slug.to_string(),
+        }
     }
 }
 
@@ -160,6 +172,8 @@ pub struct CreateEventArgs {
     pub location: Option<String>,
     /// Comma-separated email addresses of attendees. Optional.
     pub attendees: Option<String>,
+    /// Email address of the Google account to use. Leave empty to use default.
+    pub account: Option<String>,
 }
 
 impl Tool for CreateEventTool {
@@ -172,14 +186,16 @@ impl Tool for CreateEventTool {
         ToolDefinition {
             name: "create_event".into(),
             description: "Create a Google Calendar event. Specify start/end times in ISO 8601 format \
-                (with timezone offset). Optionally add description, location, and attendees."
+                (with timezone offset). Optionally add description, location, and attendees. \
+                If multiple Google accounts are connected, use the 'account' parameter \
+                to specify which calendar to use."
                 .into(),
             parameters: openai_schema::<CreateEventArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let (token, _) = self.google.access_token().await
+        let (token, _) = self.google.access_token(&self.instance_slug, args.account.as_deref()).await
             .map_err(|e| ToolExecError(e))?;
 
         let mut event = serde_json::json!({

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, pgEnum, unique } from 'drizzle-orm/pg-core';
 
 export const planEnum = pgEnum('plan', ['starter', 'companion', 'unlimited']);
 export const tenantStatusEnum = pgEnum('tenant_status', ['provisioning', 'running', 'stopped', 'error', 'destroyed']);
@@ -69,14 +69,17 @@ export const tenants = pgTable('tenants', {
 
 export const googleAccounts = pgTable('google_accounts', {
 	id: text('id').primaryKey(), // nanoid
-	userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+	tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+	instanceSlug: text('instance_slug').notNull(),
 	email: text('email').notNull(), // Google email address
 	accessToken: text('access_token').notNull(),
 	refreshToken: text('refresh_token').notNull(),
 	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 	scopes: text('scopes').notNull(), // space-separated OAuth scopes
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+	unique('uq_ga_tenant_instance_email').on(table.tenantId, table.instanceSlug, table.email),
+]);
 
 // ─── Rate Limits ────────────────────────────────────────────────────────────
 
