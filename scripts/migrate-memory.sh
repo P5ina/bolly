@@ -47,9 +47,13 @@ plan_memory() {
   esac
 }
 
-# Fetch all running tenants with their plan and fly IDs (uses Node + @neondatabase/serverless)
+# Resolve the landing directory (contains @neondatabase/serverless)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LANDING_DIR="$SCRIPT_DIR/../landing"
+
+# Fetch all running tenants with their plan and fly IDs
 echo "Fetching tenants from database..."
-tenants=$(node -e "
+tenants=$(cd "$LANDING_DIR" && node -e "
   const { neon } = require('@neondatabase/serverless');
   const sql = neon(process.env.DATABASE_URL);
   sql\`SELECT slug, plan, fly_app_id, fly_machine_id FROM tenants
