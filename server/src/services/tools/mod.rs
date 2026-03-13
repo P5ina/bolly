@@ -153,8 +153,7 @@ pub fn tool_summary(name: &str, args: &str) -> String {
         "search_code" => format!("searching '{}'", v["query"].as_str().unwrap_or("?")),
         "run_command" => {
             let cmd = v["command"].as_str().unwrap_or("?");
-            let short: String = cmd.chars().take(60).collect();
-            format!("$ {short}")
+            format!("$ {cmd}")
         }
         "edit_soul" => "rewriting soul.md".into(),
         "set_mood" => format!("mood → {}", v["mood"].as_str().unwrap_or("?")),
