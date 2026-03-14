@@ -1195,7 +1195,7 @@ user message:
 respond with exactly three lines:
 SENTIMENT: <user's emotional state in 1-2 words, e.g. "excited", "frustrated", "neutral">
 CONTEXT: <one short sentence about the emotional context>
-MOOD: <companion's mood after this interaction — one of: {allowed}. write SAME to keep current>
+MOOD: <companion's mood — one of: {allowed}. write SAME to keep current. prefer SAME unless the conversation tone has clearly and strongly shifted. small talk, casual messages, and normal exchanges should NOT change the mood.>
 
 respond ONLY with those three lines."#,
         current_mood.companion_mood
