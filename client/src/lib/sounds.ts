@@ -7,6 +7,7 @@ const volumes: Record<string, number> = {
 	attachment_added: 0.25,
 	mood_shift: 0.15,
 	intro_reveal: 0.4,
+	typewriter: 0.15,
 	drop_received: 0.3,
 	error: 0.3,
 };
@@ -97,6 +98,21 @@ async function playSound(name: string) {
 	source.connect(gain).connect(ac.destination);
 	source.start();
 	lastPlayTime = performance.now();
+}
+
+/** Fire-and-forget playback without queue or gap enforcement. */
+export function playImmediate(name: string) {
+	if (typeof window === "undefined") return;
+	const ac = getContext();
+	if (ac.state !== "running") return;
+	const buffer = buffers.get(name);
+	if (!buffer) return;
+	const source = ac.createBufferSource();
+	const gain = ac.createGain();
+	gain.gain.value = volumes[name] ?? 0.25;
+	source.buffer = buffer;
+	source.connect(gain).connect(ac.destination);
+	source.start();
 }
 
 export function preload(...names: string[]) {

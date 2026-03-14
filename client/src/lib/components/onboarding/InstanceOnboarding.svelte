@@ -11,7 +11,7 @@
 	import type { SoulTemplate } from "$lib/api/types.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
-	import { play, preload } from "$lib/sounds.js";
+	import { play, playImmediate, preload } from "$lib/sounds.js";
 
 	const toast = getToasts();
 	import AsciiRenderer from "$lib/components/chat/AsciiRenderer.svelte";
@@ -103,6 +103,8 @@
 				lines[idx].revealed += char;
 				i++;
 
+				if (i % 3 === 0) playImmediate("typewriter");
+
 				let delay = speed;
 				if (char === "." || char === "?" || char === "!") delay = speed * 8;
 				else if (char === ",") delay = speed * 3;
@@ -120,7 +122,7 @@
 
 	async function runSequence() {
 		// Reveal stage
-		preload("intro_reveal");
+		preload("intro_reveal", "typewriter");
 		await pause(600);
 		play("intro_reveal");
 		revealed = true;
