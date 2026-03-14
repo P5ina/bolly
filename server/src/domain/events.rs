@@ -68,4 +68,17 @@ pub enum ServerEvent {
         message_id: String,
         tool_output: String,
     },
+    /// Streaming: an MCP App tool call is starting — show the iframe immediately.
+    McpAppStart {
+        instance_slug: String,
+        chat_id: String,
+        tool_name: String,
+        html: String,
+    },
+    /// Streaming: partial tool arguments delta for an MCP App.
+    McpAppInputDelta {
+        instance_slug: String,
+        chat_id: String,
+        delta: String,
+    },
 }

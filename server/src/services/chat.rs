@@ -336,7 +336,7 @@ pub async fn run_single_turn(
         plan,
         google,
         sent_files,
-        Some(mcp_snapshot),
+        Some(mcp_snapshot.clone()),
         mcp_tools,
     );
 

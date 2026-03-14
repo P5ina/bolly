@@ -385,12 +385,34 @@
 			} else if (event.type === "chat_stream_delta") {
 				streamingContent += event.delta;
 				startTypewriter();
+			} else if (event.type === "mcp_app_start") {
+				// MCP App tool call starting — show iframe immediately
+				stream = [...stream, {
+					type: "mcp_app",
+					id: `mcp_live_${Date.now()}`,
+					toolName: event.tool_name,
+					toolInput: "",
+					toolOutput: "",
+					html: event.html,
+				}];
+				scrollToBottom();
+			} else if (event.type === "mcp_app_input_delta") {
+				// Append JSON delta to the live MCP App stream item
+				const liveIdx = stream.findLastIndex((s) => s.type === "mcp_app" && s.id.startsWith("mcp_live_"));
+				if (liveIdx >= 0) {
+					const item = stream[liveIdx] as StreamItem & { type: "mcp_app" };
+					item.toolInput += event.delta;
+					stream = stream; // trigger reactivity
+				}
 			} else if (event.type === "mcp_app_result") {
 				// Tool result arrived — update the matching mcp_app stream item
-				const idx = stream.findIndex((s) => s.type === "mcp_app" && s.id === event.message_id);
+				// First try live item, then by message_id
+				let idx = stream.findLastIndex((s) => s.type === "mcp_app" && s.id.startsWith("mcp_live_"));
+				if (idx < 0) idx = stream.findIndex((s) => s.type === "mcp_app" && s.id === event.message_id);
 				if (idx >= 0) {
 					const item = stream[idx] as StreamItem & { type: "mcp_app" };
 					item.toolOutput = event.tool_output;
+					item.id = event.message_id; // promote to persisted id
 					stream = stream; // trigger reactivity
 				}
 			} else if (event.type === "context_compacting") {

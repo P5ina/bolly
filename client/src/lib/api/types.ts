@@ -250,4 +250,17 @@ export type ServerEvent =
 			message_id: string;
 			tool_output: string;
 	  }
+	| {
+			type: "mcp_app_start";
+			instance_slug: string;
+			chat_id: string;
+			tool_name: string;
+			html: string;
+	  }
+	| {
+			type: "mcp_app_input_delta";
+			instance_slug: string;
+			chat_id: string;
+			delta: string;
+	  }
 ;

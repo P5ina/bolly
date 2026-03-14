@@ -353,8 +353,6 @@ impl LlmBackend {
     {
         log::info!("chat_with_tools_streaming: {} tools", tools.len());
 
-        const AGENT_MAX_TURNS: usize = 16;
-
         let slug = instance_slug.to_string();
         let cid = chat_id.to_string();
 
@@ -369,7 +367,6 @@ impl LlmBackend {
                 let stream = agent
                     .stream_prompt(prompt)
                     .with_history(history)
-                    .multi_turn(AGENT_MAX_TURNS)
                     .await;
 
                 consume_stream(stream, &events, &slug, &cid, workspace_dir).await
@@ -384,7 +381,6 @@ impl LlmBackend {
                 let stream = agent
                     .stream_prompt(prompt)
                     .with_history(history)
-                    .multi_turn(AGENT_MAX_TURNS)
                     .await;
 
                 consume_stream(stream, &events, &slug, &cid, workspace_dir).await
@@ -399,7 +395,6 @@ impl LlmBackend {
                 let stream = agent
                     .stream_prompt(prompt)
                     .with_history(history)
-                    .multi_turn(AGENT_MAX_TURNS)
                     .await;
 
                 consume_stream(stream, &events, &slug, &cid, workspace_dir).await
@@ -523,7 +518,6 @@ where
             }
             // When the agent calls a tool, save any intermediate text immediately
             // so it survives page reloads and appears in the correct position.
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall { .. })) |
             Ok(MultiTurnStreamItem::StreamUserItem(_)) => {
                 if !accumulated.is_empty() {
                     let text = accumulated.trim().to_string();
@@ -576,7 +570,7 @@ where
                     rig_history = Some(h.to_vec());
                 }
             }
-            _ => {} // Ignore reasoning deltas, etc.
+            _ => {} // ToolCallDelta, ToolCall, reasoning deltas, etc.
         }
     }
 

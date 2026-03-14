@@ -19,6 +19,8 @@
 	let collapsed = $state(false);
 	let bridgeRef: AppBridge | undefined = $state();
 	let resultSent = false;
+	let inputFinalized = false;
+	let lastPartialInput = "";
 	let backdropEl: HTMLDivElement | undefined;
 
 	function enterFullscreen() {
@@ -62,8 +64,28 @@
 		}
 	}
 
+	// Stream partial tool input as it arrives (for live drawing animation)
+	$effect(() => {
+		if (toolInput && ready && bridgeRef && !inputFinalized && toolInput !== lastPartialInput) {
+			lastPartialInput = toolInput;
+			try {
+				const partial = JSON.parse(toolInput);
+				bridgeRef.sendToolInputPartial({ arguments: partial });
+			} catch {
+				// Partial JSON not yet valid — skip
+			}
+		}
+	});
+
 	$effect(() => {
 		if (toolOutput && ready && bridgeRef && !resultSent) {
+			// Finalize input before sending result
+			if (!inputFinalized) {
+				inputFinalized = true;
+				let args: Record<string, unknown> = {};
+				try { args = JSON.parse(toolInput); } catch {}
+				bridgeRef.sendToolInput({ arguments: args });
+			}
 			sendResult(bridgeRef, toolOutput);
 		}
 	});
@@ -101,13 +123,19 @@
 		);
 		bridgeRef = bridge;
 		resultSent = false;
+		inputFinalized = false;
+		lastPartialInput = "";
 
 		bridge.oninitialized = () => {
 			ready = true;
-			let args: Record<string, unknown> = {};
-			try { args = JSON.parse(toolInput); } catch {}
-			bridge.sendToolInput({ arguments: args });
-			if (toolOutput) sendResult(bridge, toolOutput);
+			// Only send final input if we have the result (page reload) or the tool already finished
+			if (toolOutput || inputFinalized) {
+				let args: Record<string, unknown> = {};
+				try { args = JSON.parse(toolInput); } catch {}
+				inputFinalized = true;
+				bridge.sendToolInput({ arguments: args });
+				if (toolOutput) sendResult(bridge, toolOutput);
+			}
 		};
 
 		bridge.onsizechange = ({ width, height }) => {
