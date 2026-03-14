@@ -69,54 +69,24 @@ fn scan_dir_recursive(base: &Path, current: &Path, entries: &mut Vec<MemoryEntry
 /// For small libraries (< 6000 chars total), inline all file contents.
 /// For larger ones, show a catalog with summaries + inline the smallest files.
 pub fn build_memory_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
-    let dir = memory_dir(workspace_dir, instance_slug);
     let entries = scan_library(workspace_dir, instance_slug);
     if entries.is_empty() {
         return String::new();
     }
 
-    let total_size: usize = entries.iter().map(|e| e.size).sum();
-    const INLINE_BUDGET: usize = 6000;
-
     let mut prompt = String::from(
-        "## memory\nyou have a personal memory library organized in files and folders.\n\
-         use memory tools (memory_write, memory_read, memory_list, memory_forget) to manage it.\n\n",
-    );
+        "## memory\nyou have a personal memory library. use `recall` to read memories when relevant.\n\
+         catalog ({} files):\n",
+    )
+    .replace("{}", &entries.len().to_string());
 
-    if total_size <= INLINE_BUDGET {
-        // Small library — inline everything
-        for entry in &entries {
-            let full_path = dir.join(&entry.path);
-            let content = std::fs::read_to_string(&full_path).unwrap_or_default();
-            prompt.push_str(&format!("### {}\n{}\n\n", entry.path, content.trim()));
-        }
-    } else {
-        // Large library — show catalog, inline small files
-        prompt.push_str("library contents:\n");
-        let mut inlined = String::new();
-        let mut inlined_size = 0;
-
-        for entry in &entries {
-            prompt.push_str(&format!("- {} — {}\n", entry.path, entry.summary));
-
-            if inlined_size + entry.size <= INLINE_BUDGET / 2 {
-                let full_path = dir.join(&entry.path);
-                let content = std::fs::read_to_string(&full_path).unwrap_or_default();
-                inlined.push_str(&format!("\n### {}\n{}\n", entry.path, content.trim()));
-                inlined_size += entry.size;
-            }
-        }
-
-        if !inlined.is_empty() {
-            prompt.push_str(&format!("\nrecent/key memories:{inlined}"));
-        }
-
-        prompt.push_str("\nuse memory_read to access any file not shown above.");
+    for entry in &entries {
+        prompt.push_str(&format!("- {} — {}\n", entry.path, entry.summary));
     }
 
     prompt.push_str(
-        "\nuse these memories naturally. don't announce that you remember — just know. \
-         reference shared moments when they're relevant.",
+        "\nuse these memories naturally — `recall` what you need. \
+         don't announce that you remember — just know.",
     );
     prompt
 }
