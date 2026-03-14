@@ -11,24 +11,30 @@ const volumes: Record<string, number> = {
 	error: 0.3,
 };
 
+// Minimum ms between any two sounds to prevent overlap
+const MIN_GAP_MS = 150;
+let lastPlayTime = 0;
+
 function getContext(): AudioContext {
 	if (!ctx) ctx = new AudioContext();
-	if (ctx.state === "suspended") ctx.resume();
 	return ctx;
 }
 
 if (typeof document !== "undefined") {
+	// Resume on user interaction (first click/tap unlocks audio)
+	const unlock = () => {
+		if (ctx?.state === "suspended") ctx.resume();
+		document.removeEventListener("click", unlock);
+		document.removeEventListener("touchstart", unlock);
+	};
+	document.addEventListener("click", unlock);
+	document.addEventListener("touchstart", unlock);
+
 	document.addEventListener("visibilitychange", () => {
 		if (document.visibilityState === "visible" && ctx?.state === "suspended") {
 			ctx.resume();
 		}
 	});
-}
-
-async function ensureContext(): Promise<AudioContext> {
-	if (!ctx) ctx = new AudioContext();
-	if (ctx.state === "suspended") await ctx.resume();
-	return ctx;
 }
 
 async function loadBuffer(name: string): Promise<AudioBuffer | null> {
@@ -38,7 +44,8 @@ async function loadBuffer(name: string): Promise<AudioBuffer | null> {
 	try {
 		const res = await fetch(`/sounds/${name}.mp3`);
 		const data = await res.arrayBuffer();
-		const ac = await ensureContext();
+		const ac = getContext();
+		if (ac.state === "suspended") await ac.resume();
 		const buffer = await ac.decodeAudioData(data);
 		buffers.set(name, buffer);
 		return buffer;
@@ -47,30 +54,49 @@ async function loadBuffer(name: string): Promise<AudioBuffer | null> {
 	}
 }
 
-export async function play(name: string) {
+// Queue to serialize playback and prevent overlap
+let playQueue: Promise<void> = Promise.resolve();
+
+export function play(name: string) {
 	if (typeof window === "undefined") return;
 
-	const ac = await ensureContext();
+	playQueue = playQueue.then(() => playSound(name)).catch(() => {});
+}
 
-	const cached = buffers.get(name);
-	if (cached) {
-		const source = ac.createBufferSource();
-		const gain = ac.createGain();
-		gain.gain.value = volumes[name] ?? 0.25;
-		source.buffer = cached;
-		source.connect(gain).connect(ac.destination);
-		source.start();
-		return;
+async function playSound(name: string) {
+	const ac = getContext();
+
+	// Ensure context is running (may be suspended until user gesture)
+	if (ac.state === "suspended") {
+		try {
+			await ac.resume();
+		} catch {
+			return;
+		}
+	}
+	if (ac.state !== "running") return;
+
+	// Enforce minimum gap between sounds
+	const now = performance.now();
+	const elapsed = now - lastPlayTime;
+	if (elapsed < MIN_GAP_MS) {
+		await new Promise((r) => setTimeout(r, MIN_GAP_MS - elapsed));
 	}
 
-	const buffer = await loadBuffer(name);
-	if (!buffer) return;
+	// Load buffer (cached after first load)
+	let buffer = buffers.get(name);
+	if (!buffer) {
+		buffer = (await loadBuffer(name)) ?? undefined;
+		if (!buffer) return;
+	}
+
 	const source = ac.createBufferSource();
 	const gain = ac.createGain();
 	gain.gain.value = volumes[name] ?? 0.25;
 	source.buffer = buffer;
 	source.connect(gain).connect(ac.destination);
 	source.start();
+	lastPlayTime = performance.now();
 }
 
 export function preload(...names: string[]) {

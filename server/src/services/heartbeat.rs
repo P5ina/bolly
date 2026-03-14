@@ -187,6 +187,17 @@ async fn heartbeat_instance(
             mood.companion_mood = new_mood.clone();
             mood.updated_at = now;
             save_mood_state(instance_dir, &mood);
+            // Save mood change to chat history so it survives page reload
+            match chat::save_system_message(workspace_dir, slug, "default", &format!("[system] mood → {new_mood}")) {
+                Ok(msg) => {
+                    let _ = events.send(ServerEvent::ChatMessageCreated {
+                        instance_slug: slug.to_string(),
+                        chat_id: "default".to_string(),
+                        message: msg,
+                    });
+                }
+                Err(e) => log::warn!("failed to save mood message: {e}"),
+            }
             let _ = events.send(ServerEvent::MoodUpdated {
                 instance_slug: slug.to_string(),
                 mood: new_mood.clone(),

@@ -35,7 +35,9 @@
 	let loading = $state(true);
 	let sending = $state(false);
 	let agentRunning = $state(false);
-	let mood = $state("calm");
+	let mood = $state(
+		(typeof localStorage !== "undefined" && localStorage.getItem("mood:" + slug)) || "calm"
+	);
 	let scrollContainer: HTMLDivElement | undefined = $state();
 	let isConnected = $state(false);
 	let showChatList = $state(false);
@@ -275,7 +277,7 @@
 				.finally(() => { loading = false; });
 
 			fetchMood(currentSlug)
-				.then((res) => { if (res.mood) mood = res.mood; })
+				.then((res) => { if (res.mood) { mood = res.mood; localStorage.setItem("mood:" + currentSlug, res.mood); } })
 				.catch(() => {}); // mood is non-critical
 
 			fetchCompanionName(currentSlug)
@@ -346,7 +348,8 @@
 			} else if (event.type === "mood_updated") {
 				play("mood_shift");
 				mood = event.mood;
-				pushActivity("mood", `mood → ${event.mood}`);
+				localStorage.setItem("mood:" + slug, event.mood);
+				// Activity is added via ChatMessageCreated "[system] mood → ..."
 			} else if (event.type === "agent_running") {
 				agentRunning = true;
 				pushActivity("state", "thinking...");

@@ -1247,6 +1247,18 @@ respond ONLY with those three lines."#,
     tools::save_mood_state(&instance_dir, &mood);
 
     if mood_changed {
+        // Save mood change to chat history so it survives page reload
+        let label = format!("[system] mood → {}", mood.companion_mood);
+        match save_system_message(workspace_dir, instance_slug, chat_id, &label) {
+            Ok(msg) => {
+                let _ = events.send(ServerEvent::ChatMessageCreated {
+                    instance_slug: instance_slug.to_string(),
+                    chat_id: chat_id.to_string(),
+                    message: msg,
+                });
+            }
+            Err(e) => log::warn!("failed to save mood message: {e}"),
+        }
         let _ = events.send(ServerEvent::MoodUpdated {
             instance_slug: instance_slug.to_string(),
             mood: mood.companion_mood.clone(),
