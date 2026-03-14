@@ -1489,6 +1489,7 @@ impl Tool for ExploreCodeTool {
                 &args.question,
                 vec![],
                 tools,
+                16,
             )
             .await
             .map_err(|e| {

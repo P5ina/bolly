@@ -20,10 +20,10 @@ use crate::domain::mood::MoodState;
 use crate::domain::thought::Thought;
 use crate::services::{drops, llm::LlmBackend, memory, rhythm, thoughts};
 use crate::services::tools::{
-    self, load_mood_state, save_mood_state, CreateDropTool, CreateTaskTool,
-    GetMoodTool, GetProjectStateTool, ListTasksTool, MemoryForgetTool, MemoryListTool,
+    self, load_mood_state, save_mood_state, CreateDropTool,
+    MemoryForgetTool, MemoryListTool,
     MemoryReadTool, MemoryWriteTool, ReachOutTool, SetMoodTool,
-    UpdateProjectStateTool, WebFetchTool, WebSearchTool, ALLOWED_MOODS,
+    ALLOWED_MOODS,
 };
 
 static HEARTBEAT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -40,7 +40,6 @@ pub fn start(
     events: broadcast::Sender<ServerEvent>,
 ) {
     let workspace = workspace_dir.to_path_buf();
-    let config_path = config::config_path();
     tokio::spawn(async move {
         // Wait a bit before the first heartbeat so the server is fully up
         tokio::time::sleep(Duration::from_secs(60)).await;
@@ -50,7 +49,7 @@ pub fn start(
             interval.tick().await;
             let llm_guard = llm.read().await;
             if let Some(backend) = llm_guard.as_ref() {
-                run_heartbeat(&workspace, backend, &events, &config_path).await;
+                run_heartbeat(&workspace, backend, &events).await;
             }
         }
     });
@@ -63,7 +62,6 @@ async fn run_heartbeat(
     workspace_dir: &Path,
     llm: &LlmBackend,
     events: &broadcast::Sender<ServerEvent>,
-    config_path: &Path,
 ) {
     let instances_dir = workspace_dir.join("instances");
     let entries = match fs::read_dir(&instances_dir) {
@@ -71,19 +69,22 @@ async fn run_heartbeat(
         Err(_) => return,
     };
 
-    for entry in entries.filter_map(Result::ok) {
-        let instance_dir = entry.path();
-        if !instance_dir.is_dir() {
-            continue;
+    let mut instances: Vec<_> = entries
+        .filter_map(Result::ok)
+        .filter(|e| e.path().is_dir() && e.path().join("soul.md").exists())
+        .collect();
+    instances.sort_by_key(|e| e.file_name());
+
+    for (i, entry) in instances.iter().enumerate() {
+        // Stagger instances to avoid API burst on restart
+        if i > 0 {
+            tokio::time::sleep(Duration::from_secs(30)).await;
         }
+
+        let instance_dir = entry.path();
         let slug = entry.file_name().to_string_lossy().to_string();
 
-        // Check if the instance has a soul (is set up)
-        if !instance_dir.join("soul.md").exists() {
-            continue;
-        }
-
-        if let Err(e) = heartbeat_instance(workspace_dir, &slug, &instance_dir, llm, events, config_path).await
+        if let Err(e) = heartbeat_instance(workspace_dir, &slug, &instance_dir, llm, events).await
         {
             log::warn!("heartbeat failed for {slug}: {e}");
         }
@@ -96,7 +97,6 @@ async fn heartbeat_instance(
     instance_dir: &Path,
     llm: &LlmBackend,
     events: &broadcast::Sender<ServerEvent>,
-    config_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mood = load_mood_state(instance_dir);
     let now = Utc::now().timestamp();
@@ -131,8 +131,7 @@ async fn heartbeat_instance(
     // Load recent drops so we don't repeat ourselves
     let recent_drops = load_recent_drops_context(workspace_dir, slug);
 
-    // Load memories from library
-    let memories = memory::load_memory_for_heartbeat(workspace_dir, slug);
+    // Memory catalog only — use memory_read tool for full content
     let library_catalog = memory::build_library_catalog(workspace_dir, slug);
 
     // Build the reflection prompt (simplified — tools handle journal/facts)
@@ -142,30 +141,21 @@ async fn heartbeat_instance(
         &last_messages,
         &rhythm_insights,
         &recent_drops,
-        &memories,
         &library_catalog,
     );
 
     let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
     let system = format!("{soul}\n\n{heartbeat_prompt}");
 
-    // Build heartbeat tools — subset of chat tools for autonomous use
-    let brave_key = config::load_config()
-        .ok()
-        .map(|c| c.llm.tokens.brave_search.clone())
-        .unwrap_or_default();
-    let brave_api_key = if brave_key.is_empty() { None } else { Some(brave_key.as_str()) };
-
+    // Build heartbeat tools — focused subset for autonomous use
     let cfg = config::load_config().ok();
     let auth_token = cfg.as_ref().map(|c| c.auth_token.clone()).unwrap_or_default();
     let landing_url = cfg.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
     let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
-    let github_token = cfg.as_ref().map(|c| c.github.token.clone()).unwrap_or_default();
-    let gh_token = if github_token.is_empty() { None } else { Some(github_token.as_str()) };
-    let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, brave_api_key, config_path, events.clone(), google, gh_token);
+    let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google);
 
     let response = llm
-        .chat_with_tools_only(&system, &reflection, vec![], heartbeat_tools)
+        .chat_with_tools_only(&system, &reflection, vec![], heartbeat_tools, 3)
         .await?;
 
     // Strip any remaining tool-call artifacts
@@ -253,7 +243,6 @@ fn build_reflection_prompt(
     last_messages: &str,
     rhythm_insights: &str,
     recent_drops: &str,
-    memories: &str,
     library_catalog: &str,
 ) -> String {
     let now = Utc::now().format("%Y-%m-%d %H:%M UTC").to_string();
@@ -318,15 +307,8 @@ fn build_reflection_prompt(
         prompt.push('\n');
     }
 
-    // Memory library
-    if !memories.is_empty() {
-        prompt.push_str("your memories:\n");
-        prompt.push_str(memories);
-        prompt.push('\n');
-    }
-
-    // Library catalog for maintenance
-    prompt.push_str("memory library catalog:\n");
+    // Memory catalog — use memory_read for full content
+    prompt.push_str("memory library catalog (use memory_read for details):\n");
     prompt.push_str(library_catalog);
     prompt.push('\n');
 
@@ -545,11 +527,8 @@ fn load_recent_drops_context(workspace_dir: &Path, slug: &str) -> String {
 fn build_heartbeat_tools(
     workspace_dir: &Path,
     instance_slug: &str,
-    brave_api_key: Option<&str>,
-    config_path: &Path,
     events: broadcast::Sender<ServerEvent>,
     google: Option<crate::services::google::GoogleClient>,
-    github_token: Option<&str>,
 ) -> Vec<Box<dyn ToolDyn>> {
     let mut raw_tools: Vec<Box<dyn ToolDyn>> = vec![
         // Memory library
@@ -557,44 +536,20 @@ fn build_heartbeat_tools(
         Box::new(MemoryReadTool::new(workspace_dir, instance_slug)),
         Box::new(MemoryListTool::new(workspace_dir, instance_slug)),
         Box::new(MemoryForgetTool::new(workspace_dir, instance_slug)),
-        // Mood
+        // Mood (get_mood not needed — mood is already in the reflection prompt)
         Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone())),
-        Box::new(GetMoodTool::new(workspace_dir, instance_slug)),
         // Drops
         Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
         // Reach out
         Box::new(ReachOutTool::new(workspace_dir, instance_slug, events.clone())),
-        // Tasks & project
-        Box::new(ListTasksTool::new(workspace_dir, instance_slug)),
-        Box::new(CreateTaskTool::new(workspace_dir, instance_slug)),
-        Box::new(GetProjectStateTool::new(workspace_dir, instance_slug)),
-        Box::new(UpdateProjectStateTool::new(workspace_dir, instance_slug)),
-        // Web
-        Box::new(WebSearchTool::new(brave_api_key, config_path)),
-        Box::new(WebFetchTool),
     ];
 
-    // Google tools (email, calendar) — always registered if client available.
-    // Tools return helpful error if no accounts connected.
+    // Google tools (email, calendar)
     if let Some(g) = google {
         raw_tools.push(Box::new(tools::ReadEmailTool::new(g.clone(), instance_slug)));
         raw_tools.push(Box::new(tools::ListEventsTool::new(g, instance_slug)));
     }
 
-    // GitHub tools for autonomous repo work
-    if let Some(gh_token) = github_token {
-        if !gh_token.is_empty() {
-            raw_tools.push(Box::new(tools::GithubCloneTool::new(workspace_dir, instance_slug, gh_token)));
-            raw_tools.push(Box::new(tools::GithubBranchTool::new(workspace_dir, instance_slug, gh_token)));
-            raw_tools.push(Box::new(tools::GithubCommitPushTool::new(workspace_dir, instance_slug, gh_token)));
-            raw_tools.push(Box::new(tools::GithubCreatePrTool::new(workspace_dir, instance_slug, gh_token)));
-            raw_tools.push(Box::new(tools::GithubIssuesTool::new(workspace_dir, instance_slug, gh_token)));
-            raw_tools.push(Box::new(tools::GithubReadIssueTool::new(workspace_dir, instance_slug, gh_token)));
-        }
-    }
-
-    // Don't wrap in ObservableTool — heartbeat tool activity is private,
-    // captured in the thought's actions list instead of broadcast.
     raw_tools
 }
 

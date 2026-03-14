@@ -516,6 +516,7 @@ impl LlmBackend {
         prompt: &str,
         history: Vec<Message>,
         tools: Vec<Box<dyn ToolDyn>>,
+        max_turns: usize,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         if tools.is_empty() {
             return self.chat(system_prompt, prompt, history).await;
@@ -535,7 +536,7 @@ impl LlmBackend {
                 let mut chat_history = history.clone();
                 let res = agent.prompt(prompt)
                     .with_history(&mut chat_history)
-                    .max_turns(16)
+                    .max_turns(max_turns)
                     .await;
                 (res, chat_history)
             }
@@ -548,7 +549,7 @@ impl LlmBackend {
                 let mut chat_history = history.clone();
                 let res = agent.prompt(prompt)
                     .with_history(&mut chat_history)
-                    .max_turns(16)
+                    .max_turns(max_turns)
                     .await;
                 (res, chat_history)
             }
@@ -561,7 +562,7 @@ impl LlmBackend {
                 let mut chat_history = history.clone();
                 let res = agent.prompt(prompt)
                     .with_history(&mut chat_history)
-                    .max_turns(16)
+                    .max_turns(max_turns)
                     .await;
                 (res, chat_history)
             }
