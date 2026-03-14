@@ -249,16 +249,19 @@ pub async fn run_single_turn(
         system_prompt = format!("{system_prompt}\n\n{memory_prompt}");
     }
 
-    // Dynamic: journal, mood, rhythm (change frequently — placed last)
+    // Dynamic context (journal, mood, rhythm) injected as history messages
+    // instead of system prompt — keeps system prompt stable for caching.
+    let mut context_parts = Vec::new();
     if !journal_prompt.is_empty() {
-        system_prompt = format!("{system_prompt}\n\n{journal_prompt}");
+        context_parts.push(journal_prompt);
     }
     if !mood_prompt.is_empty() {
-        system_prompt = format!("{system_prompt}\n\n{mood_prompt}");
+        context_parts.push(mood_prompt);
     }
     if !rhythm_prompt.is_empty() {
-        system_prompt = format!("{system_prompt}\n\n{rhythm_prompt}");
+        context_parts.push(rhythm_prompt);
     }
+    let dynamic_context = context_parts.join("\n\n");
 
     // Build Rig message history from rig_history.json (source of truth) or
     // fall back to converting messages.json.
@@ -309,6 +312,20 @@ pub async fn run_single_turn(
             vec![]
         }
     };
+
+    // Inject dynamic context (journal, mood, rhythm) as the first history
+    // messages so the system prompt stays fully cacheable.
+    let mut final_history = Vec::new();
+    if !dynamic_context.is_empty() {
+        final_history.push(rig::completion::Message::user(format!(
+            "[context update]\n{dynamic_context}"
+        )));
+        final_history.push(rig::completion::Message::assistant(
+            "understood, context noted.",
+        ));
+    }
+    final_history.extend(history_msgs);
+    let history_msgs = final_history;
 
     log::info!(
         "context: model={} history_msgs={} system_prompt_len={}",
@@ -833,35 +850,14 @@ pub fn compute_context_stats(
         });
     }
 
-    // 8. Journal
+    // 8. Journal, mood, rhythm — now injected as history messages, not system prompt.
+    // Show them as a separate "context" section for visibility.
     let journal_prompt = load_recent_journal(workspace_dir, &instance_slug);
-    if !journal_prompt.is_empty() {
-        sections.push(ContextSection {
-            name: "journal".into(),
-            chars: journal_prompt.len(),
-            tokens: estimate_tokens(&journal_prompt),
-        });
-    }
-
-    // 9. Mood
     let mood_prompt = load_mood_prompt(workspace_dir, &instance_slug);
-    if !mood_prompt.is_empty() {
-        sections.push(ContextSection {
-            name: "mood".into(),
-            chars: mood_prompt.len(),
-            tokens: estimate_tokens(&mood_prompt),
-        });
-    }
-
-    // 10. Rhythm
     let rhythm_prompt = load_rhythm_prompt(workspace_dir, &instance_slug);
-    if !rhythm_prompt.is_empty() {
-        sections.push(ContextSection {
-            name: "rhythm".into(),
-            chars: rhythm_prompt.len(),
-            tokens: estimate_tokens(&rhythm_prompt),
-        });
-    }
+    let dynamic_context_tokens = estimate_tokens(&journal_prompt)
+        + estimate_tokens(&mood_prompt)
+        + estimate_tokens(&rhythm_prompt);
 
     let system_prompt_total_tokens: usize = sections.iter().map(|s| s.tokens).sum();
 
@@ -891,7 +887,8 @@ pub fn compute_context_stats(
 
     let history_tokens_estimate: usize = existing.iter()
         .map(|m| estimate_tokens(&m.content))
-        .sum();
+        .sum::<usize>()
+        + dynamic_context_tokens; // journal/mood/rhythm now live in history
 
     let total_input_tokens_estimate = system_prompt_total_tokens + history_tokens_estimate;
 
