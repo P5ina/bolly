@@ -89,16 +89,32 @@ async fn get_direct_url(url: &str) -> Result<String, ToolExecError> {
 
     if check.is_err() || !check.as_ref().unwrap().status.success() {
         log::info!("[watch_video] installing yt-dlp...");
-        let install = tokio::process::Command::new("pip3")
-            .args(["install", "-q", "yt-dlp"])
-            .output()
-            .await
-            .map_err(|e| ToolExecError(format!("failed to install yt-dlp: {e}")))?;
 
-        if !install.status.success() {
-            return Err(ToolExecError(
-                "yt-dlp not found and failed to install. Install it with: pip3 install yt-dlp".into(),
-            ));
+        // Try pipx first (works on externally-managed Python environments)
+        let pipx = tokio::process::Command::new("pipx")
+            .args(["install", "yt-dlp"])
+            .output()
+            .await;
+
+        let pipx_ok = pipx.as_ref().map(|o| o.status.success()).unwrap_or(false);
+
+        if !pipx_ok {
+            // Fallback: download standalone binary
+            let install = tokio::process::Command::new("sh")
+                .args([
+                    "-c",
+                    "curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && chmod +x /usr/local/bin/yt-dlp",
+                ])
+                .output()
+                .await
+                .map_err(|e| ToolExecError(format!("failed to install yt-dlp: {e}")))?;
+
+            if !install.status.success() {
+                let stderr = String::from_utf8_lossy(&install.stderr);
+                return Err(ToolExecError(format!(
+                    "yt-dlp not found and failed to install: {stderr}"
+                )));
+            }
         }
     }
 
