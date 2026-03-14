@@ -121,9 +121,8 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
     // Persist marker so we can detect interrupted agents across restarts
     chat::set_agent_running(&state.workspace_dir, &instance_slug, &chat_id);
 
-    const MAX_ITERATIONS: usize = 20;
+    const MAX_ITERATIONS: usize = 5;
     let mut iteration = 0;
-    let mut prev_rig_history: Option<Vec<rig::completion::Message>> = None;
 
     loop {
         if cancel.is_cancelled() {
@@ -154,8 +153,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         };
         drop(llm_guard);
 
-        // Wrap single turn in timeout + cancellation so we never hang forever.
-        // Must exceed stream item timeout (480s) to allow sub-agent tools to complete.
+        // Timeout must exceed stream item timeout (480s) to allow long tools to complete.
         const TURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
 
         let public_url = std::env::var("BOLLY_PUBLIC_URL").ok();
@@ -169,7 +167,6 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             &llm_ref,
             if brave_key.is_empty() { None } else { Some(brave_key.as_str()) },
             state.events.clone(),
-            prev_rig_history.take(),
             state.pending_secrets.clone(),
             &plan,
             &pdf_strategy,
@@ -198,9 +195,6 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
 
         match result {
             Ok(turn) => {
-                // Carry rig history to next iteration
-                prev_rig_history = turn.rig_history;
-
                 for msg in &turn.messages {
                     let _ = state.events.send(ServerEvent::ChatMessageCreated {
                         instance_slug: instance_slug.clone(),
@@ -214,24 +208,18 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                     rate_limit::record_usage(pool, iid, turn.estimated_tokens).await;
                 }
 
-                // Always continue if the agent was cut short by the turn limit
-                if turn.hit_turn_limit {
-                    log::info!(
-                        "[agent] {instance_slug}/{chat_id} — iteration {iteration}, hit turn limit, continuing"
-                    );
-                } else {
-                    let last_content = turn.messages
-                        .last()
-                        .map(|m| m.content.as_str())
-                        .unwrap_or("");
+                // Check if the agent wants to continue or if a new user message arrived
+                let last_content = turn.messages
+                    .last()
+                    .map(|m| m.content.as_str())
+                    .unwrap_or("");
 
-                    if !should_continue(last_content) {
-                        if has_pending_user_message(&state, &instance_slug, &chat_id).await {
-                            log::info!("[agent] {instance_slug}/{chat_id} — new user message arrived, continuing");
-                            continue;
-                        }
-                        break;
+                if !should_continue(last_content) {
+                    if has_pending_user_message(&state, &instance_slug, &chat_id).await {
+                        log::info!("[agent] {instance_slug}/{chat_id} — new user message arrived, continuing");
+                        continue;
                     }
+                    break;
                 }
 
                 log::info!(
@@ -255,7 +243,6 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                 let msg = e.to_string();
                 log::warn!("[agent] {instance_slug}/{chat_id} — error: {msg}");
 
-                // Let the client know what happened
                 let error_label = if msg.contains("rate limit") || msg.contains("429") {
                     "rate limited — try again in a moment"
                 } else if msg.contains("timed out") {

@@ -87,16 +87,11 @@ pub fn save_system_message(
 
 /// Run a single LLM turn: build context, call LLM with tools, save response.
 /// Returns one or more assistant messages (the reply is split into chat-like chunks).
-/// Rig handles up to 8 internal tool sub-turns.
+/// Rig handles up to 16 internal tool round-trips via multi_turn.
 pub struct SingleTurnResult {
     pub messages: Vec<ChatMessage>,
-    /// The agent was cut short by the inner turn limit and needs to continue.
-    pub hit_turn_limit: bool,
     /// Estimated total tokens (input + output) consumed by this turn.
     pub estimated_tokens: i32,
-    /// The full Rig message history (with ToolCall/ToolResult) for carrying
-    /// context between outer loop iterations.
-    pub rig_history: Option<Vec<rig::completion::Message>>,
 }
 
 pub async fn run_single_turn(
@@ -107,7 +102,6 @@ pub async fn run_single_turn(
     llm: &LlmBackend,
     brave_api_key: Option<&str>,
     events: broadcast::Sender<ServerEvent>,
-    prev_history: Option<Vec<rig::completion::Message>>,
     pending_secrets: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>>,
     plan: &str,
     pdf_strategy: &llm::PdfStrategy,
@@ -266,75 +260,54 @@ pub async fn run_single_turn(
         system_prompt = format!("{system_prompt}\n\n{rhythm_prompt}");
     }
 
-    // Build Rig message history: use prev_history if available (continuation),
-    // otherwise load from rig_history.json or fall back to converting messages.json.
-    let (history_msgs, prompt_msg) = if let Some(history) = prev_history {
-        // Continuation turn: check if there are new user messages since the last one
-        // in the Rig history, and append them.
-        let last_user_in_existing = existing.last();
-        if let Some(last_msg) = last_user_in_existing {
-            if matches!(last_msg.role, ChatRole::User) {
-                let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
-                let content_with_time = format!("[{now}]\n{}", last_msg.content);
-                let prompt = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
-                (history, prompt)
-            } else {
-                return Err(io::Error::new(ErrorKind::InvalidInput, "no user message to process"));
-            }
-        } else {
-            return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
-        }
-    } else {
-        // First turn or restart: load rig history (the LLM's source of truth),
-        // then patch in any messages.json entries from an interrupted turn.
-        let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
-        let loaded_history = load_rig_history(&rig_path);
+    // Build Rig message history from rig_history.json (source of truth) or
+    // fall back to converting messages.json.
+    let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
+    let loaded_history = load_rig_history(&rig_path);
 
-        if existing.is_empty() {
-            return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
-        }
+    if existing.is_empty() {
+        return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
+    }
 
-        // Find the last user message for the prompt
-        let last_user = existing.iter().rev()
-            .find(|m| m.role == ChatRole::User)
-            .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "no user message to process"))?;
-        let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
-        let content_with_time = format!("[{now}]\n{}", last_user.content);
-        let prompt = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
+    // Find the last user message for the prompt
+    let last_user = existing.iter().rev()
+        .find(|m| m.role == ChatRole::User)
+        .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "no user message to process"))?;
+    let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
+    let content_with_time = format!("[{now}]\n{}", last_user.content);
+    let prompt_msg = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
 
-        let history = if let Some(mut h) = loaded_history {
-            // Count user messages in rig history to find where messages.json diverges
-            let rig_user_count = h.iter().filter(|m| matches!(m, rig::completion::Message::User { .. })).count();
-            // +1 because the last user message becomes the prompt, not history
-            let msgs_user_count = existing.iter().filter(|m| m.role == ChatRole::User).count();
-            if msgs_user_count > rig_user_count + 1 {
-                // messages.json has entries from an interrupted turn — append them
-                let skip = rig_user_count; // skip users already in rig history
-                let mut seen_users = 0;
-                for m in &existing {
-                    if m.role == ChatRole::User { seen_users += 1; }
-                    if seen_users > skip && m.id != last_user.id {
-                        h.push(match m.role {
-                            ChatRole::User => rig::completion::Message::user(&m.content),
-                            ChatRole::Assistant => rig::completion::Message::assistant(&m.content),
-                        });
-                    }
+    let history_msgs = if let Some(mut h) = loaded_history {
+        // Count user messages in rig history to find where messages.json diverges
+        let rig_user_count = h.iter().filter(|m| matches!(m, rig::completion::Message::User { .. })).count();
+        // +1 because the last user message becomes the prompt, not history
+        let msgs_user_count = existing.iter().filter(|m| m.role == ChatRole::User).count();
+        if msgs_user_count > rig_user_count + 1 {
+            // messages.json has entries from an interrupted turn — append them
+            let skip = rig_user_count;
+            let mut seen_users = 0;
+            for m in &existing {
+                if m.role == ChatRole::User { seen_users += 1; }
+                if seen_users > skip && m.id != last_user.id {
+                    h.push(match m.role {
+                        ChatRole::User => rig::completion::Message::user(&m.content),
+                        ChatRole::Assistant => rig::completion::Message::assistant(&m.content),
+                    });
                 }
-                log::info!("loaded {} rig history messages + patched interrupted turn", h.len());
-            } else {
-                log::info!("loaded {} rig history messages from disk", h.len());
             }
-            h
+            log::info!("loaded {} rig history messages + patched interrupted turn", h.len());
         } else {
-            // No rig history — convert all messages.json (including tool activity)
-            if existing.len() > 1 {
-                log::info!("converting {} messages to rig history (no rig_history.json)", existing.len() - 1);
-                llm::to_rig_messages(&existing[..existing.len() - 1])
-            } else {
-                vec![]
-            }
-        };
-        (history, prompt)
+            log::info!("loaded {} rig history messages from disk", h.len());
+        }
+        h
+    } else {
+        // No rig history — convert all messages.json (including tool activity)
+        if existing.len() > 1 {
+            log::info!("converting {} messages to rig history (no rig_history.json)", existing.len() - 1);
+            llm::to_rig_messages(&existing[..existing.len() - 1])
+        } else {
+            vec![]
+        }
     };
 
     log::info!(
@@ -381,7 +354,7 @@ pub async fn run_single_turn(
                 log::error!("LLM error details: {e:?}");
                 "something went wrong on my end — try again?".to_string()
             };
-            llm::ToolChatResult { text, hit_turn_limit: false, rig_history: None }
+            llm::ToolChatResult { text, rig_history: None }
         });
 
     // Strip any leaked tool-call JSON the model may have output as text
@@ -454,9 +427,7 @@ pub async fn run_single_turn(
 
     Ok(SingleTurnResult {
         messages: assistant_messages,
-        hit_turn_limit: tool_result.hit_turn_limit,
         estimated_tokens,
-        rig_history: tool_result.rig_history,
     })
 }
 
