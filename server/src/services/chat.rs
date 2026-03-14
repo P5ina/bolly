@@ -1126,8 +1126,8 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          IMPORTANT: when exposing a vite/slidev dev server through cloudflared, you MUST \
          create a vite.config.js (or .ts) with `server: {{ allowedHosts: true }}` BEFORE \
          starting the dev server — otherwise vite blocks the cloudflare hostname.\n\
-         IMPORTANT: `pnpm create <tool>` commands are often interactive and will hang. \
-         instead, manually: pnpm init, pnpm add the packages, and create config files yourself.\n\n\
+         IMPORTANT: `pnpm create <tool>` and similar scaffolding commands are interactive — \
+         they will hang in run_command. use interactive_session for these.\n\n\
          ## behavior\n\
          prefer dedicated tools over run_command: use read_file (not cat/head/tail), \
          write_file (not echo/tee), list_files (not ls), search_code (not grep/rg) \
