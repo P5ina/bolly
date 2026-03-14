@@ -1122,7 +1122,12 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          cloudflared is installed. to expose a local port publicly, run: \
          `nohup cloudflared tunnel --url http://localhost:PORT &` — it prints a public \
          https://*.trycloudflare.com URL. use this for webhook-based bots (telegram, discord), \
-         sharing websites, or any service that needs a public URL. no account needed.\n\n\
+         sharing websites, or any service that needs a public URL. no account needed.\n\
+         IMPORTANT: when exposing a vite/slidev dev server through cloudflared, you MUST \
+         create a vite.config.js (or .ts) with `server: {{ allowedHosts: true }}` BEFORE \
+         starting the dev server — otherwise vite blocks the cloudflare hostname.\n\
+         IMPORTANT: `pnpm create <tool>` commands are often interactive and will hang. \
+         instead, manually: pnpm init, pnpm add the packages, and create config files yourself.\n\n\
          ## behavior\n\
          prefer dedicated tools over run_command: use read_file (not cat/head/tail), \
          write_file (not echo/tee), list_files (not ls), search_code (not grep/rg) \
