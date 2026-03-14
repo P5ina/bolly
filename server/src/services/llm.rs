@@ -314,7 +314,7 @@ impl LlmBackend {
                         http,
                         api_key,
                         model,
-                    } => anthropic_complete(http, api_key, model, &[&system], &[], &messages, 8192, false)
+                    } => anthropic_complete(http, api_key, model, &[&system], &[], &messages, 16384, false)
                         .await
                         .map(|(text, _)| text),
                     LlmBackend::OpenAI {
@@ -323,7 +323,7 @@ impl LlmBackend {
                         model,
                         base_url,
                     } => {
-                        openai_complete(http, api_key, base_url, model, &system, &[], &messages, 8192)
+                        openai_complete(http, api_key, base_url, model, &system, &[], &messages, 16384)
                             .await
                             .map(|(text, _)| text)
                     }
@@ -501,6 +501,16 @@ async fn agent_loop(
             content: assistant_content,
         });
 
+        if stop_reason == "max_tokens" {
+            log::warn!("[llm] response truncated (max_tokens reached) — requesting continuation");
+            messages.push(Message::User {
+                content: vec![ContentBlock::text(
+                    "[system: your previous response was cut off due to length. please continue exactly where you left off.]",
+                )],
+            });
+            continue;
+        }
+
         if stop_reason != "tool_use" || tool_uses.is_empty() {
             return Ok(text);
         }
@@ -564,6 +574,17 @@ async fn streaming_agent_loop(
         });
 
         all_text.push_str(&turn_text);
+
+        if stop_reason == "max_tokens" {
+            log::warn!("[llm] response truncated (max_tokens reached) — requesting continuation");
+            // Don't execute truncated tool calls — ask LLM to continue instead
+            messages.push(Message::User {
+                content: vec![ContentBlock::text(
+                    "[system: your previous response was cut off due to length. please continue exactly where you left off.]",
+                )],
+            });
+            continue;
+        }
 
         if stop_reason != "tool_use" || tool_uses.is_empty() {
             break;
@@ -639,7 +660,7 @@ async fn complete_once(
             model,
         } => {
             let (text, stop_reason) =
-                anthropic_complete(http, api_key, model, system, tool_defs, messages, 8192, use_cache)
+                anthropic_complete(http, api_key, model, system, tool_defs, messages, 16384, use_cache)
                     .await?;
             // For non-streaming, parse tool_use from response
             // The anthropic_complete returns only text; for tool use we need the full response
@@ -653,7 +674,7 @@ async fn complete_once(
         } => {
             let joined = system.join("\n\n");
             let (text, stop_reason) =
-                openai_complete(http, api_key, base_url, model, &joined, tool_defs, messages, 8192).await?;
+                openai_complete(http, api_key, base_url, model, &joined, tool_defs, messages, 16384).await?;
             Ok((text, vec![], stop_reason))
         }
     }
@@ -983,8 +1004,17 @@ async fn anthropic_stream(
                 "content_block_stop" => {
                     if current_block_type == "tool_use" {
                         let input: serde_json::Value =
-                            serde_json::from_str(&current_tool_input_json)
-                                .unwrap_or(serde_json::json!({}));
+                            match serde_json::from_str(&current_tool_input_json) {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    log::warn!(
+                                        "[llm] truncated tool call JSON for '{}': {e} (input len={})",
+                                        current_tool_name,
+                                        current_tool_input_json.len()
+                                    );
+                                    serde_json::json!({})
+                                }
+                            };
                         tool_uses.push(ToolUseBlock {
                             id: current_tool_id.clone(),
                             name: current_tool_name.clone(),
@@ -1047,7 +1077,7 @@ async fn stream_once(
                 system,
                 tool_defs,
                 messages,
-                8192,
+                16384,
                 events,
                 instance_slug,
                 chat_id,
@@ -1070,7 +1100,7 @@ async fn stream_once(
                 &joined,
                 tool_defs,
                 messages,
-                8192,
+                16384,
                 events,
                 instance_slug,
                 chat_id,
@@ -1393,8 +1423,17 @@ async fn openai_stream(
 
     // Finalize tool calls
     for (_, (id, name, args_json)) in tool_call_map {
-        let input: serde_json::Value =
-            serde_json::from_str(&args_json).unwrap_or(serde_json::json!({}));
+        let input: serde_json::Value = match serde_json::from_str(&args_json) {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!(
+                    "[llm] truncated tool call JSON for '{}': {e} (input len={})",
+                    name,
+                    args_json.len()
+                );
+                serde_json::json!({})
+            }
+        };
         tool_uses.push(ToolUseBlock { id, name, input });
     }
 
