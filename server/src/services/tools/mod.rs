@@ -30,6 +30,7 @@ pub mod memory_tools;
 pub mod project;
 pub mod skills;
 pub mod system;
+pub mod video;
 pub mod web;
 
 // Re-export public items so external code uses `tools::FooTool` paths
@@ -57,6 +58,7 @@ pub use github::{
     GithubCloneTool, GithubBranchTool, GithubCommitPushTool,
     GithubCreatePrTool, GithubIssuesTool, GithubReadIssueTool,
 };
+pub use video::WatchVideoTool;
 pub use web::{BrowseTool, WebFetchTool, WebSearchTool};
 
 // ---------------------------------------------------------------------------
@@ -387,6 +389,7 @@ pub fn build_tools(
     mcp_snapshot: Option<crate::services::mcp::McpAppSnapshot>,
     mcp_tools: Vec<Box<dyn ToolDyn>>,
     github_token: Option<&str>,
+    openrouter_key: &str,
 ) -> (Vec<Box<dyn ToolDyn>>, SentFiles) {
     let snap = mcp_snapshot;
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
@@ -424,6 +427,8 @@ pub fn build_tools(
         // Web
         wrap(Box::new(WebSearchTool::new(brave_api_key, config_path))),
         wrap(Box::new(WebFetchTool)),
+        // Video
+        wrap(Box::new(WatchVideoTool::new(openrouter_key))),
         // Code
         wrap(Box::new(SearchCodeTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone()))),

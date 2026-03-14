@@ -333,6 +333,10 @@ pub async fn run_single_turn(
     let sent_files = tools::SentFiles::default();
     let mcp_snapshot = mcp_registry.snapshot_app_tools().await;
     let mcp_tools = mcp_registry.tools_as_dyn().await;
+    let openrouter_key = chat_config
+        .as_ref()
+        .map(|c| c.llm.tokens.open_router.clone())
+        .unwrap_or_default();
     let (all_tools, sent_files) = tools::build_tools(
         workspace_dir, &instance_slug, &chat_id, brave_api_key,
         config_path, events.clone(), llm,
@@ -343,6 +347,7 @@ pub async fn run_single_turn(
         Some(mcp_snapshot.clone()),
         mcp_tools,
         github_token,
+        &openrouter_key,
     );
 
     let history_count = history_msgs.len();
