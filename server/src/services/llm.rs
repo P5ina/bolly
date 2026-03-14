@@ -585,10 +585,10 @@ async fn streaming_agent_loop(
             content: assistant_content,
         });
 
-        all_text.push_str(&turn_text);
-
         if stop_reason == "max_tokens" {
             log::warn!("[llm] response truncated (max_tokens reached) — requesting continuation");
+            // Accumulate text across continuation turns
+            all_text.push_str(&turn_text);
             // Don't execute truncated tool calls — ask LLM to continue instead
             messages.push(Message::User {
                 content: vec![ContentBlock::text(
@@ -597,6 +597,10 @@ async fn streaming_agent_loop(
             });
             continue;
         }
+
+        // For the final turn (no more tool use), only keep this turn's text.
+        // Intermediate texts from tool-use turns are saved individually below.
+        all_text = turn_text.clone();
 
         if stop_reason != "tool_use" || tool_uses.is_empty() {
             break;
