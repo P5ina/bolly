@@ -54,11 +54,7 @@ impl Tool for ScheduleMessageTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "schedule_message".into(),
-            description: "Schedule a message to be delivered to the user later. Use this for \
-                reminders, check-ins, follow-ups, or surprises. Specify the delay in minutes \
-                (e.g. 60 = 1 hour, 1440 = 1 day). The message will appear in the chat at \
-                the scheduled time, as if you wrote to them first."
-                .into(),
+            description: "Schedule a message for later delivery. Delay in minutes (60=1h, 1440=1d).".into(),
             parameters: openai_schema::<ScheduleMessageArgs>(),
         }
     }
@@ -140,11 +136,7 @@ impl Tool for ReachOutTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "reach_out".into(),
-            description: "Send a message to the user. Use this when you genuinely want to \
-                reach out — share something interesting, alert them about something important, \
-                or just say hi. The message will appear in their chat. \
-                Don't overuse this — only reach out when you have something meaningful to say."
-                .into(),
+            description: "Send a spontaneous message to the user. Use sparingly.".into(),
             parameters: openai_schema::<ReachOutArgs>(),
         }
     }
@@ -260,12 +252,7 @@ impl Tool for SendEmailTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "send_email".into(),
-            description: "Send an email via Gmail. Uses the connected Google account. \
-                Use this to communicate with people outside the chat — send updates, \
-                share ideas, follow up on conversations. \
-                If multiple Google accounts are connected, use the 'account' parameter \
-                to specify which one to send from."
-                .into(),
+            description: "Send an email via Gmail. Use 'account' param for multi-account.".into(),
             parameters: openai_schema::<SendEmailArgs>(),
         }
     }
@@ -353,12 +340,7 @@ impl Tool for ReadEmailTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "read_email".into(),
-            description:
-                "Read recent emails via Gmail. Returns subject, from, date, and snippet \
-                for the most recent messages. Supports Gmail search queries. \
-                If multiple Google accounts are connected, use the 'account' parameter \
-                to specify which inbox to read."
-                    .into(),
+            description: "Read recent Gmail messages. Supports search queries. Use 'account' for multi-account.".into(),
             parameters: openai_schema::<ReadEmailArgs>(),
         }
     }

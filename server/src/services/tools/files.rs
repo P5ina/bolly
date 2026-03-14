@@ -42,11 +42,7 @@ impl Tool for ReadFileTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "read_file".into(),
-            description: "Read a file. Use a relative path for your instance workspace \
-                or an absolute path (starting with /) to read any file on the system. \
-                For large files, use offset/limit to read specific line ranges instead of \
-                reading the entire file — files over 20000 chars are truncated."
-                .into(),
+            description: "Read a file by relative or absolute path. Use offset/limit for large files (>20k chars truncated).".into(),
             parameters: openai_schema::<ReadFileArgs>(),
         }
     }
@@ -125,10 +121,7 @@ impl Tool for WriteFileTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "write_file".into(),
-            description: "Write or overwrite a file. Use a relative path for your instance \
-                workspace or an absolute path (starting with /) for any file on the system. \
-                Parent directories will be created automatically."
-                .into(),
+            description: "Write or overwrite a file. Relative or absolute path. Parent dirs created automatically.".into(),
             parameters: openai_schema::<WriteFileArgs>(),
         }
     }
@@ -185,11 +178,7 @@ impl Tool for EditFileTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "edit_file".into(),
-            description: "Edit a file by replacing an exact string match. More efficient than \
-                write_file for small changes — only sends the diff instead of the whole file. \
-                The old_string must appear exactly once in the file. If it appears multiple \
-                times, include more surrounding context to make it unique."
-                .into(),
+            description: "Edit a file by exact string replacement. old_string must be unique; add context if not.".into(),
             parameters: openai_schema::<EditFileArgs>(),
         }
     }
@@ -268,9 +257,7 @@ impl Tool for ListFilesTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "list_files".into(),
-            description: "List files and directories. Use an absolute path to browse any \
-                directory on the system, or a relative path / omit for your instance workspace."
-                .into(),
+            description: "List files and directories. Relative or absolute path.".into(),
             parameters: openai_schema::<ListFilesArgs>(),
         }
     }
@@ -342,11 +329,7 @@ impl Tool for SendFileTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "send_file".into(),
-            description:
-                "Send a file from the workspace to the chat so the user can see or download it. \
-                Images will be displayed inline, other files will appear as download links. \
-                Use this after creating or finding a file you want to share with the user."
-                    .into(),
+            description: "Send a file to the chat. Images display inline, others as download links.".into(),
             parameters: openai_schema::<SendFileArgs>(),
         }
     }

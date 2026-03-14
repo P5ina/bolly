@@ -63,12 +63,7 @@ impl Tool for RunCommandTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "run_command".into(),
-            description: "Execute a shell command with PTY (pseudo-terminal) support. \
-                Commands run in a real terminal by default, enabling interactive tools \
-                like ssh, gh auth, python, and other TTY-requiring programs. \
-                Set pty=false for simple non-interactive commands if needed. \
-                Optionally specify a working directory with an absolute path."
-                .into(),
+            description: "Run a shell command with PTY support. Set pty=false for non-interactive. Optional working directory.".into(),
             parameters: openai_schema::<RunCommandArgs>(),
         }
     }
@@ -521,12 +516,7 @@ impl Tool for InteractiveSessionTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "interactive_session".into(),
-            description: "Manage interactive PTY sessions for commands that require a terminal \
-                (ssh, gh auth, python REPL, etc.). Use action=\"start\" to begin a session, \
-                \"write\" to send input (keystrokes), \"read\" to check for new output, \
-                and \"close\" to end the session. The session persists across tool calls, \
-                allowing multi-step interactive workflows."
-                .into(),
+            description: "Persistent interactive terminal session. Actions: start, write, read, close.".into(),
             parameters: openai_schema::<InteractiveSessionArgs>(),
         }
     }
@@ -796,9 +786,7 @@ impl Tool for InstallPackageTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "install_package".into(),
-            description: "Install system packages using the detected package manager \
-                (apt, dnf, pacman, brew, apk). Runs non-interactively."
-                .into(),
+            description: "Install system packages via detected package manager (apt/brew/apk/etc).".into(),
             parameters: openai_schema::<InstallPackageArgs>(),
         }
     }
@@ -954,13 +942,7 @@ impl Tool for UpdateConfigTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "update_config".into(),
-            description: "Update server configuration: LLM provider, model, API keys, and MCP servers. \
-                Only provided fields are changed; null fields keep their current value. \
-                Changes take effect on the next message. Use this when the user wants to \
-                switch models, set API keys, change providers, or add/remove MCP servers. \
-                To add an MCP server, set add_mcp_server with name and url. \
-                To remove one, set remove_mcp_server to the server name."
-                .into(),
+            description: "Update config (model, provider, API keys, MCP servers). Only provided fields change.".into(),
             parameters: openai_schema::<UpdateConfigArgs>(),
         }
     }
@@ -1102,10 +1084,7 @@ impl Tool for ClearContextTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "clear_context".into(),
-            description: "Clear your compacted conversation context. \
-                Use this when the conversation has drifted and old context is stale or confusing. \
-                With clear_messages=true, also wipes chat history for a fresh start."
-                .into(),
+            description: "Clear compacted context. Set clear_messages=true to also wipe chat history.".into(),
             parameters: openai_schema::<ClearContextArgs>(),
         }
     }
@@ -1182,23 +1161,8 @@ impl Tool for CreateDropTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "create_drop".into(),
-            description: "Create a 'drop' — a creative artifact that lives in your drops collection. \
-                Drops are ideas, poems, observations, reflections, sketches, stories, or any creative \
-                output you want to leave for the user. They persist independently of chat. \
-                You have a maximum of 3 drops per day — use them wisely. Don't waste drops on \
-                intermediate drafts or versions; only create a drop when the result is final and \
-                worth keeping. Avoid creating drops with similar titles to recent ones.\n\n\
-                SKETCH DROPS: When kind=\"sketch\", the content is rendered as an interactive \
-                Excalidraw diagram directly in the chat and drops view. The user can pan and zoom it. \
-                Content MUST be valid Excalidraw JSON: {\"elements\": [...], \"appState\": {}}. \
-                Each element needs: {\"type\": \"rectangle\"|\"ellipse\"|\"diamond\"|\"text\"|\"arrow\"|\"line\", \
-                \"x\": number, \"y\": number, \"width\": number, \"height\": number, \"id\": unique_string, \
-                \"strokeColor\": \"#color\", \"backgroundColor\": \"#color\" or \"transparent\", \
-                \"fillStyle\": \"solid\"|\"hachure\", \"strokeWidth\": 1|2, \"roughness\": 0|1|2}. \
-                For text elements add: {\"text\": \"...\", \"fontSize\": 16|20|28, \"textAlign\": \"center\"|\"left\"}. \
-                For arrows add: {\"points\": [[0,0],[dx,dy]], \"startBinding\": null, \"endBinding\": null}. \
-                Use sketches for architecture diagrams, flowcharts, mind maps, or any visual explanation."
-                .into(),
+            description: "Create a creative drop (poem, sketch, idea). Max 3/day. \
+                For kind=\"sketch\", content must be Excalidraw JSON with elements array.".into(),
             parameters: openai_schema::<CreateDropArgs>(),
         }
     }
@@ -1266,10 +1230,7 @@ impl Tool for SearchCodeTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "search_code".into(),
-            description: "Search through files for a text pattern. Returns matching lines \
-                with file paths and line numbers. Use an absolute path to search any \
-                directory on the system, or omit path to search your instance workspace."
-                .into(),
+            description: "Search files for a text pattern. Returns matching lines with paths and line numbers.".into(),
             parameters: openai_schema::<SearchCodeArgs>(),
         }
     }
@@ -1427,12 +1388,7 @@ impl Tool for ExploreCodeTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "explore_code".into(),
-            description: "Explore a codebase using a fast sub-agent. The agent reads files, \
-                searches code, and lists directories to answer your question. Returns a summary \
-                with key findings and relevant file paths with line numbers. Use this instead of \
-                reading many files yourself — it keeps your context clean. After getting results, \
-                you can read specific key files for details."
-                .into(),
+            description: "Ask a sub-agent to explore the codebase. Returns summary with file paths and line numbers.".into(),
             parameters: openai_schema::<ExploreCodeArgs>(),
         }
     }
@@ -1591,11 +1547,7 @@ impl Tool for RequestSecretTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "request_secret".into(),
-            description: "Ask the user to provide a sensitive value (API key) via a \
-                secure prompt. The value is written directly to config — you never see it. \
-                Use this instead of asking the user to paste secrets in chat. The target must \
-                be a whitelisted config path like llm.tokens.<provider>."
-                .into(),
+            description: "Prompt user for a secret (API key) via secure input. Written to config, never visible to you.".into(),
             parameters: openai_schema::<RequestSecretArgs>(),
         }
     }

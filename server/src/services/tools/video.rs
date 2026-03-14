@@ -40,10 +40,7 @@ impl Tool for WatchVideoTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "watch_video".into(),
-            description: "Watch and analyze a video using vision AI (Gemini). Supports YouTube \
-                URLs and direct video links. Provide a prompt to focus the analysis \
-                (e.g. summarize, extract code, describe UI)."
-                .into(),
+            description: "Analyze a video via Gemini vision AI. YouTube URLs or direct links.".into(),
             parameters: openai_schema::<WatchVideoArgs>(),
         }
     }

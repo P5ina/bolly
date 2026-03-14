@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt, fs,
     future::Future,
     path::{Path, PathBuf},
@@ -58,6 +58,94 @@ pub use system::{
 };
 pub use video::WatchVideoTool;
 pub use web::{BrowseTool, WebFetchTool, WebSearchTool};
+
+// ---------------------------------------------------------------------------
+// Tool categories for dynamic loading
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ToolCategory {
+    Core,
+    Web,
+    Google,
+    Github,
+    Project,
+    Code,
+    Creative,
+    System,
+    Skills,
+}
+
+/// All categories (used when triage is unavailable).
+pub fn all_categories() -> HashSet<ToolCategory> {
+    use ToolCategory::*;
+    [Core, Web, Google, Github, Project, Code, Creative, System, Skills]
+        .into_iter()
+        .collect()
+}
+
+const TRIAGE_SYSTEM: &str = "\
+You classify which tool categories a chat message needs.
+Categories: web, google, github, project, code, creative, system, skills
+- web: searching the internet, fetching URLs, browsing pages, watching videos
+- google: email, gmail, calendar, events, google drive files
+- github: repositories, branches, commits, pull requests, issues
+- project: project state, tasks, kanban board, todos
+- code: searching/exploring code in the codebase
+- creative: creating drops (poems, art, sketches), scheduling future messages, reminders
+- system: installing packages, changing config/settings, terminal sessions, sending files, API keys/secrets
+- skills: listing/activating skills
+
+Respond with a comma-separated list of needed categories, or NONE if only basic chat is needed.
+Examples:
+User: hey how are you? → NONE
+User: search the web for rust async patterns → web
+User: check my email and create a task for it → google,project
+User: clone the repo and explore the code → github,code
+User: remind me tomorrow to review PRs → creative,github
+User: install ffmpeg and update the config → system";
+
+/// Ask a fast model which tool categories the user's message needs.
+pub async fn triage_categories(
+    llm: &crate::services::llm::LlmBackend,
+    user_message: &str,
+) -> HashSet<ToolCategory> {
+    let fast = llm.fast_variant();
+    let mut cats = HashSet::new();
+    cats.insert(ToolCategory::Core);
+
+    let result = fast.chat(TRIAGE_SYSTEM, user_message, vec![]).await;
+    let response = match result {
+        Ok(r) => r,
+        Err(e) => {
+            log::warn!("tool triage failed, loading all: {e}");
+            return all_categories();
+        }
+    };
+
+    let response = response.trim().to_lowercase();
+    log::info!("tool triage: {response}");
+
+    if response == "none" {
+        return cats;
+    }
+
+    for part in response.split(',') {
+        match part.trim() {
+            "web" => { cats.insert(ToolCategory::Web); }
+            "google" => { cats.insert(ToolCategory::Google); }
+            "github" => { cats.insert(ToolCategory::Github); }
+            "project" => { cats.insert(ToolCategory::Project); }
+            "code" => { cats.insert(ToolCategory::Code); }
+            "creative" => { cats.insert(ToolCategory::Creative); }
+            "system" => { cats.insert(ToolCategory::System); }
+            "skills" => { cats.insert(ToolCategory::Skills); }
+            _ => {}
+        }
+    }
+
+    cats
+}
 
 // ---------------------------------------------------------------------------
 // Cached tool definitions snapshot (populated by build_tools, read by stats)
@@ -445,7 +533,7 @@ impl ToolDyn for ObservableTool {
     }
 }
 
-/// Build all tools, each wrapped in ObservableTool.
+/// Build tools gated by category. Core is always loaded; others depend on triage.
 pub fn build_tools(
     workspace_dir: &Path,
     instance_slug: &str,
@@ -466,6 +554,7 @@ pub fn build_tools(
     mcp_tools: Vec<Box<dyn ToolDyn>>,
     github_token: Option<&str>,
     openrouter_key: &str,
+    categories: &HashSet<ToolCategory>,
 ) -> (Vec<Box<dyn ToolDyn>>, SentFiles) {
     let snap = mcp_snapshot;
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
@@ -478,183 +567,111 @@ pub fn build_tools(
             snap.clone(),
         ))
     };
+    let has = |cat: ToolCategory| categories.contains(&cat);
 
     let browser_enabled = matches!(plan, "companion" | "unlimited");
 
+    // ── Core (always loaded) ──
     let mut tools: Vec<Box<dyn ToolDyn>> = vec![
-        // Files
         wrap(Box::new(ReadFileTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(WriteFileTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(EditFileTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(ListFilesTool::new(workspace_dir, instance_slug))),
-        // Memory library
         wrap(Box::new(MemoryWriteTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(MemoryReadTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(MemoryListTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(MemoryForgetTool::new(
-            workspace_dir,
-            instance_slug,
-        ))),
-        // Companion
-        wrap(Box::new(SetMoodTool::new(
-            workspace_dir,
-            instance_slug,
-            events.clone(),
-        ))),
+        wrap(Box::new(MemoryForgetTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone()))),
         wrap(Box::new(GetMoodTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(EditSoulTool::new(workspace_dir, instance_slug))),
-        // System
-        wrap(Box::new(RunCommandTool::new(
-            workspace_dir,
-            instance_slug,
-            chat_id,
-            events.clone(),
-        ))),
-        wrap(Box::new(InteractiveSessionTool::new(
-            workspace_dir,
-            instance_slug,
-        ))),
-        wrap(Box::new(SendFileTool::new(
-            workspace_dir,
-            instance_slug,
-            sent_files.clone(),
-        ))),
-        wrap(Box::new(ClearContextTool::new(
-            workspace_dir,
-            instance_slug,
-        ))),
-        wrap(Box::new(InstallPackageTool)),
-        wrap(Box::new(UpdateConfigTool::new(
-            config_path,
-            workspace_dir,
-            instance_slug,
-        ))),
-        // Skills
-        wrap(Box::new(ListSkillsTool::new(workspace_dir))),
-        wrap(Box::new(ActivateSkillTool::new(workspace_dir))),
-        wrap(Box::new(ReadSkillReferenceTool::new(workspace_dir))),
-        // Web
-        wrap(Box::new(WebSearchTool::new(brave_api_key, config_path))),
-        wrap(Box::new(WebFetchTool)),
-        // Video
-        wrap(Box::new(WatchVideoTool::new(openrouter_key))),
-        // Code
-        wrap(Box::new(SearchCodeTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(ExploreCodeTool::new(
-            workspace_dir,
-            instance_slug,
-            llm.clone(),
-        ))),
-        // Project
-        wrap(Box::new(GetProjectStateTool::new(
-            workspace_dir,
-            instance_slug,
-        ))),
-        wrap(Box::new(UpdateProjectStateTool::new(
-            workspace_dir,
-            instance_slug,
-        ))),
-        wrap(Box::new(CreateTaskTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(UpdateTaskTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(ListTasksTool::new(workspace_dir, instance_slug))),
-        // Creative
-        wrap(Box::new(CreateDropTool::new(
-            workspace_dir,
-            instance_slug,
-            events.clone(),
-        ))),
-        // Scheduling
-        wrap(Box::new(ScheduleMessageTool::new(
-            workspace_dir,
-            instance_slug,
-        ))),
+        wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug, chat_id, events.clone()))),
+        wrap(Box::new(ClearContextTool::new(workspace_dir, instance_slug))),
     ];
 
-    // Google tools (Gmail, Calendar, Drive) — always registered.
-    // Tools return helpful error if no accounts connected.
-    if let Some(g) = google {
-        tools.push(wrap(Box::new(SendEmailTool::new(g.clone(), instance_slug))));
-        tools.push(wrap(Box::new(ReadEmailTool::new(g.clone(), instance_slug))));
-        tools.push(wrap(Box::new(ListEventsTool::new(
-            g.clone(),
-            instance_slug,
-        ))));
-        tools.push(wrap(Box::new(CreateEventTool::new(
-            g.clone(),
-            instance_slug,
-        ))));
-        tools.push(wrap(Box::new(ListDriveFilesTool::new(
-            g.clone(),
-            instance_slug,
-        ))));
-        tools.push(wrap(Box::new(ReadDriveFileTool::new(
-            g.clone(),
-            instance_slug,
-        ))));
-        tools.push(wrap(Box::new(UploadDriveFileTool::new(g, instance_slug))));
-    }
-
-    // Browser tool only available on companion+ plans (needs more RAM for Playwright/Chromium)
-    if browser_enabled {
-        tools.push(wrap(Box::new(BrowseTool::new(
-            workspace_dir,
-            instance_slug,
-        ))));
-    }
-
-    // Secret tool only available when pending_secrets is provided (interactive chat, not heartbeat)
-    if let Some(ps) = pending_secrets {
-        tools.push(wrap(Box::new(RequestSecretTool::new(
-            workspace_dir,
-            instance_slug,
-            config_path,
-            events.clone(),
-            ps,
-        ))));
-    }
-
-    // GitHub tools — only registered when token is configured
-    if let Some(gh_token) = github_token {
-        if !gh_token.is_empty() {
-            tools.push(wrap(Box::new(GithubCloneTool::new(
-                workspace_dir,
-                instance_slug,
-                gh_token,
-            ))));
-            tools.push(wrap(Box::new(GithubBranchTool::new(
-                workspace_dir,
-                instance_slug,
-                gh_token,
-            ))));
-            tools.push(wrap(Box::new(GithubCommitPushTool::new(
-                workspace_dir,
-                instance_slug,
-                gh_token,
-            ))));
-            tools.push(wrap(Box::new(GithubCreatePrTool::new(
-                workspace_dir,
-                instance_slug,
-                gh_token,
-            ))));
-            tools.push(wrap(Box::new(GithubIssuesTool::new(
-                workspace_dir,
-                instance_slug,
-                gh_token,
-            ))));
-            tools.push(wrap(Box::new(GithubReadIssueTool::new(
-                workspace_dir,
-                instance_slug,
-                gh_token,
+    // ── System ──
+    if has(ToolCategory::System) {
+        tools.push(wrap(Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug))));
+        tools.push(wrap(Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone()))));
+        tools.push(wrap(Box::new(InstallPackageTool)));
+        tools.push(wrap(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug))));
+        if let Some(ps) = pending_secrets {
+            tools.push(wrap(Box::new(RequestSecretTool::new(
+                workspace_dir, instance_slug, config_path, events.clone(), ps,
             ))));
         }
     }
 
-    // MCP tools from connected MCP servers
+    // ── Skills ──
+    if has(ToolCategory::Skills) {
+        tools.push(wrap(Box::new(ListSkillsTool::new(workspace_dir))));
+        tools.push(wrap(Box::new(ActivateSkillTool::new(workspace_dir))));
+        tools.push(wrap(Box::new(ReadSkillReferenceTool::new(workspace_dir))));
+    }
+
+    // ── Web ──
+    if has(ToolCategory::Web) {
+        tools.push(wrap(Box::new(WebSearchTool::new(brave_api_key, config_path))));
+        tools.push(wrap(Box::new(WebFetchTool)));
+        tools.push(wrap(Box::new(WatchVideoTool::new(openrouter_key))));
+        if browser_enabled {
+            tools.push(wrap(Box::new(BrowseTool::new(workspace_dir, instance_slug))));
+        }
+    }
+
+    // ── Code ──
+    if has(ToolCategory::Code) {
+        tools.push(wrap(Box::new(SearchCodeTool::new(workspace_dir, instance_slug))));
+        tools.push(wrap(Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone()))));
+    }
+
+    // ── Project ──
+    if has(ToolCategory::Project) {
+        tools.push(wrap(Box::new(GetProjectStateTool::new(workspace_dir, instance_slug))));
+        tools.push(wrap(Box::new(UpdateProjectStateTool::new(workspace_dir, instance_slug))));
+        tools.push(wrap(Box::new(CreateTaskTool::new(workspace_dir, instance_slug))));
+        tools.push(wrap(Box::new(UpdateTaskTool::new(workspace_dir, instance_slug))));
+        tools.push(wrap(Box::new(ListTasksTool::new(workspace_dir, instance_slug))));
+    }
+
+    // ── Creative ──
+    if has(ToolCategory::Creative) {
+        tools.push(wrap(Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone()))));
+        tools.push(wrap(Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug))));
+    }
+
+    // ── Google ──
+    if has(ToolCategory::Google) {
+        if let Some(g) = google {
+            tools.push(wrap(Box::new(SendEmailTool::new(g.clone(), instance_slug))));
+            tools.push(wrap(Box::new(ReadEmailTool::new(g.clone(), instance_slug))));
+            tools.push(wrap(Box::new(ListEventsTool::new(g.clone(), instance_slug))));
+            tools.push(wrap(Box::new(CreateEventTool::new(g.clone(), instance_slug))));
+            tools.push(wrap(Box::new(ListDriveFilesTool::new(g.clone(), instance_slug))));
+            tools.push(wrap(Box::new(ReadDriveFileTool::new(g.clone(), instance_slug))));
+            tools.push(wrap(Box::new(UploadDriveFileTool::new(g, instance_slug))));
+        }
+    }
+
+    // ── GitHub ──
+    if has(ToolCategory::Github) {
+        if let Some(gh_token) = github_token {
+            if !gh_token.is_empty() {
+                tools.push(wrap(Box::new(GithubCloneTool::new(workspace_dir, instance_slug, gh_token))));
+                tools.push(wrap(Box::new(GithubBranchTool::new(workspace_dir, instance_slug, gh_token))));
+                tools.push(wrap(Box::new(GithubCommitPushTool::new(workspace_dir, instance_slug, gh_token))));
+                tools.push(wrap(Box::new(GithubCreatePrTool::new(workspace_dir, instance_slug, gh_token))));
+                tools.push(wrap(Box::new(GithubIssuesTool::new(workspace_dir, instance_slug, gh_token))));
+                tools.push(wrap(Box::new(GithubReadIssueTool::new(workspace_dir, instance_slug, gh_token))));
+            }
+        }
+    }
+
+    // MCP tools — always loaded (user-configured integrations)
     for mcp_tool in mcp_tools {
         tools.push(wrap(mcp_tool));
     }
 
-    log::info!("built {} tools", tools.len());
+    log::info!("built {} tools (categories: {:?})", tools.len(), categories);
     (tools, sent_files)
 }
 

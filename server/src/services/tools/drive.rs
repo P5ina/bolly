@@ -49,11 +49,7 @@ impl Tool for ListDriveFilesTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "list_drive_files".into(),
-            description: "List files in Google Drive. Supports search queries and folder filtering. \
-                Returns file name, ID, type, and last modified date. \
-                If multiple Google accounts are connected, use the 'account' parameter \
-                to specify which Drive to search."
-                .into(),
+            description: "List Google Drive files. Supports search queries and folder filtering.".into(),
             parameters: openai_schema::<ListDriveFilesArgs>(),
         }
     }
@@ -156,12 +152,7 @@ impl Tool for ReadDriveFileTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "read_drive_file".into(),
-            description: "Read the contents of a Google Drive file. For Google Docs, returns \
-                plain text. For Google Sheets, returns CSV. For other files, returns raw content \
-                (text only — binary files will be truncated). \
-                If multiple Google accounts are connected, use the 'account' parameter \
-                to specify which Drive to read from."
-                .into(),
+            description: "Read a Google Drive file. Docs→text, Sheets→CSV, others→raw content.".into(),
             parameters: openai_schema::<ReadDriveFileArgs>(),
         }
     }
@@ -288,11 +279,7 @@ impl Tool for UploadDriveFileTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "upload_drive_file".into(),
-            description: "Upload a text file to Google Drive. Specify a name, content, \
-                and optionally a MIME type and folder ID. \
-                If multiple Google accounts are connected, use the 'account' parameter \
-                to specify which Drive to upload to."
-                .into(),
+            description: "Upload a text file to Google Drive. Optional MIME type and folder ID.".into(),
             parameters: openai_schema::<UploadDriveFileArgs>(),
         }
     }

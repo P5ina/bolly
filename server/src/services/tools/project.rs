@@ -89,10 +89,7 @@ impl Tool for GetProjectStateTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "get_project_state".into(),
-            description: "Read the current project state — what we're building, the active goal, \
-                subgoals, what was last completed, next step, open questions, and hypotheses. \
-                Use this at the start of work to re-orient yourself."
-                .into(),
+            description: "Read current project state (goal, progress, next steps, open questions).".into(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
         }
     }
@@ -165,11 +162,7 @@ impl Tool for UpdateProjectStateTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "update_project_state".into(),
-            description: "Update the project state. Only provided fields are changed. \
-                Use this to track progress: update current_goal when direction shifts, \
-                last_completed after finishing something, next_step to plan ahead, \
-                open_questions for things to figure out."
-                .into(),
+            description: "Update project state. Only provided fields change.".into(),
             parameters: openai_schema::<UpdateProjectStateArgs>(),
         }
     }
@@ -295,9 +288,7 @@ impl Tool for CreateTaskTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "create_task".into(),
-            description: "Create a new task on the task board. Use this to track work items, \
-                TODOs, things to check later, or follow-ups. Tasks start as 'todo'."
-                .into(),
+            description: "Create a task on the board. Starts as 'todo'.".into(),
             parameters: openai_schema::<CreateTaskArgs>(),
         }
     }
@@ -366,9 +357,7 @@ impl Tool for UpdateTaskTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "update_task".into(),
-            description: "Update a task's status, title, or notes. Use status to move tasks \
-                through the kanban: todo → in_progress → done. Use 'blocked' for stuck items."
-                .into(),
+            description: "Update a task (status, title, notes). Statuses: todo, in_progress, done, blocked.".into(),
             parameters: openai_schema::<UpdateTaskArgs>(),
         }
     }
@@ -435,9 +424,7 @@ impl Tool for ListTasksTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "list_tasks".into(),
-            description: "List tasks from the task board, optionally filtered by status. \
-                Use this to review what's pending, in progress, done, or blocked."
-                .into(),
+            description: "List tasks, optionally filtered by status.".into(),
             parameters: openai_schema::<ListTasksArgs>(),
         }
     }

@@ -148,10 +148,7 @@ impl Tool for WebSearchTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "web_search".into(),
-            description: "Search the web for current information. Use this when you need \
-                up-to-date facts, news, or information you don't already know. \
-                Returns titles, snippets, and URLs from search results."
-                .into(),
+            description: "Search the web. Returns titles, snippets, and URLs.".into(),
             parameters: openai_schema::<WebSearchArgs>(),
         }
     }
@@ -243,10 +240,7 @@ impl Tool for WebFetchTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "web_fetch".into(),
-            description: "Fetch the content of a web page. Use this after web_search to read \
-                a specific page, or when the user shares a URL you need to inspect. \
-                Returns the text content of the page (HTML tags stripped)."
-                .into(),
+            description: "Fetch a web page and return its text content (HTML stripped).".into(),
             parameters: openai_schema::<WebFetchArgs>(),
         }
     }
@@ -380,12 +374,7 @@ impl Tool for BrowseTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "browse".into(),
-            description: "Control a headless browser (Playwright/Chromium). \
-                Use this instead of web_fetch when pages require JavaScript rendering, \
-                or when you need to interact with a page (click, type, screenshot). \
-                Always start with a 'navigate' action, then use 'content' to read the page \
-                or 'screenshot' to capture it. You can chain multiple actions in one call."
-                .into(),
+            description: "Headless Chromium browser. Actions: navigate, content, screenshot, click, type, scroll.".into(),
             parameters: openai_schema::<BrowseArgs>(),
         }
     }

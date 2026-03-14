@@ -123,10 +123,7 @@ impl Tool for GithubCloneTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "github_clone".into(),
-            description: "Clone a GitHub repository (or pull latest if already cloned). \
-                Returns the local path where the repo is available. \
-                Use the file tools (read_file, write_file, edit_file) to work with files in the cloned repo."
-                .into(),
+            description: "Clone a GitHub repo (or pull latest). Returns local path.".into(),
             parameters: openai_schema::<GithubCloneArgs>(),
         }
     }
@@ -231,9 +228,7 @@ impl Tool for GithubBranchTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "github_branch".into(),
-            description: "Create a new git branch in a cloned repository. \
-                The repo must be cloned first with github_clone."
-                .into(),
+            description: "Create a new git branch. Repo must be cloned first.".into(),
             parameters: openai_schema::<GithubBranchArgs>(),
         }
     }
@@ -305,10 +300,7 @@ impl Tool for GithubCommitPushTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "github_commit_push".into(),
-            description: "Stage changes, commit, and push to remote. \
-                Will refuse to push directly to main/master. \
-                Create a branch first with github_branch."
-                .into(),
+            description: "Stage, commit, and push. Won't push to main/master directly.".into(),
             parameters: openai_schema::<GithubCommitPushArgs>(),
         }
     }
@@ -408,9 +400,7 @@ impl Tool for GithubCreatePrTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "github_create_pr".into(),
-            description: "Create a pull request on GitHub. \
-                The current branch must be pushed first with github_commit_push."
-                .into(),
+            description: "Create a GitHub pull request. Branch must be pushed first.".into(),
             parameters: openai_schema::<GithubCreatePrArgs>(),
         }
     }

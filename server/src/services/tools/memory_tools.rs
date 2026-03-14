@@ -47,10 +47,7 @@ impl Tool for MemoryWriteTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "memory_write".into(),
-            description: "Create or update a memory file in your personal library. \
-                Organize memories into folders by topic (about/, preferences/, moments/, projects/, etc). \
-                Each file should cover one coherent topic or moment. Use descriptive kebab-case names."
-                .into(),
+            description: "Create or update a memory file. Organize by folder (about/, preferences/, etc).".into(),
             parameters: openai_schema::<MemoryWriteArgs>(),
         }
     }
@@ -116,9 +113,7 @@ impl Tool for MemoryReadTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "memory_read".into(),
-            description: "Read a memory file or list the contents of a memory folder. \
-                Use this to look up specific memories when you need details."
-                .into(),
+            description: "Read a memory file or list folder contents.".into(),
             parameters: openai_schema::<MemoryReadArgs>(),
         }
     }
@@ -193,9 +188,7 @@ impl Tool for MemoryListTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "memory_list".into(),
-            description: "Browse your memory library structure. Shows all files with their first-line summaries. \
-                Optionally filter by folder prefix."
-                .into(),
+            description: "List all memory files with summaries. Optional folder filter.".into(),
             parameters: openai_schema::<MemoryListArgs>(),
         }
     }
@@ -258,9 +251,7 @@ impl Tool for MemoryForgetTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "memory_forget".into(),
-            description: "Delete a memory file. Pass the exact file path to delete it. \
-                Use this when the user asks you to forget something or when information is outdated."
-                .into(),
+            description: "Delete a memory file by path.".into(),
             parameters: openai_schema::<MemoryForgetArgs>(),
         }
     }

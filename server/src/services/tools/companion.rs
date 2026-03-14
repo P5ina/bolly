@@ -95,11 +95,7 @@ impl Tool for SetMoodTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "set_mood".into(),
-            description: format!(
-                "Update your emotional state. Your mood subtly influences your visual form \
-                and tone. Set it when something shifts. The mood MUST be exactly one of: {}.",
-                ALLOWED_MOODS.join(", ")
-            ),
+            description: format!("Set your mood. Must be one of: {}.", ALLOWED_MOODS.join(", ")),
             parameters: openai_schema::<SetMoodArgs>(),
         }
     }
@@ -162,10 +158,7 @@ impl Tool for GetMoodTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "get_mood".into(),
-            description: "Read your current emotional state and the user's last observed \
-                sentiment. Use this to check in on how you're feeling and what emotional \
-                context you're carrying from previous conversations."
-                .into(),
+            description: "Read your current mood and the user's last observed sentiment.".into(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
         }
     }
@@ -241,10 +234,7 @@ impl Tool for EditSoulTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "edit_soul".into(),
-            description: "Rewrite your own soul.md — the file that defines your personality, \
-                voice, and character. Use this when the user asks you to change who you are, \
-                how you speak, or your personality traits. Write the full new content in markdown."
-                .into(),
+            description: "Rewrite your soul.md (personality/voice definition). Full markdown content.".into(),
             parameters: openai_schema::<EditSoulArgs>(),
         }
     }

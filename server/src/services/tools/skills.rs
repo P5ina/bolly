@@ -37,8 +37,7 @@ impl Tool for ListSkillsTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "list_skills".into(),
-            description: "List all installed skills, showing their name, description, and enabled status."
-                .into(),
+            description: "List installed skills with name, description, and status.".into(),
             parameters: openai_schema::<ListSkillsArgs>(),
         }
     }
@@ -107,9 +106,7 @@ impl Tool for ActivateSkillTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "activate_skill".into(),
-            description: "Activate a skill before using it. Call this when you decide to apply \
-                a skill so the user can see which skill is guiding your response."
-                .into(),
+            description: "Activate a skill before using it.".into(),
             parameters: openai_schema::<ActivateSkillArgs>(),
         }
     }
@@ -176,10 +173,7 @@ impl Tool for ReadSkillReferenceTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "read_skill_reference".into(),
-            description: "Read a reference file bundled with an installed skill. \
-                Use this to access detailed documentation when a skill's instructions \
-                mention reference files."
-                .into(),
+            description: "Read a reference file bundled with a skill.".into(),
             parameters: openai_schema::<ReadSkillReferenceArgs>(),
         }
     }

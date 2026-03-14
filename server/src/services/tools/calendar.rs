@@ -47,11 +47,7 @@ impl Tool for ListEventsTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "list_events".into(),
-            description: "List upcoming Google Calendar events. Returns event title, time, \
-                location, and attendees for the next N days. \
-                If multiple Google accounts are connected, use the 'account' parameter \
-                to specify which calendar to check."
-                .into(),
+            description: "List upcoming Google Calendar events for the next N days.".into(),
             parameters: openai_schema::<ListEventsArgs>(),
         }
     }
@@ -185,11 +181,7 @@ impl Tool for CreateEventTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "create_event".into(),
-            description: "Create a Google Calendar event. Specify start/end times in ISO 8601 format \
-                (with timezone offset). Optionally add description, location, and attendees. \
-                If multiple Google accounts are connected, use the 'account' parameter \
-                to specify which calendar to use."
-                .into(),
+            description: "Create a Google Calendar event. Times in ISO 8601 with timezone.".into(),
             parameters: openai_schema::<CreateEventArgs>(),
         }
     }
