@@ -1,10 +1,13 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use base64::Engine as _;
 use futures::StreamExt;
+use rig::agent::{HookAction, PromptHook};
 use rig::client::CompletionClient;
-use rig::completion::{Chat, Message, Prompt};
+use rig::completion::{Chat, CompletionModel, Message, Prompt};
 use rig::agent::{AgentBuilder, MultiTurnStreamItem, StreamingError};
 use rig::completion::message::{AssistantContent, UserContent, ImageMediaType, DocumentMediaType, MimeType};
 use rig::one_or_many::OneOrMany;
@@ -17,6 +20,74 @@ use crate::domain::events::ServerEvent;
 
 use crate::config::{Config, LlmProvider};
 use crate::domain::chat::{ChatMessage, ChatRole};
+
+// ---------------------------------------------------------------------------
+// MCP App streaming hook — sends tool call deltas to client for live rendering
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+struct McpStreamHook {
+    events: broadcast::Sender<ServerEvent>,
+    snapshot: super::mcp::McpAppSnapshot,
+    instance_slug: String,
+    chat_id: String,
+    streaming_mcp_app: Arc<AtomicBool>,
+}
+
+impl McpStreamHook {
+    fn new(
+        events: broadcast::Sender<ServerEvent>,
+        snapshot: super::mcp::McpAppSnapshot,
+        instance_slug: &str,
+        chat_id: &str,
+    ) -> Self {
+        Self {
+            events,
+            snapshot,
+            instance_slug: instance_slug.to_string(),
+            chat_id: chat_id.to_string(),
+            streaming_mcp_app: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
+
+impl<M: CompletionModel> PromptHook<M> for McpStreamHook {
+    fn on_tool_call_delta(
+        &self,
+        _tool_call_id: &str,
+        _internal_call_id: &str,
+        tool_name: Option<&str>,
+        tool_call_delta: &str,
+    ) -> impl Future<Output = HookAction> + Send {
+        // Tool name arrives on the first delta
+        if let Some(name) = tool_name {
+            if let Some(html) = self.snapshot.get_app_html(name) {
+                self.streaming_mcp_app.store(true, Ordering::Relaxed);
+                let _ = self.events.send(ServerEvent::McpAppStart {
+                    instance_slug: self.instance_slug.clone(),
+                    chat_id: self.chat_id.clone(),
+                    tool_name: name.to_string(),
+                    html,
+                });
+            } else {
+                self.streaming_mcp_app.store(false, Ordering::Relaxed);
+            }
+        }
+
+        // Stream argument deltas for MCP app tools
+        if self.streaming_mcp_app.load(Ordering::Relaxed) && !tool_call_delta.is_empty() {
+            let _ = self.events.send(ServerEvent::McpAppInputDelta {
+                instance_slug: self.instance_slug.clone(),
+                chat_id: self.chat_id.clone(),
+                delta: tool_call_delta.to_string(),
+            });
+        }
+
+        async { HookAction::cont() }
+    }
+}
+
+use std::future::Future;
 
 /// Result of `chat_with_tools`: the final text response.
 /// Tool activity is now persisted incrementally by ObservableTool.
@@ -349,12 +420,20 @@ impl LlmBackend {
         instance_slug: &str,
         chat_id: &str,
         workspace_dir: &Path,
+        mcp_snapshot: Option<super::mcp::McpAppSnapshot>,
     ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>>
     {
         log::info!("chat_with_tools_streaming: {} tools", tools.len());
 
+        const AGENT_MAX_TURNS: usize = 16;
+
         let slug = instance_slug.to_string();
         let cid = chat_id.to_string();
+
+        // Build MCP streaming hook if we have app tools
+        let hook = mcp_snapshot.map(|snap| {
+            McpStreamHook::new(events.clone(), snap, instance_slug, chat_id)
+        });
 
         match self {
             LlmBackend::Anthropic { client, model } => {
@@ -364,11 +443,20 @@ impl LlmBackend {
                     .tools(tools)
                     .build();
 
-                let stream = agent
-                    .stream_prompt(prompt)
-                    .with_history(history)
-                    .multi_turn(1)
-                    .await;
+                let stream = if let Some(hook) = hook.clone() {
+                    agent
+                        .stream_prompt(prompt)
+                        .with_history(history)
+                        .with_hook(hook)
+                        .multi_turn(AGENT_MAX_TURNS)
+                        .await
+                } else {
+                    agent
+                        .stream_prompt(prompt)
+                        .with_history(history)
+                        .multi_turn(AGENT_MAX_TURNS)
+                        .await
+                };
 
                 consume_stream(stream, &events, &slug, &cid, workspace_dir).await
             }
@@ -379,11 +467,20 @@ impl LlmBackend {
                     .tools(tools)
                     .build();
 
-                let stream = agent
-                    .stream_prompt(prompt)
-                    .with_history(history)
-                    .multi_turn(1)
-                    .await;
+                let stream = if let Some(hook) = hook.clone() {
+                    agent
+                        .stream_prompt(prompt)
+                        .with_history(history)
+                        .with_hook(hook)
+                        .multi_turn(AGENT_MAX_TURNS)
+                        .await
+                } else {
+                    agent
+                        .stream_prompt(prompt)
+                        .with_history(history)
+                        .multi_turn(AGENT_MAX_TURNS)
+                        .await
+                };
 
                 consume_stream(stream, &events, &slug, &cid, workspace_dir).await
             }
@@ -394,11 +491,20 @@ impl LlmBackend {
                     .tools(tools)
                     .build();
 
-                let stream = agent
-                    .stream_prompt(prompt)
-                    .with_history(history)
-                    .multi_turn(1)
-                    .await;
+                let stream = if let Some(hook) = hook.clone() {
+                    agent
+                        .stream_prompt(prompt)
+                        .with_history(history)
+                        .with_hook(hook)
+                        .multi_turn(AGENT_MAX_TURNS)
+                        .await
+                } else {
+                    agent
+                        .stream_prompt(prompt)
+                        .with_history(history)
+                        .multi_turn(AGENT_MAX_TURNS)
+                        .await
+                };
 
                 consume_stream(stream, &events, &slug, &cid, workspace_dir).await
             }

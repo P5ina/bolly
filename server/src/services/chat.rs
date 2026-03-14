@@ -365,6 +365,7 @@ pub async fn run_single_turn(
             &system_prompt, prompt_msg, history_msgs, all_tools,
             events.clone(), &instance_slug, &chat_id,
             workspace_dir,
+            Some(mcp_snapshot),
         )
         .await
         .unwrap_or_else(|e| {
