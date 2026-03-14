@@ -22,13 +22,15 @@
 	let hovered = $state<string | null>(null);
 
 	function create() {
-		const slug = newSlug
-			.trim()
+		const name = newSlug.trim();
+		if (!name) return;
+		const slug = name
 			.toLowerCase()
 			.replace(/[^a-z0-9_-]/g, "-")
 			.replace(/-+/g, "-")
 			.replace(/^-|-$/g, "");
 		if (!slug) return;
+		localStorage.setItem("bolly:preferredName", name);
 		goto(`/${slug}`);
 	}
 
@@ -133,7 +135,7 @@
 							</svg>
 						</div>
 						<div class="home-orb-name home-orb-name-visible">
-							new friend
+							start
 						</div>
 					</button>
 				{/if}
@@ -146,7 +148,7 @@
 						<input
 							bind:value={newSlug}
 							onkeydown={handleKeydown}
-							placeholder="give them a name..."
+							placeholder="what's your name?"
 							autofocus
 							class="home-create-input"
 						/>
