@@ -554,7 +554,6 @@ pub fn build_tools(
     mcp_tools: Vec<Box<dyn ToolDyn>>,
     github_token: Option<&str>,
     openrouter_key: &str,
-    categories: &HashSet<ToolCategory>,
 ) -> (Vec<Box<dyn ToolDyn>>, SentFiles) {
     let snap = mcp_snapshot;
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
@@ -567,11 +566,10 @@ pub fn build_tools(
             snap.clone(),
         ))
     };
-    let has = |cat: ToolCategory| categories.contains(&cat);
 
     let browser_enabled = matches!(plan, "companion" | "unlimited");
 
-    // ── Core (always loaded) ──
+    // ── Core ──
     let mut tools: Vec<Box<dyn ToolDyn>> = vec![
         wrap(Box::new(ReadFileTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(WriteFileTool::new(workspace_dir, instance_slug))),
@@ -589,89 +587,73 @@ pub fn build_tools(
     ];
 
     // ── System ──
-    if has(ToolCategory::System) {
-        tools.push(wrap(Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug))));
-        tools.push(wrap(Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone()))));
-        tools.push(wrap(Box::new(InstallPackageTool)));
-        tools.push(wrap(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug))));
-        if let Some(ps) = pending_secrets {
-            tools.push(wrap(Box::new(RequestSecretTool::new(
-                workspace_dir, instance_slug, config_path, events.clone(), ps,
-            ))));
-        }
+    tools.push(wrap(Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug))));
+    tools.push(wrap(Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone()))));
+    tools.push(wrap(Box::new(InstallPackageTool)));
+    tools.push(wrap(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug))));
+    if let Some(ps) = pending_secrets {
+        tools.push(wrap(Box::new(RequestSecretTool::new(
+            workspace_dir, instance_slug, config_path, events.clone(), ps,
+        ))));
     }
 
     // ── Skills ──
-    if has(ToolCategory::Skills) {
-        tools.push(wrap(Box::new(ListSkillsTool::new(workspace_dir))));
-        tools.push(wrap(Box::new(ActivateSkillTool::new(workspace_dir))));
-        tools.push(wrap(Box::new(ReadSkillReferenceTool::new(workspace_dir))));
-    }
+    tools.push(wrap(Box::new(ListSkillsTool::new(workspace_dir))));
+    tools.push(wrap(Box::new(ActivateSkillTool::new(workspace_dir))));
+    tools.push(wrap(Box::new(ReadSkillReferenceTool::new(workspace_dir))));
 
     // ── Web ──
-    if has(ToolCategory::Web) {
-        tools.push(wrap(Box::new(WebSearchTool::new(brave_api_key, config_path))));
-        tools.push(wrap(Box::new(WebFetchTool)));
-        tools.push(wrap(Box::new(WatchVideoTool::new(openrouter_key))));
-        if browser_enabled {
-            tools.push(wrap(Box::new(BrowseTool::new(workspace_dir, instance_slug))));
-        }
+    tools.push(wrap(Box::new(WebSearchTool::new(brave_api_key, config_path))));
+    tools.push(wrap(Box::new(WebFetchTool)));
+    tools.push(wrap(Box::new(WatchVideoTool::new(openrouter_key))));
+    if browser_enabled {
+        tools.push(wrap(Box::new(BrowseTool::new(workspace_dir, instance_slug))));
     }
 
     // ── Code ──
-    if has(ToolCategory::Code) {
-        tools.push(wrap(Box::new(SearchCodeTool::new(workspace_dir, instance_slug))));
-        tools.push(wrap(Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone()))));
-    }
+    tools.push(wrap(Box::new(SearchCodeTool::new(workspace_dir, instance_slug))));
+    tools.push(wrap(Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone()))));
 
     // ── Project ──
-    if has(ToolCategory::Project) {
-        tools.push(wrap(Box::new(GetProjectStateTool::new(workspace_dir, instance_slug))));
-        tools.push(wrap(Box::new(UpdateProjectStateTool::new(workspace_dir, instance_slug))));
-        tools.push(wrap(Box::new(CreateTaskTool::new(workspace_dir, instance_slug))));
-        tools.push(wrap(Box::new(UpdateTaskTool::new(workspace_dir, instance_slug))));
-        tools.push(wrap(Box::new(ListTasksTool::new(workspace_dir, instance_slug))));
-    }
+    tools.push(wrap(Box::new(GetProjectStateTool::new(workspace_dir, instance_slug))));
+    tools.push(wrap(Box::new(UpdateProjectStateTool::new(workspace_dir, instance_slug))));
+    tools.push(wrap(Box::new(CreateTaskTool::new(workspace_dir, instance_slug))));
+    tools.push(wrap(Box::new(UpdateTaskTool::new(workspace_dir, instance_slug))));
+    tools.push(wrap(Box::new(ListTasksTool::new(workspace_dir, instance_slug))));
 
     // ── Creative ──
-    if has(ToolCategory::Creative) {
-        tools.push(wrap(Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone()))));
-        tools.push(wrap(Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug))));
-    }
+    tools.push(wrap(Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone()))));
+    tools.push(wrap(Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug))));
 
     // ── Google ──
-    if has(ToolCategory::Google) {
-        if let Some(g) = google {
-            tools.push(wrap(Box::new(SendEmailTool::new(g.clone(), instance_slug))));
-            tools.push(wrap(Box::new(ReadEmailTool::new(g.clone(), instance_slug))));
-            tools.push(wrap(Box::new(ListEventsTool::new(g.clone(), instance_slug))));
-            tools.push(wrap(Box::new(CreateEventTool::new(g.clone(), instance_slug))));
-            tools.push(wrap(Box::new(ListDriveFilesTool::new(g.clone(), instance_slug))));
-            tools.push(wrap(Box::new(ReadDriveFileTool::new(g.clone(), instance_slug))));
-            tools.push(wrap(Box::new(UploadDriveFileTool::new(g, instance_slug))));
-        }
+    if let Some(g) = google {
+        tools.push(wrap(Box::new(SendEmailTool::new(g.clone(), instance_slug))));
+        tools.push(wrap(Box::new(ReadEmailTool::new(g.clone(), instance_slug))));
+        tools.push(wrap(Box::new(ListEventsTool::new(g.clone(), instance_slug))));
+        tools.push(wrap(Box::new(CreateEventTool::new(g.clone(), instance_slug))));
+        tools.push(wrap(Box::new(ListDriveFilesTool::new(g.clone(), instance_slug))));
+        tools.push(wrap(Box::new(ReadDriveFileTool::new(g.clone(), instance_slug))));
+        tools.push(wrap(Box::new(UploadDriveFileTool::new(g, instance_slug))));
     }
 
     // ── GitHub ──
-    if has(ToolCategory::Github) {
-        if let Some(gh_token) = github_token {
-            if !gh_token.is_empty() {
-                tools.push(wrap(Box::new(GithubCloneTool::new(workspace_dir, instance_slug, gh_token))));
-                tools.push(wrap(Box::new(GithubBranchTool::new(workspace_dir, instance_slug, gh_token))));
-                tools.push(wrap(Box::new(GithubCommitPushTool::new(workspace_dir, instance_slug, gh_token))));
-                tools.push(wrap(Box::new(GithubCreatePrTool::new(workspace_dir, instance_slug, gh_token))));
-                tools.push(wrap(Box::new(GithubIssuesTool::new(workspace_dir, instance_slug, gh_token))));
-                tools.push(wrap(Box::new(GithubReadIssueTool::new(workspace_dir, instance_slug, gh_token))));
-            }
+    if let Some(gh_token) = github_token {
+        if !gh_token.is_empty() {
+            tools.push(wrap(Box::new(GithubCloneTool::new(workspace_dir, instance_slug, gh_token))));
+            tools.push(wrap(Box::new(GithubBranchTool::new(workspace_dir, instance_slug, gh_token))));
+            tools.push(wrap(Box::new(GithubCommitPushTool::new(workspace_dir, instance_slug, gh_token))));
+            tools.push(wrap(Box::new(GithubCreatePrTool::new(workspace_dir, instance_slug, gh_token))));
+            tools.push(wrap(Box::new(GithubIssuesTool::new(workspace_dir, instance_slug, gh_token))));
+            tools.push(wrap(Box::new(GithubReadIssueTool::new(workspace_dir, instance_slug, gh_token))));
         }
     }
 
-    // MCP tools — always loaded (user-configured integrations)
+    // MCP tools
     for mcp_tool in mcp_tools {
         tools.push(wrap(mcp_tool));
     }
 
-    log::info!("built {} tools (categories: {:?})", tools.len(), categories);
+    log::info!("built {} tools", tools.len());
     (tools, sent_files)
 }
 

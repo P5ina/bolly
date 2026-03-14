@@ -337,7 +337,6 @@ pub async fn run_single_turn(
         .as_ref()
         .map(|c| c.llm.tokens.open_router.clone())
         .unwrap_or_default();
-    let categories = tools::triage_categories(llm, last_user_content).await;
     let (all_tools, sent_files) = tools::build_tools(
         workspace_dir, &instance_slug, &chat_id, brave_api_key,
         config_path, events.clone(), llm,
@@ -349,7 +348,6 @@ pub async fn run_single_turn(
         mcp_tools,
         github_token,
         &openrouter_key,
-        &categories,
     );
     tools::cache_tool_defs(&all_tools).await;
 
