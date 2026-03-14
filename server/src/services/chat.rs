@@ -713,7 +713,10 @@ fn save_messages(
 
     let body = serde_json::to_string_pretty(messages)
         .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))?;
-    fs::write(&path, body)
+    // Atomic write to prevent corruption on crash
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, &body)?;
+    fs::rename(&tmp, &path)
 }
 
 /// Split a single LLM reply into multiple chat-like messages.
@@ -906,11 +909,18 @@ fn load_rig_history(path: &Path) -> Option<Vec<llm::Message>> {
     }
 }
 
-fn save_rig_history(path: &Path, history: &[llm::Message]) {
+pub fn save_rig_history(path: &Path, history: &[llm::Message]) {
     match serde_json::to_string(history) {
         Ok(body) => {
-            if let Err(e) = fs::write(path, body) {
-                log::warn!("failed to save rig_history.json: {e}");
+            // Atomic write: write to temp file, then rename to prevent corruption
+            // if the server is killed mid-write.
+            let tmp = path.with_extension("json.tmp");
+            if let Err(e) = fs::write(&tmp, &body) {
+                log::warn!("failed to write rig_history.json.tmp: {e}");
+                return;
+            }
+            if let Err(e) = fs::rename(&tmp, path) {
+                log::warn!("failed to rename rig_history.json.tmp: {e}");
             }
         }
         Err(e) => log::warn!("failed to serialize rig history: {e}"),

@@ -59,6 +59,10 @@ pub enum ContentBlock {
     },
     #[serde(rename = "compaction")]
     Compaction { summary: String },
+    /// Catch-all for unknown content block types (e.g. from newer API versions).
+    /// Preserves the raw JSON so it can be serialized back without data loss.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
 }
 
 impl ContentBlock {
@@ -634,6 +638,10 @@ async fn streaming_agent_loop(
             results.push(ContentBlock::tool_result(tu.id.clone(), content));
         }
         messages.push(Message::User { content: results });
+
+        // Persist rig_history after each tool cycle so restarts don't lose context
+        let rig_path = super::chat::rig_history_path(workspace_dir, instance_slug, chat_id);
+        super::chat::save_rig_history(&rig_path, messages);
     }
 
     Ok(all_text)
@@ -787,10 +795,12 @@ fn build_anthropic_request(
     if stream {
         req["stream"] = serde_json::json!(true);
     }
-    // Server-side context compaction — auto-summarizes when approaching context limit
-    req["context_management"] = serde_json::json!({
-        "edits": [{"type": "compact_20260112"}]
-    });
+    // Server-side context compaction — only supported on opus/sonnet 4.6+
+    if model.contains("opus-4") || model.contains("sonnet-4") {
+        req["context_management"] = serde_json::json!({
+            "edits": [{"type": "compact_20260112"}]
+        });
+    }
     req
 }
 
@@ -1574,13 +1584,19 @@ pub fn build_multimodal_prompt(
         };
 
         if meta.mime_type.starts_with("image/") {
-            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-            contents.push(ContentBlock::image_base64(b64, &meta.mime_type));
-            log::info!(
-                "attached image: {name} ({}, {} bytes)",
-                meta.mime_type,
-                bytes.len()
-            );
+            if let PdfStrategy::Url { base_url, auth_token } = pdf_strategy {
+                let url = format!(
+                    "{base_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}"
+                );
+                contents.push(ContentBlock::Image {
+                    source: ImageSource::Url { url },
+                });
+                log::info!("attached image (URL): {name} ({}, {} bytes)", meta.mime_type, bytes.len());
+            } else {
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                contents.push(ContentBlock::image_base64(b64, &meta.mime_type));
+                log::info!("attached image (base64): {name} ({}, {} bytes)", meta.mime_type, bytes.len());
+            }
         } else if meta.mime_type == "application/pdf" {
             match pdf_strategy {
                 PdfStrategy::NativeDocument => {
