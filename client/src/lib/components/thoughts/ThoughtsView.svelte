@@ -39,7 +39,6 @@
 	};
 
 	const actionIcons: Record<string, string> = {
-		journal: "/",
 		reach_out: ">",
 		drop: "*",
 		mood: "~",

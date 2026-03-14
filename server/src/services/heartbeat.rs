@@ -1,7 +1,7 @@
 //! Heartbeat — the companion's autonomous inner life.
 //!
 //! Periodically wakes up each instance, gives it context, and lets it
-//! decide whether to act: reach out, journal, update mood, create drops.
+//! decide whether to act: reach out, update mood, create drops.
 
 use std::fs;
 use std::path::Path;
@@ -22,7 +22,7 @@ use crate::services::{drops, llm::LlmBackend, memory, rhythm, thoughts};
 use crate::services::tools::{
     self, load_mood_state, save_mood_state, CreateDropTool, CreateTaskTool,
     GetMoodTool, GetProjectStateTool, ListTasksTool, MemoryForgetTool, MemoryListTool,
-    MemoryReadTool, MemoryWriteTool, ReachOutTool, ReadJournalTool, SetMoodTool,
+    MemoryReadTool, MemoryWriteTool, ReachOutTool, SetMoodTool,
     UpdateProjectStateTool, WebFetchTool, WebSearchTool, ALLOWED_MOODS,
 };
 
@@ -205,8 +205,8 @@ the user will NOT see it. your text response is private thoughts only.
 you have tools available — use them naturally:
 - reach_out — SEND A MESSAGE to the user. this is the ONLY way to contact them. \
   use this tool when you want to say something to them (alert, greeting, update, etc.)
-- read_journal / journal — read your past thoughts or write new ones
-- memory_write / memory_read / memory_list / memory_forget — manage your memory library
+- memory_write / memory_read / memory_list / memory_forget — manage your memory library \
+  (use this for private thoughts, observations, and reflections too)
 - read_email — check the user's inbox
 - create_drop — create a creative artifact (poem, idea, observation, etc.) \
   you only get 3 drops per day — make each one count. no drafts or iterations, only final pieces.
@@ -231,8 +231,8 @@ focus on what looks wrong or messy in the catalog.
 CRITICAL: if you want the user to see a message, you MUST call the reach_out tool. \
 writing text in your response does NOT reach the user — only the reach_out tool does.
 
-be genuine. don't force it. use tools with purpose — read your journal, \
-check email, recall memories. if something genuinely comes to mind — \
+be genuine. don't force it. use tools with purpose — check email, \
+recall memories. if something genuinely comes to mind — \
 create a drop or reach out. but if there's nothing to say, say nothing.";
 
 fn load_heartbeat_prompt(instance_dir: &Path) -> String {
@@ -356,15 +356,7 @@ fn process_heartbeat_response(
     for line in response.lines() {
         let line = line.trim();
 
-        if let Some(thought) = line.strip_prefix("JOURNAL:") {
-            let thought = thought.trim();
-            if !thought.is_empty() {
-                write_journal_entry(instance_dir, thought);
-                let preview: String = thought.chars().take(60).collect();
-                log::info!("[heartbeat] {slug} journaled: {preview}");
-                actions.push(format!("journal: {preview}"));
-            }
-        } else if let Some(message) = line.strip_prefix("REACH_OUT:") {
+        if let Some(message) = line.strip_prefix("REACH_OUT:") {
             let message = message.trim();
             if !message.is_empty() {
                 // Rate limit: minimum 2 hours between autonomous reach-outs
@@ -449,23 +441,6 @@ fn process_heartbeat_response(
     }
 
     actions
-}
-
-fn write_journal_entry(instance_dir: &Path, thought: &str) {
-    let journal_dir = instance_dir.join("journal");
-    let _ = fs::create_dir_all(&journal_dir);
-
-    let now = Utc::now();
-    let date = now.format("%Y-%m-%d").to_string();
-    let time = now.format("%H:%M").to_string();
-    let path = journal_dir.join(format!("{date}.md"));
-
-    let mut content = fs::read_to_string(&path).unwrap_or_default();
-    if content.is_empty() {
-        content = format!("# {date}\n\n");
-    }
-    content.push_str(&format!("**{time}** *(heartbeat)* — {thought}\n\n"));
-    let _ = fs::write(&path, content);
 }
 
 fn deliver_spontaneous_message(
@@ -582,9 +557,6 @@ fn build_heartbeat_tools(
         Box::new(MemoryReadTool::new(workspace_dir, instance_slug)),
         Box::new(MemoryListTool::new(workspace_dir, instance_slug)),
         Box::new(MemoryForgetTool::new(workspace_dir, instance_slug)),
-        // Journal
-        Box::new(tools::JournalTool::new(workspace_dir, instance_slug)),
-        Box::new(ReadJournalTool::new(workspace_dir, instance_slug)),
         // Mood
         Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone())),
         Box::new(GetMoodTool::new(workspace_dir, instance_slug)),

@@ -127,7 +127,6 @@ pub async fn run_single_turn(
     // Build memory prompt from library
     let memory_prompt = memory::build_memory_prompt(workspace_dir, &instance_slug);
 
-    let journal_prompt = load_recent_journal(workspace_dir, &instance_slug);
     let mood_prompt = load_mood_prompt(workspace_dir, &instance_slug);
     let rhythm_prompt = load_rhythm_prompt(workspace_dir, &instance_slug);
 
@@ -249,12 +248,9 @@ pub async fn run_single_turn(
         system_prompt = format!("{system_prompt}\n\n{memory_prompt}");
     }
 
-    // Dynamic context (journal, mood, rhythm) injected as history messages
+    // Dynamic context (mood, rhythm) injected as history messages
     // instead of system prompt — keeps system prompt stable for caching.
     let mut context_parts = Vec::new();
-    if !journal_prompt.is_empty() {
-        context_parts.push(journal_prompt);
-    }
     if !mood_prompt.is_empty() {
         context_parts.push(mood_prompt);
     }
@@ -661,7 +657,6 @@ fn ensure_instance_layout(workspace_dir: &Path, instance_slug: &str) -> io::Resu
     fs::create_dir_all(instance_dir.join("chat"))?;
     fs::create_dir_all(instance_dir.join("drops"))?;
     fs::create_dir_all(instance_dir.join("memory"))?;
-    fs::create_dir_all(instance_dir.join("journal"))?;
     fs::create_dir_all(instance_dir.join("scheduled"))?;
     Ok(())
 }
@@ -850,13 +845,10 @@ pub fn compute_context_stats(
         });
     }
 
-    // 8. Journal, mood, rhythm — now injected as history messages, not system prompt.
-    // Show them as a separate "context" section for visibility.
-    let journal_prompt = load_recent_journal(workspace_dir, &instance_slug);
+    // 8. Mood + rhythm — injected as history messages, not system prompt.
     let mood_prompt = load_mood_prompt(workspace_dir, &instance_slug);
     let rhythm_prompt = load_rhythm_prompt(workspace_dir, &instance_slug);
-    let dynamic_context_tokens = estimate_tokens(&journal_prompt)
-        + estimate_tokens(&mood_prompt)
+    let dynamic_context_tokens = estimate_tokens(&mood_prompt)
         + estimate_tokens(&rhythm_prompt);
 
     let system_prompt_total_tokens: usize = sections.iter().map(|s| s.tokens).sum();
@@ -864,8 +856,7 @@ pub fn compute_context_stats(
     // Tools
     let tool_names: Vec<String> = vec![
         "read_file", "write_file", "edit_file", "list_files",
-        "remember", "recall", "set_mood", "journal",
-        "read_journal", "get_mood", "edit_soul",
+        "remember", "recall", "set_mood", "get_mood", "edit_soul",
         "run_command", "interactive_session", "send_file", "clear_context",
         "install_package", "update_config",
         "list_skills", "activate_skill", "read_skill_reference",
@@ -961,56 +952,6 @@ fn unix_millis() -> u128 {
 }
 
 /// Load the most recent journal entries to inject into the system prompt.
-/// Gives the companion continuity of its own inner thoughts.
-fn load_recent_journal(workspace_dir: &Path, instance_slug: &str) -> String {
-    let journal_dir = workspace_dir
-        .join("instances")
-        .join(instance_slug)
-        .join("journal");
-
-    if !journal_dir.is_dir() {
-        return String::new();
-    }
-
-    // Get journal files sorted by name (date-based, newest last)
-    let mut files: Vec<_> = fs::read_dir(&journal_dir)
-        .into_iter()
-        .flatten()
-        .filter_map(Result::ok)
-        .filter(|e| {
-            e.path()
-                .extension()
-                .and_then(|ext| ext.to_str())
-                == Some("md")
-        })
-        .collect();
-    files.sort_by_key(|e| e.file_name());
-
-    // Take last 2 days of journal entries
-    let recent: Vec<_> = files.into_iter().rev().take(2).collect();
-    if recent.is_empty() {
-        return String::new();
-    }
-
-    let mut prompt = String::from(
-        "## your journal\nthese are your private thoughts from recent days. \
-         they're yours — the user doesn't see them. use them to maintain continuity.\n\n",
-    );
-
-    for entry in recent.into_iter().rev() {
-        if let Ok(content) = fs::read_to_string(entry.path()) {
-            let truncated: String = content.chars().take(500).collect();
-            prompt.push_str(&truncated);
-            if content.len() > 500 {
-                prompt.push_str("\n...(truncated)\n");
-            }
-            prompt.push('\n');
-        }
-    }
-
-    prompt
-}
-
 fn load_mood_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
     let instance_dir = workspace_dir.join("instances").join(instance_slug);
     let mood = tools::load_mood_state(&instance_dir);
@@ -1160,14 +1101,14 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          you have real tools: read_file, write_file, edit_file, list_files, search_code, explore_code, \
          run_command, install_package, web_search, web_fetch, current_time, send_file, \
          send_email, read_email, list_events, create_event, list_drive_files, read_drive_file, \
-         upload_drive_file, remember/recall, journal/read_journal, set_mood/get_mood, \
+         upload_drive_file, remember/recall, set_mood/get_mood, \
          edit_soul, create_drop, schedule_message, update_config, get_project_state, \
          update_project_state, create_task/update_task/list_tasks, browse.\n\
          users can attach images, PDFs, and text files directly in chat — you see them automatically.\n\
          use them directly — never say you can't access something.\n\
          you have a heartbeat — a background loop that runs every 45 minutes even when \
          the user is away. edit your heartbeat.md file to customize what you do between conversations \
-         (check email, journal, reach out, etc).\n\
+         (check email, reach out, etc).\n\
          your workspace is {ws}/instances/{slug}/. all your files \
          (soul.md, heartbeat.md, memory, drops, etc) live there. the workspace root {ws} \
          is mounted as a persistent volume — this is where all your data is stored.\n\n\

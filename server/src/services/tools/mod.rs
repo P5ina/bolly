@@ -35,8 +35,7 @@ pub mod web;
 // Re-export public items so external code uses `tools::FooTool` paths
 pub use companion::{
     load_mood_state, save_mood_state, EditSoulTool,
-    GetMoodTool, JournalTool,
-    ReadJournalTool, SetMoodTool, ALLOWED_MOODS,
+    GetMoodTool, SetMoodTool, ALLOWED_MOODS,
 };
 pub use calendar::{CreateEventTool, ListEventsTool};
 pub use communication::{
@@ -409,8 +408,6 @@ pub fn build_tools(
         wrap(Box::new(MemoryForgetTool::new(workspace_dir, instance_slug))),
         // Companion
         wrap(Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone()))),
-        wrap(Box::new(JournalTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(ReadJournalTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(GetMoodTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(EditSoulTool::new(workspace_dir, instance_slug))),
         // System
