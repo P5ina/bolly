@@ -28,6 +28,7 @@
 		| "waiting-key"
 		| "testing"
 		| "picking-language"
+		| "naming-user"
 		| "naming-companion"
 		| "picking-soul"
 		| "waiting-first"
@@ -37,8 +38,10 @@
 	let stage = $state<Stage>("reveal");
 	let revealed = $state(false);
 	let firstMessage = $state("");
+	let userNameInput = $state(localStorage.getItem("bolly:preferredName") ?? "");
 	let companionNameInput = $state("");
 	let messageInput: HTMLTextAreaElement | undefined = $state();
+	let userNameInputEl: HTMLInputElement | undefined = $state();
 	let nameInputEl: HTMLInputElement | undefined = $state();
 	let keyInput: HTMLInputElement | undefined = $state();
 	let chosenProvider = $state<"anthropic" | "openai" | "openrouter" | null>(null);
@@ -236,10 +239,32 @@
 		const lang = LANGUAGES.find((l) => l.id === langId);
 		await typewrite(`${lang?.label ?? langId}.`);
 		await pause(400);
+		await typewrite("what should i call you?");
+		stage = "naming-user";
+		await pause(100);
+		userNameInputEl?.focus();
+	}
+
+	async function submitUserName() {
+		const name = userNameInput.trim();
+		if (!name) return;
+
+		localStorage.setItem("bolly:preferredName", name);
+		stage = "intro";
+		await pause(200);
+		await typewrite(`${name}. nice to meet you.`);
+		await pause(400);
 		await typewrite("what should i call myself?");
 		stage = "naming-companion";
 		await pause(100);
 		nameInputEl?.focus();
+	}
+
+	function handleUserNameKeydown(e: KeyboardEvent) {
+		if (e.key === "Enter") {
+			e.preventDefault();
+			submitUserName();
+		}
 	}
 
 	async function submitCompanionName() {
@@ -332,9 +357,10 @@
 		if (preferredName) setupParts.push(`my name is ${preferredName}`);
 		setupParts.push(`please speak to me in ${langLabel}`);
 
+		const combined = setupParts.join(". ") + ".\n\n" + content;
+
 		try {
-			await sendMessage(slug, setupParts.join(". ") + ".");
-			await sendMessage(slug, content);
+			await sendMessage(slug, combined);
 			await instances.refresh();
 		} catch {
 			toast.error("setup failed — try sending a message after");
@@ -485,6 +511,28 @@
 							{lang.label}
 						</button>
 					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<!-- user name -->
+		{#if stage === "naming-user"}
+			<div class="instance-input-enter">
+				<div class="relative">
+					<input
+						bind:this={userNameInputEl}
+						bind:value={userNameInput}
+						onkeydown={handleUserNameKeydown}
+						placeholder="your name..."
+						class="instance-name-input"
+					/>
+					{#if userNameInput.trim()}
+						<button onclick={submitUserName} aria-label="Confirm" class="instance-send">
+							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
+							</svg>
+						</button>
+					{/if}
 				</div>
 			</div>
 		{/if}
