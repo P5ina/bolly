@@ -98,23 +98,26 @@
 
 			<!-- composition bar -->
 			{@const sysPct = pct(stats.system_prompt_total_tokens, stats.total_input_tokens_estimate)}
+			{@const toolsPct = pct(stats.tools_tokens_estimate, stats.total_input_tokens_estimate)}
 			{@const histPct = pct(stats.history_tokens_estimate, stats.total_input_tokens_estimate)}
 			<div class="composition">
 				<div class="comp-label">composition</div>
 				<div class="comp-bar">
 					<div class="comp-fill comp-sys" style="width: {sysPct}%"></div>
+					<div class="comp-fill comp-tools" style="width: {toolsPct}%"></div>
 					<div class="comp-fill comp-hist" style="width: {histPct}%"></div>
 				</div>
 				<div class="comp-legend">
 					<span class="legend-item"><span class="dot dot-sys"></span>system</span>
+					<span class="legend-item"><span class="dot dot-tools"></span>tools</span>
 					<span class="legend-item"><span class="dot dot-hist"></span>history</span>
 				</div>
 			</div>
 
 			<!-- tools -->
 			<div class="section-header">
-				<span>tools</span>
-				<span class="section-total">{stats.tools_count}</span>
+				<span>tools ({stats.tools_count})</span>
+				<span class="section-total">{fmt(stats.tools_tokens_estimate)} tokens</span>
 			</div>
 			<div class="tools-grid">
 				{#each stats.tools as name}
@@ -302,6 +305,7 @@
 		transition: width 0.3s ease;
 	}
 	.comp-sys { background: oklch(0.78 0.12 75 / 60%); }
+	.comp-tools { background: oklch(0.65 0.12 150 / 60%); }
 	.comp-hist { background: oklch(0.6 0.15 250 / 60%); }
 
 	.comp-legend {
@@ -323,6 +327,7 @@
 		border-radius: 50%;
 	}
 	.dot-sys { background: oklch(0.78 0.12 75 / 60%); }
+	.dot-tools { background: oklch(0.65 0.12 150 / 60%); }
 	.dot-hist { background: oklch(0.6 0.15 250 / 60%); }
 
 	.tools-grid {

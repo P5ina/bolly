@@ -7,7 +7,6 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
-
 use rig::{
     completion::ToolDefinition,
     tool::{ToolDyn, ToolError},
@@ -21,8 +20,8 @@ use crate::domain::events::ServerEvent;
 
 // Sub-modules
 pub mod calendar;
-pub mod companion;
 pub mod communication;
+pub mod companion;
 pub mod drive;
 pub mod files;
 pub mod github;
@@ -34,32 +33,73 @@ pub mod video;
 pub mod web;
 
 // Re-export public items so external code uses `tools::FooTool` paths
-pub use companion::{
-    load_mood_state, save_mood_state, EditSoulTool,
-    GetMoodTool, SetMoodTool, ALLOWED_MOODS,
-};
 pub use calendar::{CreateEventTool, ListEventsTool};
 pub use communication::{
     ReachOutTool, ReadEmailTool, ScheduleMessageTool, ScheduledMessage, SendEmailTool,
 };
+pub use companion::{
+    ALLOWED_MOODS, EditSoulTool, GetMoodTool, SetMoodTool, load_mood_state, save_mood_state,
+};
 pub use drive::{ListDriveFilesTool, ReadDriveFileTool, UploadDriveFileTool};
 pub use files::{EditFileTool, ListFilesTool, ReadFileTool, SendFileTool, WriteFileTool};
+pub use github::{
+    GithubBranchTool, GithubCloneTool, GithubCommitPushTool, GithubCreatePrTool, GithubIssuesTool,
+    GithubReadIssueTool,
+};
 pub use memory_tools::{MemoryForgetTool, MemoryListTool, MemoryReadTool, MemoryWriteTool};
 pub use project::{
-    CreateTaskTool, GetProjectStateTool, ListTasksTool,
-    TaskItem, TaskStatus, UpdateProjectStateTool, UpdateTaskTool,
+    CreateTaskTool, GetProjectStateTool, ListTasksTool, TaskItem, TaskStatus,
+    UpdateProjectStateTool, UpdateTaskTool,
 };
 pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
 pub use system::{
-    ClearContextTool, CreateDropTool, ExploreCodeTool, InstallPackageTool,
-    InteractiveSessionTool, RequestSecretTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
-};
-pub use github::{
-    GithubCloneTool, GithubBranchTool, GithubCommitPushTool,
-    GithubCreatePrTool, GithubIssuesTool, GithubReadIssueTool,
+    ClearContextTool, CreateDropTool, ExploreCodeTool, InstallPackageTool, InteractiveSessionTool,
+    RequestSecretTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
 };
 pub use video::WatchVideoTool;
 pub use web::{BrowseTool, WebFetchTool, WebSearchTool};
+
+// ---------------------------------------------------------------------------
+// Cached tool definitions snapshot (populated by build_tools, read by stats)
+// ---------------------------------------------------------------------------
+
+/// Snapshot of tool definition info, updated every time build_tools runs.
+#[derive(Clone, Default)]
+pub struct ToolDefsSnapshot {
+    pub names: Vec<String>,
+    pub total_json_chars: usize,
+}
+
+static TOOL_DEFS_CACHE: OnceLock<Mutex<ToolDefsSnapshot>> = OnceLock::new();
+
+fn tool_defs_cache() -> &'static Mutex<ToolDefsSnapshot> {
+    TOOL_DEFS_CACHE.get_or_init(|| Mutex::new(ToolDefsSnapshot::default()))
+}
+
+/// Read the latest cached tool definitions snapshot.
+pub fn cached_tool_defs() -> ToolDefsSnapshot {
+    tool_defs_cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+/// Compute and cache tool definition info from actual tool instances.
+/// Call this after `build_tools` to keep the cache up to date.
+pub async fn cache_tool_defs(tools: &[Box<dyn ToolDyn>]) {
+    let mut names = Vec::with_capacity(tools.len());
+    let mut total_json_chars = 0usize;
+    for tool in tools {
+        let def = tool.definition(String::new()).await;
+        names.push(def.name.clone());
+        total_json_chars += serde_json::to_string(&def).map(|s| s.len()).unwrap_or(0);
+    }
+    let mut cache = tool_defs_cache().lock().unwrap_or_else(|e| e.into_inner());
+    *cache = ToolDefsSnapshot {
+        names,
+        total_json_chars,
+    };
+}
 
 // ---------------------------------------------------------------------------
 // Per-chat file lock
@@ -191,11 +231,18 @@ pub fn tool_summary(name: &str, args: &str) -> String {
         }
         "create_event" => format!("creating event: {}", v["summary"].as_str().unwrap_or("?")),
         "list_drive_files" => "listing drive files".into(),
-        "read_drive_file" => format!("reading drive file {}", v["file_id"].as_str().unwrap_or("?")),
+        "read_drive_file" => format!(
+            "reading drive file {}",
+            v["file_id"].as_str().unwrap_or("?")
+        ),
         "upload_drive_file" => format!("uploading {}", v["name"].as_str().unwrap_or("?")),
         "request_secret" => format!("requesting secret: {}", v["prompt"].as_str().unwrap_or("?")),
         "install_package" => format!("installing {}", v["packages"].as_str().unwrap_or("?")),
-        "read_skill_reference" => format!("reading skill ref {}/{}", v["skill_id"].as_str().unwrap_or("?"), v["filename"].as_str().unwrap_or("?")),
+        "read_skill_reference" => format!(
+            "reading skill ref {}/{}",
+            v["skill_id"].as_str().unwrap_or("?"),
+            v["filename"].as_str().unwrap_or("?")
+        ),
         "send_file" => format!("sharing {}", v["path"].as_str().unwrap_or("?")),
         "browse" => {
             let url = v["actions"]
@@ -274,9 +321,16 @@ impl ToolDyn for ObservableTool {
             content: summary.clone(),
             created_at: unix_millis().to_string(),
             kind: crate::domain::chat::MessageKind::ToolCall,
-            tool_name: Some(tool_name.clone()), mcp_app_html: None, mcp_app_input: None,
+            tool_name: Some(tool_name.clone()),
+            mcp_app_html: None,
+            mcp_app_input: None,
         };
-        append_message_to_chat(&self.workspace_dir, &self.instance_slug, &self.chat_id, &start_msg);
+        append_message_to_chat(
+            &self.workspace_dir,
+            &self.instance_slug,
+            &self.chat_id,
+            &start_msg,
+        );
         let _ = self.events.send(ServerEvent::ChatMessageCreated {
             instance_slug: self.instance_slug.clone(),
             chat_id: self.chat_id.clone(),
@@ -300,7 +354,12 @@ impl ToolDyn for ObservableTool {
                         mcp_app_html: Some(html),
                         mcp_app_input: Some(args.clone()),
                     };
-                    append_message_to_chat(&self.workspace_dir, &self.instance_slug, &self.chat_id, &app_msg);
+                    append_message_to_chat(
+                        &self.workspace_dir,
+                        &self.instance_slug,
+                        &self.chat_id,
+                        &app_msg,
+                    );
                     let _ = self.events.send(ServerEvent::ChatMessageCreated {
                         instance_slug: self.instance_slug.clone(),
                         chat_id: self.chat_id.clone(),
@@ -322,7 +381,10 @@ impl ToolDyn for ObservableTool {
                     let redacted = redact_secrets(&s);
                     if redacted.len() > MAX_TOOL_RESULT {
                         let truncated: String = redacted.chars().take(MAX_TOOL_RESULT).collect();
-                        Ok(format!("{truncated}\n\n...(tool output truncated at {MAX_TOOL_RESULT} chars, total: {})", redacted.len()))
+                        Ok(format!(
+                            "{truncated}\n\n...(tool output truncated at {MAX_TOOL_RESULT} chars, total: {})",
+                            redacted.len()
+                        ))
                     } else {
                         Ok(redacted)
                     }
@@ -336,7 +398,13 @@ impl ToolDyn for ObservableTool {
                     Err(e) => format!("error: {e}"),
                 };
                 // Update the persisted message with the result
-                update_mcp_app_result(&workspace_dir, &instance_slug, &chat_id, &msg_id, &tool_output);
+                update_mcp_app_result(
+                    &workspace_dir,
+                    &instance_slug,
+                    &chat_id,
+                    &msg_id,
+                    &tool_output,
+                );
                 let _ = events.send(ServerEvent::McpAppResult {
                     instance_slug: instance_slug.clone(),
                     chat_id: chat_id.clone(),
@@ -344,8 +412,10 @@ impl ToolDyn for ObservableTool {
                     tool_output,
                 });
             }
-            if tool_name == "run_command" || tool_name == "install_package"
-                || tool_name == "interactive_session" || tool_name == "send_file"
+            if tool_name == "run_command"
+                || tool_name == "install_package"
+                || tool_name == "interactive_session"
+                || tool_name == "send_file"
             {
                 let output = match &result {
                     Ok(s) => s.clone(),
@@ -358,7 +428,9 @@ impl ToolDyn for ObservableTool {
                         content: output,
                         created_at: unix_millis().to_string(),
                         kind: crate::domain::chat::MessageKind::ToolOutput,
-                        tool_name: Some(tool_name.clone()), mcp_app_html: None, mcp_app_input: None,
+                        tool_name: Some(tool_name.clone()),
+                        mcp_app_html: None,
+                        mcp_app_input: None,
                     };
                     append_message_to_chat(&workspace_dir, &instance_slug, &chat_id, &output_msg);
                     let _ = events.send(ServerEvent::ChatMessageCreated {
@@ -382,7 +454,11 @@ pub fn build_tools(
     config_path: &Path,
     events: broadcast::Sender<ServerEvent>,
     llm: &crate::services::llm::LlmBackend,
-    pending_secrets: Option<Arc<tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>>>,
+    pending_secrets: Option<
+        Arc<
+            tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>,
+        >,
+    >,
     plan: &str,
     google: Option<crate::services::google::GoogleClient>,
     sent_files: SentFiles,
@@ -393,7 +469,14 @@ pub fn build_tools(
 ) -> (Vec<Box<dyn ToolDyn>>, SentFiles) {
     let snap = mcp_snapshot;
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
-        Box::new(ObservableTool::new(tool, events.clone(), workspace_dir, instance_slug.to_string(), chat_id.to_string(), snap.clone()))
+        Box::new(ObservableTool::new(
+            tool,
+            events.clone(),
+            workspace_dir,
+            instance_slug.to_string(),
+            chat_id.to_string(),
+            snap.clone(),
+        ))
     };
 
     let browser_enabled = matches!(plan, "companion" | "unlimited");
@@ -408,18 +491,44 @@ pub fn build_tools(
         wrap(Box::new(MemoryWriteTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(MemoryReadTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(MemoryListTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(MemoryForgetTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(MemoryForgetTool::new(
+            workspace_dir,
+            instance_slug,
+        ))),
         // Companion
-        wrap(Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone()))),
+        wrap(Box::new(SetMoodTool::new(
+            workspace_dir,
+            instance_slug,
+            events.clone(),
+        ))),
         wrap(Box::new(GetMoodTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(EditSoulTool::new(workspace_dir, instance_slug))),
         // System
-        wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug, chat_id, events.clone()))),
-        wrap(Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone()))),
-        wrap(Box::new(ClearContextTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(RunCommandTool::new(
+            workspace_dir,
+            instance_slug,
+            chat_id,
+            events.clone(),
+        ))),
+        wrap(Box::new(InteractiveSessionTool::new(
+            workspace_dir,
+            instance_slug,
+        ))),
+        wrap(Box::new(SendFileTool::new(
+            workspace_dir,
+            instance_slug,
+            sent_files.clone(),
+        ))),
+        wrap(Box::new(ClearContextTool::new(
+            workspace_dir,
+            instance_slug,
+        ))),
         wrap(Box::new(InstallPackageTool)),
-        wrap(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug))),
+        wrap(Box::new(UpdateConfigTool::new(
+            config_path,
+            workspace_dir,
+            instance_slug,
+        ))),
         // Skills
         wrap(Box::new(ListSkillsTool::new(workspace_dir))),
         wrap(Box::new(ActivateSkillTool::new(workspace_dir))),
@@ -431,17 +540,34 @@ pub fn build_tools(
         wrap(Box::new(WatchVideoTool::new(openrouter_key))),
         // Code
         wrap(Box::new(SearchCodeTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone()))),
+        wrap(Box::new(ExploreCodeTool::new(
+            workspace_dir,
+            instance_slug,
+            llm.clone(),
+        ))),
         // Project
-        wrap(Box::new(GetProjectStateTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(UpdateProjectStateTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(GetProjectStateTool::new(
+            workspace_dir,
+            instance_slug,
+        ))),
+        wrap(Box::new(UpdateProjectStateTool::new(
+            workspace_dir,
+            instance_slug,
+        ))),
         wrap(Box::new(CreateTaskTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(UpdateTaskTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(ListTasksTool::new(workspace_dir, instance_slug))),
         // Creative
-        wrap(Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone()))),
+        wrap(Box::new(CreateDropTool::new(
+            workspace_dir,
+            instance_slug,
+            events.clone(),
+        ))),
         // Scheduling
-        wrap(Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(ScheduleMessageTool::new(
+            workspace_dir,
+            instance_slug,
+        ))),
     ];
 
     // Google tools (Gmail, Calendar, Drive) — always registered.
@@ -449,34 +575,77 @@ pub fn build_tools(
     if let Some(g) = google {
         tools.push(wrap(Box::new(SendEmailTool::new(g.clone(), instance_slug))));
         tools.push(wrap(Box::new(ReadEmailTool::new(g.clone(), instance_slug))));
-        tools.push(wrap(Box::new(ListEventsTool::new(g.clone(), instance_slug))));
-        tools.push(wrap(Box::new(CreateEventTool::new(g.clone(), instance_slug))));
-        tools.push(wrap(Box::new(ListDriveFilesTool::new(g.clone(), instance_slug))));
-        tools.push(wrap(Box::new(ReadDriveFileTool::new(g.clone(), instance_slug))));
+        tools.push(wrap(Box::new(ListEventsTool::new(
+            g.clone(),
+            instance_slug,
+        ))));
+        tools.push(wrap(Box::new(CreateEventTool::new(
+            g.clone(),
+            instance_slug,
+        ))));
+        tools.push(wrap(Box::new(ListDriveFilesTool::new(
+            g.clone(),
+            instance_slug,
+        ))));
+        tools.push(wrap(Box::new(ReadDriveFileTool::new(
+            g.clone(),
+            instance_slug,
+        ))));
         tools.push(wrap(Box::new(UploadDriveFileTool::new(g, instance_slug))));
     }
 
     // Browser tool only available on companion+ plans (needs more RAM for Playwright/Chromium)
     if browser_enabled {
-        tools.push(wrap(Box::new(BrowseTool::new(workspace_dir, instance_slug))));
+        tools.push(wrap(Box::new(BrowseTool::new(
+            workspace_dir,
+            instance_slug,
+        ))));
     }
 
     // Secret tool only available when pending_secrets is provided (interactive chat, not heartbeat)
     if let Some(ps) = pending_secrets {
         tools.push(wrap(Box::new(RequestSecretTool::new(
-            workspace_dir, instance_slug, config_path, events.clone(), ps,
+            workspace_dir,
+            instance_slug,
+            config_path,
+            events.clone(),
+            ps,
         ))));
     }
 
     // GitHub tools — only registered when token is configured
     if let Some(gh_token) = github_token {
         if !gh_token.is_empty() {
-            tools.push(wrap(Box::new(GithubCloneTool::new(workspace_dir, instance_slug, gh_token))));
-            tools.push(wrap(Box::new(GithubBranchTool::new(workspace_dir, instance_slug, gh_token))));
-            tools.push(wrap(Box::new(GithubCommitPushTool::new(workspace_dir, instance_slug, gh_token))));
-            tools.push(wrap(Box::new(GithubCreatePrTool::new(workspace_dir, instance_slug, gh_token))));
-            tools.push(wrap(Box::new(GithubIssuesTool::new(workspace_dir, instance_slug, gh_token))));
-            tools.push(wrap(Box::new(GithubReadIssueTool::new(workspace_dir, instance_slug, gh_token))));
+            tools.push(wrap(Box::new(GithubCloneTool::new(
+                workspace_dir,
+                instance_slug,
+                gh_token,
+            ))));
+            tools.push(wrap(Box::new(GithubBranchTool::new(
+                workspace_dir,
+                instance_slug,
+                gh_token,
+            ))));
+            tools.push(wrap(Box::new(GithubCommitPushTool::new(
+                workspace_dir,
+                instance_slug,
+                gh_token,
+            ))));
+            tools.push(wrap(Box::new(GithubCreatePrTool::new(
+                workspace_dir,
+                instance_slug,
+                gh_token,
+            ))));
+            tools.push(wrap(Box::new(GithubIssuesTool::new(
+                workspace_dir,
+                instance_slug,
+                gh_token,
+            ))));
+            tools.push(wrap(Box::new(GithubReadIssueTool::new(
+                workspace_dir,
+                instance_slug,
+                gh_token,
+            ))));
         }
     }
 
@@ -599,7 +768,9 @@ pub fn inject_system_message(
         content: content.to_string(),
         created_at: unix_millis().to_string(),
         kind: Default::default(),
-        tool_name: None, mcp_app_html: None, mcp_app_input: None,
+        tool_name: None,
+        mcp_app_html: None,
+        mcp_app_input: None,
     };
     append_message_to_chat(workspace_dir, instance_slug, chat_id, &message);
     let _ = events.send(ServerEvent::ChatMessageCreated {

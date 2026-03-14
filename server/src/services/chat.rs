@@ -349,6 +349,7 @@ pub async fn run_single_turn(
         github_token,
         &openrouter_key,
     );
+    tools::cache_tool_defs(&all_tools).await;
 
     let history_count = history_msgs.len();
     let tool_result = llm
@@ -754,6 +755,10 @@ fn estimate_tokens(text: &str) -> usize {
     (text.len() as f64 / 3.2) as usize
 }
 
+fn estimate_tokens_from_chars(chars: usize) -> usize {
+    (chars as f64 / 3.2) as usize
+}
+
 /// A single section of the system prompt with its name and size.
 #[derive(serde::Serialize, Clone)]
 pub struct ContextSection {
@@ -769,6 +774,7 @@ pub struct ContextStats {
     pub system_prompt_total_tokens: usize,
     pub tools: Vec<String>,
     pub tools_count: usize,
+    pub tools_tokens_estimate: usize,
     pub history_messages: usize,
     pub history_tokens_estimate: usize,
     pub total_input_tokens_estimate: usize,
@@ -858,23 +864,10 @@ pub fn compute_context_stats(
 
     let system_prompt_total_tokens: usize = sections.iter().map(|s| s.tokens).sum();
 
-    // Tools
-    let tool_names: Vec<String> = vec![
-        "read_file", "write_file", "edit_file", "list_files",
-        "remember", "recall", "set_mood", "get_mood", "edit_soul",
-        "run_command", "interactive_session", "send_file", "clear_context",
-        "install_package", "update_config",
-        "list_skills", "activate_skill", "read_skill_reference",
-        "web_search", "web_fetch",
-        "search_code", "explore_code",
-        "get_project_state", "update_project_state",
-        "create_task", "update_task", "list_tasks",
-        "create_drop", "schedule_message",
-        "send_email", "read_email",
-        "list_events", "create_event",
-        "list_drive_files", "read_drive_file", "upload_drive_file",
-        "request_secret", "browse",
-    ].into_iter().map(String::from).collect();
+    // Tools — read from cache populated by build_tools → cache_tool_defs
+    let tool_snapshot = tools::cached_tool_defs();
+    let tool_names = tool_snapshot.names;
+    let tools_tokens_estimate = estimate_tokens_from_chars(tool_snapshot.total_json_chars);
 
     // History
     let existing: Vec<ChatMessage> = load_messages_vec(
@@ -886,11 +879,12 @@ pub fn compute_context_stats(
         .sum::<usize>()
         + dynamic_context_tokens; // journal/mood/rhythm now live in history
 
-    let total_input_tokens_estimate = system_prompt_total_tokens + history_tokens_estimate;
+    let total_input_tokens_estimate = system_prompt_total_tokens + tools_tokens_estimate + history_tokens_estimate;
 
     ContextStats {
         tools_count: tool_names.len(),
         tools: tool_names,
+        tools_tokens_estimate,
         system_prompt: sections,
         system_prompt_total_tokens,
         history_messages: existing.len(),
