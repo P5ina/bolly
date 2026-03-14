@@ -119,7 +119,24 @@ impl Tool for ActivateSkillTool {
         let needle = args.skill_name.to_lowercase();
         let found = skills.iter().find(|s| s.name.to_lowercase() == needle || s.id == needle);
         match found {
-            Some(s) if s.enabled => Ok(format!("{} skill activated", s.name)),
+            Some(s) if s.enabled => {
+                let mut result = format!("# {} skill activated\n\n{}", s.name, s.instructions);
+                let refs: Vec<_> = s
+                    .resources
+                    .iter()
+                    .filter(|r| r.starts_with("references/"))
+                    .collect();
+                if !refs.is_empty() {
+                    result.push_str("\n\n## reference files\n\
+                        **MANDATORY**: read these BEFORE running any commands — use `read_skill_reference` with skill_id=\"");
+                    result.push_str(&s.id);
+                    result.push_str("\":\n");
+                    for r in refs {
+                        result.push_str(&format!("- {}\n", r));
+                    }
+                }
+                Ok(result)
+            }
             Some(s) => Err(ToolExecError(format!("skill '{}' is disabled", s.name))),
             None => Err(ToolExecError(format!("skill '{}' not found", args.skill_name))),
         }

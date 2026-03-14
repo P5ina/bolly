@@ -1053,29 +1053,17 @@ fn build_skills_prompt(workspace_dir: &Path) -> String {
     }
 
     let mut out = String::from("## skills\nyou have the following skills installed. \
-        when you decide to use a skill, call the `activate_skill` tool first so the user can see which skill is guiding your response.\n\n\
-        **MANDATORY**: if a skill has reference files listed below its instructions, you MUST call `read_skill_reference` \
-        for the relevant reference file BEFORE running any commands related to that skill. \
-        this is not optional — the references contain the correct commands, flags, and workflows. \
-        do not guess or improvise. read first, act second.\n");
+        when you decide to use a skill, call `activate_skill` first — it returns the full instructions and reference files. \
+        do not guess how a skill works; always activate it first to get the details.\n\n");
     for skill in &active {
+        let has_refs = skill.resources.iter().any(|r| r.starts_with("references/"));
         out.push_str(&format!(
-            "\n### {}\n{}\n",
-            skill.name, skill.instructions
+            "- **{}** (id: `{}`): {}{}\n",
+            skill.name,
+            skill.id,
+            skill.description,
+            if has_refs { " [has references]" } else { "" },
         ));
-        let refs: Vec<_> = skill
-            .resources
-            .iter()
-            .filter(|r| r.starts_with("references/"))
-            .collect();
-        if !refs.is_empty() {
-            out.push_str("\nreference files (read these BEFORE running commands — use `read_skill_reference` with skill_id=\"");
-            out.push_str(&skill.id);
-            out.push_str("\"):\n");
-            for r in refs {
-                out.push_str(&format!("- {}\n", r));
-            }
-        }
     }
     out
 }
