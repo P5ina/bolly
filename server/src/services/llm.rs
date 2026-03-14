@@ -57,6 +57,8 @@ pub enum ContentBlock {
         tool_use_id: String,
         content: serde_json::Value,
     },
+    #[serde(rename = "compaction")]
+    Compaction { summary: String },
 }
 
 impl ContentBlock {
@@ -545,7 +547,7 @@ async fn streaming_agent_loop(
     let mut all_text = String::new();
 
     for _turn in 0..max_turns {
-        let (turn_text, tool_uses, stop_reason) = stream_once(
+        let (turn_text, tool_uses, stop_reason, compaction) = stream_once(
             backend,
             system,
             tool_defs,
@@ -559,6 +561,16 @@ async fn streaming_agent_loop(
 
         // Build assistant message
         let mut assistant_content = Vec::new();
+        if let Some(ref summary) = compaction {
+            assistant_content.push(ContentBlock::Compaction {
+                summary: summary.clone(),
+            });
+            let _ = events.send(ServerEvent::ContextCompacting {
+                instance_slug: instance_slug.to_string(),
+                chat_id: chat_id.to_string(),
+                messages_compacted: messages.len(),
+            });
+        }
         if !turn_text.is_empty() {
             assistant_content.push(ContentBlock::text(&turn_text));
         }
@@ -688,6 +700,7 @@ fn anthropic_headers(api_key: &str) -> reqwest::header::HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("x-api-key", api_key.parse().unwrap());
     headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
+    headers.insert("anthropic-beta", "compact-2026-01-12".parse().unwrap());
     headers.insert("content-type", "application/json".parse().unwrap());
     headers
 }
@@ -770,6 +783,10 @@ fn build_anthropic_request(
     if stream {
         req["stream"] = serde_json::json!(true);
     }
+    // Server-side context compaction — auto-summarizes when approaching context limit
+    req["context_management"] = serde_json::json!({
+        "edits": [{"type": "compact_20260112"}]
+    });
     req
 }
 
@@ -849,7 +866,7 @@ async fn anthropic_stream(
     instance_slug: &str,
     chat_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
-) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, Vec<ToolUseBlock>, String, Option<String>), Box<dyn std::error::Error + Send + Sync>> {
     let use_cache = !tool_defs.is_empty();
     let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, use_cache);
 
@@ -869,12 +886,14 @@ async fn anthropic_stream(
     let mut text = String::new();
     let mut tool_uses: Vec<ToolUseBlock> = Vec::new();
     let mut stop_reason = String::new();
+    let mut compaction_summary: Option<String> = None;
 
     // Current block being built
     let mut current_block_type = String::new();
     let mut current_tool_id = String::new();
     let mut current_tool_name = String::new();
     let mut current_tool_input_json = String::new();
+    let mut current_compaction_text = String::new();
     let mut streaming_mcp_app = false;
 
     // SSE parser
@@ -974,12 +993,21 @@ async fn anthropic_stream(
                         match delta["type"].as_str() {
                             Some("text_delta") => {
                                 if let Some(t) = delta["text"].as_str() {
-                                    text.push_str(t);
-                                    let _ = events.send(ServerEvent::ChatStreamDelta {
-                                        instance_slug: instance_slug.to_string(),
-                                        chat_id: chat_id.to_string(),
-                                        delta: t.to_string(),
-                                    });
+                                    if current_block_type == "compaction" {
+                                        current_compaction_text.push_str(t);
+                                    } else {
+                                        text.push_str(t);
+                                        let _ = events.send(ServerEvent::ChatStreamDelta {
+                                            instance_slug: instance_slug.to_string(),
+                                            chat_id: chat_id.to_string(),
+                                            delta: t.to_string(),
+                                        });
+                                    }
+                                }
+                            }
+                            Some("summary_delta") => {
+                                if let Some(s) = delta["summary"].as_str() {
+                                    current_compaction_text.push_str(s);
                                 }
                             }
                             Some("input_json_delta") => {
@@ -1002,7 +1030,15 @@ async fn anthropic_stream(
                     }
                 }
                 "content_block_stop" => {
-                    if current_block_type == "tool_use" {
+                    if current_block_type == "compaction" {
+                        log::info!(
+                            "[llm] context compaction triggered — summary length: {} chars",
+                            current_compaction_text.len()
+                        );
+                        compaction_summary = Some(current_compaction_text.clone());
+                        current_compaction_text.clear();
+                        current_block_type.clear();
+                    } else if current_block_type == "tool_use" {
                         let input: serde_json::Value =
                             match serde_json::from_str(&current_tool_input_json) {
                                 Ok(v) => v,
@@ -1050,7 +1086,7 @@ async fn anthropic_stream(
         }
     }
 
-    Ok((text, tool_uses, stop_reason))
+    Ok((text, tool_uses, stop_reason, compaction_summary))
 }
 
 /// Streaming dispatch: route to provider-specific streaming.
@@ -1063,7 +1099,7 @@ async fn stream_once(
     instance_slug: &str,
     chat_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
-) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, Vec<ToolUseBlock>, String, Option<String>), Box<dyn std::error::Error + Send + Sync>> {
     match backend {
         LlmBackend::Anthropic {
             http,
@@ -1092,7 +1128,7 @@ async fn stream_once(
             base_url,
         } => {
             let joined = system.join("\n\n");
-            openai_stream(
+            let (text, tool_uses, stop_reason) = openai_stream(
                 http,
                 api_key,
                 base_url,
@@ -1105,7 +1141,8 @@ async fn stream_once(
                 instance_slug,
                 chat_id,
             )
-            .await
+            .await?;
+            Ok((text, tool_uses, stop_reason, None))
         }
     }
 }
