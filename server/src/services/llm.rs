@@ -367,6 +367,7 @@ impl LlmBackend {
                 let stream = agent
                     .stream_prompt(prompt)
                     .with_history(history)
+                    .multi_turn(1)
                     .await;
 
                 consume_stream(stream, &events, &slug, &cid, workspace_dir).await
@@ -381,6 +382,7 @@ impl LlmBackend {
                 let stream = agent
                     .stream_prompt(prompt)
                     .with_history(history)
+                    .multi_turn(1)
                     .await;
 
                 consume_stream(stream, &events, &slug, &cid, workspace_dir).await
@@ -395,6 +397,7 @@ impl LlmBackend {
                 let stream = agent
                     .stream_prompt(prompt)
                     .with_history(history)
+                    .multi_turn(1)
                     .await;
 
                 consume_stream(stream, &events, &slug, &cid, workspace_dir).await
