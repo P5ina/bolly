@@ -159,6 +159,7 @@ impl LlmBackend {
                 }
                 let client = anthropic::Client::builder()
                     .api_key(token)
+                    .anthropic_beta("prompt-caching-2024-07-31")
                     .build()
                     .ok()?;
                 let model = config
@@ -254,7 +255,7 @@ impl LlmBackend {
             async move {
                 match &backend {
                     LlmBackend::Anthropic { client, model } => {
-                        let mut cm = client.completion_model(model);
+                        let mut cm = client.completion_model(model).with_prompt_caching();
                         if cm.default_max_tokens.is_none() {
                             cm.default_max_tokens = Some(8192);
                         }
@@ -313,7 +314,6 @@ impl LlmBackend {
                 let cm = client.completion_model(model).with_prompt_caching();
                 let agent = AgentBuilder::new(cm)
                     .preamble(system_prompt)
-                    .additional_params(serde_json::json!({"cache_control": {"type": "ephemeral"}}))
                     .tools(tools)
                     .build();
                 let mut chat_history = history.clone();
@@ -366,7 +366,6 @@ impl LlmBackend {
                             let cm = client.completion_model(model).with_prompt_caching();
                             let agent = AgentBuilder::new(cm)
                                 .preamble(system_prompt)
-                                .additional_params(serde_json::json!({"cache_control": {"type": "ephemeral"}}))
                                 .build();
                             agent.chat(&prompt_text, history.clone()).await
                                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
@@ -441,7 +440,6 @@ impl LlmBackend {
                 let cm = client.completion_model(model).with_prompt_caching();
                 let agent = AgentBuilder::new(cm)
                     .preamble(system_prompt)
-                    .additional_params(serde_json::json!({"cache_control": {"type": "ephemeral"}}))
                     .tools(tools)
                     .build();
 
@@ -536,7 +534,6 @@ impl LlmBackend {
                 }
                 let agent = AgentBuilder::new(cm)
                     .preamble(system_prompt)
-                    .additional_params(serde_json::json!({"cache_control": {"type": "ephemeral"}}))
                     .tools(tools)
                     .build();
                 let mut chat_history = history.clone();
