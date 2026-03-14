@@ -276,7 +276,7 @@ pub async fn run_single_turn(
     let content_with_time = format!("[{now}]\n{}", last_user.content);
     let prompt_msg = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
 
-    let history_msgs = if let Some(mut h) = loaded_history {
+    let mut history_msgs = if let Some(mut h) = loaded_history {
         // Count user messages in rig history to find where messages.json diverges
         let rig_user_count = h.iter().filter(|m| matches!(m, rig::completion::Message::User { .. })).count();
         // +1 because the last user message becomes the prompt, not history
@@ -309,19 +309,15 @@ pub async fn run_single_turn(
         }
     };
 
-    // Inject dynamic context (journal, mood, rhythm) as the first history
-    // messages so the system prompt stays fully cacheable.
-    let mut final_history = Vec::new();
-    if !dynamic_context.is_empty() {
-        final_history.push(rig::completion::Message::user(format!(
-            "[context update]\n{dynamic_context}"
-        )));
-        final_history.push(rig::completion::Message::assistant(
-            "understood, context noted.",
-        ));
+    // Dynamic context (mood, rhythm) is now appended to rig_history.json
+    // as persistent entries by the producers (sentiment extraction, heartbeat).
+    // On first message only, inject the initial context so the AI has it.
+    if history_msgs.is_empty() && !dynamic_context.is_empty() {
+        append_context_to_rig_history(workspace_dir, &instance_slug, &chat_id, &dynamic_context);
+        // Reload so the just-appended entry is included
+        let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
+        history_msgs = load_rig_history(&rig_path).unwrap_or_default();
     }
-    final_history.extend(history_msgs);
-    let history_msgs = final_history;
 
     log::info!(
         "context: model={} history_msgs={} system_prompt_len={}",
@@ -411,6 +407,7 @@ pub async fn run_single_turn(
         let backend = llm.clone();
         let ws = workspace_dir.to_path_buf();
         let slug = instance_slug.clone();
+        let cid = chat_id.clone();
         let user_content = last_user_content.to_string();
         let recent_pair = existing
             .iter()
@@ -426,7 +423,7 @@ pub async fn run_single_turn(
             {
                 log::warn!("memory extraction failed: {e}");
             }
-            extract_sentiment(&ws, &slug, &user_content, &backend, &events_bg).await;
+            extract_sentiment(&ws, &slug, &cid, &user_content, &backend, &events_bg).await;
         });
     }
 
@@ -856,11 +853,8 @@ pub fn compute_context_stats(
         });
     }
 
-    // 8. Mood + rhythm — injected as history messages, not system prompt.
-    let mood_prompt = load_mood_prompt(workspace_dir, &instance_slug);
-    let rhythm_prompt = load_rhythm_prompt(workspace_dir, &instance_slug);
-    let dynamic_context_tokens = estimate_tokens(&mood_prompt)
-        + estimate_tokens(&rhythm_prompt);
+    // Mood + rhythm are now persistent entries in rig_history.json,
+    // counted as part of the rig history token estimate below.
 
     let system_prompt_total_tokens: usize = sections.iter().map(|s| s.tokens).sum();
 
@@ -869,15 +863,22 @@ pub fn compute_context_stats(
     let tool_names = tool_snapshot.names;
     let tools_tokens_estimate = estimate_tokens_from_chars(tool_snapshot.total_json_chars);
 
-    // History
-    let existing: Vec<ChatMessage> = load_messages_vec(
-        &messages_path(workspace_dir, &instance_slug, &chat_id),
-    ).unwrap_or_default();
-
-    let history_tokens_estimate: usize = existing.iter()
-        .map(|m| estimate_tokens(&m.content))
-        .sum::<usize>()
-        + dynamic_context_tokens; // journal/mood/rhythm now live in history
+    // History — count from rig_history.json (source of truth, includes context entries)
+    // with fallback to messages.json
+    let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
+    let (history_count, history_tokens_estimate) = if let Some(rig_history) = load_rig_history(&rig_path) {
+        // Estimate tokens from serialized JSON size
+        let total_chars: usize = rig_history.iter()
+            .map(|m| serde_json::to_string(m).map(|s| s.len()).unwrap_or(0))
+            .sum();
+        (rig_history.len(), estimate_tokens_from_chars(total_chars))
+    } else {
+        let existing: Vec<ChatMessage> = load_messages_vec(
+            &messages_path(workspace_dir, &instance_slug, &chat_id),
+        ).unwrap_or_default();
+        let tokens: usize = existing.iter().map(|m| estimate_tokens(&m.content)).sum();
+        (existing.len(), tokens)
+    };
 
     let total_input_tokens_estimate = system_prompt_total_tokens + tools_tokens_estimate + history_tokens_estimate;
 
@@ -887,7 +888,7 @@ pub fn compute_context_stats(
         tools_tokens_estimate,
         system_prompt: sections,
         system_prompt_total_tokens,
-        history_messages: existing.len(),
+        history_messages: history_count,
         history_tokens_estimate,
         total_input_tokens_estimate,
     }
@@ -897,7 +898,7 @@ fn compact_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> Pat
     chat_dir(workspace_dir, instance_slug, chat_id).join("compact.md")
 }
 
-fn rig_history_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> PathBuf {
+pub fn rig_history_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> PathBuf {
     chat_dir(workspace_dir, instance_slug, chat_id).join("rig_history.json")
 }
 
@@ -921,6 +922,31 @@ fn save_rig_history(path: &Path, history: &[rig::completion::Message]) {
         }
         Err(e) => log::warn!("failed to serialize rig history: {e}"),
     }
+}
+
+/// Append a context update entry to rig_history.json as a persistent pair
+/// (user "[context update]..." + assistant "understood"). This preserves
+/// history prefix stability for Anthropic prompt caching — each change is
+/// appended once, never overwritten.
+pub fn append_context_to_rig_history(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    chat_id: &str,
+    context: &str,
+) {
+    if context.is_empty() {
+        return;
+    }
+    let path = rig_history_path(workspace_dir, instance_slug, chat_id);
+    let mut history = load_rig_history(&path).unwrap_or_default();
+    history.push(rig::completion::Message::user(format!(
+        "[context update]\n{context}"
+    )));
+    history.push(rig::completion::Message::assistant(
+        "understood, context noted.",
+    ));
+    save_rig_history(&path, &history);
+    log::debug!("[context] appended context entry to rig_history ({chat_id})");
 }
 
 fn sanitize_slug(input: &str) -> String {
@@ -1150,6 +1176,7 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
 async fn extract_sentiment(
     workspace_dir: &Path,
     instance_slug: &str,
+    chat_id: &str,
     user_message: &str,
     llm: &LlmBackend,
     _events: &broadcast::Sender<ServerEvent>,
@@ -1183,6 +1210,8 @@ respond ONLY with those two lines."#
 
     let instance_dir = workspace_dir.join("instances").join(instance_slug);
     let mut mood = tools::load_mood_state(&instance_dir);
+    let old_sentiment = mood.user_sentiment.clone();
+    let old_context = mood.emotional_context.clone();
 
     for line in response.lines() {
         let line = line.trim();
@@ -1193,10 +1222,18 @@ respond ONLY with those two lines."#
         }
     }
 
+    let changed = mood.user_sentiment != old_sentiment || mood.emotional_context != old_context;
     mood.updated_at = chrono::Utc::now().timestamp();
     tools::save_mood_state(&instance_dir, &mood);
-    // Don't broadcast MoodUpdated here — this only updates user sentiment,
-    // not the companion's mood. The set_mood tool handles companion mood changes.
+
+    // Append mood context update to rig_history so it persists in the conversation
+    if changed {
+        let ctx = format!(
+            "## emotional state\nuser sentiment: {}\n{}",
+            mood.user_sentiment, mood.emotional_context
+        );
+        append_context_to_rig_history(workspace_dir, instance_slug, chat_id, &ctx);
+    }
 }
 
 /// Load rhythm insights for injection into the chat system prompt.

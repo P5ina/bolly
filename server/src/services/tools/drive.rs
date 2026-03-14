@@ -225,9 +225,9 @@ impl Tool for ReadDriveFileTool {
         // Truncate very large files
         let max_chars = 10_000;
         let truncated = if content.len() > max_chars {
+            let truncated_str: String = content.chars().take(max_chars).collect();
             format!(
-                "{}\n\n...(truncated at {max_chars} chars, total: {})",
-                &content[..max_chars],
+                "{truncated_str}\n\n...(truncated at {max_chars} chars, total: {})",
                 content.len()
             )
         } else {

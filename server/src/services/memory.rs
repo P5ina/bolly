@@ -327,9 +327,13 @@ pub async fn extract_and_store(
             let content = std::fs::read_to_string(&full_path).unwrap_or_default();
             s.push_str(&format!("[{}]\n{}\n\n", entry.path, content.trim()));
         }
-        // Truncate if too long
+        // Truncate if too long (find a char boundary to avoid panic)
         if s.len() > 4000 {
-            s.truncate(4000);
+            let mut end = 4000;
+            while !s.is_char_boundary(end) {
+                end -= 1;
+            }
+            s.truncate(end);
             s.push_str("\n...(truncated)");
         }
         s

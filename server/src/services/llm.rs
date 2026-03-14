@@ -255,7 +255,10 @@ impl LlmBackend {
             async move {
                 match &backend {
                     LlmBackend::Anthropic { client, model } => {
-                        let cm = client.completion_model(model).with_prompt_caching();
+                        let mut cm = client.completion_model(model).with_prompt_caching();
+                        if cm.default_max_tokens.is_none() {
+                            cm.default_max_tokens = Some(8192);
+                        }
                         let agent = AgentBuilder::new(cm).preamble(&system).build();
                         Ok(agent.chat(&prompt, history).await?)
                     }
