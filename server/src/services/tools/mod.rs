@@ -25,6 +25,7 @@ pub mod companion;
 pub mod communication;
 pub mod drive;
 pub mod files;
+pub mod github;
 pub mod memory_tools;
 pub mod project;
 pub mod skills;
@@ -52,6 +53,10 @@ pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
 pub use system::{
     ClearContextTool, CreateDropTool, ExploreCodeTool, InstallPackageTool,
     InteractiveSessionTool, RequestSecretTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
+};
+pub use github::{
+    GithubCloneTool, GithubBranchTool, GithubCommitPushTool,
+    GithubCreatePrTool, GithubIssuesTool, GithubReadIssueTool,
 };
 pub use web::{BrowseTool, WebFetchTool, WebSearchTool};
 
@@ -88,6 +93,7 @@ fn secret_values() -> &'static Vec<String> {
             "DATABASE_URL",
             "BOLLY_AUTH_TOKEN",
             "STRIPE_SECRET_KEY",
+            "GITHUB_TOKEN",
         ];
         env_keys
             .iter()
@@ -104,6 +110,9 @@ pub fn redact_secrets(text: &str) -> String {
         r#"sk-ant-[A-Za-z0-9_\-]{20,}"#,
         r#"sk-proj-[A-Za-z0-9_\-]{20,}"#,
         r"sk-[A-Za-z0-9]{20,}",
+        r"ghp_[A-Za-z0-9]{36,}",
+        r"github_pat_[A-Za-z0-9_]{80,}",
+        r"gho_[A-Za-z0-9]{36,}",
         r#"postgresql://[^\s"']+[^\s"'.]"#,
         r#"postgres://[^\s"']+[^\s"'.]"#,
     ];
@@ -196,6 +205,12 @@ pub fn tool_summary(name: &str, args: &str) -> String {
             let n = v["actions"].as_array().map(|a| a.len()).unwrap_or(0);
             format!("browsing {url} ({n} actions)")
         }
+        "github_clone" => format!("cloning {}", v["repo"].as_str().unwrap_or("?")),
+        "github_branch" => format!("creating branch {}", v["branch"].as_str().unwrap_or("?")),
+        "github_commit_push" => format!("committing to {}", v["repo"].as_str().unwrap_or("?")),
+        "github_create_pr" => format!("opening PR: {}", v["title"].as_str().unwrap_or("?")),
+        "github_issues" => format!("listing issues on {}", v["repo"].as_str().unwrap_or("?")),
+        "github_read_issue" => format!("reading issue #{}", v["number"].as_u64().unwrap_or(0)),
         _ => format!("calling {name}"),
     }
 }
@@ -372,6 +387,7 @@ pub fn build_tools(
     sent_files: SentFiles,
     mcp_snapshot: Option<crate::services::mcp::McpAppSnapshot>,
     mcp_tools: Vec<Box<dyn ToolDyn>>,
+    github_token: Option<&str>,
 ) -> (Vec<Box<dyn ToolDyn>>, SentFiles) {
     let snap = mcp_snapshot;
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
@@ -448,6 +464,18 @@ pub fn build_tools(
         tools.push(wrap(Box::new(RequestSecretTool::new(
             workspace_dir, instance_slug, config_path, events.clone(), ps,
         ))));
+    }
+
+    // GitHub tools — only registered when token is configured
+    if let Some(gh_token) = github_token {
+        if !gh_token.is_empty() {
+            tools.push(wrap(Box::new(GithubCloneTool::new(workspace_dir, instance_slug, gh_token))));
+            tools.push(wrap(Box::new(GithubBranchTool::new(workspace_dir, instance_slug, gh_token))));
+            tools.push(wrap(Box::new(GithubCommitPushTool::new(workspace_dir, instance_slug, gh_token))));
+            tools.push(wrap(Box::new(GithubCreatePrTool::new(workspace_dir, instance_slug, gh_token))));
+            tools.push(wrap(Box::new(GithubIssuesTool::new(workspace_dir, instance_slug, gh_token))));
+            tools.push(wrap(Box::new(GithubReadIssueTool::new(workspace_dir, instance_slug, gh_token))));
+        }
     }
 
     // MCP tools from connected MCP servers

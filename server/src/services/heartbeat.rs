@@ -160,7 +160,9 @@ async fn heartbeat_instance(
     let auth_token = cfg.as_ref().map(|c| c.auth_token.clone()).unwrap_or_default();
     let landing_url = cfg.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
     let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
-    let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, brave_api_key, config_path, events.clone(), google);
+    let github_token = cfg.as_ref().map(|c| c.github.token.clone()).unwrap_or_default();
+    let gh_token = if github_token.is_empty() { None } else { Some(github_token.as_str()) };
+    let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, brave_api_key, config_path, events.clone(), google, gh_token);
 
     let response = llm
         .chat_with_tools_only(&system, &reflection, vec![], heartbeat_tools)
@@ -572,6 +574,7 @@ fn build_heartbeat_tools(
     config_path: &Path,
     events: broadcast::Sender<ServerEvent>,
     google: Option<crate::services::google::GoogleClient>,
+    github_token: Option<&str>,
 ) -> Vec<Box<dyn ToolDyn>> {
     let mut raw_tools: Vec<Box<dyn ToolDyn>> = vec![
         // Memory library
@@ -604,6 +607,18 @@ fn build_heartbeat_tools(
     if let Some(g) = google {
         raw_tools.push(Box::new(tools::ReadEmailTool::new(g.clone(), instance_slug)));
         raw_tools.push(Box::new(tools::ListEventsTool::new(g, instance_slug)));
+    }
+
+    // GitHub tools for autonomous repo work
+    if let Some(gh_token) = github_token {
+        if !gh_token.is_empty() {
+            raw_tools.push(Box::new(tools::GithubCloneTool::new(workspace_dir, instance_slug, gh_token)));
+            raw_tools.push(Box::new(tools::GithubBranchTool::new(workspace_dir, instance_slug, gh_token)));
+            raw_tools.push(Box::new(tools::GithubCommitPushTool::new(workspace_dir, instance_slug, gh_token)));
+            raw_tools.push(Box::new(tools::GithubCreatePrTool::new(workspace_dir, instance_slug, gh_token)));
+            raw_tools.push(Box::new(tools::GithubIssuesTool::new(workspace_dir, instance_slug, gh_token)));
+            raw_tools.push(Box::new(tools::GithubReadIssueTool::new(workspace_dir, instance_slug, gh_token)));
+        }
     }
 
     // Don't wrap in ObservableTool — heartbeat tool activity is private,

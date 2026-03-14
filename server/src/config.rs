@@ -25,6 +25,14 @@ pub struct Config {
     pub plan: String,
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
+    #[serde(default)]
+    pub github: GithubConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct GithubConfig {
+    #[serde(default)]
+    pub token: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -92,6 +100,7 @@ impl Default for Config {
             registry_url: default_registry_url(),
             plan: String::new(),
             mcp_servers: Vec::new(),
+            github: GithubConfig::default(),
         }
     }
 }
@@ -204,6 +213,13 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     if let Ok(key) = env::var("BRAVE_SEARCH_API_KEY") {
         if !key.is_empty() {
             config.llm.tokens.brave_search = key;
+        }
+    }
+
+    // GitHub token override
+    if let Ok(token) = env::var("GITHUB_TOKEN") {
+        if !token.is_empty() {
+            config.github.token = token;
         }
     }
 
