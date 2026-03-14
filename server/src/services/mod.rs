@@ -5,6 +5,7 @@ pub mod drops;
 pub mod heartbeat;
 pub mod llm;
 pub mod mcp;
+pub mod tool;
 pub mod memory;
 pub mod rhythm;
 pub mod scheduler;

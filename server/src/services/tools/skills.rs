@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use rig::{completion::ToolDefinition, tool::Tool};
+use crate::services::tool::{ToolDefinition, Tool};
 use schemars::JsonSchema;
 use serde::Deserialize;
 

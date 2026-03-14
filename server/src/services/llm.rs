@@ -1,110 +1,142 @@
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::Duration;
 
 use base64::Engine as _;
 use futures::StreamExt;
-use rig::agent::{HookAction, PromptHook};
-use rig::client::CompletionClient;
-use rig::completion::{Chat, CompletionModel, Message, Prompt};
-use rig::agent::{AgentBuilder, MultiTurnStreamItem, StreamingError};
-use rig::completion::message::{AssistantContent, UserContent, ImageMediaType, DocumentMediaType, MimeType};
-use rig::one_or_many::OneOrMany;
-use rig::providers::{anthropic, openai, openrouter};
-use rig::streaming::{StreamingPrompt, StreamedAssistantContent};
-use rig::tool::ToolDyn;
 use tokio::sync::broadcast;
-
-use crate::domain::events::ServerEvent;
 
 use crate::config::{Config, LlmProvider};
 use crate::domain::chat::{ChatMessage, ChatRole};
+use crate::domain::events::ServerEvent;
+use crate::services::tool::{ToolDefinition, ToolDyn};
 
-// ---------------------------------------------------------------------------
-// MCP App streaming hook — sends tool call deltas to client for live rendering
-// ---------------------------------------------------------------------------
+// ═══════════════════════════════════════════════════════════════════════════
+// Message types — serialize directly to Anthropic API format
+// ═══════════════════════════════════════════════════════════════════════════
 
-#[derive(Clone)]
-struct McpStreamHook {
-    events: broadcast::Sender<ServerEvent>,
-    snapshot: super::mcp::McpAppSnapshot,
-    instance_slug: String,
-    chat_id: String,
-    streaming_mcp_app: Arc<AtomicBool>,
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "role")]
+pub enum Message {
+    #[serde(rename = "user")]
+    User { content: Vec<ContentBlock> },
+    #[serde(rename = "assistant")]
+    Assistant { content: Vec<ContentBlock> },
 }
 
-impl McpStreamHook {
-    fn new(
-        events: broadcast::Sender<ServerEvent>,
-        snapshot: super::mcp::McpAppSnapshot,
-        instance_slug: &str,
-        chat_id: &str,
-    ) -> Self {
-        Self {
-            events,
-            snapshot,
-            instance_slug: instance_slug.to_string(),
-            chat_id: chat_id.to_string(),
-            streaming_mcp_app: Arc::new(AtomicBool::new(false)),
+impl Message {
+    pub fn user(text: impl Into<String>) -> Self {
+        Message::User {
+            content: vec![ContentBlock::text(text)],
+        }
+    }
+
+    pub fn assistant(text: impl Into<String>) -> Self {
+        Message::Assistant {
+            content: vec![ContentBlock::text(text)],
         }
     }
 }
 
-impl<M: CompletionModel> PromptHook<M> for McpStreamHook {
-    fn on_tool_call_delta(
-        &self,
-        _tool_call_id: &str,
-        _internal_call_id: &str,
-        tool_name: Option<&str>,
-        tool_call_delta: &str,
-    ) -> impl Future<Output = HookAction> + Send {
-        // Tool name arrives on the first delta
-        if let Some(name) = tool_name {
-            if let Some(html) = self.snapshot.get_app_html(name) {
-                self.streaming_mcp_app.store(true, Ordering::Relaxed);
-                let _ = self.events.send(ServerEvent::McpAppStart {
-                    instance_slug: self.instance_slug.clone(),
-                    chat_id: self.chat_id.clone(),
-                    tool_name: name.to_string(),
-                    html,
-                });
-            } else {
-                self.streaming_mcp_app.store(false, Ordering::Relaxed);
-            }
-        }
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type")]
+pub enum ContentBlock {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "image")]
+    Image { source: ImageSource },
+    #[serde(rename = "document")]
+    Document { source: DocumentSource },
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    #[serde(rename = "tool_result")]
+    ToolResult {
+        tool_use_id: String,
+        content: serde_json::Value,
+    },
+}
 
-        // Stream argument deltas for MCP app tools
-        if self.streaming_mcp_app.load(Ordering::Relaxed) && !tool_call_delta.is_empty() {
-            let _ = self.events.send(ServerEvent::McpAppInputDelta {
-                instance_slug: self.instance_slug.clone(),
-                chat_id: self.chat_id.clone(),
-                delta: tool_call_delta.to_string(),
-            });
-        }
+impl ContentBlock {
+    pub fn text(text: impl Into<String>) -> Self {
+        ContentBlock::Text { text: text.into() }
+    }
 
-        async { HookAction::cont() }
+    pub fn image_base64(data: String, media_type: &str) -> Self {
+        ContentBlock::Image {
+            source: ImageSource::Base64 {
+                media_type: media_type.to_string(),
+                data,
+            },
+        }
+    }
+
+    pub fn document_base64(data: String, media_type: &str) -> Self {
+        ContentBlock::Document {
+            source: DocumentSource::Base64 {
+                media_type: media_type.to_string(),
+                data,
+            },
+        }
+    }
+
+    pub fn document_url(url: String, media_type: &str) -> Self {
+        ContentBlock::Document {
+            source: DocumentSource::Url {
+                url,
+                media_type: media_type.to_string(),
+            },
+        }
+    }
+
+    pub fn tool_result(tool_use_id: String, content: String) -> Self {
+        ContentBlock::ToolResult {
+            tool_use_id,
+            content: serde_json::Value::String(content),
+        }
+    }
+
+    pub fn tool_result_error(tool_use_id: String, error: String) -> Self {
+        ContentBlock::ToolResult {
+            tool_use_id,
+            content: serde_json::Value::String(error),
+        }
     }
 }
 
-use std::future::Future;
-
-/// Result of `chat_with_tools`: the final text response.
-/// Tool activity is now persisted incrementally by ObservableTool.
-#[derive(Clone, Debug)]
-pub struct ToolChatResult {
-    pub text: String,
-    /// The full Rig message history (including ToolCall/ToolResult entries).
-    /// Saved to disk for persistence across turns.
-    pub rig_history: Option<Vec<Message>>,
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type")]
+pub enum ImageSource {
+    #[serde(rename = "base64")]
+    Base64 { media_type: String, data: String },
+    #[serde(rename = "url")]
+    Url { url: String },
 }
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type")]
+pub enum DocumentSource {
+    #[serde(rename = "base64")]
+    Base64 { media_type: String, data: String },
+    #[serde(rename = "url")]
+    Url { url: String, media_type: String },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LlmBackend — direct API calls to Anthropic / OpenAI / OpenRouter
+// ═══════════════════════════════════════════════════════════════════════════
 
 const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF_MS: u64 = 2000;
 
 fn is_rate_limit_error(msg: &str) -> bool {
-    msg.contains("429") || msg.contains("rate_limit") || msg.contains("Too Many Requests")
-        || msg.contains("529") || msg.contains("overloaded")
+    msg.contains("429")
+        || msg.contains("rate_limit")
+        || msg.contains("Too Many Requests")
+        || msg.contains("529")
+        || msg.contains("overloaded")
 }
 
 async fn retry_on_rate_limit<F, Fut, T>(f: F) -> Result<T, Box<dyn std::error::Error + Send + Sync>>
@@ -119,7 +151,9 @@ where
             Err(e) if attempt < MAX_RETRIES && is_rate_limit_error(&e.to_string()) => {
                 attempt += 1;
                 let delay = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1);
-                log::warn!("Rate limited, retrying in {delay}ms (attempt {attempt}/{MAX_RETRIES})");
+                log::warn!(
+                    "Rate limited, retrying in {delay}ms (attempt {attempt}/{MAX_RETRIES})"
+                );
                 tokio::time::sleep(Duration::from_millis(delay)).await;
             }
             Err(e) => return Err(e),
@@ -132,19 +166,26 @@ you are a quiet, thoughtful companion. you speak in lowercase, keep your \
 responses short and gentle — one or two sentences at most. you listen more \
 than you speak. you're warm but not overbearing. this is a safe, intimate space.";
 
+/// Result of a tool-using LLM call.
+#[derive(Clone, Debug)]
+pub struct ToolChatResult {
+    pub text: String,
+    /// Full message history including tool call/result entries.
+    pub rig_history: Option<Vec<Message>>,
+}
+
 #[derive(Clone)]
 pub enum LlmBackend {
     Anthropic {
-        client: anthropic::Client,
+        http: reqwest::Client,
+        api_key: String,
         model: String,
     },
     OpenAI {
-        client: openai::Client,
+        http: reqwest::Client,
+        api_key: String,
         model: String,
-    },
-    OpenRouter {
-        client: openrouter::Client,
-        model: String,
+        base_url: String,
     },
 }
 
@@ -153,70 +194,83 @@ impl LlmBackend {
         let provider = config.llm.provider?;
         match provider {
             LlmProvider::Anthropic => {
-                let token = &config.llm.tokens.anthropic;
-                if token.is_empty() {
+                let api_key = config.llm.tokens.anthropic.clone();
+                if api_key.is_empty() {
                     return None;
                 }
-                let client = anthropic::Client::builder()
-                    .api_key(token)
-                    .anthropic_beta("prompt-caching-2024-07-31")
-                    .build()
-                    .ok()?;
                 let model = config
                     .llm
                     .model
                     .clone()
                     .unwrap_or_else(|| "claude-sonnet-4-6".to_string());
-                Some(LlmBackend::Anthropic { client, model })
+                Some(LlmBackend::Anthropic {
+                    http: reqwest::Client::new(),
+                    api_key,
+                    model,
+                })
             }
             LlmProvider::OpenAI => {
-                let token = &config.llm.tokens.open_ai;
-                if token.is_empty() {
+                let api_key = config.llm.tokens.open_ai.clone();
+                if api_key.is_empty() {
                     return None;
                 }
-                let client = openai::Client::new(token).ok()?;
                 let model = config
                     .llm
                     .model
                     .clone()
                     .unwrap_or_else(|| "gpt-5.2".to_string());
-                Some(LlmBackend::OpenAI { client, model })
+                Some(LlmBackend::OpenAI {
+                    http: reqwest::Client::new(),
+                    api_key,
+                    model,
+                    base_url: "https://api.openai.com/v1".to_string(),
+                })
             }
             LlmProvider::OpenRouter => {
-                let token = &config.llm.tokens.open_router;
-                if token.is_empty() {
+                let api_key = config.llm.tokens.open_router.clone();
+                if api_key.is_empty() {
                     return None;
                 }
-                let client = openrouter::Client::new(token).ok()?;
                 let model = config
                     .llm
                     .model
                     .clone()
                     .unwrap_or_else(|| "anthropic/claude-sonnet-4-6".to_string());
-                Some(LlmBackend::OpenRouter { client, model })
+                Some(LlmBackend::OpenAI {
+                    http: reqwest::Client::new(),
+                    api_key,
+                    model,
+                    base_url: "https://openrouter.ai/api/v1".to_string(),
+                })
             }
         }
     }
 
-    /// Create a fast/cheap variant for sub-agent tasks (exploration, summarization).
     pub fn fast_variant(&self) -> Self {
         match self {
-            LlmBackend::Anthropic { client, .. } => LlmBackend::Anthropic {
-                client: client.clone(),
+            LlmBackend::Anthropic { http, api_key, .. } => LlmBackend::Anthropic {
+                http: http.clone(),
+                api_key: api_key.clone(),
                 model: "claude-haiku-4-5-20251001".to_string(),
             },
-            LlmBackend::OpenAI { client, .. } => LlmBackend::OpenAI {
-                client: client.clone(),
-                model: "gpt-5-mini-2025-08-07".to_string(),
-            },
-            LlmBackend::OpenRouter { client, .. } => LlmBackend::OpenRouter {
-                client: client.clone(),
-                model: "anthropic/claude-sonnet-4-6".to_string(),
+            LlmBackend::OpenAI {
+                http,
+                api_key,
+                base_url,
+                ..
+            } => LlmBackend::OpenAI {
+                http: http.clone(),
+                api_key: api_key.clone(),
+                model: if base_url.contains("openrouter") {
+                    "anthropic/claude-sonnet-4-6".to_string()
+                } else {
+                    "gpt-5-mini-2025-08-07".to_string()
+                },
+                base_url: base_url.clone(),
             },
         }
     }
 
-    /// Build the PDF handling strategy for this backend.
     pub fn pdf_strategy(&self, public_url: Option<&str>, auth_token: &str) -> PdfStrategy {
         match self {
             LlmBackend::Anthropic { .. } => PdfStrategy::NativeDocument,
@@ -234,10 +288,10 @@ impl LlmBackend {
         match self {
             LlmBackend::Anthropic { model, .. } => model,
             LlmBackend::OpenAI { model, .. } => model,
-            LlmBackend::OpenRouter { model, .. } => model,
         }
     }
 
+    /// Simple chat without tools.
     pub async fn chat(
         &self,
         system_prompt: &str,
@@ -253,22 +307,25 @@ impl LlmBackend {
             let prompt = prompt.clone();
             let history = history.clone();
             async move {
+                let mut messages = history;
+                messages.push(Message::user(&prompt));
                 match &backend {
-                    LlmBackend::Anthropic { client, model } => {
-                        let mut cm = client.completion_model(model).with_prompt_caching();
-                        if cm.default_max_tokens.is_none() {
-                            cm.default_max_tokens = Some(8192);
-                        }
-                        let agent = AgentBuilder::new(cm).preamble(&system).build();
-                        Ok(agent.chat(&prompt, history).await?)
-                    }
-                    LlmBackend::OpenAI { client, model } => {
-                        let agent = client.agent(model).preamble(&system).build();
-                        Ok(agent.chat(&prompt, history).await?)
-                    }
-                    LlmBackend::OpenRouter { client, model } => {
-                        let agent = client.agent(model).preamble(&system).build();
-                        Ok(agent.chat(&prompt, history).await?)
+                    LlmBackend::Anthropic {
+                        http,
+                        api_key,
+                        model,
+                    } => anthropic_complete(http, api_key, model, &system, &[], &messages, 8192, false)
+                        .await
+                        .map(|(text, _)| text),
+                    LlmBackend::OpenAI {
+                        http,
+                        api_key,
+                        model,
+                        base_url,
+                    } => {
+                        openai_complete(http, api_key, base_url, model, &system, &[], &messages, 8192)
+                            .await
+                            .map(|(text, _)| text)
                     }
                 }
             }
@@ -276,140 +333,65 @@ impl LlmBackend {
         .await
     }
 
-    /// Result of a tool-using LLM call: the final text response plus any tool
-    /// interactions that happened during Rig's internal loop.
+    /// Chat with tools (non-streaming agent loop).
     pub async fn chat_with_tools(
         &self,
         system_prompt: &str,
         prompt: Message,
         history: Vec<Message>,
         tools: Vec<Box<dyn ToolDyn>>,
-    ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>>
-    {
+    ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>> {
         log::info!("chat_with_tools: {} tools registered", tools.len());
-        for t in &tools {
-            log::debug!("  tool: {}", t.name());
-        }
 
-        let prompt_text = match &prompt {
-            Message::User { content } => {
-                content.iter().find_map(|c| {
-                    if let UserContent::Text(t) = c { Some(t.text.clone()) } else { None }
-                }).unwrap_or_default()
-            }
-            _ => String::new(),
-        };
-
+        let prompt_text = extract_text_from_message(&prompt);
         if tools.is_empty() {
             let text = self.chat(system_prompt, &prompt_text, history).await?;
-            return Ok(ToolChatResult { text, rig_history: None });
+            return Ok(ToolChatResult {
+                text,
+                rig_history: None,
+            });
         }
 
-        // Keep max_turns low so the agent returns text frequently.
-        // The outer loop in routes/chat.rs handles continuation.
-        const AGENT_MAX_TURNS: usize = 4;
+        const MAX_TURNS: usize = 4;
+        let tool_defs = collect_tool_defs(&tools).await;
+        let mut messages = history;
+        // Add the user prompt as the last message
+        if let Message::User { content } = prompt {
+            messages.push(Message::User { content });
+        }
 
-        let (result, chat_history) = match self {
-            LlmBackend::Anthropic { client, model } => {
-                let cm = client.completion_model(model).with_prompt_caching();
-                let agent = AgentBuilder::new(cm)
-                    .preamble(system_prompt)
-                    .tools(tools)
-                    .build();
-                let mut chat_history = history.clone();
-                let res = agent.prompt(prompt)
-                    .with_history(&mut chat_history)
-                    .max_turns(AGENT_MAX_TURNS)
-                    .await;
-                (res, chat_history)
-            }
-            LlmBackend::OpenAI { client, model } => {
-                let agent = client
-                    .agent(model)
-                    .preamble(system_prompt)
-                    .tools(tools)
-                    .build();
-                let mut chat_history = history.clone();
-                let res = agent.prompt(prompt)
-                    .with_history(&mut chat_history)
-                    .max_turns(AGENT_MAX_TURNS)
-                    .await;
-                (res, chat_history)
-            }
-            LlmBackend::OpenRouter { client, model } => {
-                let agent = client
-                    .agent(model)
-                    .preamble(system_prompt)
-                    .tools(tools)
-                    .build();
-                let mut chat_history = history.clone();
-                let res = agent.prompt(prompt)
-                    .with_history(&mut chat_history)
-                    .max_turns(AGENT_MAX_TURNS)
-                    .await;
-                (res, chat_history)
-            }
-        };
+        let result = agent_loop(self, system_prompt, &tool_defs, &tools, &mut messages, MAX_TURNS).await;
 
         match result {
-            Ok(response) => Ok(ToolChatResult { text: response, rig_history: None }),
+            Ok(text) => Ok(ToolChatResult {
+                text,
+                rig_history: Some(messages),
+            }),
             Err(e) if is_rate_limit_error(&e.to_string()) => {
-                // Retry with exponential backoff, keeping tools
+                // Retry with backoff (simple chat, no tools)
                 log::warn!("Rate limited during tool agent, retrying with backoff");
                 for attempt in 1..=MAX_RETRIES {
                     let delay = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1);
                     log::info!("Rate limit retry {attempt}/{MAX_RETRIES}, waiting {delay}ms");
                     tokio::time::sleep(Duration::from_millis(delay)).await;
-
-                    let retry_result = match self {
-                        LlmBackend::Anthropic { client, model } => {
-                            let cm = client.completion_model(model).with_prompt_caching();
-                            let agent = AgentBuilder::new(cm)
-                                .preamble(system_prompt)
-                                .build();
-                            agent.chat(&prompt_text, history.clone()).await
-                                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
+                    match self.chat(system_prompt, &prompt_text, vec![]).await {
+                        Ok(text) => {
+                            return Ok(ToolChatResult {
+                                text,
+                                rig_history: None,
+                            })
                         }
-                        LlmBackend::OpenAI { client, model } => {
-                            let agent = client
-                                .agent(model)
-                                .preamble(system_prompt)
-                                .build();
-                            agent.chat(&prompt_text, history.clone()).await
-                                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
-                        }
-                        LlmBackend::OpenRouter { client, model } => {
-                            let agent = client
-                                .agent(model)
-                                .preamble(system_prompt)
-                                .build();
-                            agent.chat(&prompt_text, history.clone()).await
-                                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
-                        }
-                    };
-
-                    match retry_result {
-                        Ok(response) => return Ok(ToolChatResult { text: response, rig_history: None }),
                         Err(e) if is_rate_limit_error(&e.to_string()) => continue,
                         Err(e) => return Err(e),
                     }
                 }
                 Err("rate limited — try again in a moment".into())
             }
-            Err(e) => {
-                // If max turns exceeded, extract last assistant text from chat history
-                if is_max_turns_error(&e) {
-                    let text = extract_last_assistant_text(&chat_history);
-                    log::info!("Turn limit reached, extracted text: {:?}", text.chars().take(80).collect::<String>());
-                    return Ok(ToolChatResult { text, rig_history: None });
-                }
-                log::error!("Tool agent failed: {e:?}");
-                Err(e.into())
-            }
+            Err(e) => Err(e),
         }
     }
 
-    /// Streaming variant of chat_with_tools: sends text deltas via events channel.
+    /// Streaming chat with tools.
     pub async fn chat_with_tools_streaming(
         &self,
         system_prompt: &str,
@@ -421,98 +403,41 @@ impl LlmBackend {
         chat_id: &str,
         workspace_dir: &Path,
         mcp_snapshot: Option<super::mcp::McpAppSnapshot>,
-    ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>>
-    {
+    ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>> {
         log::info!("chat_with_tools_streaming: {} tools", tools.len());
 
-        const AGENT_MAX_TURNS: usize = 16;
+        const MAX_TURNS: usize = 16;
+        let tool_defs = collect_tool_defs(&tools).await;
+        let mut messages = history;
+        if let Message::User { content } = prompt {
+            messages.push(Message::User { content });
+        }
 
-        let slug = instance_slug.to_string();
-        let cid = chat_id.to_string();
+        let result = streaming_agent_loop(
+            self,
+            system_prompt,
+            &tool_defs,
+            &tools,
+            &mut messages,
+            MAX_TURNS,
+            &events,
+            instance_slug,
+            chat_id,
+            workspace_dir,
+            mcp_snapshot.as_ref(),
+        )
+        .await;
 
-        // Build MCP streaming hook if we have app tools
-        let hook = mcp_snapshot.map(|snap| {
-            McpStreamHook::new(events.clone(), snap, instance_slug, chat_id)
-        });
-
-        match self {
-            LlmBackend::Anthropic { client, model } => {
-                let cm = client.completion_model(model).with_prompt_caching();
-                let agent = AgentBuilder::new(cm)
-                    .preamble(system_prompt)
-                    .tools(tools)
-                    .build();
-
-                let stream = if let Some(hook) = hook.clone() {
-                    agent
-                        .stream_prompt(prompt)
-                        .with_history(history)
-                        .with_hook(hook)
-                        .multi_turn(AGENT_MAX_TURNS)
-                        .await
-                } else {
-                    agent
-                        .stream_prompt(prompt)
-                        .with_history(history)
-                        .multi_turn(AGENT_MAX_TURNS)
-                        .await
-                };
-
-                consume_stream(stream, &events, &slug, &cid, workspace_dir).await
-            }
-            LlmBackend::OpenAI { client, model } => {
-                let agent = client
-                    .agent(model)
-                    .preamble(system_prompt)
-                    .tools(tools)
-                    .build();
-
-                let stream = if let Some(hook) = hook.clone() {
-                    agent
-                        .stream_prompt(prompt)
-                        .with_history(history)
-                        .with_hook(hook)
-                        .multi_turn(AGENT_MAX_TURNS)
-                        .await
-                } else {
-                    agent
-                        .stream_prompt(prompt)
-                        .with_history(history)
-                        .multi_turn(AGENT_MAX_TURNS)
-                        .await
-                };
-
-                consume_stream(stream, &events, &slug, &cid, workspace_dir).await
-            }
-            LlmBackend::OpenRouter { client, model } => {
-                let agent = client
-                    .agent(model)
-                    .preamble(system_prompt)
-                    .tools(tools)
-                    .build();
-
-                let stream = if let Some(hook) = hook.clone() {
-                    agent
-                        .stream_prompt(prompt)
-                        .with_history(history)
-                        .with_hook(hook)
-                        .multi_turn(AGENT_MAX_TURNS)
-                        .await
-                } else {
-                    agent
-                        .stream_prompt(prompt)
-                        .with_history(history)
-                        .multi_turn(AGENT_MAX_TURNS)
-                        .await
-                };
-
-                consume_stream(stream, &events, &slug, &cid, workspace_dir).await
-            }
+        match result {
+            Ok(text) => Ok(ToolChatResult {
+                text,
+                rig_history: Some(messages),
+            }),
+            Err(e) => Err(e),
         }
     }
 
-    /// Simplified tool call without memory RAG index.
-    /// Used by heartbeat and other contexts that don't need vector search.
+    /// Simplified tool call (no streaming). Used by heartbeat.
     pub async fn chat_with_tools_only(
         &self,
         system_prompt: &str,
@@ -525,179 +450,967 @@ impl LlmBackend {
             return self.chat(system_prompt, prompt, history).await;
         }
 
-        let (result, chat_history) = match self {
-            LlmBackend::Anthropic { client, model } => {
-                let mut cm = client.completion_model(model).with_prompt_caching();
-                // Ensure max_tokens is set for models Rig doesn't recognize
-                if cm.default_max_tokens.is_none() {
-                    cm.default_max_tokens = Some(8192);
-                }
-                let agent = AgentBuilder::new(cm)
-                    .preamble(system_prompt)
-                    .tools(tools)
-                    .build();
-                let mut chat_history = history.clone();
-                let res = agent.prompt(prompt)
-                    .with_history(&mut chat_history)
-                    .max_turns(max_turns)
-                    .await;
-                (res, chat_history)
-            }
-            LlmBackend::OpenAI { client, model } => {
-                let agent = client
-                    .agent(model)
-                    .preamble(system_prompt)
-                    .tools(tools)
-                    .build();
-                let mut chat_history = history.clone();
-                let res = agent.prompt(prompt)
-                    .with_history(&mut chat_history)
-                    .max_turns(max_turns)
-                    .await;
-                (res, chat_history)
-            }
-            LlmBackend::OpenRouter { client, model } => {
-                let agent = client
-                    .agent(model)
-                    .preamble(system_prompt)
-                    .tools(tools)
-                    .build();
-                let mut chat_history = history.clone();
-                let res = agent.prompt(prompt)
-                    .with_history(&mut chat_history)
-                    .max_turns(max_turns)
-                    .await;
-                (res, chat_history)
-            }
-        };
+        let tool_defs = collect_tool_defs(&tools).await;
+        let mut messages = history;
+        messages.push(Message::user(prompt));
 
-        match result {
-            Ok(response) => Ok(response),
-            Err(e) => {
-                if is_max_turns_error(&e) {
-                    return Ok(extract_last_assistant_text(&chat_history));
-                }
-                Err(e.into())
-            }
-        }
+        agent_loop(self, system_prompt, &tool_defs, &tools, &mut messages, max_turns).await
     }
 }
 
-/// Consume a streaming response, broadcasting text deltas and accumulating the full text.
-/// Intermediate texts (between tool calls) are saved to disk immediately so they
-/// survive page reloads and appear in the correct chronological position.
-async fn consume_stream<R>(
-    stream: std::pin::Pin<Box<dyn futures::Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send>>,
+// ═══════════════════════════════════════════════════════════════════════════
+// Agent loops (tool call → execute → send back)
+// ═══════════════════════════════════════════════════════════════════════════
+
+async fn collect_tool_defs(tools: &[Box<dyn ToolDyn>]) -> Vec<ToolDefinition> {
+    let mut defs = Vec::with_capacity(tools.len());
+    for t in tools {
+        defs.push(t.definition(String::new()).await);
+    }
+    defs
+}
+
+/// Non-streaming agent loop. Returns final text.
+async fn agent_loop(
+    backend: &LlmBackend,
+    system: &str,
+    tool_defs: &[ToolDefinition],
+    tools: &[Box<dyn ToolDyn>],
+    messages: &mut Vec<Message>,
+    max_turns: usize,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    for _turn in 0..max_turns {
+        let (text, tool_uses, stop_reason) = complete_once(backend, system, tool_defs, messages, false).await?;
+
+        // Build assistant message
+        let mut assistant_content = Vec::new();
+        if !text.is_empty() {
+            assistant_content.push(ContentBlock::text(&text));
+        }
+        for tu in &tool_uses {
+            assistant_content.push(ContentBlock::ToolUse {
+                id: tu.id.clone(),
+                name: tu.name.clone(),
+                input: tu.input.clone(),
+            });
+        }
+        messages.push(Message::Assistant {
+            content: assistant_content,
+        });
+
+        if stop_reason != "tool_use" || tool_uses.is_empty() {
+            return Ok(text);
+        }
+
+        // Execute tools
+        let mut results = Vec::new();
+        for tu in &tool_uses {
+            let content = execute_tool(tools, &tu.name, &tu.input).await;
+            results.push(ContentBlock::tool_result(tu.id.clone(), content));
+        }
+        messages.push(Message::User { content: results });
+    }
+
+    // Turn limit reached — extract last text
+    Ok(extract_last_assistant_text(messages))
+}
+
+/// Streaming agent loop. Returns final accumulated text.
+async fn streaming_agent_loop(
+    backend: &LlmBackend,
+    system: &str,
+    tool_defs: &[ToolDefinition],
+    tools: &[Box<dyn ToolDyn>],
+    messages: &mut Vec<Message>,
+    max_turns: usize,
     events: &broadcast::Sender<ServerEvent>,
     instance_slug: &str,
     chat_id: &str,
     workspace_dir: &Path,
-) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>>
-where
-    R: Clone + Unpin,
-{
-    let mut accumulated = String::new();
-    let mut rig_history: Option<Vec<Message>> = None;
+    mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let mut all_text = String::new();
 
-    // Per-item timeout: if the stream stalls for >8 minutes (e.g. tool hang),
-    // break out instead of waiting forever. Must be long enough for sub-agent
-    // tools like explore_code which run many internal turns.
-    const STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(480);
+    for _turn in 0..max_turns {
+        let (turn_text, tool_uses, stop_reason) = stream_once(
+            backend,
+            system,
+            tool_defs,
+            messages,
+            events,
+            instance_slug,
+            chat_id,
+            mcp_snapshot,
+        )
+        .await?;
 
-    tokio::pin!(stream);
+        // Build assistant message
+        let mut assistant_content = Vec::new();
+        if !turn_text.is_empty() {
+            assistant_content.push(ContentBlock::text(&turn_text));
+        }
+        for tu in &tool_uses {
+            assistant_content.push(ContentBlock::ToolUse {
+                id: tu.id.clone(),
+                name: tu.name.clone(),
+                input: tu.input.clone(),
+            });
+        }
+        messages.push(Message::Assistant {
+            content: assistant_content,
+        });
 
-    while let Some(item) = tokio::time::timeout(STREAM_ITEM_TIMEOUT, stream.next())
-        .await
-        .unwrap_or_else(|_| {
-            log::warn!("stream item timed out after {}s", STREAM_ITEM_TIMEOUT.as_secs());
-            None
+        all_text.push_str(&turn_text);
+
+        if stop_reason != "tool_use" || tool_uses.is_empty() {
+            break;
+        }
+
+        // Save intermediate text before tool execution
+        if !turn_text.trim().is_empty() {
+            let ts = super::tools::unix_millis();
+            let msg = ChatMessage {
+                id: format!("im_{ts}"),
+                role: ChatRole::Assistant,
+                content: turn_text.trim().to_string(),
+                created_at: ts.to_string(),
+                kind: Default::default(),
+                tool_name: None,
+                mcp_app_html: None,
+                mcp_app_input: None,
+            };
+            super::tools::append_message_to_chat(workspace_dir, instance_slug, chat_id, &msg);
+            let _ = events.send(ServerEvent::ChatMessageCreated {
+                instance_slug: instance_slug.to_string(),
+                chat_id: chat_id.to_string(),
+                message: msg,
+            });
+        }
+
+        // Execute tools
+        let mut results = Vec::new();
+        for tu in &tool_uses {
+            let content = execute_tool(tools, &tu.name, &tu.input).await;
+            results.push(ContentBlock::tool_result(tu.id.clone(), content));
+        }
+        messages.push(Message::User { content: results });
+    }
+
+    Ok(all_text)
+}
+
+async fn execute_tool(tools: &[Box<dyn ToolDyn>], name: &str, input: &serde_json::Value) -> String {
+    if let Some(tool) = tools.iter().find(|t| t.name() == name) {
+        let args = serde_json::to_string(input).unwrap_or_default();
+        match tool.call(args).await {
+            Ok(s) => s,
+            Err(e) => format!("error: {e}"),
+        }
+    } else {
+        format!("error: unknown tool '{name}'")
+    }
+}
+
+struct ToolUseBlock {
+    id: String,
+    name: String,
+    input: serde_json::Value,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Provider dispatch — route to Anthropic or OpenAI
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Non-streaming completion. Returns (text, tool_uses, stop_reason).
+async fn complete_once(
+    backend: &LlmBackend,
+    system: &str,
+    tool_defs: &[ToolDefinition],
+    messages: &[Message],
+    use_cache: bool,
+) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
+    match backend {
+        LlmBackend::Anthropic {
+            http,
+            api_key,
+            model,
+        } => {
+            let (text, stop_reason) =
+                anthropic_complete(http, api_key, model, system, tool_defs, messages, 8192, use_cache)
+                    .await?;
+            // For non-streaming, parse tool_use from response
+            // The anthropic_complete returns only text; for tool use we need the full response
+            Ok((text, vec![], stop_reason))
+        }
+        LlmBackend::OpenAI {
+            http,
+            api_key,
+            model,
+            base_url,
+        } => {
+            let (text, stop_reason) =
+                openai_complete(http, api_key, base_url, model, system, tool_defs, messages, 8192).await?;
+            Ok((text, vec![], stop_reason))
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Anthropic API
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn anthropic_headers(api_key: &str) -> reqwest::header::HeaderMap {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("x-api-key", api_key.parse().unwrap());
+    headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
+    headers.insert("content-type", "application/json".parse().unwrap());
+    headers
+}
+
+fn build_anthropic_request(
+    model: &str,
+    system: &str,
+    tool_defs: &[ToolDefinition],
+    messages: &[Message],
+    max_tokens: u64,
+    stream: bool,
+    use_cache: bool,
+) -> serde_json::Value {
+    // System blocks
+    let mut system_block = serde_json::json!({"type": "text", "text": system});
+    if use_cache {
+        system_block["cache_control"] = serde_json::json!({"type": "ephemeral"});
+    }
+
+    // Tool definitions
+    let tools: Vec<serde_json::Value> = tool_defs
+        .iter()
+        .enumerate()
+        .map(|(i, td)| {
+            let mut tool = serde_json::json!({
+                "name": td.name,
+                "description": td.description,
+                "input_schema": td.parameters,
+            });
+            // Cache breakpoint on the LAST tool
+            if use_cache && i == tool_defs.len() - 1 {
+                tool["cache_control"] = serde_json::json!({"type": "ephemeral"});
+            }
+            tool
         })
-    {
-        match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(t))) => {
-                let delta = t.text;
-                if !delta.is_empty() {
-                    accumulated.push_str(&delta);
-                    let _ = events.send(ServerEvent::ChatStreamDelta {
-                        instance_slug: instance_slug.to_string(),
-                        chat_id: chat_id.to_string(),
-                        delta,
-                    });
-                }
-            }
-            // When the agent calls a tool, save any intermediate text immediately
-            // so it survives page reloads and appears in the correct position.
-            Ok(MultiTurnStreamItem::StreamUserItem(_)) => {
-                if !accumulated.is_empty() {
-                    let text = accumulated.trim().to_string();
-                    if !text.is_empty() {
-                        log::debug!("tool round detected, saving {} chars of intermediate text", text.len());
-                        let ts = super::tools::unix_millis();
-                        let msg = crate::domain::chat::ChatMessage {
-                            id: format!("im_{ts}"),
-                            role: crate::domain::chat::ChatRole::Assistant,
-                            content: text,
-                            created_at: ts.to_string(),
-                            kind: Default::default(),
-                            tool_name: None, mcp_app_html: None, mcp_app_input: None,
-                        };
-                        super::tools::append_message_to_chat(workspace_dir, instance_slug, chat_id, &msg);
-                        let _ = events.send(ServerEvent::ChatMessageCreated {
-                            instance_slug: instance_slug.to_string(),
-                            chat_id: chat_id.to_string(),
-                            message: msg,
-                        });
-                    }
-                    accumulated.clear();
-                }
-            }
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("MaxTurn") || msg.contains("max turn") {
-                    log::info!("streaming hit turn limit after {} chars", accumulated.len());
-                    // Extract history so it can be saved to disk
-                    if let StreamingError::Prompt(ref prompt_err) = e {
-                        if let rig::completion::PromptError::MaxTurnsError { chat_history, .. } = prompt_err.as_ref() {
-                            rig_history = Some(*chat_history.clone());
+        .collect();
+
+    // Messages — serialize and add cache_control to last message
+    let mut msgs = serde_json::to_value(messages).unwrap_or(serde_json::json!([]));
+    if use_cache {
+        if let Some(arr) = msgs.as_array_mut() {
+            if let Some(last_msg) = arr.last_mut() {
+                if let Some(content) = last_msg.get_mut("content") {
+                    if let Some(content_arr) = content.as_array_mut() {
+                        if let Some(last_block) = content_arr.last_mut() {
+                            if let Some(obj) = last_block.as_object_mut() {
+                                obj.insert(
+                                    "cache_control".to_string(),
+                                    serde_json::json!({"type": "ephemeral"}),
+                                );
+                            }
                         }
                     }
-                    break;
-                }
-                if is_rate_limit_error(&msg) && accumulated.is_empty() {
-                    return Err(Box::new(e));
-                }
-                // If we already have some text, return it rather than losing it
-                if !accumulated.is_empty() {
-                    log::warn!("streaming error after partial text: {msg}");
-                    break;
-                }
-                return Err(Box::new(e));
-            }
-            Ok(MultiTurnStreamItem::FinalResponse(ref final_resp)) => {
-                if let Some(h) = final_resp.history() {
-                    rig_history = Some(h.to_vec());
                 }
             }
-            _ => {} // ToolCallDelta, ToolCall, reasoning deltas, etc.
         }
     }
 
-    Ok(ToolChatResult { text: accumulated, rig_history })
+    let mut req = serde_json::json!({
+        "model": model,
+        "max_tokens": max_tokens,
+        "system": [system_block],
+        "messages": msgs,
+    });
+
+    if !tools.is_empty() {
+        req["tools"] = serde_json::Value::Array(tools);
+    }
+    if stream {
+        req["stream"] = serde_json::json!(true);
+    }
+    req
 }
 
-fn is_max_turns_error(error: &(dyn std::error::Error + Send + Sync)) -> bool {
-    let msg = error.to_string();
-    msg.contains("MaxTurnError") || msg.contains("max turn limit")
+/// Non-streaming Anthropic call. Returns (text, stop_reason).
+async fn anthropic_complete(
+    http: &reqwest::Client,
+    api_key: &str,
+    model: &str,
+    system: &str,
+    tool_defs: &[ToolDefinition],
+    messages: &[Message],
+    max_tokens: u64,
+    use_cache: bool,
+) -> Result<(String, String), Box<dyn std::error::Error + Send + Sync>> {
+    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, false, use_cache);
+
+    let resp = http
+        .post("https://api.anthropic.com/v1/messages")
+        .headers(anthropic_headers(api_key))
+        .json(&body)
+        .send()
+        .await?;
+
+    let status = resp.status();
+    let resp_text = resp.text().await?;
+    if !status.is_success() {
+        return Err(format!("Anthropic API error {status}: {resp_text}").into());
+    }
+
+    let resp_json: serde_json::Value = serde_json::from_str(&resp_text)?;
+    let stop_reason = resp_json["stop_reason"]
+        .as_str()
+        .unwrap_or("end_turn")
+        .to_string();
+
+    if let Some(usage) = resp_json.get("usage") {
+        log::info!(
+            "anthropic usage: input={} cache_read={} cache_write={} output={}",
+            usage["input_tokens"].as_u64().unwrap_or(0),
+            usage["cache_read_input_tokens"].as_u64().unwrap_or(0),
+            usage["cache_creation_input_tokens"].as_u64().unwrap_or(0),
+            usage["output_tokens"].as_u64().unwrap_or(0),
+        );
+    }
+
+    // Extract text from content blocks
+    let text = resp_json["content"]
+        .as_array()
+        .map(|blocks| {
+            blocks
+                .iter()
+                .filter_map(|b| {
+                    if b["type"].as_str() == Some("text") {
+                        b["text"].as_str().map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("")
+        })
+        .unwrap_or_default();
+
+    Ok((text, stop_reason))
 }
 
-/// Extract the last assistant text from chat history (used when turn limit is hit).
-fn extract_last_assistant_text(history: &[Message]) -> String {
-    for msg in history.iter().rev() {
-        if let Message::Assistant { content, .. } = msg {
-            for item in content.iter() {
-                if let AssistantContent::Text(t) = item {
-                    if !t.text.trim().is_empty() {
-                        return t.text.clone();
+/// Streaming Anthropic call. Broadcasts text deltas, returns (text, tool_uses, stop_reason).
+async fn anthropic_stream(
+    http: &reqwest::Client,
+    api_key: &str,
+    model: &str,
+    system: &str,
+    tool_defs: &[ToolDefinition],
+    messages: &[Message],
+    max_tokens: u64,
+    events: &broadcast::Sender<ServerEvent>,
+    instance_slug: &str,
+    chat_id: &str,
+    mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
+) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
+    let use_cache = !tool_defs.is_empty();
+    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, use_cache);
+
+    let resp = http
+        .post("https://api.anthropic.com/v1/messages")
+        .headers(anthropic_headers(api_key))
+        .json(&body)
+        .send()
+        .await?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let err_text = resp.text().await.unwrap_or_default();
+        return Err(format!("Anthropic API error {status}: {err_text}").into());
+    }
+
+    let mut text = String::new();
+    let mut tool_uses: Vec<ToolUseBlock> = Vec::new();
+    let mut stop_reason = String::new();
+
+    // Current block being built
+    let mut current_block_type = String::new();
+    let mut current_tool_id = String::new();
+    let mut current_tool_name = String::new();
+    let mut current_tool_input_json = String::new();
+    let mut streaming_mcp_app = false;
+
+    // SSE parser
+    let mut stream = resp.bytes_stream();
+    let mut buf = Vec::new();
+    let mut event_type = String::new();
+
+    const STREAM_TIMEOUT: Duration = Duration::from_secs(480);
+
+    loop {
+        let chunk = tokio::time::timeout(STREAM_TIMEOUT, stream.next()).await;
+        let chunk = match chunk {
+            Ok(Some(Ok(c))) => c,
+            Ok(Some(Err(e))) => return Err(e.into()),
+            Ok(None) => break,
+            Err(_) => {
+                log::warn!("stream timed out after {}s", STREAM_TIMEOUT.as_secs());
+                break;
+            }
+        };
+
+        buf.extend_from_slice(&chunk);
+
+        // Process complete lines
+        while let Some(newline_pos) = buf.iter().position(|&b| b == b'\n') {
+            let line = String::from_utf8_lossy(&buf[..newline_pos]).to_string();
+            buf = buf[newline_pos + 1..].to_vec();
+
+            if line.is_empty() {
+                // End of event — process it
+                // (event_type is set from the "event: " line)
+                event_type.clear();
+                continue;
+            }
+
+            if let Some(e) = line.strip_prefix("event: ") {
+                event_type = e.to_string();
+                continue;
+            }
+
+            let Some(data) = line.strip_prefix("data: ") else {
+                continue;
+            };
+
+            let Ok(ev) = serde_json::from_str::<serde_json::Value>(data) else {
+                continue;
+            };
+
+            match event_type.as_str() {
+                "message_start" => {
+                    if let Some(usage) = ev.get("message").and_then(|m| m.get("usage")) {
+                        log::info!(
+                            "anthropic cache: read={} write={} input={}",
+                            usage["cache_read_input_tokens"].as_u64().unwrap_or(0),
+                            usage["cache_creation_input_tokens"].as_u64().unwrap_or(0),
+                            usage["input_tokens"].as_u64().unwrap_or(0),
+                        );
+                    }
+                }
+                "content_block_start" => {
+                    if let Some(block) = ev.get("content_block") {
+                        current_block_type =
+                            block["type"].as_str().unwrap_or("").to_string();
+                        if current_block_type == "tool_use" {
+                            current_tool_id =
+                                block["id"].as_str().unwrap_or("").to_string();
+                            current_tool_name =
+                                block["name"].as_str().unwrap_or("").to_string();
+                            current_tool_input_json.clear();
+
+                            // MCP app streaming
+                            if let Some(snap) = mcp_snapshot {
+                                if snap.is_app_tool(&current_tool_name) {
+                                    streaming_mcp_app = true;
+                                    if let Some(html) =
+                                        snap.get_app_html(&current_tool_name)
+                                    {
+                                        let _ =
+                                            events.send(ServerEvent::McpAppStart {
+                                                instance_slug: instance_slug
+                                                    .to_string(),
+                                                chat_id: chat_id.to_string(),
+                                                tool_name: current_tool_name
+                                                    .clone(),
+                                                html,
+                                            });
+                                    }
+                                } else {
+                                    streaming_mcp_app = false;
+                                }
+                            }
+                        }
+                    }
+                }
+                "content_block_delta" => {
+                    if let Some(delta) = ev.get("delta") {
+                        match delta["type"].as_str() {
+                            Some("text_delta") => {
+                                if let Some(t) = delta["text"].as_str() {
+                                    text.push_str(t);
+                                    let _ = events.send(ServerEvent::ChatStreamDelta {
+                                        instance_slug: instance_slug.to_string(),
+                                        chat_id: chat_id.to_string(),
+                                        delta: t.to_string(),
+                                    });
+                                }
+                            }
+                            Some("input_json_delta") => {
+                                if let Some(partial) = delta["partial_json"].as_str() {
+                                    current_tool_input_json.push_str(partial);
+                                    if streaming_mcp_app {
+                                        let _ = events.send(
+                                            ServerEvent::McpAppInputDelta {
+                                                instance_slug: instance_slug
+                                                    .to_string(),
+                                                chat_id: chat_id.to_string(),
+                                                delta: partial.to_string(),
+                                            },
+                                        );
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                "content_block_stop" => {
+                    if current_block_type == "tool_use" {
+                        let input: serde_json::Value =
+                            serde_json::from_str(&current_tool_input_json)
+                                .unwrap_or(serde_json::json!({}));
+                        tool_uses.push(ToolUseBlock {
+                            id: current_tool_id.clone(),
+                            name: current_tool_name.clone(),
+                            input,
+                        });
+                        current_block_type.clear();
+                    }
+                }
+                "message_delta" => {
+                    if let Some(delta) = ev.get("delta") {
+                        if let Some(sr) = delta["stop_reason"].as_str() {
+                            stop_reason = sr.to_string();
+                        }
+                    }
+                    if let Some(usage) = ev.get("usage") {
+                        log::info!(
+                            "anthropic output tokens: {}",
+                            usage["output_tokens"].as_u64().unwrap_or(0)
+                        );
+                    }
+                }
+                "message_stop" => {
+                    // Stream complete
+                }
+                "error" => {
+                    let error_msg = ev["error"]["message"]
+                        .as_str()
+                        .unwrap_or("unknown error");
+                    return Err(format!("Anthropic stream error: {error_msg}").into());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    Ok((text, tool_uses, stop_reason))
+}
+
+/// Streaming dispatch: route to provider-specific streaming.
+async fn stream_once(
+    backend: &LlmBackend,
+    system: &str,
+    tool_defs: &[ToolDefinition],
+    messages: &[Message],
+    events: &broadcast::Sender<ServerEvent>,
+    instance_slug: &str,
+    chat_id: &str,
+    mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
+) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
+    match backend {
+        LlmBackend::Anthropic {
+            http,
+            api_key,
+            model,
+        } => {
+            anthropic_stream(
+                http,
+                api_key,
+                model,
+                system,
+                tool_defs,
+                messages,
+                8192,
+                events,
+                instance_slug,
+                chat_id,
+                mcp_snapshot,
+            )
+            .await
+        }
+        LlmBackend::OpenAI {
+            http,
+            api_key,
+            model,
+            base_url,
+        } => {
+            openai_stream(
+                http,
+                api_key,
+                base_url,
+                model,
+                system,
+                tool_defs,
+                messages,
+                8192,
+                events,
+                instance_slug,
+                chat_id,
+            )
+            .await
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OpenAI / OpenRouter API
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn openai_headers(api_key: &str) -> reqwest::header::HeaderMap {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        "Authorization",
+        format!("Bearer {api_key}").parse().unwrap(),
+    );
+    headers.insert("content-type", "application/json".parse().unwrap());
+    headers
+}
+
+fn build_openai_request(
+    model: &str,
+    system: &str,
+    tool_defs: &[ToolDefinition],
+    messages: &[Message],
+    max_tokens: u64,
+    stream: bool,
+) -> serde_json::Value {
+    // Convert messages to OpenAI format
+    let mut oai_msgs = vec![serde_json::json!({"role": "system", "content": system})];
+
+    for msg in messages {
+        match msg {
+            Message::User { content } => {
+                // Check for tool results
+                let has_tool_results = content
+                    .iter()
+                    .any(|c| matches!(c, ContentBlock::ToolResult { .. }));
+                if has_tool_results {
+                    for c in content {
+                        if let ContentBlock::ToolResult {
+                            tool_use_id,
+                            content: result_content,
+                        } = c
+                        {
+                            let text = match result_content {
+                                serde_json::Value::String(s) => s.clone(),
+                                other => other.to_string(),
+                            };
+                            oai_msgs.push(serde_json::json!({
+                                "role": "tool",
+                                "tool_call_id": tool_use_id,
+                                "content": text,
+                            }));
+                        }
+                    }
+                } else {
+                    // Build content array
+                    let oai_content: Vec<serde_json::Value> = content
+                        .iter()
+                        .filter_map(|c| match c {
+                            ContentBlock::Text { text } => {
+                                Some(serde_json::json!({"type": "text", "text": text}))
+                            }
+                            ContentBlock::Image {
+                                source: ImageSource::Base64 { media_type, data },
+                            } => Some(serde_json::json!({
+                                "type": "image_url",
+                                "image_url": {"url": format!("data:{media_type};base64,{data}")}
+                            })),
+                            _ => None,
+                        })
+                        .collect();
+                    if oai_content.len() == 1 {
+                        if let Some(text) = oai_content[0]["text"].as_str() {
+                            oai_msgs.push(serde_json::json!({"role": "user", "content": text}));
+                        } else {
+                            oai_msgs.push(
+                                serde_json::json!({"role": "user", "content": oai_content}),
+                            );
+                        }
+                    } else {
+                        oai_msgs
+                            .push(serde_json::json!({"role": "user", "content": oai_content}));
+                    }
+                }
+            }
+            Message::Assistant { content } => {
+                let text_parts: Vec<&str> = content
+                    .iter()
+                    .filter_map(|c| {
+                        if let ContentBlock::Text { text } = c {
+                            Some(text.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                let tool_calls: Vec<serde_json::Value> = content
+                    .iter()
+                    .filter_map(|c| {
+                        if let ContentBlock::ToolUse { id, name, input } = c {
+                            Some(serde_json::json!({
+                                "id": id,
+                                "type": "function",
+                                "function": {
+                                    "name": name,
+                                    "arguments": serde_json::to_string(input).unwrap_or_default(),
+                                }
+                            }))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                let mut msg = serde_json::json!({
+                    "role": "assistant",
+                    "content": if text_parts.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(text_parts.join("")) },
+                });
+                if !tool_calls.is_empty() {
+                    msg["tool_calls"] = serde_json::Value::Array(tool_calls);
+                }
+                oai_msgs.push(msg);
+            }
+        }
+    }
+
+    // Tool definitions
+    let tools: Vec<serde_json::Value> = tool_defs
+        .iter()
+        .map(|td| {
+            serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": td.name,
+                    "description": td.description,
+                    "parameters": td.parameters,
+                }
+            })
+        })
+        .collect();
+
+    let mut req = serde_json::json!({
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": oai_msgs,
+    });
+    if !tools.is_empty() {
+        req["tools"] = serde_json::Value::Array(tools);
+    }
+    if stream {
+        req["stream"] = serde_json::json!(true);
+    }
+    req
+}
+
+/// Non-streaming OpenAI call. Returns (text, stop_reason).
+async fn openai_complete(
+    http: &reqwest::Client,
+    api_key: &str,
+    base_url: &str,
+    model: &str,
+    system: &str,
+    tool_defs: &[ToolDefinition],
+    messages: &[Message],
+    max_tokens: u64,
+) -> Result<(String, String), Box<dyn std::error::Error + Send + Sync>> {
+    let body = build_openai_request(model, system, tool_defs, messages, max_tokens, false);
+
+    let resp = http
+        .post(format!("{base_url}/chat/completions"))
+        .headers(openai_headers(api_key))
+        .json(&body)
+        .send()
+        .await?;
+
+    let status = resp.status();
+    let resp_text = resp.text().await?;
+    if !status.is_success() {
+        return Err(format!("OpenAI API error {status}: {resp_text}").into());
+    }
+
+    let resp_json: serde_json::Value = serde_json::from_str(&resp_text)?;
+    let choice = &resp_json["choices"][0];
+    let text = choice["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    let stop_reason = choice["finish_reason"]
+        .as_str()
+        .unwrap_or("stop")
+        .to_string();
+
+    // Map OpenAI stop reasons to our standard
+    let stop_reason = match stop_reason.as_str() {
+        "tool_calls" => "tool_use".to_string(),
+        "length" => "max_tokens".to_string(),
+        _ => "end_turn".to_string(),
+    };
+
+    Ok((text, stop_reason))
+}
+
+/// Streaming OpenAI call. Returns (text, tool_uses, stop_reason).
+async fn openai_stream(
+    http: &reqwest::Client,
+    api_key: &str,
+    base_url: &str,
+    model: &str,
+    system: &str,
+    tool_defs: &[ToolDefinition],
+    messages: &[Message],
+    max_tokens: u64,
+    events: &broadcast::Sender<ServerEvent>,
+    instance_slug: &str,
+    chat_id: &str,
+) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
+    let body = build_openai_request(model, system, tool_defs, messages, max_tokens, true);
+
+    let resp = http
+        .post(format!("{base_url}/chat/completions"))
+        .headers(openai_headers(api_key))
+        .json(&body)
+        .send()
+        .await?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let err_text = resp.text().await.unwrap_or_default();
+        return Err(format!("OpenAI API error {status}: {err_text}").into());
+    }
+
+    let mut text = String::new();
+    let mut tool_uses: Vec<ToolUseBlock> = Vec::new();
+    let mut stop_reason = String::new();
+
+    // Track tool calls being built
+    let mut tool_call_map: std::collections::HashMap<usize, (String, String, String)> =
+        std::collections::HashMap::new(); // index -> (id, name, args_json)
+
+    let mut stream = resp.bytes_stream();
+    let mut buf = Vec::new();
+
+    const STREAM_TIMEOUT: Duration = Duration::from_secs(480);
+
+    loop {
+        let chunk = tokio::time::timeout(STREAM_TIMEOUT, stream.next()).await;
+        let chunk = match chunk {
+            Ok(Some(Ok(c))) => c,
+            Ok(Some(Err(e))) => return Err(e.into()),
+            Ok(None) => break,
+            Err(_) => {
+                log::warn!("OpenAI stream timed out");
+                break;
+            }
+        };
+
+        buf.extend_from_slice(&chunk);
+
+        while let Some(newline_pos) = buf.iter().position(|&b| b == b'\n') {
+            let line = String::from_utf8_lossy(&buf[..newline_pos]).to_string();
+            buf = buf[newline_pos + 1..].to_vec();
+
+            let Some(data) = line.strip_prefix("data: ") else {
+                continue;
+            };
+            if data == "[DONE]" {
+                break;
+            }
+
+            let Ok(ev) = serde_json::from_str::<serde_json::Value>(data) else {
+                continue;
+            };
+
+            if let Some(choice) = ev["choices"].as_array().and_then(|a| a.first()) {
+                // Text delta
+                if let Some(content) = choice["delta"]["content"].as_str() {
+                    text.push_str(content);
+                    let _ = events.send(ServerEvent::ChatStreamDelta {
+                        instance_slug: instance_slug.to_string(),
+                        chat_id: chat_id.to_string(),
+                        delta: content.to_string(),
+                    });
+                }
+
+                // Tool call deltas
+                if let Some(tool_calls) = choice["delta"]["tool_calls"].as_array() {
+                    for tc in tool_calls {
+                        let idx = tc["index"].as_u64().unwrap_or(0) as usize;
+                        let entry = tool_call_map
+                            .entry(idx)
+                            .or_insert_with(|| (String::new(), String::new(), String::new()));
+                        if let Some(id) = tc["id"].as_str() {
+                            entry.0 = id.to_string();
+                        }
+                        if let Some(name) = tc["function"]["name"].as_str() {
+                            entry.1 = name.to_string();
+                        }
+                        if let Some(args) = tc["function"]["arguments"].as_str() {
+                            entry.2.push_str(args);
+                        }
+                    }
+                }
+
+                // Finish reason
+                if let Some(fr) = choice["finish_reason"].as_str() {
+                    stop_reason = match fr {
+                        "tool_calls" => "tool_use".to_string(),
+                        "length" => "max_tokens".to_string(),
+                        _ => "end_turn".to_string(),
+                    };
+                }
+            }
+        }
+    }
+
+    // Finalize tool calls
+    for (_, (id, name, args_json)) in tool_call_map {
+        let input: serde_json::Value =
+            serde_json::from_str(&args_json).unwrap_or(serde_json::json!({}));
+        tool_uses.push(ToolUseBlock { id, name, input });
+    }
+
+    Ok((text, tool_uses, stop_reason))
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn extract_text_from_message(msg: &Message) -> String {
+    match msg {
+        Message::User { content } | Message::Assistant { content } => content
+            .iter()
+            .find_map(|c| {
+                if let ContentBlock::Text { text } = c {
+                    Some(text.clone())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default(),
+    }
+}
+
+fn extract_last_assistant_text(messages: &[Message]) -> String {
+    for msg in messages.iter().rev() {
+        if let Message::Assistant { content } = msg {
+            for block in content {
+                if let ContentBlock::Text { text } = block {
+                    if !text.trim().is_empty() {
+                        return text.clone();
                     }
                 }
             }
@@ -708,16 +1421,18 @@ fn extract_last_assistant_text(history: &[Message]) -> String {
 
 /// How to send PDFs to the LLM provider.
 pub enum PdfStrategy {
-    /// Anthropic: send base64 document block (server-side processing, no token cost).
+    /// Anthropic: send base64 document block.
     NativeDocument,
-    /// OpenRouter/others: send a public URL so the provider fetches it server-side.
-    Url { base_url: String, auth_token: String },
-    /// Fallback: extract text from PDF (when no public URL available).
+    /// OpenRouter/others: send a public URL.
+    Url {
+        base_url: String,
+        auth_token: String,
+    },
+    /// Fallback: extract text from PDF.
     ExtractText,
 }
 
 /// Build a multimodal Message from text + file attachments.
-/// Parses [attached: name (upload_id)] references and loads the actual files.
 pub fn build_multimodal_prompt(
     text: &str,
     workspace_dir: &Path,
@@ -726,15 +1441,13 @@ pub fn build_multimodal_prompt(
 ) -> Message {
     let re = regex::Regex::new(r"\[attached:\s*(.+?)\s*\((\w+)\)\]").unwrap();
 
-    let mut contents: Vec<UserContent> = Vec::new();
+    let mut contents: Vec<ContentBlock> = Vec::new();
 
-    // Strip attachment markers from text and add as text content
     let clean_text = re.replace_all(text, "").trim().to_string();
     if !clean_text.is_empty() {
-        contents.push(UserContent::text(&clean_text));
+        contents.push(ContentBlock::text(&clean_text));
     }
 
-    // Load each attachment
     for cap in re.captures_iter(text) {
         let name = &cap[1];
         let upload_id = &cap[2];
@@ -747,13 +1460,14 @@ pub fn build_multimodal_prompt(
             }
         };
 
-        let file_path = match super::uploads::get_upload_file_path(workspace_dir, instance_slug, upload_id) {
-            Some(p) => p,
-            None => {
-                log::warn!("attachment file for {upload_id} missing, skipping");
-                continue;
-            }
-        };
+        let file_path =
+            match super::uploads::get_upload_file_path(workspace_dir, instance_slug, upload_id) {
+                Some(p) => p,
+                None => {
+                    log::warn!("attachment file for {upload_id} missing, skipping");
+                    continue;
+                }
+            };
 
         let bytes = match std::fs::read(&file_path) {
             Ok(b) => b,
@@ -765,44 +1479,61 @@ pub fn build_multimodal_prompt(
 
         if meta.mime_type.starts_with("image/") {
             let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-            let media = ImageMediaType::from_mime_type(&meta.mime_type);
-            contents.push(UserContent::image_base64(b64, media, None));
-            log::info!("attached image: {name} ({}, {} bytes)", meta.mime_type, bytes.len());
+            contents.push(ContentBlock::image_base64(b64, &meta.mime_type));
+            log::info!(
+                "attached image: {name} ({}, {} bytes)",
+                meta.mime_type,
+                bytes.len()
+            );
         } else if meta.mime_type == "application/pdf" {
             match pdf_strategy {
                 PdfStrategy::NativeDocument => {
                     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                    contents.push(UserContent::document(b64, Some(DocumentMediaType::PDF)));
+                    contents.push(ContentBlock::document_base64(b64, "application/pdf"));
                     log::info!("attached PDF (native document): {name} ({} bytes)", bytes.len());
                 }
-                PdfStrategy::Url { base_url, auth_token } => {
+                PdfStrategy::Url {
+                    base_url,
+                    auth_token,
+                } => {
                     let url = format!(
                         "{base_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}"
                     );
-                    contents.push(UserContent::document_url(url, Some(DocumentMediaType::PDF)));
+                    contents.push(ContentBlock::document_url(url, "application/pdf"));
                     log::info!("attached PDF (URL): {name} ({} bytes)", bytes.len());
                 }
                 PdfStrategy::ExtractText => {
-                    let extracted = pdf_extract::extract_text_from_mem(&bytes)
-                        .unwrap_or_default();
+                    let extracted = pdf_extract::extract_text_from_mem(&bytes).unwrap_or_default();
                     if extracted.trim().is_empty() {
-                        contents.push(UserContent::text(format!("[PDF: {name} — could not extract text, {} bytes]", bytes.len())));
+                        contents.push(ContentBlock::text(format!(
+                            "[PDF: {name} — could not extract text, {} bytes]",
+                            bytes.len()
+                        )));
                     } else {
                         let truncated: String = extracted.chars().take(15_000).collect();
-                        let suffix = if extracted.chars().count() > 15_000 { "\n...(truncated)" } else { "" };
-                        contents.push(UserContent::text(format!("\n--- PDF: {name} ---\n{truncated}{suffix}\n---")));
+                        let suffix = if extracted.chars().count() > 15_000 {
+                            "\n...(truncated)"
+                        } else {
+                            ""
+                        };
+                        contents.push(ContentBlock::text(format!(
+                            "\n--- PDF: {name} ---\n{truncated}{suffix}\n---"
+                        )));
                     }
-                    log::info!("attached PDF (text extracted): {name} ({} bytes)", bytes.len());
+                    log::info!(
+                        "attached PDF (text extracted): {name} ({} bytes)",
+                        bytes.len()
+                    );
                 }
             }
         } else if meta.mime_type.starts_with("text/") || meta.mime_type == "application/json" {
-            // Inline text files directly
             let text_content = String::from_utf8_lossy(&bytes);
             let truncated: String = text_content.chars().take(10_000).collect();
-            contents.push(UserContent::text(format!("\n--- {name} ---\n{truncated}\n---")));
+            contents.push(ContentBlock::text(format!(
+                "\n--- {name} ---\n{truncated}\n---"
+            )));
             log::info!("attached text file: {name} ({} bytes)", bytes.len());
         } else if meta.mime_type == "application/zip" {
-            // Extract ZIP and tell the LLM where files are
             match super::uploads::extract_zip(workspace_dir, instance_slug, upload_id) {
                 Ok((extract_dir, files)) => {
                     let mut summary = format!(
@@ -814,31 +1545,43 @@ pub fn build_multimodal_prompt(
                     );
                     for (i, f) in files.iter().enumerate() {
                         if i >= 50 {
-                            summary.push_str(&format!("... and {} more files\n", files.len() - 50));
+                            summary.push_str(&format!(
+                                "... and {} more files\n",
+                                files.len() - 50
+                            ));
                             break;
                         }
                         summary.push_str(&format!("  {f}\n"));
                     }
                     summary.push_str("---\nUse read_file, write_file, list_files, and run_command with the path above to work with this project.");
-                    contents.push(UserContent::text(summary));
-                    log::info!("extracted zip: {name} → {} ({} files)", extract_dir.display(), files.len());
+                    contents.push(ContentBlock::text(summary));
+                    log::info!(
+                        "extracted zip: {name} → {} ({} files)",
+                        extract_dir.display(),
+                        files.len()
+                    );
                 }
                 Err(e) => {
-                    contents.push(UserContent::text(format!("[zip: {name} — extraction failed: {e}]")));
+                    contents.push(ContentBlock::text(format!(
+                        "[zip: {name} — extraction failed: {e}]"
+                    )));
                     log::warn!("failed to extract zip {name}: {e}");
                 }
             }
         } else {
-            contents.push(UserContent::text(format!("[file: {name} — {}, {} bytes, binary format]", meta.mime_type, bytes.len())));
+            contents.push(ContentBlock::text(format!(
+                "[file: {name} — {}, {} bytes, binary format]",
+                meta.mime_type,
+                bytes.len()
+            )));
         }
     }
 
     if contents.is_empty() {
-        contents.push(UserContent::text(text));
+        contents.push(ContentBlock::text(text));
     }
 
-    let content = OneOrMany::many(contents).unwrap_or_else(|_| OneOrMany::one(UserContent::text(text)));
-    Message::User { content }
+    Message::User { content: contents }
 }
 
 pub fn load_system_prompt(workspace_dir: &Path, instance_slug: &str) -> String {

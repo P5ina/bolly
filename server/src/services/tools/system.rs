@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, LazyLock, Mutex},
 };
 
-use rig::{completion::ToolDefinition, tool::{Tool, ToolDyn}};
+use crate::services::tool::{ToolDefinition, Tool, ToolDyn};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio::sync::broadcast;

@@ -7,10 +7,7 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
-use rig::{
-    completion::ToolDefinition,
-    tool::{ToolDyn, ToolError},
-};
+use crate::services::tool::{ToolDefinition, ToolDyn, ToolError};
 use schemars::JsonSchema;
 use tokio::sync::broadcast;
 

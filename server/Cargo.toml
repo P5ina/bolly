@@ -10,8 +10,7 @@ serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
 env_logger = "0.10"
 log = "0.4"
-rig-core = { version = "0.32.0", features = ["rmcp"] }
-rmcp = { version = "0.16", features = ["client", "transport-streamable-http-client-reqwest"] }
+rmcp = { version = "1.2", features = ["client", "transport-streamable-http-client-reqwest"] }
 reqwest = { version = "0.13", features = ["json", "query"] }
 dirs = "6.0"
 toml = "1.0"

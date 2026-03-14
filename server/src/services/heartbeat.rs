@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chrono::Utc;
-use rig::tool::ToolDyn;
+use crate::services::tool::ToolDyn;
 use tokio::sync::{broadcast, RwLock};
 
 use crate::config;

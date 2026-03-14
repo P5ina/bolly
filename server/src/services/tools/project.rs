@@ -1,7 +1,7 @@
 use std::{fs, path::{Path, PathBuf}};
 
 use chrono::Utc;
-use rig::{completion::ToolDefinition, tool::Tool};
+use crate::services::tool::{ToolDefinition, Tool};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

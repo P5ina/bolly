@@ -277,7 +277,7 @@ pub async fn run_single_turn(
 
     let history_msgs = if let Some(mut h) = loaded_history {
         // Count user messages in rig history to find where messages.json diverges
-        let rig_user_count = h.iter().filter(|m| matches!(m, rig::completion::Message::User { .. })).count();
+        let rig_user_count = h.iter().filter(|m| matches!(m, llm::Message::User { .. })).count();
         // +1 because the last user message becomes the prompt, not history
         let msgs_user_count = existing.iter().filter(|m| m.role == ChatRole::User).count();
         if msgs_user_count > rig_user_count + 1 {
@@ -288,8 +288,8 @@ pub async fn run_single_turn(
                 if m.role == ChatRole::User { seen_users += 1; }
                 if seen_users > skip && m.id != last_user.id {
                     h.push(match m.role {
-                        ChatRole::User => rig::completion::Message::user(&m.content),
-                        ChatRole::Assistant => rig::completion::Message::assistant(&m.content),
+                        ChatRole::User => llm::Message::user(&m.content),
+                        ChatRole::Assistant => llm::Message::assistant(&m.content),
                     });
                 }
             }
@@ -891,7 +891,7 @@ pub fn rig_history_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str
     chat_dir(workspace_dir, instance_slug, chat_id).join("rig_history.json")
 }
 
-fn load_rig_history(path: &Path) -> Option<Vec<rig::completion::Message>> {
+fn load_rig_history(path: &Path) -> Option<Vec<llm::Message>> {
     let raw = fs::read_to_string(path).ok()?;
     match serde_json::from_str(&raw) {
         Ok(h) => Some(h),
@@ -902,7 +902,7 @@ fn load_rig_history(path: &Path) -> Option<Vec<rig::completion::Message>> {
     }
 }
 
-fn save_rig_history(path: &Path, history: &[rig::completion::Message]) {
+fn save_rig_history(path: &Path, history: &[llm::Message]) {
     match serde_json::to_string(history) {
         Ok(body) => {
             if let Err(e) = fs::write(path, body) {
