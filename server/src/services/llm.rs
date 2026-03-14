@@ -278,13 +278,13 @@ impl LlmBackend {
     }
 
     pub fn pdf_strategy(&self, public_url: Option<&str>, auth_token: &str) -> PdfStrategy {
-        match self {
-            LlmBackend::Anthropic { .. } => PdfStrategy::NativeDocument,
-            _ => match public_url {
-                Some(url) if !url.is_empty() => PdfStrategy::Url {
-                    base_url: url.to_string(),
-                    auth_token: auth_token.to_string(),
-                },
+        match public_url {
+            Some(url) if !url.is_empty() => PdfStrategy::Url {
+                base_url: url.to_string(),
+                auth_token: auth_token.to_string(),
+            },
+            _ => match self {
+                LlmBackend::Anthropic { .. } => PdfStrategy::NativeDocument,
                 _ => PdfStrategy::ExtractText,
             },
         }
@@ -761,8 +761,25 @@ fn build_anthropic_request(
         })
         .collect();
 
-    // Messages — serialize and add cache_control to last message
+    // Messages — serialize and strip any legacy oversized base64 images
     let mut msgs = serde_json::to_value(messages).unwrap_or(serde_json::json!([]));
+    if let Some(arr) = msgs.as_array_mut() {
+        for msg in arr.iter_mut() {
+            if let Some(content_arr) = msg.get_mut("content").and_then(|c| c.as_array_mut()) {
+                content_arr.retain(|block| {
+                    if block.get("type").and_then(|t| t.as_str()) == Some("image") {
+                        if let Some(data) = block.pointer("/source/data").and_then(|d| d.as_str()) {
+                            if data.len() > 5 * 1024 * 1024 {
+                                log::info!("stripping oversized base64 image ({} bytes)", data.len());
+                                return false;
+                            }
+                        }
+                    }
+                    true
+                });
+            }
+        }
+    }
     if use_cache {
         if let Some(arr) = msgs.as_array_mut() {
             if let Some(last_msg) = arr.last_mut() {
