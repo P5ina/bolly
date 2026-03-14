@@ -243,19 +243,22 @@ pub async fn run_single_turn(
          this is mandatory, not optional."
     );
 
-    // Semi-stable: memory (changes when facts are added)
-    if !memory_prompt.is_empty() {
-        system_prompt = format!("{system_prompt}\n\n{memory_prompt}");
-    }
+    // Split system prompt: static part (cached) + dynamic part (not cached).
+    // Anthropic caches the longest matching prefix, so we put the stable
+    // soul/skills/style as a separate system block with cache_control.
+    let system_static = system_prompt; // everything built so far is stable
 
-    // Mood + rhythm go at the end of system prompt.
-    // System prompt is small (~3k tokens) — changes here only invalidate
-    // the system prompt cache, while tools (~35k) and history stay cached.
+    let mut system_dynamic = String::new();
+    if !memory_prompt.is_empty() {
+        system_dynamic.push_str(&memory_prompt);
+    }
     if !mood_prompt.is_empty() {
-        system_prompt.push_str(&format!("\n\n{mood_prompt}"));
+        if !system_dynamic.is_empty() { system_dynamic.push_str("\n\n"); }
+        system_dynamic.push_str(&mood_prompt);
     }
     if !rhythm_prompt.is_empty() {
-        system_prompt.push_str(&format!("\n\n{rhythm_prompt}"));
+        if !system_dynamic.is_empty() { system_dynamic.push_str("\n\n"); }
+        system_dynamic.push_str(&rhythm_prompt);
     }
 
     // Build Rig message history from rig_history.json (source of truth) or
@@ -312,7 +315,7 @@ pub async fn run_single_turn(
         "context: model={} history_msgs={} system_prompt_len={}",
         llm.model_name(),
         history_msgs.len(),
-        system_prompt.len(),
+        system_static.len() + system_dynamic.len(),
     );
 
     let sent_files = tools::SentFiles::default();
@@ -337,9 +340,10 @@ pub async fn run_single_turn(
     tools::cache_tool_defs(&all_tools).await;
 
     let history_count = history_msgs.len();
+    let system_blocks: Vec<&str> = vec![&system_static, &system_dynamic];
     let tool_result = llm
         .chat_with_tools_streaming(
-            &system_prompt, prompt_msg, history_msgs, all_tools,
+            &system_blocks, prompt_msg, history_msgs, all_tools,
             events.clone(), &instance_slug, &chat_id,
             workspace_dir,
             Some(mcp_snapshot),
@@ -423,7 +427,7 @@ pub async fn run_single_turn(
     }
 
     // Estimate total tokens: input (system prompt + history) + output
-    let input_tokens = estimate_tokens(&system_prompt)
+    let input_tokens = estimate_tokens(&system_static) + estimate_tokens(&system_dynamic)
         + history_count * 100; // rough estimate for rig messages
     let output_tokens: usize = assistant_messages.iter()
         .map(|m| estimate_tokens(&m.content))

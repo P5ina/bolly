@@ -314,7 +314,7 @@ impl LlmBackend {
                         http,
                         api_key,
                         model,
-                    } => anthropic_complete(http, api_key, model, &system, &[], &messages, 8192, false)
+                    } => anthropic_complete(http, api_key, model, &[&system], &[], &messages, 8192, false)
                         .await
                         .map(|(text, _)| text),
                     LlmBackend::OpenAI {
@@ -336,7 +336,7 @@ impl LlmBackend {
     /// Chat with tools (non-streaming agent loop).
     pub async fn chat_with_tools(
         &self,
-        system_prompt: &str,
+        system_prompt: &[&str],
         prompt: Message,
         history: Vec<Message>,
         tools: Vec<Box<dyn ToolDyn>>,
@@ -345,7 +345,8 @@ impl LlmBackend {
 
         let prompt_text = extract_text_from_message(&prompt);
         if tools.is_empty() {
-            let text = self.chat(system_prompt, &prompt_text, history).await?;
+            let joined = system_prompt.join("\n\n");
+            let text = self.chat(&joined, &prompt_text, history).await?;
             return Ok(ToolChatResult {
                 text,
                 rig_history: None,
@@ -374,7 +375,8 @@ impl LlmBackend {
                     let delay = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1);
                     log::info!("Rate limit retry {attempt}/{MAX_RETRIES}, waiting {delay}ms");
                     tokio::time::sleep(Duration::from_millis(delay)).await;
-                    match self.chat(system_prompt, &prompt_text, vec![]).await {
+                    let fallback_sys = system_prompt.join("\n\n");
+                    match self.chat(&fallback_sys, &prompt_text, vec![]).await {
                         Ok(text) => {
                             return Ok(ToolChatResult {
                                 text,
@@ -394,7 +396,7 @@ impl LlmBackend {
     /// Streaming chat with tools.
     pub async fn chat_with_tools_streaming(
         &self,
-        system_prompt: &str,
+        system_prompt: &[&str],
         prompt: Message,
         history: Vec<Message>,
         tools: Vec<Box<dyn ToolDyn>>,
@@ -449,12 +451,13 @@ impl LlmBackend {
         if tools.is_empty() {
             return self.chat(system_prompt, prompt, history).await;
         }
+        let system_blocks: &[&str] = &[system_prompt];
 
         let tool_defs = collect_tool_defs(&tools).await;
         let mut messages = history;
         messages.push(Message::user(prompt));
 
-        agent_loop(self, system_prompt, &tool_defs, &tools, &mut messages, max_turns).await
+        agent_loop(self, system_blocks, &tool_defs, &tools, &mut messages, max_turns).await
     }
 }
 
@@ -473,7 +476,7 @@ async fn collect_tool_defs(tools: &[Box<dyn ToolDyn>]) -> Vec<ToolDefinition> {
 /// Non-streaming agent loop. Returns final text.
 async fn agent_loop(
     backend: &LlmBackend,
-    system: &str,
+    system: &[&str],
     tool_defs: &[ToolDefinition],
     tools: &[Box<dyn ToolDyn>],
     messages: &mut Vec<Message>,
@@ -518,7 +521,7 @@ async fn agent_loop(
 /// Streaming agent loop. Returns final accumulated text.
 async fn streaming_agent_loop(
     backend: &LlmBackend,
-    system: &str,
+    system: &[&str],
     tool_defs: &[ToolDefinition],
     tools: &[Box<dyn ToolDyn>],
     messages: &mut Vec<Message>,
@@ -624,7 +627,7 @@ struct ToolUseBlock {
 /// Non-streaming completion. Returns (text, tool_uses, stop_reason).
 async fn complete_once(
     backend: &LlmBackend,
-    system: &str,
+    system: &[&str],
     tool_defs: &[ToolDefinition],
     messages: &[Message],
     use_cache: bool,
@@ -648,8 +651,9 @@ async fn complete_once(
             model,
             base_url,
         } => {
+            let joined = system.join("\n\n");
             let (text, stop_reason) =
-                openai_complete(http, api_key, base_url, model, system, tool_defs, messages, 8192).await?;
+                openai_complete(http, api_key, base_url, model, &joined, tool_defs, messages, 8192).await?;
             Ok((text, vec![], stop_reason))
         }
     }
@@ -669,18 +673,29 @@ fn anthropic_headers(api_key: &str) -> reqwest::header::HeaderMap {
 
 fn build_anthropic_request(
     model: &str,
-    system: &str,
+    system: &[&str],
     tool_defs: &[ToolDefinition],
     messages: &[Message],
     max_tokens: u64,
     stream: bool,
     use_cache: bool,
 ) -> serde_json::Value {
-    // System blocks
-    let mut system_block = serde_json::json!({"type": "text", "text": system});
-    if use_cache {
-        system_block["cache_control"] = serde_json::json!({"type": "ephemeral"});
-    }
+    // System blocks — cache all but the last (dynamic) block.
+    // This lets the static prefix (soul, skills, style) stay cached even when
+    // mood/rhythm/memory change.
+    let system_blocks: Vec<serde_json::Value> = system
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| !s.is_empty())
+        .map(|(i, s)| {
+            let mut block = serde_json::json!({"type": "text", "text": *s});
+            // Cache every block except the last one (which is dynamic)
+            if use_cache && i < system.len() - 1 {
+                block["cache_control"] = serde_json::json!({"type": "ephemeral"});
+            }
+            block
+        })
+        .collect();
 
     // Tool definitions
     let tools: Vec<serde_json::Value> = tool_defs
@@ -724,7 +739,7 @@ fn build_anthropic_request(
     let mut req = serde_json::json!({
         "model": model,
         "max_tokens": max_tokens,
-        "system": [system_block],
+        "system": system_blocks,
         "messages": msgs,
     });
 
@@ -742,7 +757,7 @@ async fn anthropic_complete(
     http: &reqwest::Client,
     api_key: &str,
     model: &str,
-    system: &str,
+    system: &[&str],
     tool_defs: &[ToolDefinition],
     messages: &[Message],
     max_tokens: u64,
@@ -805,7 +820,7 @@ async fn anthropic_stream(
     http: &reqwest::Client,
     api_key: &str,
     model: &str,
-    system: &str,
+    system: &[&str],
     tool_defs: &[ToolDefinition],
     messages: &[Message],
     max_tokens: u64,
@@ -1011,7 +1026,7 @@ async fn anthropic_stream(
 /// Streaming dispatch: route to provider-specific streaming.
 async fn stream_once(
     backend: &LlmBackend,
-    system: &str,
+    system: &[&str],
     tool_defs: &[ToolDefinition],
     messages: &[Message],
     events: &broadcast::Sender<ServerEvent>,
@@ -1046,12 +1061,13 @@ async fn stream_once(
             model,
             base_url,
         } => {
+            let joined = system.join("\n\n");
             openai_stream(
                 http,
                 api_key,
                 base_url,
                 model,
-                system,
+                &joined,
                 tool_defs,
                 messages,
                 8192,
