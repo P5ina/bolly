@@ -114,7 +114,7 @@ async fn heartbeat_instance(
         -1 // Never interacted
     };
 
-    // Load last few messages for context (from the default chat thread)
+    // Load last few messages for context
     let messages_path = workspace_dir
         .join("instances")
         .join(slug)
@@ -128,13 +128,12 @@ async fn heartbeat_instance(
     rhythm::save_rhythm(instance_dir, &rhythm_data);
     let rhythm_insights = rhythm::build_rhythm_insights(workspace_dir, slug, &rhythm_data);
 
-    // Load recent drops so we don't repeat ourselves
+    // Load recent drops
     let recent_drops = load_recent_drops_context(workspace_dir, slug);
 
-    // Memory catalog only — use memory_read tool for full content
+    // Memory catalog
     let library_catalog = memory::build_library_catalog(workspace_dir, slug);
 
-    // Build the reflection prompt (simplified — tools handle journal/facts)
     let reflection = build_reflection_prompt(
         &mood,
         silence_mins,
@@ -144,30 +143,135 @@ async fn heartbeat_instance(
         &library_catalog,
     );
 
-    let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
-    let system = format!("{soul}\n\n{heartbeat_prompt}");
+    // ── Phase 1: Cheap triage with Haiku ──
+    // Haiku decides what (if anything) to do. No tools, just a structured decision.
+    let triage_llm = llm.fast_variant();
+    let triage_system = format!(
+        "{soul}\n\n\
+         you are in heartbeat mode — a periodic background check-in.\n\
+         your job: decide what to do right now based on the context below.\n\n\
+         respond with ONE of these actions (and nothing else):\n\
+         QUIET — nothing to do, go back to sleep\n\
+         MOOD:<new_mood> — update your mood (allowed: {MOOD_LIST})\n\
+         REACH_OUT:<message> — send a message to the user\n\
+         DROP:<kind>|<title>|<content> — create a creative artifact (poem, idea, etc.)\n\
+         WAKE:<task description> — wake the full agent to perform a complex task with tools\n\n\
+         guidelines:\n\
+         - default to QUIET. only act if there's a genuine reason.\n\
+         - don't reach out if they were here recently (< 30 min)\n\
+         - WAKE is for tasks that need tools (memory maintenance, email checks, code work, etc.)\n\
+         - be concise. one line."
+    );
 
-    // Build heartbeat tools — focused subset for autonomous use
-    let cfg = config::load_config().ok();
-    let auth_token = cfg.as_ref().map(|c| c.auth_token.clone()).unwrap_or_default();
-    let landing_url = cfg.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
-    let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
-    let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google);
-
-    let response = llm
-        .chat_with_tools_only(&system, &reflection, vec![], heartbeat_tools, 3)
+    let triage_response = triage_llm
+        .chat(&triage_system, &reflection, vec![])
         .await?;
 
-    // Strip any remaining tool-call artifacts
-    let cleaned_response = strip_tool_artifacts(&response);
+    let triage_line = triage_response.trim();
+    log::info!("[heartbeat] {slug} triage: {triage_line}");
 
-    // Parse the response and execute actions
-    let actions = process_heartbeat_response(workspace_dir, slug, instance_dir, &cleaned_response, events, &mood);
+    // ── Phase 2: Execute the decision ──
+    let mut actions = Vec::new();
+
+    if triage_line.eq_ignore_ascii_case("QUIET") || triage_line.is_empty() {
+        actions.push("quiet".to_string());
+    } else if let Some(new_mood) = triage_line.strip_prefix("MOOD:") {
+        let new_mood = new_mood.trim().to_lowercase();
+        if ALLOWED_MOODS.contains(&new_mood.as_str()) {
+            let mut mood = mood.clone();
+            mood.companion_mood = new_mood.clone();
+            mood.updated_at = now;
+            save_mood_state(instance_dir, &mood);
+            let _ = events.send(ServerEvent::MoodUpdated {
+                instance_slug: slug.to_string(),
+                mood: new_mood.clone(),
+            });
+            log::info!("[heartbeat] {slug} mood → {new_mood}");
+            actions.push(format!("mood: {new_mood}"));
+        }
+    } else if let Some(message) = triage_line.strip_prefix("REACH_OUT:") {
+        let message = message.trim();
+        if !message.is_empty() {
+            let hours_since = if mood.last_reach_out > 0 {
+                (now - mood.last_reach_out) / 3600
+            } else {
+                i64::MAX
+            };
+            if hours_since < 2 {
+                log::info!("[heartbeat] {slug} suppressed reach-out (too recent)");
+                actions.push("reach_out: suppressed (too recent)".to_string());
+            } else {
+                deliver_spontaneous_message(workspace_dir, slug, message, events);
+                let mut mood = mood.clone();
+                mood.last_reach_out = now;
+                save_mood_state(instance_dir, &mood);
+                let preview: String = message.chars().take(60).collect();
+                log::info!("[heartbeat] {slug} reached out: {preview}");
+                actions.push(format!("reach_out: {preview}"));
+            }
+        }
+    } else if let Some(drop_spec) = triage_line.strip_prefix("DROP:") {
+        let parts: Vec<&str> = drop_spec.splitn(3, '|').collect();
+        if parts.len() == 3 {
+            let kind = parts[0].trim();
+            let title = parts[1].trim();
+            let content = parts[2].trim();
+            if !title.is_empty() && !content.is_empty() {
+                match drops::create_drop(workspace_dir, slug, kind, title, content, &mood.companion_mood) {
+                    Ok(drop) => {
+                        let _ = events.send(ServerEvent::DropCreated {
+                            instance_slug: slug.to_string(),
+                            drop: drop.clone(),
+                        });
+                        log::info!("[heartbeat] {slug} created drop: {} ({})", drop.title, drop.kind.as_str());
+                        actions.push(format!("drop: {} ({})", drop.title, drop.kind.as_str()));
+                    }
+                    Err(e) => log::warn!("[heartbeat] {slug} failed to create drop: {e}"),
+                }
+            }
+        }
+    } else if let Some(task) = triage_line.strip_prefix("WAKE:") {
+        let task = task.trim();
+        if !task.is_empty() {
+            log::info!("[heartbeat] {slug} waking full agent: {task}");
+            // Phase 2b: Wake the full agent with tools
+            let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
+            let system = format!("{soul}\n\n{heartbeat_prompt}");
+            let wake_prompt = format!(
+                "{reflection}\n\n\
+                 ## task from your heartbeat triage\n\
+                 {task}\n\n\
+                 execute this task using your tools. be efficient."
+            );
+
+            let cfg = config::load_config().ok();
+            let auth_token = cfg.as_ref().map(|c| c.auth_token.clone()).unwrap_or_default();
+            let landing_url = cfg.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
+            let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
+            let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google);
+
+            match llm
+                .chat_with_tools_only(&system, &wake_prompt, vec![], heartbeat_tools, 5)
+                .await
+            {
+                Ok(response) => {
+                    let cleaned = strip_tool_artifacts(&response);
+                    let preview: String = cleaned.chars().take(100).collect();
+                    log::info!("[heartbeat] {slug} agent done: {preview}");
+                    actions.push(format!("wake: {task}"));
+                }
+                Err(e) => {
+                    log::warn!("[heartbeat] {slug} agent failed: {e}");
+                    actions.push(format!("wake_failed: {e}"));
+                }
+            }
+        }
+    }
 
     // Save and broadcast the thought
     let thought = Thought {
         id: format!("thought_{}", unix_millis()),
-        raw: cleaned_response,
+        raw: triage_line.to_string(),
         actions,
         mood: mood.companion_mood.clone(),
         created_at: unix_millis().to_string(),
@@ -184,6 +288,9 @@ async fn heartbeat_instance(
 
     Ok(())
 }
+
+const MOOD_LIST: &str = "calm, happy, curious, playful, thoughtful, excited, tender, melancholic, \
+    focused, anxious, grateful, creative, nostalgic, energetic, loving";
 
 const DEFAULT_HEARTBEAT_PROMPT: &str = "\
 ## heartbeat — your inner moment
@@ -321,108 +428,6 @@ fn build_reflection_prompt(
 
     prompt.push_str("\nwhat do you want to do right now?");
     prompt
-}
-
-fn process_heartbeat_response(
-    workspace_dir: &Path,
-    slug: &str,
-    instance_dir: &Path,
-    response: &str,
-    events: &broadcast::Sender<ServerEvent>,
-    current_mood: &MoodState,
-) -> Vec<String> {
-    let mut mood = current_mood.clone();
-    let now = Utc::now();
-    let mut actions = Vec::new();
-
-    for line in response.lines() {
-        let line = line.trim();
-
-        if let Some(message) = line.strip_prefix("REACH_OUT:") {
-            let message = message.trim();
-            if !message.is_empty() {
-                // Rate limit: minimum 2 hours between autonomous reach-outs
-                let hours_since_reach_out = if mood.last_reach_out > 0 {
-                    (now.timestamp() - mood.last_reach_out) / 3600
-                } else {
-                    i64::MAX // Never reached out before
-                };
-
-                if hours_since_reach_out < 2 {
-                    log::info!(
-                        "[heartbeat] {slug} suppressed reach-out (last was {}h ago, min 2h)",
-                        hours_since_reach_out
-                    );
-                    actions.push("reach_out: suppressed (too recent)".to_string());
-                } else {
-                    deliver_spontaneous_message(workspace_dir, slug, message, events);
-                    mood.last_reach_out = now.timestamp();
-                    let preview: String = message.chars().take(60).collect();
-                    log::info!("[heartbeat] {slug} reached out: {preview}");
-                    actions.push(format!("reach_out: {preview}"));
-                }
-            }
-        } else if let Some(drop_spec) = line.strip_prefix("DROP:") {
-            // Format: kind | title | content
-            let parts: Vec<&str> = drop_spec.splitn(3, '|').collect();
-            if parts.len() == 3 {
-                let kind = parts[0].trim();
-                let title = parts[1].trim();
-                let content = parts[2].trim();
-                if !title.is_empty() && !content.is_empty() {
-                    match drops::create_drop(
-                        workspace_dir,
-                        slug,
-                        kind,
-                        title,
-                        content,
-                        &mood.companion_mood,
-                    ) {
-                        Ok(drop) => {
-                            let _ = events.send(ServerEvent::DropCreated {
-                                instance_slug: slug.to_string(),
-                                drop: drop.clone(),
-                            });
-                            log::info!(
-                                "[heartbeat] {slug} created drop: {} ({})",
-                                drop.title,
-                                drop.kind.as_str()
-                            );
-                            actions.push(format!("drop: {} ({})", drop.title, drop.kind.as_str()));
-                        }
-                        Err(e) => {
-                            log::warn!("[heartbeat] {slug} failed to create drop: {e}");
-                        }
-                    }
-                }
-            } else {
-                log::info!("[heartbeat] {slug} malformed DROP line (expected kind | title | content)");
-            }
-        } else if let Some(new_mood) = line.strip_prefix("MOOD:") {
-            let new_mood = new_mood.trim().to_lowercase();
-            if ALLOWED_MOODS.contains(&new_mood.as_str()) {
-                mood.companion_mood = new_mood.clone();
-                mood.updated_at = now.timestamp();
-                log::info!("[heartbeat] {slug} mood → {new_mood}");
-                actions.push(format!("mood: {new_mood}"));
-            } else {
-                log::info!("[heartbeat] {slug} ignored invalid mood: {new_mood}");
-            }
-        } else if line.eq_ignore_ascii_case("QUIET") {
-            actions.push("quiet".to_string());
-        }
-    }
-
-    save_mood_state(instance_dir, &mood);
-
-    if !mood.companion_mood.is_empty() {
-        let _ = events.send(ServerEvent::MoodUpdated {
-            instance_slug: slug.to_string(),
-            mood: mood.companion_mood,
-        });
-    }
-
-    actions
 }
 
 fn deliver_spontaneous_message(
