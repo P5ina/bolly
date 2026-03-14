@@ -7,6 +7,8 @@
 		fetchMcpServers,
 		addMcpServer,
 		removeMcpServer,
+		fetchGithubConfig,
+		updateGithubToken,
 	} from "$lib/api/client.js";
 	import type { McpServerInfo } from "$lib/api/client.js";
 
@@ -46,6 +48,55 @@
 	let mcpNewName = $state("");
 	let mcpNewUrl = $state("");
 	let showCustomForm = $state(false);
+
+	// GitHub state
+	let ghConfigured = $state(false);
+	let ghLoading = $state(true);
+	let ghToken = $state("");
+	let ghSaving = $state(false);
+	let ghError = $state("");
+	let ghEditing = $state(false);
+
+	async function loadGithub() {
+		ghLoading = true;
+		try {
+			const res = await fetchGithubConfig();
+			ghConfigured = res.configured;
+		} catch {
+			// not critical
+		} finally {
+			ghLoading = false;
+		}
+	}
+
+	async function saveGithubToken() {
+		const token = ghToken.trim();
+		ghSaving = true;
+		ghError = "";
+		try {
+			const res = await updateGithubToken(token);
+			ghConfigured = res.configured;
+			ghToken = "";
+			ghEditing = false;
+		} catch (e: any) {
+			ghError = e?.message || "failed to save token";
+		} finally {
+			ghSaving = false;
+		}
+	}
+
+	async function disconnectGithub() {
+		ghSaving = true;
+		ghError = "";
+		try {
+			const res = await updateGithubToken("");
+			ghConfigured = res.configured;
+		} catch (e: any) {
+			ghError = e?.message || "failed to disconnect";
+		} finally {
+			ghSaving = false;
+		}
+	}
 
 	function isInstalled(name: string): boolean {
 		return mcpServers.some((s) => s.name === name);
@@ -165,6 +216,7 @@
 		slug;
 		loadAccounts();
 		loadMcpServers();
+		loadGithub();
 	});
 </script>
 
@@ -358,6 +410,76 @@
 
 		{#if error}
 			<p class="error-msg">{error}</p>
+		{/if}
+	</section>
+
+	<!-- GitHub -->
+	<section class="settings-section" style="margin-top: 1rem;">
+		<div class="section-header">
+			<div class="section-icon gh-icon">
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+					<path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+				</svg>
+			</div>
+			<div>
+				<h3 class="section-label">github</h3>
+				<p class="section-desc">
+					Connect GitHub to enable cloning repos, creating branches, PRs, and managing issues.
+				</p>
+			</div>
+		</div>
+
+		{#if ghLoading}
+			<div class="ext-loading">
+				<div class="loading-dot"></div>
+			</div>
+		{:else if ghConfigured && !ghEditing}
+			<div class="gh-status">
+				<div class="gh-status-info">
+					<span class="gh-status-dot"></span>
+					<span class="gh-status-text">token configured</span>
+				</div>
+				<div class="gh-status-actions">
+					<button class="ext-form-btn ext-form-cancel" onclick={() => ghEditing = true}>
+						change
+					</button>
+					<button
+						class="ext-remove-btn"
+						disabled={ghSaving}
+						onclick={disconnectGithub}
+					>
+						{ghSaving ? "..." : "remove"}
+					</button>
+				</div>
+			</div>
+		{:else}
+			<div class="gh-token-form">
+				<input
+					class="ext-input"
+					type="password"
+					placeholder="ghp_... or github_pat_..."
+					bind:value={ghToken}
+					onkeydown={(e) => e.key === "Enter" && saveGithubToken()}
+				/>
+				<div class="ext-form-actions">
+					<button
+						class="ext-form-btn ext-form-add"
+						disabled={ghSaving || !ghToken.trim()}
+						onclick={saveGithubToken}
+					>
+						{ghSaving ? "saving..." : "save token"}
+					</button>
+					{#if ghEditing}
+						<button class="ext-form-btn ext-form-cancel" onclick={() => { ghEditing = false; ghToken = ""; ghError = ""; }}>
+							cancel
+						</button>
+					{/if}
+				</div>
+			</div>
+		{/if}
+
+		{#if ghError}
+			<p class="error-msg">{ghError}</p>
 		{/if}
 	</section>
 </div>
@@ -751,5 +873,52 @@
 		color: oklch(0.65 0.15 25 / 70%);
 		font-style: italic;
 		margin-top: 0.5rem;
+	}
+
+	/* --- github --- */
+
+	.gh-icon {
+		color: oklch(0.88 0 0 / 60%);
+	}
+
+	.gh-status {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.5rem;
+		background: oklch(1 0 0 / 3%);
+		border: 1px solid oklch(1 0 0 / 5%);
+	}
+
+	.gh-status-info {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.gh-status-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: oklch(0.70 0.12 145 / 70%);
+	}
+
+	.gh-status-text {
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		color: oklch(0.88 0.02 75 / 60%);
+	}
+
+	.gh-status-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.gh-token-form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
 	}
 </style>

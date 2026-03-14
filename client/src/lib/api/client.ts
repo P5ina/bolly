@@ -179,6 +179,18 @@ export function removeMcpServer(name: string): Promise<void> {
 	});
 }
 
+export function fetchGithubConfig(): Promise<{ configured: boolean }> {
+	return json("/api/config/github");
+}
+
+export function updateGithubToken(token: string): Promise<{ status: string; configured: boolean }> {
+	return json("/api/config/github", {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ token }),
+	});
+}
+
 export function fetchSoul(slug: string): Promise<Soul> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/soul`);
 }

@@ -15,6 +15,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/config/mcp", get(list_mcp_servers))
         .route("/api/config/mcp", post(add_mcp_server))
         .route("/api/config/mcp/{name}", delete(remove_mcp_server))
+        .route("/api/config/github", get(get_github))
+        .route("/api/config/github", put(update_github))
 }
 
 async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -233,6 +235,42 @@ async fn remove_mcp_server(
     state.mcp_registry.reconnect(&configs).await;
 
     Ok(Json(json!({ "status": "ok" })))
+}
+
+// ---------------------------------------------------------------------------
+// GitHub integration
+// ---------------------------------------------------------------------------
+
+async fn get_github(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let config = state.config.read().await;
+    let has_token = !config.github.token.is_empty();
+    Json(json!({
+        "configured": has_token,
+    }))
+}
+
+#[derive(Deserialize)]
+struct UpdateGithubRequest {
+    token: String,
+}
+
+async fn update_github(
+    State(state): State<AppState>,
+    Json(request): Json<UpdateGithubRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let token = request.token.trim().to_string();
+
+    {
+        let mut config = state.config.write().await;
+        config.github.token = token.clone();
+        save_config(&config)?;
+    }
+
+    let configured = !token.is_empty();
+    Ok(Json(json!({
+        "status": "ok",
+        "configured": configured,
+    })))
 }
 
 /// Write the current config back to disk.
