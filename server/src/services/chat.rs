@@ -402,9 +402,9 @@ pub async fn run_single_turn(
     messages.extend(assistant_messages.clone());
     save_messages(workspace_dir, &instance_slug, &chat_id, &messages)?;
 
-    // Background memory + sentiment extraction
+    // Background memory + sentiment extraction (via Haiku for cost efficiency)
     if let Some(last_msg) = assistant_messages.last().cloned() {
-        let backend = llm.clone();
+        let fast = llm.fast_variant();
         let ws = workspace_dir.to_path_buf();
         let slug = instance_slug.clone();
         let cid = chat_id.clone();
@@ -419,11 +419,11 @@ pub async fn run_single_turn(
         let events_bg = events.clone();
         tokio::spawn(async move {
             if let Err(e) =
-                memory::extract_and_store(&ws, &slug, &recent_pair, &backend).await
+                memory::extract_and_store(&ws, &slug, &recent_pair, &fast).await
             {
                 log::warn!("memory extraction failed: {e}");
             }
-            extract_sentiment(&ws, &slug, &cid, &user_content, &backend, &events_bg).await;
+            extract_sentiment(&ws, &slug, &cid, &user_content, &fast, &events_bg).await;
         });
     }
 
@@ -995,11 +995,10 @@ fn load_mood_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
         prompt.push_str(&format!("{}\n", mood.emotional_context));
     }
 
-    let allowed = tools::ALLOWED_MOODS.join(", ");
-    prompt.push_str(&format!(
-        "\ncall set_mood when the emotional tone shifts. allowed: {allowed}. \
-         change silently — never announce it."
-    ));
+    prompt.push_str(
+        "\nyour mood is updated automatically based on conversation tone. \
+         let it color your responses naturally — never announce mood changes."
+    );
     prompt
 }
 
@@ -1126,7 +1125,7 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          you have real tools: read_file, write_file, edit_file, list_files, search_code, explore_code, \
          run_command, install_package, web_search, web_fetch, current_time, send_file, \
          send_email, read_email, list_events, create_event, list_drive_files, read_drive_file, \
-         upload_drive_file, remember/recall, set_mood/get_mood, \
+         upload_drive_file, remember/recall, \
          edit_soul, create_drop, schedule_message, update_config, get_project_state, \
          update_project_state, create_task/update_task/list_tasks, browse.\n\
          users can attach images, PDFs, and text files directly in chat — you see them automatically.\n\
@@ -1179,18 +1178,27 @@ async fn extract_sentiment(
     chat_id: &str,
     user_message: &str,
     llm: &LlmBackend,
-    _events: &broadcast::Sender<ServerEvent>,
+    events: &broadcast::Sender<ServerEvent>,
 ) {
-    let prompt = format!(
-        r#"analyze the emotional tone of this message from the user:
+    let allowed = tools::ALLOWED_MOODS.join(", ");
+    let instance_dir = workspace_dir.join("instances").join(instance_slug);
+    let current_mood = tools::load_mood_state(&instance_dir);
 
+    let prompt = format!(
+        r#"analyze this user message and decide the companion's emotional response.
+
+current companion mood: {}
+
+user message:
 "{user_message}"
 
-respond with exactly two lines:
-SENTIMENT: <one or two words describing the user's emotional state, e.g. "excited", "frustrated", "curious", "tired", "neutral">
-CONTEXT: <one short sentence about the emotional context, e.g. "they seem stressed about their project deadline">
+respond with exactly three lines:
+SENTIMENT: <user's emotional state in 1-2 words, e.g. "excited", "frustrated", "neutral">
+CONTEXT: <one short sentence about the emotional context>
+MOOD: <companion's mood after this interaction — one of: {allowed}. write SAME to keep current>
 
-respond ONLY with those two lines."#
+respond ONLY with those three lines."#,
+        current_mood.companion_mood
     );
 
     let response = match llm
@@ -1208,10 +1216,11 @@ respond ONLY with those two lines."#
         }
     };
 
-    let instance_dir = workspace_dir.join("instances").join(instance_slug);
-    let mut mood = tools::load_mood_state(&instance_dir);
+    let mut mood = current_mood;
     let old_sentiment = mood.user_sentiment.clone();
     let old_context = mood.emotional_context.clone();
+    let old_mood = mood.companion_mood.clone();
+    let mut new_companion_mood: Option<String> = None;
 
     for line in response.lines() {
         let line = line.trim();
@@ -1219,19 +1228,41 @@ respond ONLY with those two lines."#
             mood.user_sentiment = sentiment.trim().to_lowercase();
         } else if let Some(context) = line.strip_prefix("CONTEXT:") {
             mood.emotional_context = context.trim().to_string();
+        } else if let Some(m) = line.strip_prefix("MOOD:") {
+            let m = m.trim().to_lowercase();
+            if m != "same" && tools::ALLOWED_MOODS.contains(&m.as_str()) && m != old_mood {
+                new_companion_mood = Some(m);
+            }
         }
     }
 
-    let changed = mood.user_sentiment != old_sentiment || mood.emotional_context != old_context;
+    if let Some(ref new_mood) = new_companion_mood {
+        mood.companion_mood = new_mood.clone();
+    }
+
+    let sentiment_changed = mood.user_sentiment != old_sentiment || mood.emotional_context != old_context;
+    let mood_changed = new_companion_mood.is_some();
+
     mood.updated_at = chrono::Utc::now().timestamp();
     tools::save_mood_state(&instance_dir, &mood);
 
-    // Append mood context update to rig_history so it persists in the conversation
-    if changed {
-        let ctx = format!(
-            "## emotional state\nuser sentiment: {}\n{}",
-            mood.user_sentiment, mood.emotional_context
-        );
+    if mood_changed {
+        let _ = events.send(ServerEvent::MoodUpdated {
+            instance_slug: instance_slug.to_string(),
+            mood: mood.companion_mood.clone(),
+        });
+        log::info!("[sentiment] {instance_slug} mood → {}", mood.companion_mood);
+    }
+
+    // Append context update to rig_history if anything changed
+    if sentiment_changed || mood_changed {
+        let mut ctx = format!("## emotional state\nuser sentiment: {}", mood.user_sentiment);
+        if !mood.emotional_context.is_empty() {
+            ctx.push_str(&format!("\n{}", mood.emotional_context));
+        }
+        if mood_changed {
+            ctx.push_str(&format!("\nyour mood: {}", mood.companion_mood));
+        }
         append_context_to_rig_history(workspace_dir, instance_slug, chat_id, &ctx);
     }
 }

@@ -38,7 +38,7 @@ pub use communication::{
     ReachOutTool, ReadEmailTool, ScheduleMessageTool, ScheduledMessage, SendEmailTool,
 };
 pub use companion::{
-    ALLOWED_MOODS, EditSoulTool, GetMoodTool, SetMoodTool, load_mood_state, save_mood_state,
+    ALLOWED_MOODS, EditSoulTool, load_mood_state, save_mood_state,
 };
 pub use drive::{ListDriveFilesTool, ReadDriveFileTool, UploadDriveFileTool};
 pub use files::{EditFileTool, ListFilesTool, ReadFileTool, SendFileTool, WriteFileTool};
@@ -579,8 +579,7 @@ pub fn build_tools(
         wrap(Box::new(MemoryReadTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(MemoryListTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(MemoryForgetTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone()))),
-        wrap(Box::new(GetMoodTool::new(workspace_dir, instance_slug))),
+        // Mood is managed by background sentiment extraction + heartbeat, not tools.
         wrap(Box::new(EditSoulTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug, chat_id, events.clone()))),
         wrap(Box::new(ClearContextTool::new(workspace_dir, instance_slug))),

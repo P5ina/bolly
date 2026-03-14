@@ -22,7 +22,7 @@ use crate::services::{chat, drops, llm::LlmBackend, memory, rhythm, thoughts};
 use crate::services::tools::{
     self, load_mood_state, save_mood_state, CreateDropTool,
     MemoryForgetTool, MemoryListTool,
-    MemoryReadTool, MemoryWriteTool, ReachOutTool, SetMoodTool,
+    MemoryReadTool, MemoryWriteTool, ReachOutTool,
     ALLOWED_MOODS,
 };
 
@@ -551,8 +551,7 @@ fn build_heartbeat_tools(
         Box::new(MemoryReadTool::new(workspace_dir, instance_slug)),
         Box::new(MemoryListTool::new(workspace_dir, instance_slug)),
         Box::new(MemoryForgetTool::new(workspace_dir, instance_slug)),
-        // Mood (get_mood not needed — mood is already in the reflection prompt)
-        Box::new(SetMoodTool::new(workspace_dir, instance_slug, events.clone())),
+        // Mood is managed by triage MOOD: action, not a tool.
         // Drops
         Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
         // Reach out
