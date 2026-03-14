@@ -128,11 +128,6 @@ async fn heartbeat_instance(
     rhythm::save_rhythm(instance_dir, &rhythm_data);
     let rhythm_insights = rhythm::build_rhythm_insights(workspace_dir, slug, &rhythm_data);
 
-    // Persist rhythm update in rig_history for cache-stable context
-    if !rhythm_insights.is_empty() {
-        chat::append_context_to_rig_history(workspace_dir, slug, "default", &rhythm_insights);
-    }
-
     // Load recent drops
     let recent_drops = load_recent_drops_context(workspace_dir, slug);
 
@@ -202,11 +197,6 @@ async fn heartbeat_instance(
                 instance_slug: slug.to_string(),
                 mood: new_mood.clone(),
             });
-            // Persist mood change in rig_history for cache-stable context
-            chat::append_context_to_rig_history(
-                workspace_dir, slug, "default",
-                &format!("## emotional state\nyour current mood: {new_mood}"),
-            );
             log::info!("[heartbeat] {slug} mood → {new_mood}");
             actions.push(format!("mood: {new_mood}"));
         }

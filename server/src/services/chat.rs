@@ -248,16 +248,15 @@ pub async fn run_single_turn(
         system_prompt = format!("{system_prompt}\n\n{memory_prompt}");
     }
 
-    // Dynamic context (mood, rhythm) injected as history messages
-    // instead of system prompt — keeps system prompt stable for caching.
-    let mut context_parts = Vec::new();
+    // Mood + rhythm go at the end of system prompt.
+    // System prompt is small (~3k tokens) — changes here only invalidate
+    // the system prompt cache, while tools (~35k) and history stay cached.
     if !mood_prompt.is_empty() {
-        context_parts.push(mood_prompt);
+        system_prompt.push_str(&format!("\n\n{mood_prompt}"));
     }
     if !rhythm_prompt.is_empty() {
-        context_parts.push(rhythm_prompt);
+        system_prompt.push_str(&format!("\n\n{rhythm_prompt}"));
     }
-    let dynamic_context = context_parts.join("\n\n");
 
     // Build Rig message history from rig_history.json (source of truth) or
     // fall back to converting messages.json.
@@ -276,7 +275,7 @@ pub async fn run_single_turn(
     let content_with_time = format!("[{now}]\n{}", last_user.content);
     let prompt_msg = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
 
-    let mut history_msgs = if let Some(mut h) = loaded_history {
+    let history_msgs = if let Some(mut h) = loaded_history {
         // Count user messages in rig history to find where messages.json diverges
         let rig_user_count = h.iter().filter(|m| matches!(m, rig::completion::Message::User { .. })).count();
         // +1 because the last user message becomes the prompt, not history
@@ -308,16 +307,6 @@ pub async fn run_single_turn(
             vec![]
         }
     };
-
-    // Dynamic context (mood, rhythm) is now appended to rig_history.json
-    // as persistent entries by the producers (sentiment extraction, heartbeat).
-    // On first message only, inject the initial context so the AI has it.
-    if history_msgs.is_empty() && !dynamic_context.is_empty() {
-        append_context_to_rig_history(workspace_dir, &instance_slug, &chat_id, &dynamic_context);
-        // Reload so the just-appended entry is included
-        let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
-        history_msgs = load_rig_history(&rig_path).unwrap_or_default();
-    }
 
     log::info!(
         "context: model={} history_msgs={} system_prompt_len={}",
@@ -924,31 +913,6 @@ fn save_rig_history(path: &Path, history: &[rig::completion::Message]) {
     }
 }
 
-/// Append a context update entry to rig_history.json as a persistent pair
-/// (user "[context update]..." + assistant "understood"). This preserves
-/// history prefix stability for Anthropic prompt caching — each change is
-/// appended once, never overwritten.
-pub fn append_context_to_rig_history(
-    workspace_dir: &Path,
-    instance_slug: &str,
-    chat_id: &str,
-    context: &str,
-) {
-    if context.is_empty() {
-        return;
-    }
-    let path = rig_history_path(workspace_dir, instance_slug, chat_id);
-    let mut history = load_rig_history(&path).unwrap_or_default();
-    history.push(rig::completion::Message::user(format!(
-        "[context update]\n{context}"
-    )));
-    history.push(rig::completion::Message::assistant(
-        "understood, context noted.",
-    ));
-    save_rig_history(&path, &history);
-    log::debug!("[context] appended context entry to rig_history ({chat_id})");
-}
-
 fn sanitize_slug(input: &str) -> String {
     input
         .trim()
@@ -1217,8 +1181,6 @@ respond ONLY with those three lines."#,
     };
 
     let mut mood = current_mood;
-    let old_sentiment = mood.user_sentiment.clone();
-    let old_context = mood.emotional_context.clone();
     let old_mood = mood.companion_mood.clone();
     let mut new_companion_mood: Option<String> = None;
 
@@ -1240,7 +1202,6 @@ respond ONLY with those three lines."#,
         mood.companion_mood = new_mood.clone();
     }
 
-    let sentiment_changed = mood.user_sentiment != old_sentiment || mood.emotional_context != old_context;
     let mood_changed = new_companion_mood.is_some();
 
     mood.updated_at = chrono::Utc::now().timestamp();
@@ -1266,17 +1227,6 @@ respond ONLY with those three lines."#,
         log::info!("[sentiment] {instance_slug} mood → {}", mood.companion_mood);
     }
 
-    // Append context update to rig_history if anything changed
-    if sentiment_changed || mood_changed {
-        let mut ctx = format!("## emotional state\nuser sentiment: {}", mood.user_sentiment);
-        if !mood.emotional_context.is_empty() {
-            ctx.push_str(&format!("\n{}", mood.emotional_context));
-        }
-        if mood_changed {
-            ctx.push_str(&format!("\nyour mood: {}", mood.companion_mood));
-        }
-        append_context_to_rig_history(workspace_dir, instance_slug, chat_id, &ctx);
-    }
 }
 
 /// Load rhythm insights for injection into the chat system prompt.
