@@ -1,10 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { invalidateAll } from '$app/navigation';
-	import { ExternalLink, AlertTriangle, Loader, Mail, CreditCard, CalendarClock, XCircle, RotateCw, RefreshCw, Share2, Check } from 'lucide-svelte';
+	import { ExternalLink, AlertTriangle, Loader, Mail, CreditCard, CalendarClock, XCircle, RotateCw, RefreshCw, Share2, Check, Key, ChevronDown, ChevronUp, Trash2 } from 'lucide-svelte';
 	import { enhance } from '$app/forms';
 
 	let shared = $state<string | null>(null);
+	let byokOpen = $state<string | null>(null);
+	let byokSaving = $state<string | null>(null);
+	let byokRemoving = $state<string | null>(null);
+	let byokError = $state<string | null>(null);
 
 	async function shareLink(slug: string, shareToken: string | null) {
 		const base = `${window.location.origin}/connect/${slug}`;
@@ -146,9 +150,9 @@
 							class="py-2.5 px-4 rounded-lg text-sm text-text outline-none"
 							style="background: var(--color-bg); border: 1px solid var(--color-border);"
 						>
-							<option value="starter">Starter ($12/mo) — 150 msgs/day</option>
-							<option value="companion">Companion ($29/mo) — 500 msgs/day</option>
-							<option value="unlimited">Unlimited ($59/mo) — no limits</option>
+							<option value="starter">Starter ($12/mo) — 1M tokens</option>
+							<option value="companion">Companion ($29/mo) — 3M tokens</option>
+							<option value="unlimited">Unlimited ($59/mo) — 10M tokens</option>
 						</select>
 					</div>
 					<button
@@ -314,7 +318,7 @@
 									<div class="flex items-center gap-4 text-xs text-text-ghost">
 										<span class="inline-flex items-center gap-1.5">
 											<CreditCard size={13} class="text-text-ghost" />
-											{tenant.planName} — {formatPrice(tenant.priceMonthly)}/mo
+											{tenant.planName}{tenant.byok ? ' BYOK' : ''} — {formatPrice(tenant.subscription.amount)}/mo
 										</span>
 										<span class="inline-flex items-center gap-1.5">
 											<CalendarClock size={13} class="text-text-ghost" />
@@ -355,6 +359,68 @@
 									</div>
 								</div>
 							{/if}
+
+						<!-- BYOK section -->
+						<div class="mt-3 pt-3" style="border-top: 1px solid var(--color-border);">
+							{#if tenant.byok}
+								<div class="flex items-center justify-between">
+									<div class="flex items-center gap-3 text-xs">
+										<span class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full" style="background: oklch(0.70 0.14 145 / 10%); border: 1px solid oklch(0.70 0.14 145 / 20%); color: oklch(0.75 0.12 145);">
+											<Key size={11} /> BYOK active
+										</span>
+										<span class="text-text-ghost">
+											{tenant.byok.provider} &middot; {tenant.byok.keyHint}
+											{#if tenant.byok.model}&middot; {tenant.byok.model}{/if}
+										</span>
+									</div>
+									<div class="flex items-center gap-2">
+										<button onclick={() => { byokOpen = byokOpen === tenant.id ? null : tenant.id; byokError = null; }} class="text-xs text-text-ghost hover:text-text-dim transition-colors underline underline-offset-2">change</button>
+										<form method="POST" action="?/removeBYOK" use:enhance={() => { byokRemoving = tenant.id; byokError = null; return async ({ result, update }) => { byokRemoving = null; if (result.type === 'failure') { byokError = (result.data as { error?: string })?.error ?? 'Failed'; } else { await update(); } }; }}>
+											<input type="hidden" name="tenantId" value={tenant.id} />
+											<button type="submit" disabled={byokRemoving === tenant.id} class="inline-flex items-center gap-1 text-xs text-red-400/60 hover:text-red-400 transition-colors disabled:opacity-40">
+												<Trash2 size={11} /> {byokRemoving === tenant.id ? 'removing...' : 'remove'}
+											</button>
+										</form>
+									</div>
+								</div>
+							{:else}
+								<button onclick={() => { byokOpen = byokOpen === tenant.id ? null : tenant.id; byokError = null; }} class="flex items-center gap-2 text-xs text-text-ghost hover:text-text-dim transition-colors">
+									<Key size={12} /> Use your own API key
+									{#if byokOpen === tenant.id}<ChevronUp size={12} />{:else}<ChevronDown size={12} />{/if}
+								</button>
+							{/if}
+
+							{#if byokOpen === tenant.id}
+								<form method="POST" action="?/saveBYOK" class="mt-3 grid gap-3" use:enhance={() => { byokSaving = tenant.id; byokError = null; return async ({ result, update }) => { byokSaving = null; if (result.type === 'failure') { byokError = (result.data as { error?: string })?.error ?? 'Failed'; } else { byokOpen = null; await update(); } }; }}>
+									<input type="hidden" name="tenantId" value={tenant.id} />
+									<div class="grid gap-3 md:grid-cols-3">
+										<div>
+											<label for="byok-provider-{tenant.id}" class="block text-xs text-text-ghost mb-1">Provider</label>
+											<select id="byok-provider-{tenant.id}" name="provider" class="w-full py-2 px-3 rounded-lg text-sm text-text outline-none" style="background: var(--color-bg-raised); border: 1px solid var(--color-border);">
+												<option value="anthropic" selected={tenant.byok?.provider === 'anthropic'}>Anthropic</option>
+												<option value="openai" selected={tenant.byok?.provider === 'openai'}>OpenAI</option>
+												<option value="openrouter" selected={tenant.byok?.provider === 'openrouter'}>OpenRouter</option>
+											</select>
+										</div>
+										<div>
+											<label for="byok-key-{tenant.id}" class="block text-xs text-text-ghost mb-1">API Key</label>
+											<input id="byok-key-{tenant.id}" name="apiKey" type="password" required placeholder={tenant.byok ? tenant.byok.keyHint : 'sk-...'} class="w-full py-2 px-3 rounded-lg text-sm text-text outline-none" style="background: var(--color-bg-raised); border: 1px solid var(--color-border);" />
+										</div>
+										<div>
+											<label for="byok-model-{tenant.id}" class="block text-xs text-text-ghost mb-1">Model <span class="text-text-ghost/50">(optional)</span></label>
+											<input id="byok-model-{tenant.id}" name="model" type="text" placeholder="default" value={tenant.byok?.model ?? ''} class="w-full py-2 px-3 rounded-lg text-sm text-text outline-none" style="background: var(--color-bg-raised); border: 1px solid var(--color-border);" />
+										</div>
+									</div>
+									<div class="flex items-center justify-between">
+										<p class="text-xs text-text-ghost/60 max-w-md">Your key will be validated and your subscription switches to hosting-only pricing. The companion will restart.</p>
+										<button type="submit" disabled={byokSaving === tenant.id} class="text-xs py-2 px-5 rounded-lg text-warm transition-all duration-300 disabled:opacity-40" style="background: var(--color-warm-glow); border: 1px solid var(--color-border-warm);">
+											{byokSaving === tenant.id ? 'Validating...' : 'Save & activate'}
+										</button>
+									</div>
+									{#if byokError}<p class="text-xs text-red-400/70 italic">{byokError}</p>{/if}
+								</form>
+							{/if}
+						</div>
 						</div>
 					{/if}
 				{/each}

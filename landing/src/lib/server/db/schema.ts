@@ -61,6 +61,11 @@ export const tenants = pgTable('tenants', {
 	messagesPerDay: integer('messages_per_day').notNull().default(150),
 	tokensPerMonth: integer('tokens_per_month').notNull().default(1000000),
 
+	// BYOK (Bring Your Own Key)
+	byokProvider: text('byok_provider'), // "anthropic" | "openai" | "openrouter" | null
+	byokApiKey: text('byok_api_key'),    // user's API key (plaintext, null = not BYOK)
+	byokModel: text('byok_model'),       // custom model override, nullable
+
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

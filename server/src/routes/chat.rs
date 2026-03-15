@@ -46,13 +46,16 @@ async fn post_chat(
         return Err((StatusCode::BAD_REQUEST, "slug and content required".into()));
     }
 
-    // Rate limit check (only when DATABASE_URL is configured)
-    if let (Some(pool), Some(iid)) = (&state.pg_pool, &state.instance_id) {
-        if let Err(reason) = rate_limit::check(pool, iid).await {
-            return Err((
-                StatusCode::TOO_MANY_REQUESTS,
-                serde_json::json!({ "error": "rate limit exceeded", "detail": reason }).to_string(),
-            ));
+    // Rate limit check (only when DATABASE_URL is configured, skip for BYOK)
+    let is_byok = std::env::var("BOLLY_BYOK").map_or(false, |v| v == "true");
+    if !is_byok {
+        if let (Some(pool), Some(iid)) = (&state.pg_pool, &state.instance_id) {
+            if let Err(reason) = rate_limit::check(pool, iid).await {
+                return Err((
+                    StatusCode::TOO_MANY_REQUESTS,
+                    serde_json::json!({ "error": "rate limit exceeded", "detail": reason }).to_string(),
+                ));
+            }
         }
     }
 

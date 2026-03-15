@@ -45,13 +45,32 @@ export const PLANS = {
 
 export type PlanId = keyof typeof PLANS;
 
-export function priceIdForPlan(plan: PlanId): string {
+export function priceIdForPlan(plan: PlanId, byok = false): string {
+	if (byok) {
+		const map: Record<PlanId, string> = {
+			starter: env.STRIPE_STARTER_BYOK_PRICE_ID!,
+			companion: env.STRIPE_COMPANION_BYOK_PRICE_ID!,
+			unlimited: env.STRIPE_UNLIMITED_BYOK_PRICE_ID!,
+		};
+		return map[plan];
+	}
 	const map: Record<PlanId, string> = {
 		starter: env.STRIPE_STARTER_PRICE_ID!,
 		companion: env.STRIPE_COMPANION_PRICE_ID!,
 		unlimited: env.STRIPE_UNLIMITED_PRICE_ID!,
 	};
 	return map[plan];
+}
+
+/** Swap a subscription's price (e.g. normal → BYOK or back). */
+export async function swapSubscriptionPrice(subscriptionId: string, newPriceId: string): Promise<void> {
+	const sub = await stripe().subscriptions.retrieve(subscriptionId);
+	const item = sub.items.data[0];
+	if (!item) throw new Error('Subscription has no items');
+	await stripe().subscriptions.update(subscriptionId, {
+		items: [{ id: item.id, price: newPriceId }],
+		proration_behavior: 'create_prorations',
+	});
 }
 
 export async function createCheckoutSession(opts: {
