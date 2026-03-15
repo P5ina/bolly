@@ -12,6 +12,7 @@
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import { play, playImmediate, preload } from "$lib/sounds.js";
+	import { hapticReveal } from "$lib/haptics.js";
 
 	const toast = getToasts();
 	import AsciiRenderer from "$lib/components/chat/AsciiRenderer.svelte";
@@ -125,6 +126,7 @@
 		preload("intro_reveal", "typewriter");
 		await pause(600);
 		play("intro_reveal");
+		hapticReveal();
 		revealed = true;
 		await pause(1800);
 		stage = "intro";
