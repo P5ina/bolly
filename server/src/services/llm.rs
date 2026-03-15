@@ -320,7 +320,7 @@ impl LlmBackend {
                         http,
                         api_key,
                         model,
-                    } => anthropic_complete(http, api_key, model, &[&system], &[], &messages, 16384, false)
+                    } => anthropic_complete(http, api_key, model, &[&system], &[], &messages, 16384)
                         .await
                         .map(|(text, _)| text),
                     LlmBackend::OpenAI {
@@ -489,7 +489,7 @@ async fn agent_loop(
     max_turns: usize,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     for _turn in 0..max_turns {
-        let (text, tool_uses, stop_reason) = complete_once(backend, system, tool_defs, messages, false).await?;
+        let (text, tool_uses, stop_reason) = complete_once(backend, system, tool_defs, messages).await?;
 
         // Build assistant message
         let mut assistant_content = Vec::new();
@@ -675,7 +675,6 @@ async fn complete_once(
     system: &[&str],
     tool_defs: &[ToolDefinition],
     messages: &[Message],
-    use_cache: bool,
 ) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
     match backend {
         LlmBackend::Anthropic {
@@ -684,7 +683,7 @@ async fn complete_once(
             model,
         } => {
             let (text, stop_reason) =
-                anthropic_complete(http, api_key, model, system, tool_defs, messages, 16384, use_cache)
+                anthropic_complete(http, api_key, model, system, tool_defs, messages, 16384)
                     .await?;
             // For non-streaming, parse tool_use from response
             // The anthropic_complete returns only text; for tool use we need the full response
@@ -724,40 +723,27 @@ fn build_anthropic_request(
     messages: &[Message],
     max_tokens: u64,
     stream: bool,
-    use_cache: bool,
 ) -> serde_json::Value {
-    // System blocks — cache all blocks (system prompt is now fully static).
+    // System blocks — no manual cache_control needed, Anthropic auto-caches
     let system_blocks: Vec<serde_json::Value> = system
         .iter()
         .filter(|s| !s.is_empty())
-        .map(|s| {
-            let mut block = serde_json::json!({"type": "text", "text": *s});
-            if use_cache {
-                block["cache_control"] = serde_json::json!({"type": "ephemeral"});
-            }
-            block
-        })
+        .map(|s| serde_json::json!({"type": "text", "text": *s}))
         .collect();
 
     // Tool definitions
     let tools: Vec<serde_json::Value> = tool_defs
         .iter()
-        .enumerate()
-        .map(|(i, td)| {
-            let mut tool = serde_json::json!({
+        .map(|td| {
+            serde_json::json!({
                 "name": td.name,
                 "description": td.description,
                 "input_schema": td.parameters,
-            });
-            // Cache breakpoint on the LAST tool
-            if use_cache && i == tool_defs.len() - 1 {
-                tool["cache_control"] = serde_json::json!({"type": "ephemeral"});
-            }
-            tool
+            })
         })
         .collect();
 
-    // Messages — serialize and strip any legacy oversized base64 images
+    // Messages — strip any legacy oversized base64 images
     let mut msgs = serde_json::to_value(messages).unwrap_or(serde_json::json!([]));
     if let Some(arr) = msgs.as_array_mut() {
         for msg in arr.iter_mut() {
@@ -773,30 +759,6 @@ fn build_anthropic_request(
                     }
                     true
                 });
-            }
-        }
-    }
-    // Cache breakpoint on the second-to-last message so the conversation
-    // history up to the previous turn is cached. The last message (new prompt)
-    // changes every turn, so caching it would always miss.
-    if use_cache {
-        if let Some(arr) = msgs.as_array_mut() {
-            let len = arr.len();
-            if len >= 2 {
-                if let Some(msg) = arr.get_mut(len - 2) {
-                    if let Some(content) = msg.get_mut("content") {
-                        if let Some(content_arr) = content.as_array_mut() {
-                            if let Some(last_block) = content_arr.last_mut() {
-                                if let Some(obj) = last_block.as_object_mut() {
-                                    obj.insert(
-                                        "cache_control".to_string(),
-                                        serde_json::json!({"type": "ephemeral"}),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -832,9 +794,8 @@ async fn anthropic_complete(
     tool_defs: &[ToolDefinition],
     messages: &[Message],
     max_tokens: u64,
-    use_cache: bool,
 ) -> Result<(String, String), Box<dyn std::error::Error + Send + Sync>> {
-    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, false, use_cache);
+    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, false);
 
     let resp = http
         .post("https://api.anthropic.com/v1/messages")
@@ -900,8 +861,7 @@ async fn anthropic_stream(
     chat_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
 ) -> Result<(String, Vec<ToolUseBlock>, String, Option<String>), Box<dyn std::error::Error + Send + Sync>> {
-    let use_cache = !tool_defs.is_empty();
-    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, use_cache);
+    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true);
 
     let resp = http
         .post("https://api.anthropic.com/v1/messages")
