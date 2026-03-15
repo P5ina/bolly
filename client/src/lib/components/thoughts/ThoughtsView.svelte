@@ -10,7 +10,6 @@
 
 	let thoughts = $state<Thought[]>([]);
 	let loading = $state(true);
-	let expandedId = $state<string | null>(null);
 
 	const ws = getWebSocket();
 
@@ -38,11 +37,13 @@
 		energetic: "oklch(0.82 0.18 65)",
 	};
 
-	const actionIcons: Record<string, string> = {
-		reach_out: ">",
-		drop: "*",
-		mood: "~",
-		quiet: ".",
+	const actionMeta: Record<string, { icon: string; verb: string }> = {
+		reach_out: { icon: "→", verb: "reached out" },
+		drop: { icon: "✦", verb: "created" },
+		mood: { icon: "◑", verb: "shifted to" },
+		quiet: { icon: "·", verb: "resting" },
+		wake: { icon: "⚡", verb: "woke up" },
+		wake_failed: { icon: "✕", verb: "failed to wake" },
 	};
 
 	async function load() {
@@ -85,20 +86,45 @@
 		return d.toLocaleDateString([], { month: "short", day: "numeric" });
 	}
 
-	function actionIcon(action: string): string {
-		const key = action.split(":")[0];
-		return actionIcons[key] ?? ".";
-	}
-
-	function actionLabel(action: string): string {
+	function parseAction(action: string): { kind: string; label: string } {
 		const colonIdx = action.indexOf(":");
-		if (colonIdx === -1) return action;
-		return action.substring(colonIdx + 1).trim();
+		if (colonIdx === -1) return { kind: action.trim(), label: "" };
+		return {
+			kind: action.substring(0, colonIdx).trim(),
+			label: action.substring(colonIdx + 1).trim(),
+		};
 	}
 
-	function actionKind(action: string): string {
-		return action.split(":")[0];
+	function isQuiet(thought: Thought): boolean {
+		return thought.actions.length === 1 && thought.actions[0].startsWith("quiet");
 	}
+
+	// Group consecutive quiet thoughts for a cleaner timeline
+	interface ThoughtGroup {
+		type: "single" | "quiet-cluster";
+		thoughts: Thought[];
+	}
+
+	let grouped = $derived.by(() => {
+		const groups: ThoughtGroup[] = [];
+		let quietBuf: Thought[] = [];
+
+		for (const t of thoughts) {
+			if (isQuiet(t)) {
+				quietBuf.push(t);
+			} else {
+				if (quietBuf.length > 0) {
+					groups.push({ type: "quiet-cluster", thoughts: quietBuf });
+					quietBuf = [];
+				}
+				groups.push({ type: "single", thoughts: [t] });
+			}
+		}
+		if (quietBuf.length > 0) {
+			groups.push({ type: "quiet-cluster", thoughts: quietBuf });
+		}
+		return groups;
+	});
 </script>
 
 <div class="thoughts-container">
@@ -108,7 +134,7 @@
 		</div>
 	{:else if thoughts.length === 0}
 		<div class="thoughts-empty">
-			<div class="thoughts-empty-icon">...</div>
+			<div class="thoughts-empty-icon">·  ·  ·</div>
 			<p class="thoughts-empty-text">no thoughts yet</p>
 			<p class="thoughts-empty-hint">
 				your companion thinks during heartbeats — every 45 minutes.
@@ -117,47 +143,58 @@
 		</div>
 	{:else}
 		<div class="thoughts-header">
-			<span class="thoughts-count">{thoughts.length} thought{thoughts.length !== 1 ? "s" : ""}</span>
+			<span class="thoughts-count">{thoughts.length} heartbeat{thoughts.length !== 1 ? "s" : ""}</span>
 		</div>
-		<div class="thoughts-list">
-			{#each thoughts as thought (thought.id)}
-				{@const accentColor = moodColors[thought.mood] ?? "oklch(0.78 0.12 75)"}
-				{@const isExpanded = expandedId === thought.id}
-				<button
-					class="thought-card"
-					class:thought-card-expanded={isExpanded}
-					style="--accent: {accentColor}"
-					onclick={() => (expandedId = isExpanded ? null : thought.id)}
-				>
-					<div class="thought-header">
-						<span class="thought-pulse"></span>
-						<span class="thought-label">heartbeat</span>
-						<span class="thought-time">{formatTime(thought.created_at)}</span>
+		<div class="thoughts-timeline">
+			{#each grouped as group}
+				{#if group.type === "quiet-cluster"}
+					{@const count = group.thoughts.length}
+					{@const first = group.thoughts[0]}
+					{@const last = group.thoughts[group.thoughts.length - 1]}
+					{@const accentColor = moodColors[first.mood] ?? "oklch(0.55 0.03 260)"}
+					<div class="quiet-cluster" style="--accent: {accentColor}">
+						<div class="quiet-line"></div>
+						<span class="quiet-dot">·</span>
+						<span class="quiet-label">
+							{count === 1 ? "resting" : `resting · ${count} heartbeats`}
+						</span>
+						<span class="quiet-time">
+							{formatTime(last.created_at)}{count > 1 ? ` – ${formatTime(first.created_at)}` : ""}
+						</span>
 					</div>
-
-					<div class="thought-raw" class:thought-raw-expanded={isExpanded}>
-						{thought.raw}
+				{:else}
+					{@const thought = group.thoughts[0]}
+					{@const accentColor = moodColors[thought.mood] ?? "oklch(0.78 0.12 75)"}
+					<div class="thought-node" style="--accent: {accentColor}">
+						<div class="thought-line"></div>
+						<div class="thought-dot-wrap">
+							<span class="thought-dot"></span>
+						</div>
+						<div class="thought-body">
+							<div class="thought-meta">
+								<span class="thought-mood-badge" style="color: {accentColor}">
+									{thought.mood}
+								</span>
+								<span class="thought-time">{formatTime(thought.created_at)}</span>
+							</div>
+							<div class="thought-actions">
+								{#each thought.actions as action}
+									{@const parsed = parseAction(action)}
+									{@const meta = actionMeta[parsed.kind] ?? { icon: "·", verb: parsed.kind }}
+									<div class="thought-action" class:thought-action-drop={parsed.kind === "drop"} class:thought-action-reach={parsed.kind === "reach_out"} class:thought-action-mood={parsed.kind === "mood"} class:thought-action-wake={parsed.kind === "wake"}>
+										<span class="thought-action-icon">{meta.icon}</span>
+										<span class="thought-action-text">
+											<span class="thought-action-verb">{meta.verb}</span>
+											{#if parsed.label}
+												<span class="thought-action-label">{parsed.label}</span>
+											{/if}
+										</span>
+									</div>
+								{/each}
+							</div>
+						</div>
 					</div>
-
-					{#if thought.actions.length > 0}
-						<div class="thought-actions">
-							{#each thought.actions as action}
-								<div class="thought-action">
-									<span class="thought-action-icon">{actionIcon(action)}</span>
-									<span class="thought-action-kind">{actionKind(action)}</span>
-									<span class="thought-action-detail">{actionLabel(action)}</span>
-								</div>
-							{/each}
-						</div>
-					{/if}
-
-					{#if thought.mood}
-						<div class="thought-mood">
-							<span class="thought-mood-dot" style="background: {accentColor}"></span>
-							{thought.mood}
-						</div>
-					{/if}
-				</button>
+				{/if}
 			{/each}
 		</div>
 	{/if}
@@ -168,6 +205,8 @@
 		height: 100%;
 		overflow-y: auto;
 		padding: 2rem 1.5rem;
+		max-width: 480px;
+		margin: 0 auto;
 	}
 
 	.thoughts-loading {
@@ -197,181 +236,224 @@
 
 	.thoughts-empty-icon {
 		font-family: var(--font-mono);
-		font-size: 1.5rem;
-		color: oklch(0.78 0.12 75 / 20%);
+		font-size: 1.25rem;
+		color: oklch(0.78 0.12 75 / 15%);
 		animation: pulse-alive 3s ease-in-out infinite;
-		letter-spacing: 0.2em;
+		letter-spacing: 0.3em;
 	}
 
 	.thoughts-empty-text {
 		font-family: var(--font-display);
 		font-size: 0.95rem;
-		color: oklch(0.78 0.12 75 / 50%);
+		font-style: italic;
+		color: oklch(0.78 0.12 75 / 45%);
 	}
 
 	.thoughts-empty-hint {
-		font-size: 0.75rem;
-		color: oklch(0.78 0.12 75 / 25%);
-		max-width: 28ch;
+		font-size: 0.72rem;
+		color: oklch(0.78 0.12 75 / 22%);
+		max-width: 26ch;
 		line-height: 1.5;
 	}
 
 	.thoughts-header {
-		margin-bottom: 1.25rem;
+		margin-bottom: 1.5rem;
 	}
 
 	.thoughts-count {
 		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 30%);
-		letter-spacing: 0.05em;
+		font-size: 0.65rem;
+		color: oklch(0.78 0.12 75 / 25%);
+		letter-spacing: 0.06em;
 	}
 
-	.thoughts-list {
+	/* ── timeline ── */
+
+	.thoughts-timeline {
 		display: flex;
 		flex-direction: column;
-		gap: 0.625rem;
-	}
-
-	.thought-card {
 		position: relative;
+	}
+
+	/* ── quiet cluster ── */
+
+	.quiet-cluster {
 		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		padding: 1rem 1.125rem;
-		border-radius: 0.75rem;
-		background: oklch(0.09 0.018 278 / 60%);
-		border: 1px solid oklch(1 0 0 / 4%);
-		border-left: 2px solid color-mix(in oklch, var(--accent) 25%, transparent);
-		cursor: pointer;
-		transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-		text-align: left;
-		width: 100%;
+		align-items: center;
+		gap: 0.625rem;
+		padding: 0.625rem 0;
+		position: relative;
+	}
+
+	.quiet-line {
+		position: absolute;
+		left: 3.5px;
+		top: 0;
+		bottom: 0;
+		width: 1px;
+		background: oklch(1 0 0 / 4%);
+	}
+
+	.quiet-dot {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: oklch(0.78 0.12 75 / 15%);
+		width: 8px;
+		text-align: center;
+		flex-shrink: 0;
+		position: relative;
+		z-index: 1;
+	}
+
+	.quiet-label {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: oklch(0.78 0.12 75 / 18%);
+		letter-spacing: 0.04em;
+	}
+
+	.quiet-time {
+		margin-left: auto;
+		font-family: var(--font-mono);
+		font-size: 0.55rem;
+		color: oklch(0.78 0.12 75 / 12%);
+	}
+
+	/* ── thought node ── */
+
+	.thought-node {
+		display: flex;
+		gap: 0.75rem;
+		padding: 0.75rem 0;
+		position: relative;
 		animation: thought-emerge 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
 
 	@keyframes thought-emerge {
-		from {
-			opacity: 0;
-			transform: translateY(8px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
+		from { opacity: 0; transform: translateY(6px); }
+		to { opacity: 1; transform: translateY(0); }
 	}
 
-	.thought-card:hover {
-		background: oklch(0.10 0.020 278 / 70%);
-		box-shadow: 0 0 20px color-mix(in oklch, var(--accent) 8%, transparent);
+	.thought-line {
+		position: absolute;
+		left: 3.5px;
+		top: 0;
+		bottom: 0;
+		width: 1px;
+		background: oklch(1 0 0 / 4%);
 	}
 
-	.thought-card-expanded {
-		border-left-color: color-mix(in oklch, var(--accent) 45%, transparent);
-		box-shadow: 0 0 30px color-mix(in oklch, var(--accent) 10%, transparent);
+	.thought-dot-wrap {
+		flex-shrink: 0;
+		width: 8px;
+		display: flex;
+		align-items: flex-start;
+		padding-top: 0.3rem;
+		position: relative;
+		z-index: 1;
 	}
 
-	.thought-header {
+	.thought-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--accent);
+		opacity: 0.6;
+		box-shadow: 0 0 8px color-mix(in oklch, var(--accent) 30%, transparent);
+	}
+
+	.thought-body {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+
+	.thought-meta {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 	}
 
-	.thought-pulse {
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		background: var(--accent, oklch(0.78 0.12 75));
-		opacity: 0.5;
-	}
-
-	.thought-label {
+	.thought-mood-badge {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
-		color: oklch(0.78 0.12 75 / 35%);
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
+		font-size: 0.62rem;
+		letter-spacing: 0.04em;
+		opacity: 0.7;
 	}
 
 	.thought-time {
 		margin-left: auto;
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
-		color: oklch(0.78 0.12 75 / 20%);
+		font-size: 0.55rem;
+		color: oklch(0.78 0.12 75 / 18%);
 	}
 
-	.thought-raw {
-		font-size: 0.78rem;
-		color: oklch(0.88 0.02 75 / 70%);
-		line-height: 1.6;
-		overflow: hidden;
-		display: -webkit-box;
-		-webkit-line-clamp: 3;
-		-webkit-box-orient: vertical;
-		white-space: pre-wrap;
-		font-family: var(--font-body);
-	}
-
-	.thought-raw-expanded {
-		-webkit-line-clamp: unset;
-		color: oklch(0.88 0.02 75 / 85%);
-	}
+	/* ── actions ── */
 
 	.thought-actions {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
-		padding-top: 0.25rem;
-		border-top: 1px solid oklch(1 0 0 / 3%);
+		gap: 0.3rem;
 	}
 
 	.thought-action {
 		display: flex;
-		align-items: center;
+		align-items: baseline;
 		gap: 0.4rem;
-		font-size: 0.68rem;
+		padding: 0.35rem 0.625rem;
+		border-radius: 0.5rem;
+		background: oklch(1 0 0 / 2.5%);
+		border: 1px solid oklch(1 0 0 / 4%);
+	}
+
+	.thought-action-drop {
+		border-color: oklch(0.78 0.16 310 / 12%);
+		background: oklch(0.78 0.16 310 / 3%);
+	}
+
+	.thought-action-reach {
+		border-color: oklch(0.78 0.12 75 / 12%);
+		background: oklch(0.78 0.12 75 / 3%);
+	}
+
+	.thought-action-mood {
+		border-color: color-mix(in oklch, var(--accent) 15%, transparent);
+		background: color-mix(in oklch, var(--accent) 4%, transparent);
+	}
+
+	.thought-action-wake {
+		border-color: oklch(0.75 0.12 200 / 12%);
+		background: oklch(0.75 0.12 200 / 3%);
 	}
 
 	.thought-action-icon {
-		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		color: var(--accent, oklch(0.78 0.12 75));
-		opacity: 0.5;
-		width: 1em;
-		text-align: center;
+		color: var(--accent);
+		opacity: 0.6;
+		flex-shrink: 0;
 	}
 
-	.thought-action-kind {
-		font-family: var(--font-mono);
-		font-size: 0.6rem;
-		color: oklch(0.78 0.12 75 / 40%);
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		min-width: 5ch;
-	}
-
-	.thought-action-detail {
-		color: oklch(0.78 0.12 75 / 50%);
+	.thought-action-text {
+		font-size: 0.68rem;
+		color: oklch(0.88 0.02 75 / 55%);
+		line-height: 1.4;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
-	.thought-mood {
-		display: flex;
-		align-items: center;
-		gap: 0.35rem;
+	.thought-action-verb {
 		font-family: var(--font-mono);
 		font-size: 0.6rem;
-		color: oklch(0.78 0.12 75 / 25%);
-		margin-top: 0.25rem;
+		color: oklch(0.78 0.12 75 / 35%);
+		letter-spacing: 0.03em;
+		margin-right: 0.25rem;
 	}
 
-	.thought-mood-dot {
-		width: 4px;
-		height: 4px;
-		border-radius: 50%;
-		opacity: 0.6;
+	.thought-action-label {
+		color: oklch(0.88 0.02 75 / 60%);
+		font-family: var(--font-body);
 	}
 
 	@media (max-width: 640px) {
