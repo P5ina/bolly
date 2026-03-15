@@ -917,13 +917,46 @@ pub fn rig_history_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str
 
 pub fn load_rig_history(path: &Path) -> Option<Vec<llm::Message>> {
     let raw = fs::read_to_string(path).ok()?;
-    match serde_json::from_str(&raw) {
-        Ok(h) => Some(h),
+    let mut history: Vec<llm::Message> = match serde_json::from_str(&raw) {
+        Ok(h) => h,
         Err(e) => {
             log::warn!("failed to parse rig_history.json: {e}");
-            None
+            return None;
+        }
+    };
+
+    // Sanitize: strip empty compaction blocks that cause API errors
+    for msg in &mut history {
+        if let llm::Message::Assistant { content } = msg {
+            content.retain(|block| {
+                if let llm::ContentBlock::Compaction { content: c } = block {
+                    if c.is_empty() {
+                        log::info!("stripped empty compaction block from rig_history");
+                        return false;
+                    }
+                }
+                true
+            });
         }
     }
+
+    // If history has a compaction block, drop everything before the last one
+    // to keep the payload small (API ignores pre-compaction messages anyway).
+    let last_compaction_idx = history.iter().rposition(|msg| {
+        if let llm::Message::Assistant { content } = msg {
+            content.iter().any(|b| matches!(b, llm::ContentBlock::Compaction { .. }))
+        } else {
+            false
+        }
+    });
+    if let Some(idx) = last_compaction_idx {
+        if idx > 0 {
+            log::info!("trimming rig_history: dropping {} messages before last compaction", idx);
+            history = history.split_off(idx);
+        }
+    }
+
+    Some(history)
 }
 
 pub fn save_rig_history(path: &Path, history: &[llm::Message]) {
