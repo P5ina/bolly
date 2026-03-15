@@ -761,6 +761,60 @@ fn strip_leaked_tool_calls(reply: &str) -> String {
 }
 
 
+/// Call Anthropic /v1/messages/count_tokens API for accurate token count.
+async fn count_tokens_api(
+    api_key: &str,
+    model: &str,
+    workspace_dir: &Path,
+    instance_slug: &str,
+    chat_id: &str,
+) -> Option<usize> {
+    // Build the same system prompt + messages we'd send to the LLM
+    let system_prompt = llm::load_system_prompt(workspace_dir, instance_slug);
+    let rig_path = rig_history_path(workspace_dir, instance_slug, chat_id);
+    let messages = load_rig_history(&rig_path).unwrap_or_default();
+
+    let msgs_json = serde_json::to_value(&messages).unwrap_or_default();
+
+    // Build tool definitions from cache
+    let tool_snapshot = tools::cached_tool_defs();
+    let tool_defs: Vec<serde_json::Value> = tool_snapshot.names.iter()
+        .map(|name| serde_json::json!({
+            "name": name,
+            "description": "",
+            "input_schema": { "type": "object", "properties": {} }
+        }))
+        .collect();
+
+    let mut body = serde_json::json!({
+        "model": model,
+        "system": system_prompt,
+        "messages": msgs_json,
+    });
+    if !tool_defs.is_empty() {
+        body["tools"] = serde_json::Value::Array(tool_defs);
+    }
+
+    let client = reqwest::Client::new();
+    let res = client
+        .post("https://api.anthropic.com/v1/messages/count_tokens")
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .ok()?;
+
+    if !res.status().is_success() {
+        log::warn!("count_tokens API failed: {}", res.status());
+        return None;
+    }
+
+    let data: serde_json::Value = res.json().await.ok()?;
+    data["input_tokens"].as_u64().map(|t| t as usize)
+}
+
 /// Rough token estimate: ~4 chars per token for English, ~2 for code/mixed.
 /// Uses 3.2 as a balanced average.
 fn estimate_tokens(text: &str) -> usize {
@@ -813,7 +867,9 @@ pub struct ContextStats {
     pub total_input_tokens_estimate: usize,
 }
 
-/// Compute context stats for a given instance + chat without calling the LLM.
+/// Compute context stats for a given instance + chat.
+/// Uses Anthropic count_tokens API when available for accurate total.
+/// Sync version for non-async callers (uses local estimates only).
 pub fn compute_context_stats(
     workspace_dir: &Path,
     instance_slug: &str,
@@ -821,6 +877,48 @@ pub fn compute_context_stats(
 ) -> ContextStats {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
+    compute_context_stats_local(workspace_dir, &instance_slug, &chat_id)
+}
+
+/// Async version that tries Anthropic count_tokens API for accurate total.
+pub async fn compute_context_stats_async(
+    workspace_dir: PathBuf,
+    instance_slug: String,
+    chat_id: String,
+) -> ContextStats {
+    let instance_slug = sanitize_slug(&instance_slug);
+    let chat_id = sanitize_slug(&chat_id);
+    let mut stats = compute_context_stats_local(&workspace_dir, &instance_slug, &chat_id);
+
+    // Try to get accurate total via Anthropic count_tokens API
+    let api_info: Option<(String, String)> = crate::config::load_config().ok().and_then(|config| {
+        if config.llm.provider == Some(crate::config::LlmProvider::Anthropic) && !config.llm.tokens.anthropic.is_empty() {
+            let model = config.llm.model.unwrap_or_else(|| "claude-sonnet-4-6".to_string());
+            Some((config.llm.tokens.anthropic, model))
+        } else {
+            None
+        }
+    });
+    if let Some((api_key, model)) = api_info {
+        if let Some(real_total) = count_tokens_api(
+            &api_key, &model, &workspace_dir, &instance_slug, &chat_id,
+        ).await {
+            let api_history = real_total.saturating_sub(
+                stats.system_prompt_total_tokens + stats.tools_tokens_estimate
+            );
+            stats.history_tokens_estimate = api_history;
+            stats.total_input_tokens_estimate = real_total;
+        }
+    }
+
+    stats
+}
+
+fn compute_context_stats_local(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    chat_id: &str,
+) -> ContextStats {
 
     let mut sections = Vec::new();
 

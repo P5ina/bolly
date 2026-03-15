@@ -240,14 +240,25 @@ async fn get_context_stats(
     State(state): State<AppState>,
     Path(instance_slug): Path<String>,
 ) -> Json<chat::ContextStats> {
-    Json(chat::compute_context_stats(&state.workspace_dir, &instance_slug, "default"))
+    let wd = state.workspace_dir.clone();
+    let slug = instance_slug.clone();
+    let stats = tokio::spawn(async move {
+        chat::compute_context_stats_async(wd, slug, "default".to_string()).await
+    }).await.unwrap_or_else(|_| chat::compute_context_stats(&state.workspace_dir, &instance_slug, "default"));
+    Json(stats)
 }
 
 async fn get_context_stats_chat(
     State(state): State<AppState>,
     Path((instance_slug, chat_id)): Path<(String, String)>,
 ) -> Json<chat::ContextStats> {
-    Json(chat::compute_context_stats(&state.workspace_dir, &instance_slug, &chat_id))
+    let wd = state.workspace_dir.clone();
+    let slug = instance_slug.clone();
+    let cid = chat_id.clone();
+    let stats = tokio::spawn(async move {
+        chat::compute_context_stats_async(wd, slug, cid).await
+    }).await.unwrap_or_else(|_| chat::compute_context_stats(&state.workspace_dir, &instance_slug, &chat_id));
+    Json(stats)
 }
 
 // ---------------------------------------------------------------------------
