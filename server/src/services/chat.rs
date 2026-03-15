@@ -159,8 +159,8 @@ pub async fn run_single_turn(
     };
     let google_connected = !google_accounts.is_empty();
 
-    let email_config = crate::config::EmailConfig::load(workspace_dir, &instance_slug);
-    let email_configured = email_config.is_some();
+    let email_accounts = crate::config::EmailAccounts::load(workspace_dir, &instance_slug);
+    let email_configured = !email_accounts.is_empty();
     let has_any_email = google_connected || email_configured;
     let google_hint = if google_connected && email_configured {
         " email, google calendar, google drive,"
@@ -194,7 +194,7 @@ pub async fn run_single_turn(
         for a in &google_accounts {
             account_lines.push(format!("- {} (gmail)", a.email));
         }
-        if let Some(ref cfg) = email_config {
+        for cfg in &email_accounts {
             let label = if cfg.smtp_from.is_empty() { &cfg.smtp_user } else { &cfg.smtp_from };
             account_lines.push(format!("- {} (smtp/imap)", label));
         }
@@ -347,7 +347,7 @@ pub async fn run_single_turn(
         Some(pending_secrets),
         plan,
         google,
-        email_config,
+        email_accounts,
         sent_files,
         Some(mcp_snapshot.clone()),
         mcp_tools,

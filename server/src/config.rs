@@ -35,6 +35,7 @@ pub struct GithubConfig {
     pub token: String,
 }
 
+/// A single SMTP/IMAP email account.
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct EmailConfig {
     #[serde(default)]
@@ -60,26 +61,51 @@ pub struct EmailConfig {
 fn default_smtp_port() -> u16 { 587 }
 fn default_imap_port() -> u16 { 993 }
 
-impl EmailConfig {
-    /// Load email config from `instances/{slug}/email.toml`.
-    pub fn load(workspace_dir: &Path, instance_slug: &str) -> Option<Self> {
+/// Wrapper for `instances/{slug}/email.toml` — supports multiple accounts.
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct EmailAccounts {
+    #[serde(default)]
+    pub accounts: Vec<EmailConfig>,
+}
+
+impl EmailAccounts {
+    /// Load email accounts from `instances/{slug}/email.toml`.
+    /// Supports both legacy flat format (single account) and `[[accounts]]` array.
+    pub fn load(workspace_dir: &Path, instance_slug: &str) -> Vec<EmailConfig> {
         let path = workspace_dir
             .join("instances")
             .join(instance_slug)
             .join("email.toml");
-        let raw = fs::read_to_string(path).ok()?;
-        let cfg: Self = toml::from_str(&raw).ok()?;
-        if cfg.smtp_host.is_empty() && cfg.imap_host.is_empty() {
-            return None;
+        let raw = match fs::read_to_string(&path) {
+            Ok(r) => r,
+            Err(_) => return vec![],
+        };
+
+        // Try new format first: [[accounts]]
+        if let Ok(wrapper) = toml::from_str::<EmailAccounts>(&raw) {
+            if !wrapper.accounts.is_empty() {
+                return wrapper.accounts.into_iter()
+                    .filter(|c| !c.smtp_host.is_empty() || !c.imap_host.is_empty())
+                    .collect();
+            }
         }
-        Some(cfg)
+
+        // Fall back to legacy flat format (single account)
+        if let Ok(cfg) = toml::from_str::<EmailConfig>(&raw) {
+            if !cfg.smtp_host.is_empty() || !cfg.imap_host.is_empty() {
+                return vec![cfg];
+            }
+        }
+
+        vec![]
     }
 
-    /// Save email config to `instances/{slug}/email.toml`.
-    pub fn save(&self, workspace_dir: &Path, instance_slug: &str) -> Result<(), Box<dyn std::error::Error>> {
+    /// Save email accounts to `instances/{slug}/email.toml`.
+    pub fn save(accounts: &[EmailConfig], workspace_dir: &Path, instance_slug: &str) -> Result<(), Box<dyn std::error::Error>> {
         let dir = workspace_dir.join("instances").join(instance_slug);
         fs::create_dir_all(&dir)?;
-        let raw = toml::to_string_pretty(self)?;
+        let wrapper = EmailAccounts { accounts: accounts.to_vec() };
+        let raw = toml::to_string_pretty(&wrapper)?;
         fs::write(dir.join("email.toml"), raw)?;
         Ok(())
     }

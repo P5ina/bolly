@@ -219,19 +219,19 @@ export interface EmailConfig {
 	imap_password: string;
 }
 
-export function fetchEmailConfig(slug: string): Promise<{ configured: boolean } & Partial<EmailConfig>> {
+export function fetchEmailAccounts(slug: string): Promise<{ accounts: Partial<EmailConfig>[] }> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/email`);
 }
 
-export function updateEmailConfig(slug: string, config: EmailConfig): Promise<void> {
+export function saveEmailAccounts(slug: string, accounts: EmailConfig[]): Promise<void> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/email`, {
 		method: "PUT",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(config),
+		body: JSON.stringify({ accounts }),
 	});
 }
 
-export function deleteEmailConfig(slug: string): Promise<void> {
+export function deleteAllEmailAccounts(slug: string): Promise<void> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/email`, {
 		method: "DELETE",
 	});

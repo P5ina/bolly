@@ -257,10 +257,10 @@ async fn get_context_stats_chat(
 async fn get_email_config(
     State(state): State<AppState>,
     Path(instance_slug): Path<String>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    match crate::config::EmailConfig::load(&state.workspace_dir, &instance_slug) {
-        Some(cfg) => Ok(Json(serde_json::json!({
-            "configured": true,
+) -> Json<serde_json::Value> {
+    let accounts = crate::config::EmailAccounts::load(&state.workspace_dir, &instance_slug);
+    let items: Vec<serde_json::Value> = accounts.iter().map(|cfg| {
+        serde_json::json!({
             "smtp_host": cfg.smtp_host,
             "smtp_port": cfg.smtp_port,
             "smtp_user": cfg.smtp_user,
@@ -269,17 +269,30 @@ async fn get_email_config(
             "imap_port": cfg.imap_port,
             "imap_user": cfg.imap_user,
             // Never expose passwords
-        }))),
-        None => Ok(Json(serde_json::json!({ "configured": false }))),
-    }
+        })
+    }).collect();
+    Json(serde_json::json!({ "accounts": items }))
 }
 
 async fn set_email_config(
     State(state): State<AppState>,
     Path(instance_slug): Path<String>,
-    Json(cfg): Json<crate::config::EmailConfig>,
+    Json(body): Json<serde_json::Value>,
 ) -> StatusCode {
-    match cfg.save(&state.workspace_dir, &instance_slug) {
+    // Accept either { accounts: [...] } or a single account object (legacy)
+    let accounts: Vec<crate::config::EmailConfig> = if let Some(arr) = body.get("accounts").and_then(|v| v.as_array()) {
+        match serde_json::from_value::<Vec<crate::config::EmailConfig>>(serde_json::Value::Array(arr.clone())) {
+            Ok(a) => a,
+            Err(_) => return StatusCode::BAD_REQUEST,
+        }
+    } else {
+        match serde_json::from_value::<crate::config::EmailConfig>(body) {
+            Ok(single) => vec![single],
+            Err(_) => return StatusCode::BAD_REQUEST,
+        }
+    };
+
+    match crate::config::EmailAccounts::save(&accounts, &state.workspace_dir, &instance_slug) {
         Ok(_) => StatusCode::OK,
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
     }

@@ -11,9 +11,9 @@
 		updateGithubToken,
 		fetchTimezone,
 		updateTimezone,
-		fetchEmailConfig,
-		updateEmailConfig,
-		deleteEmailConfig,
+		fetchEmailAccounts,
+		saveEmailAccounts,
+		deleteAllEmailAccounts,
 	} from "$lib/api/client.js";
 	import type { McpServerInfo, EmailConfig } from "$lib/api/client.js";
 
@@ -141,34 +141,25 @@
 	}
 
 	// Email state
-	let emailConfigured = $state(false);
+	let emailAccounts = $state<Partial<EmailConfig>[]>([]);
 	let emailLoading = $state(true);
 	let emailSaving = $state(false);
 	let emailError = $state("");
-	let emailEditing = $state(false);
-	let emailForm = $state<EmailConfig>({
-		smtp_host: "", smtp_port: 587, smtp_user: "", smtp_password: "", smtp_from: "",
-		imap_host: "", imap_port: 993, imap_user: "", imap_password: "",
-	});
+	let emailAdding = $state(false);
+
+	function emptyEmailForm(): EmailConfig {
+		return {
+			smtp_host: "", smtp_port: 587, smtp_user: "", smtp_password: "", smtp_from: "",
+			imap_host: "", imap_port: 993, imap_user: "", imap_password: "",
+		};
+	}
+	let emailForm = $state<EmailConfig>(emptyEmailForm());
 
 	async function loadEmail() {
 		emailLoading = true;
 		try {
-			const res = await fetchEmailConfig(slug);
-			emailConfigured = res.configured;
-			if (res.configured) {
-				emailForm = {
-					smtp_host: res.smtp_host || "",
-					smtp_port: res.smtp_port || 587,
-					smtp_user: res.smtp_user || "",
-					smtp_password: "", // never returned from server
-					smtp_from: res.smtp_from || "",
-					imap_host: res.imap_host || "",
-					imap_port: res.imap_port || 993,
-					imap_user: res.imap_user || "",
-					imap_password: "", // never returned from server
-				};
-			}
+			const res = await fetchEmailAccounts(slug);
+			emailAccounts = res.accounts || [];
 		} catch {
 			// not critical
 		} finally {
@@ -176,32 +167,43 @@
 		}
 	}
 
-	async function saveEmail() {
+	async function saveNewEmail() {
 		emailSaving = true;
 		emailError = "";
 		try {
-			await updateEmailConfig(slug, emailForm);
-			emailConfigured = true;
-			emailEditing = false;
+			// Merge existing accounts (fill in missing passwords) + new one
+			const existing: EmailConfig[] = emailAccounts.map(a => ({
+				...emptyEmailForm(),
+				...a,
+			}));
+			existing.push(emailForm);
+			await saveEmailAccounts(slug, existing);
+			emailAdding = false;
+			emailForm = emptyEmailForm();
+			await loadEmail();
 		} catch (e: any) {
-			emailError = e?.message || "failed to save email config";
+			emailError = e?.message || "failed to save email account";
 		} finally {
 			emailSaving = false;
 		}
 	}
 
-	async function removeEmail() {
+	async function removeEmailAccount(index: number) {
 		emailSaving = true;
 		emailError = "";
 		try {
-			await deleteEmailConfig(slug);
-			emailConfigured = false;
-			emailForm = {
-				smtp_host: "", smtp_port: 587, smtp_user: "", smtp_password: "", smtp_from: "",
-				imap_host: "", imap_port: 993, imap_user: "", imap_password: "",
-			};
+			const remaining = emailAccounts.filter((_, i) => i !== index).map(a => ({
+				...emptyEmailForm(),
+				...a,
+			}));
+			if (remaining.length > 0) {
+				await saveEmailAccounts(slug, remaining);
+			} else {
+				await deleteAllEmailAccounts(slug);
+			}
+			await loadEmail();
 		} catch (e: any) {
-			emailError = e?.message || "failed to remove email config";
+			emailError = e?.message || "failed to remove email account";
 		} finally {
 			emailSaving = false;
 		}
@@ -587,63 +589,70 @@
 			<div class="ext-loading">
 				<div class="loading-dot"></div>
 			</div>
-		{:else if emailConfigured && !emailEditing}
-			<div class="gh-status">
-				<div class="gh-status-info">
-					<span class="gh-status-dot"></span>
-					<span class="gh-status-text">{emailForm.smtp_from || emailForm.smtp_user || "configured"}</span>
-				</div>
-				<div class="gh-status-actions">
-					<button class="ext-form-btn ext-form-cancel" onclick={() => emailEditing = true}>
-						change
-					</button>
-					<button
-						class="ext-remove-btn"
-						disabled={emailSaving}
-						onclick={removeEmail}
-					>
-						{emailSaving ? "..." : "remove"}
-					</button>
-				</div>
-			</div>
 		{:else}
-			<div class="email-form">
-				<div class="email-form-group">
-					<span class="email-form-label">outgoing (smtp)</span>
-					<input class="ext-input" type="text" placeholder="smtp host (e.g. smtp.mail.me.com)" bind:value={emailForm.smtp_host} />
-					<div class="email-form-row">
-						<input class="ext-input" type="number" placeholder="port" bind:value={emailForm.smtp_port} style="width: 5rem;" />
-						<input class="ext-input" style="flex:1" type="text" placeholder="username / email" bind:value={emailForm.smtp_user} />
-					</div>
-					<input class="ext-input" type="password" placeholder="password / app-specific password" bind:value={emailForm.smtp_password} />
-					<input class="ext-input" type="email" placeholder="from address (e.g. user@icloud.com)" bind:value={emailForm.smtp_from} />
+			<!-- Existing accounts -->
+			{#if emailAccounts.length > 0}
+				<div class="accounts-list">
+					{#each emailAccounts as acct, i}
+						<div class="account-row">
+							<span class="account-email">{acct.smtp_from || acct.smtp_user || acct.imap_user || "account"}</span>
+							<button
+								class="ext-remove-btn"
+								disabled={emailSaving}
+								onclick={() => removeEmailAccount(i)}
+							>
+								{emailSaving ? "..." : "remove"}
+							</button>
+						</div>
+					{/each}
 				</div>
+			{/if}
 
-				<div class="email-form-group">
-					<span class="email-form-label">incoming (imap)</span>
-					<input class="ext-input" type="text" placeholder="imap host (e.g. imap.mail.me.com)" bind:value={emailForm.imap_host} />
-					<div class="email-form-row">
-						<input class="ext-input" type="number" placeholder="port" bind:value={emailForm.imap_port} style="width: 5rem;" />
-						<input class="ext-input" style="flex:1" type="text" placeholder="username / email" bind:value={emailForm.imap_user} />
+			<!-- Add new account form -->
+			{#if emailAdding}
+				<div class="email-form">
+					<div class="email-form-group">
+						<span class="email-form-label">outgoing (smtp)</span>
+						<input class="ext-input" type="text" placeholder="smtp host (e.g. smtp.mail.me.com)" bind:value={emailForm.smtp_host} />
+						<div class="email-form-row">
+							<input class="ext-input" type="number" placeholder="port" bind:value={emailForm.smtp_port} style="width: 5rem;" />
+							<input class="ext-input" style="flex:1" type="text" placeholder="username / email" bind:value={emailForm.smtp_user} />
+						</div>
+						<input class="ext-input" type="password" placeholder="password / app-specific password" bind:value={emailForm.smtp_password} />
+						<input class="ext-input" type="email" placeholder="from address (e.g. user@icloud.com)" bind:value={emailForm.smtp_from} />
 					</div>
-					<input class="ext-input" type="password" placeholder="password / app-specific password" bind:value={emailForm.imap_password} />
-				</div>
 
-				<div class="ext-form-actions">
-					<button
-						class="ext-form-btn ext-form-add"
-						disabled={emailSaving || (!emailForm.smtp_host && !emailForm.imap_host)}
-						onclick={saveEmail}
-					>
-						{emailSaving ? "saving..." : "save"}
-					</button>
-					{#if emailEditing}
-						<button class="ext-form-btn ext-form-cancel" onclick={() => { emailEditing = false; emailError = ""; }}>
+					<div class="email-form-group">
+						<span class="email-form-label">incoming (imap)</span>
+						<input class="ext-input" type="text" placeholder="imap host (e.g. imap.mail.me.com)" bind:value={emailForm.imap_host} />
+						<div class="email-form-row">
+							<input class="ext-input" type="number" placeholder="port" bind:value={emailForm.imap_port} style="width: 5rem;" />
+							<input class="ext-input" style="flex:1" type="text" placeholder="username / email" bind:value={emailForm.imap_user} />
+						</div>
+						<input class="ext-input" type="password" placeholder="password / app-specific password" bind:value={emailForm.imap_password} />
+					</div>
+
+					<div class="ext-form-actions">
+						<button
+							class="ext-form-btn ext-form-add"
+							disabled={emailSaving || (!emailForm.smtp_host && !emailForm.imap_host)}
+							onclick={saveNewEmail}
+						>
+							{emailSaving ? "saving..." : "add account"}
+						</button>
+						<button class="ext-form-btn ext-form-cancel" onclick={() => { emailAdding = false; emailError = ""; emailForm = emptyEmailForm(); }}>
 							cancel
 						</button>
-					{/if}
+					</div>
 				</div>
-			</div>
+			{:else}
+				<button
+					class="ext-form-btn ext-form-add"
+					onclick={() => emailAdding = true}
+				>
+					+ add email account
+				</button>
+			{/if}
 		{/if}
 
 		{#if emailError}

@@ -547,7 +547,7 @@ pub fn build_tools(
     >,
     plan: &str,
     google: Option<crate::services::google::GoogleClient>,
-    email_config: Option<crate::config::EmailConfig>,
+    email_accounts: Vec<crate::config::EmailConfig>,
     sent_files: SentFiles,
     mcp_snapshot: Option<crate::services::mcp::McpAppSnapshot>,
     mcp_tools: Vec<Box<dyn ToolDyn>>,
@@ -624,11 +624,10 @@ pub fn build_tools(
     tools.push(wrap(Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug))));
 
     // ── Email (unified: Gmail + SMTP/IMAP) ──
-    let imap_accounts: Vec<crate::config::EmailConfig> = email_config.into_iter().collect();
-    let has_email = google.is_some() || !imap_accounts.is_empty();
+    let has_email = google.is_some() || !email_accounts.is_empty();
     if has_email {
-        tools.push(wrap(Box::new(SendEmailTool::new(google.clone(), instance_slug, imap_accounts.clone()))));
-        tools.push(wrap(Box::new(ReadEmailTool::new(google.clone(), instance_slug, imap_accounts))));
+        tools.push(wrap(Box::new(SendEmailTool::new(google.clone(), instance_slug, email_accounts.clone()))));
+        tools.push(wrap(Box::new(ReadEmailTool::new(google.clone(), instance_slug, email_accounts))));
     }
 
     // ── Google (calendar, drive) ──
