@@ -13,6 +13,7 @@
 	import ExcalidrawViewer from "$lib/components/ExcalidrawViewer.svelte";
 	import McpAppViewer from "./McpAppViewer.svelte";
 	import { play, playImmediate, preload } from "$lib/sounds.js";
+	import { hapticMedium, hapticDouble, hapticError } from "$lib/haptics.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 	import TerminalSquare from "@lucide/svelte/icons/terminal-square";
@@ -355,12 +356,13 @@
 					}
 					scrollToBottom();
 				} else {
-					if (msg.role === "assistant") play("message_receive");
+					if (msg.role === "assistant") { play("message_receive"); hapticMedium(); }
 					addMessage(msg);
 					refreshChatList();
 				}
 			} else if (event.type === "mood_updated") {
 				play("mood_shift");
+				hapticDouble();
 				mood = event.mood;
 				localStorage.setItem("mood:" + slug, event.mood);
 				// Activity is added via ChatMessageCreated "[system] mood → ..."
@@ -386,6 +388,7 @@
 					pushActivity("tool", `dropped: ${event.drop.title}`);
 				}
 				play("drop_received");
+				hapticDouble();
 			} else if (event.type === "tool_output_chunk") {
 				// Append chunk to live output activity, or create one
 				const liveIdx = stream.findLastIndex(
@@ -464,6 +467,7 @@
 			for (const msg of res.messages) addMessage(msg);
 		} catch (e) {
 			play("error");
+			hapticError();
 			sending = false;
 			const msg = e instanceof Error ? e.message : "failed to send";
 			if (msg.includes("rate limit")) {

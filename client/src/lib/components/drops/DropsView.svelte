@@ -4,6 +4,7 @@
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import { play } from "$lib/sounds.js";
+	import { hapticDouble } from "$lib/haptics.js";
 	import DropCard from "./DropCard.svelte";
 
 	const toast = getToasts();
@@ -34,6 +35,7 @@
 			if (event.type === "drop_created" && event.instance_slug === slug) {
 				drops = [event.drop, ...drops];
 				play("drop_received");
+				hapticDouble();
 			}
 		});
 

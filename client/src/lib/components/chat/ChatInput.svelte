@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { play } from "$lib/sounds.js";
+	import { hapticLight, hapticMedium } from "$lib/haptics.js";
 	import UsageBar from "$lib/components/layout/UsageBar.svelte";
 
 	let {
@@ -56,6 +57,7 @@
 		const trimmed = value.trim();
 		if ((!trimmed && attachments.length === 0) || disabled) return;
 		play("message_send");
+		hapticLight();
 		onSend(trimmed, attachments.length > 0 ? [...attachments] : undefined);
 		value = "";
 		attachments = [];
@@ -76,6 +78,7 @@
 		const input = e.target as HTMLInputElement;
 		if (input.files && input.files.length > 0) {
 			play("attachment_added");
+			hapticMedium();
 			attachments = [...attachments, ...Array.from(input.files)];
 		}
 		input.value = "";
@@ -126,6 +129,7 @@
 		const files = e.dataTransfer?.files;
 		if (files && files.length > 0) {
 			play("attachment_added");
+			hapticMedium();
 			attachments = [...attachments, ...Array.from(files)];
 		}
 	}
