@@ -107,81 +107,84 @@
 	}
 
 	/**
-	 * Place circles without overlap using a simple physics-based approach.
-	 * Uses log scale for radii to prevent one huge circle from dominating.
+	 * Pack circles using log-scaled radii that fit within the available area.
+	 * Computes radii to fill ~65% of the area, then places them greedily.
 	 */
 	function packCircles(
 		items: { id: string; weight: number }[],
 		w: number,
 		h: number,
-		minR: number,
-		maxR: number,
 	): { id: string; x: number; y: number; r: number }[] {
 		if (items.length === 0) return [];
+		if (items.length === 1) {
+			const r = Math.min(w, h) * 0.3;
+			return [{ id: items[0].id, x: w / 2, y: h / 2, r }];
+		}
 
 		const maxWeight = Math.max(...items.map((i) => i.weight));
 		const minWeight = Math.min(...items.map((i) => i.weight));
 		const range = Math.max(maxWeight - minWeight, 1);
 
-		// Map weights to radii using log scale — dampens extreme differences
-		const circles = items.map((item) => {
-			const norm = (item.weight - minWeight) / range; // 0..1
-			const logNorm = Math.log1p(norm * 9) / Math.log(10); // log scale 0..1
-			const r = minR + logNorm * (maxR - minR);
-			return { id: item.id, x: w / 2, y: h / 2, r };
+		// Log-scale normalized weights → 0..1
+		const normed = items.map((item) => {
+			const norm = (item.weight - minWeight) / range;
+			return { id: item.id, logW: Math.log1p(norm * 9) / Math.log(10) };
 		});
 
-		// Sort largest first for placement
+		// Scale radii so total circle area ≈ 55% of available area
+		const targetArea = w * h * 0.55;
+		const sumLogSq = normed.reduce((s, n) => s + (0.3 + 0.7 * n.logW) ** 2, 0);
+		const scale = Math.sqrt(targetArea / (Math.PI * sumLogSq));
+		const minR = 24;
+		const maxR = Math.min(w, h) * 0.32;
+
+		const circles = normed.map((n) => {
+			const r = Math.max(minR, Math.min(maxR, (0.3 + 0.7 * n.logW) * scale));
+			return { id: n.id, x: 0, y: 0, r };
+		});
+
+		// Sort largest first
 		circles.sort((a, b) => b.r - a.r);
+
+		const pad = 8;
 
 		// Place first at center
 		circles[0].x = w / 2;
 		circles[0].y = h / 2;
 
-		const pad = 6;
-
-		// Place each subsequent circle touching the closest placed circle
+		// Place each next circle: try positions adjacent to placed circles
 		for (let i = 1; i < circles.length; i++) {
 			const c = circles[i];
 			let bestX = w / 2;
 			let bestY = h / 2;
-			let bestScore = Infinity;
+			let bestDist = Infinity;
 
-			// Try placing adjacent to each already-placed circle at various angles
 			for (let j = 0; j < i; j++) {
 				const ref = circles[j];
-				const dist = ref.r + c.r + pad;
+				const touchDist = ref.r + c.r + pad;
 
-				for (let a = 0; a < Math.PI * 2; a += Math.PI / 12) {
-					const tx = ref.x + Math.cos(a) * dist;
-					const ty = ref.y + Math.sin(a) * dist;
+				// Try 24 angles around each placed circle
+				for (let ai = 0; ai < 24; ai++) {
+					const a = (ai / 24) * Math.PI * 2;
+					const tx = ref.x + Math.cos(a) * touchDist;
+					const ty = ref.y + Math.sin(a) * touchDist;
 
-					// Stay within bounds (with padding)
-					if (tx - c.r < pad || tx + c.r > w - pad || ty - c.r < pad || ty + c.r > h - pad) continue;
-
-					// Check overlaps
-					let overlaps = false;
+					// Check overlap with all placed circles
+					let ok = true;
 					for (let k = 0; k < i; k++) {
+						if (k === j) continue;
 						const dx = tx - circles[k].x;
 						const dy = ty - circles[k].y;
-						const minD = c.r + circles[k].r + pad;
-						if (dx * dx + dy * dy < minD * minD) {
-							overlaps = true;
-							break;
-						}
+						const need = c.r + circles[k].r + pad;
+						if (dx * dx + dy * dy < need * need) { ok = false; break; }
 					}
+					if (!ok) continue;
 
-					if (!overlaps) {
-						// Score: prefer positions closer to center
-						const dcx = tx - w / 2;
-						const dcy = ty - h / 2;
-						const score = dcx * dcx + dcy * dcy;
-						if (score < bestScore) {
-							bestScore = score;
-							bestX = tx;
-							bestY = ty;
-						}
-					}
+					// Prefer closest to center
+					const dx = tx - w / 2;
+					const dy = ty - h / 2;
+					const d = dx * dx + dy * dy;
+					if (d < bestDist) { bestDist = d; bestX = tx; bestY = ty; }
 				}
 			}
 
@@ -189,22 +192,17 @@
 			c.y = bestY;
 		}
 
-		// Re-center the whole group
-		let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+		// Re-center the group within the viewport
+		let bx0 = Infinity, bx1 = -Infinity, by0 = Infinity, by1 = -Infinity;
 		for (const c of circles) {
-			minX = Math.min(minX, c.x - c.r);
-			maxX = Math.max(maxX, c.x + c.r);
-			minY = Math.min(minY, c.y - c.r);
-			maxY = Math.max(maxY, c.y + c.r);
+			bx0 = Math.min(bx0, c.x - c.r);
+			bx1 = Math.max(bx1, c.x + c.r);
+			by0 = Math.min(by0, c.y - c.r);
+			by1 = Math.max(by1, c.y + c.r);
 		}
-		const groupW = maxX - minX;
-		const groupH = maxY - minY;
-		const offsetX = (w - groupW) / 2 - minX;
-		const offsetY = (h - groupH) / 2 - minY;
-		for (const c of circles) {
-			c.x += offsetX;
-			c.y += offsetY;
-		}
+		const ox = (w - (bx1 - bx0)) / 2 - bx0;
+		const oy = (h - (by1 - by0)) / 2 - by0;
+		for (const c of circles) { c.x += ox; c.y += oy; }
 
 		return circles;
 	}
@@ -214,11 +212,8 @@
 	// Top-level folder bubbles
 	let folderCircles = $derived.by((): Circle[] => {
 		if (folders.length === 0) return [];
-		const short = Math.min(containerWidth, svgH);
-		const maxR = Math.min(short * 0.28, 140);
-		const minR = Math.max(short * 0.06, 28);
 		const items = folders.map((f) => ({ id: f.name, weight: f.totalSize }));
-		const packed = packCircles(items, containerWidth, svgH, minR, maxR);
+		const packed = packCircles(items, containerWidth, svgH);
 		return packed.map((p) => {
 			const folder = folders.find((f) => f.name === p.id)!;
 			return {
@@ -237,11 +232,8 @@
 		if (!focusedFolder) return [];
 		const folder = folders.find((f) => f.name === focusedFolder);
 		if (!folder) return [];
-		const short = Math.min(containerWidth, svgH);
-		const maxR = Math.min(short * 0.18, 80);
-		const minR = Math.max(short * 0.03, 16);
 		const items = folder.files.map((f) => ({ id: f.path, weight: Math.max(f.size, 20) }));
-		const packed = packCircles(items, containerWidth, svgH, minR, maxR);
+		const packed = packCircles(items, containerWidth, svgH);
 		return packed.map((p) => {
 			const entry = folder.files.find((f) => f.path === p.id)!;
 			return {
