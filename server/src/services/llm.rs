@@ -625,6 +625,35 @@ async fn streaming_agent_loop(
         super::chat::save_rig_history(&rig_path, messages);
     }
 
+    if all_text.trim().is_empty() {
+        log::warn!("[llm] agent loop completed {max_turns} turns with no final text");
+    }
+
+    // If loop exhausted max_turns or ended with empty text (all tool use, no final response),
+    // ask the LLM for a brief wrap-up so the user isn't left with silence.
+    if all_text.trim().is_empty() {
+        log::info!("[llm] agent loop ended with no text output — requesting wrap-up");
+        messages.push(Message::User {
+            content: vec![ContentBlock::text(
+                "[system: you've been working on the task using tools. now give the user a brief \
+                 summary of what you did and the result. keep it concise.]"
+            )],
+        });
+
+        if let Ok(wrapup) = stream_once(
+            backend, system, tool_defs, messages, events,
+            instance_slug, chat_id, mcp_snapshot,
+        ).await {
+            total_tokens += wrapup.tokens_used;
+            if !wrapup.text.trim().is_empty() {
+                all_text = wrapup.text;
+                messages.push(Message::Assistant {
+                    content: vec![ContentBlock::text(&all_text)],
+                });
+            }
+        }
+    }
+
     Ok((all_text, total_tokens))
 }
 
