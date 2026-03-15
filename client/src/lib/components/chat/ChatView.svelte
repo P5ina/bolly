@@ -16,6 +16,9 @@
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 	import TerminalSquare from "@lucide/svelte/icons/terminal-square";
+	import BarChart3 from "@lucide/svelte/icons/bar-chart-3";
+	import Eraser from "@lucide/svelte/icons/eraser";
+	import Minimize2 from "@lucide/svelte/icons/minimize-2";
 
 	const toast = getToasts();
 
@@ -502,41 +505,23 @@
 		<div class="bar-left">
 			<div class="bar-led" class:bar-led-on={isConnected}></div>
 			<span class="bar-name">{companionName || slug}</span>
-			<span class="bar-sep">/</span>
-			<span class="bar-mood">{mood}</span>
+			{#if sending || agentRunning}
+				<span class="bar-activity">
+					<span class="bar-activity-dot"></span>
+					working
+				</span>
+			{/if}
 		</div>
 		<div class="bar-right">
-			{#if sending || agentRunning}
-				<span class="bar-status">working</span>
-			{:else}
-				<span class="bar-status">{messages.length} msgs</span>
-			{/if}
-			<!-- TODO: re-enable multi-chat when ready -->
-			<!-- <button onclick={() => showChatList = !showChatList} onmousedown={(e) => e.preventDefault()} class="bar-btn" title="Chats">
-				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
-					<path d="M2 3h12M2 7h8M2 11h10" stroke-linecap="round"/>
-				</svg>
-			</button>
-			<button onclick={newChat} onmousedown={(e) => e.preventDefault()} class="bar-btn" title="New chat">
-				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
-					<path d="M8 3v10M3 8h10" stroke-linecap="round"/>
-				</svg>
-			</button> -->
 			<button onclick={() => { showToolActivity = !showToolActivity; localStorage.setItem("bolly:showToolActivity", String(showToolActivity)); }} onmousedown={(e) => e.preventDefault()} class="bar-btn" class:bar-btn-active={showToolActivity} title="Toggle tool activity">
 				<TerminalSquare size={12} />
 			</button>
 			<button onclick={() => showContextStats = true} onmousedown={(e) => e.preventDefault()} class="bar-btn" title="Context stats">
-				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
-					<rect x="2" y="9" width="3" height="5" rx="0.5" />
-					<rect x="6.5" y="5" width="3" height="9" rx="0.5" />
-					<rect x="11" y="2" width="3" height="12" rx="0.5" />
-				</svg>
+				<BarChart3 size={13} />
 			</button>
 			<AlertDialog.Root bind:open={clearDialogOpen}>
-				<AlertDialog.Trigger class="bar-btn bar-clear" title="Clear context">
-					<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
-						<path d="M2 4h12M5.5 4V2.5h5V4M6 7v5M10 7v5M3.5 4l.75 9.5h7.5L12.5 4" stroke-linecap="round" stroke-linejoin="round"/>
-					</svg>
+				<AlertDialog.Trigger class="bar-btn" title="Clear context">
+					<Eraser size={13} />
 				</AlertDialog.Trigger>
 					<AlertDialog.Content class="clear-dialog">
 						<AlertDialog.Header>
@@ -600,11 +585,7 @@
 								/>
 							{:else if item.type === "compaction"}
 								<div class="compaction-notice">
-									<svg class="compaction-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-										<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-										<polyline points="7.5 4.21 12 6.81 16.5 4.21"/>
-										<line x1="12" y1="22.08" x2="12" y2="12"/>
-									</svg>
+									<Minimize2 size={13} class="compaction-icon" />
 									<span class="compaction-text">context compacted</span>
 									<span class="compaction-time">{item.timestamp}</span>
 								</div>
@@ -686,65 +667,79 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 0.6rem 1.25rem;
-		border-bottom: 1px solid oklch(0.78 0.12 75 / 6%);
+		padding: 0.5rem 1.25rem;
 		flex-shrink: 0;
 	}
 
-	.bar-left, .bar-right {
+	.bar-left {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 		font-family: var(--font-mono);
-		font-size: 0.68rem;
-		letter-spacing: 0.04em;
+		font-size: 0.72rem;
+		letter-spacing: 0.03em;
+	}
+
+	.bar-right {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
 	}
 
 	.bar-led {
-		width: 6px;
-		height: 6px;
+		width: 5px;
+		height: 5px;
 		border-radius: 50%;
-		background: oklch(0.40 0.01 280 / 40%);
+		background: oklch(0.35 0.01 280 / 30%);
 		transition: all 0.4s ease;
 	}
 
 	.bar-led-on {
-		background: oklch(0.78 0.12 75 / 85%);
-		box-shadow: 0 0 8px oklch(0.78 0.12 75 / 25%);
+		background: oklch(0.70 0.14 145 / 80%);
+		box-shadow: 0 0 6px oklch(0.70 0.14 145 / 20%);
 	}
 
-	.bar-name { color: oklch(0.90 0.04 75 / 90%); }
-	.bar-sep { color: oklch(0.50 0.02 280 / 25%); }
-	.bar-mood { color: oklch(0.72 0.06 75 / 60%); }
+	.bar-name {
+		color: oklch(0.82 0.03 75 / 70%);
+	}
 
-	.bar-status {
-		color: oklch(0.58 0.02 280 / 45%);
-		font-size: 0.6rem;
+	.bar-activity {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		font-family: var(--font-mono);
+		font-size: 0.58rem;
+		letter-spacing: 0.06em;
+		color: oklch(0.68 0.08 75 / 50%);
+		animation: fade-up 0.3s ease both;
+	}
+
+	.bar-activity-dot {
+		width: 4px;
+		height: 4px;
+		border-radius: 50%;
+		background: oklch(0.78 0.12 75 / 60%);
+		animation: pulse-alive 2.5s ease-in-out infinite;
 	}
 
 	.bar-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 1.5rem;
-		height: 1.5rem;
-		color: oklch(0.55 0.02 280 / 35%);
-		border-radius: 4px;
+		width: 1.75rem;
+		height: 1.75rem;
+		color: oklch(0.50 0.02 280 / 30%);
+		border-radius: 6px;
 		transition: all 0.2s ease;
 	}
 
 	.bar-btn-active {
-		color: oklch(0.78 0.12 75 / 55%);
+		color: oklch(0.72 0.08 75 / 55%);
 	}
 
 	.bar-btn:hover {
-		color: oklch(0.78 0.12 75 / 70%);
-		background: oklch(0.78 0.12 75 / 8%);
-	}
-
-	.bar-clear:hover {
-		color: oklch(0.65 0.08 25 / 70%);
-		background: oklch(0.65 0.08 25 / 8%);
+		color: oklch(0.78 0.08 75 / 65%);
+		background: oklch(1 0 0 / 4%);
 	}
 
 	/* --- chat list --- */

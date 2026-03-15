@@ -152,10 +152,6 @@
 	{/if}
 	<div class="whisper-inner">
 		<div class="whisper-glow" class:whisper-glow-active={focused || agentRunning}></div>
-		<div class="whisper-sense-line">
-			<span>{agentRunning ? "alive" : focused ? "listening" : "ready"}</span>
-			<span>{mood}</span>
-		</div>
 
 		{#if attachments.length > 0}
 			<div class="whisper-attachments">
@@ -246,19 +242,6 @@
 		position: relative;
 		max-width: 600px;
 		margin: 0 auto;
-	}
-
-	.whisper-sense-line {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 0.45rem;
-		padding: 0 0.3rem;
-		font-family: var(--font-mono);
-		font-size: 0.58rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: oklch(0.78 0.02 280 / 45%);
 	}
 
 	.whisper-glow {
