@@ -968,16 +968,9 @@ impl Tool for GetSettingsTool {
                 let provider = config.llm.provider
                     .map(|p| format!("{p:?}").to_lowercase())
                     .unwrap_or_else(|| "(not set)".into());
-                let model = config.llm.model
-                    .unwrap_or_else(|| "(not set)".into());
-                lines.push(format!("llm: {provider} / {model}"));
+                lines.push(format!("llm: {provider} / {}", config.llm.model_name()));
 
-                // API keys (configured or not, never show values)
-                let mut keys = Vec::new();
-                if !config.llm.tokens.anthropic.is_empty() { keys.push("anthropic"); }
-                if !config.llm.tokens.open_ai.is_empty() { keys.push("openai"); }
-                if !config.llm.tokens.open_router.is_empty() { keys.push("openrouter"); }
-                if !config.llm.tokens.brave_search.is_empty() { keys.push("brave_search"); }
+                let keys = config.llm.configured_providers();
                 if keys.is_empty() {
                     lines.push("api keys: none configured".into());
                 } else {

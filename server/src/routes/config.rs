@@ -21,21 +21,10 @@ pub fn router() -> Router<AppState> {
 
 async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
     let config = state.config.read().await;
-    let llm_configured = config.llm.provider.is_some()
-        && match config.llm.provider {
-            Some(LlmProvider::Anthropic) => !config.llm.tokens.anthropic.is_empty(),
-            Some(LlmProvider::OpenAI) => !config.llm.tokens.open_ai.is_empty(),
-            Some(LlmProvider::OpenRouter) => !config.llm.tokens.open_router.is_empty(),
-            None => false,
-        };
     Json(json!({
-        "llm_configured": llm_configured,
-        "provider": config.llm.provider.map(|p| match p {
-            LlmProvider::Anthropic => "anthropic",
-            LlmProvider::OpenAI => "openai",
-            LlmProvider::OpenRouter => "openrouter",
-        }),
-        "model": config.llm.model,
+        "llm_configured": config.llm.is_configured(),
+        "provider": config.llm.provider.map(|p| format!("{p:?}").to_lowercase()),
+        "model": config.llm.model_name(),
     }))
 }
 
@@ -131,15 +120,7 @@ async fn update_llm(
     state.rebuild_llm(&new_config).await;
     *state.config.write().await = new_config.clone();
 
-    let model = new_config
-        .llm
-        .model
-        .as_deref()
-        .unwrap_or(match request.provider {
-            LlmProvider::Anthropic => "claude-sonnet-4-6",
-            LlmProvider::OpenAI => "gpt-4o",
-            LlmProvider::OpenRouter => "anthropic/claude-sonnet-4-6",
-        });
+    let model = new_config.llm.model_name();
 
     Ok(Json(json!({
         "status": "ok",

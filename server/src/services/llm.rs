@@ -201,57 +201,20 @@ pub enum LlmBackend {
 impl LlmBackend {
     pub fn from_config(config: &Config) -> Option<Self> {
         let provider = config.llm.provider?;
+        let api_key = config.llm.api_key()?.to_string();
+        let model = config.llm.model_name().to_string();
+        let http = reqwest::Client::new();
+
         match provider {
-            LlmProvider::Anthropic => {
-                let api_key = config.llm.tokens.anthropic.clone();
-                if api_key.is_empty() {
-                    return None;
-                }
-                let model = config
-                    .llm
-                    .model
-                    .clone()
-                    .unwrap_or_else(|| "claude-sonnet-4-6".to_string());
-                Some(LlmBackend::Anthropic {
-                    http: reqwest::Client::new(),
-                    api_key,
-                    model,
-                })
-            }
-            LlmProvider::OpenAI => {
-                let api_key = config.llm.tokens.open_ai.clone();
-                if api_key.is_empty() {
-                    return None;
-                }
-                let model = config
-                    .llm
-                    .model
-                    .clone()
-                    .unwrap_or_else(|| "gpt-5.2".to_string());
-                Some(LlmBackend::OpenAI {
-                    http: reqwest::Client::new(),
-                    api_key,
-                    model,
-                    base_url: "https://api.openai.com/v1".to_string(),
-                })
-            }
-            LlmProvider::OpenRouter => {
-                let api_key = config.llm.tokens.open_router.clone();
-                if api_key.is_empty() {
-                    return None;
-                }
-                let model = config
-                    .llm
-                    .model
-                    .clone()
-                    .unwrap_or_else(|| "anthropic/claude-sonnet-4-6".to_string());
-                Some(LlmBackend::OpenAI {
-                    http: reqwest::Client::new(),
-                    api_key,
-                    model,
-                    base_url: "https://openrouter.ai/api/v1".to_string(),
-                })
-            }
+            LlmProvider::Anthropic => Some(LlmBackend::Anthropic { http, api_key, model }),
+            LlmProvider::OpenAI => Some(LlmBackend::OpenAI {
+                http, api_key, model,
+                base_url: "https://api.openai.com/v1".to_string(),
+            }),
+            LlmProvider::OpenRouter => Some(LlmBackend::OpenAI {
+                http, api_key, model,
+                base_url: "https://openrouter.ai/api/v1".to_string(),
+            }),
         }
     }
 
@@ -260,23 +223,21 @@ impl LlmBackend {
             LlmBackend::Anthropic { http, api_key, .. } => LlmBackend::Anthropic {
                 http: http.clone(),
                 api_key: api_key.clone(),
-                model: "claude-haiku-4-5-20251001".to_string(),
+                model: LlmProvider::Anthropic.fast_model().to_string(),
             },
-            LlmBackend::OpenAI {
-                http,
-                api_key,
-                base_url,
-                ..
-            } => LlmBackend::OpenAI {
-                http: http.clone(),
-                api_key: api_key.clone(),
-                model: if base_url.contains("openrouter") {
-                    "anthropic/claude-sonnet-4-6".to_string()
+            LlmBackend::OpenAI { http, api_key, base_url, .. } => {
+                let provider = if base_url.contains("openrouter") {
+                    LlmProvider::OpenRouter
                 } else {
-                    "gpt-5-mini-2025-08-07".to_string()
-                },
-                base_url: base_url.clone(),
-            },
+                    LlmProvider::OpenAI
+                };
+                LlmBackend::OpenAI {
+                    http: http.clone(),
+                    api_key: api_key.clone(),
+                    model: provider.fast_model().to_string(),
+                    base_url: base_url.clone(),
+                }
+            }
         }
     }
 

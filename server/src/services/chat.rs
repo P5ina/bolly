@@ -892,12 +892,8 @@ pub async fn compute_context_stats_async(
 
     // Try to get accurate total via Anthropic count_tokens API
     let api_info: Option<(String, String)> = crate::config::load_config().ok().and_then(|config| {
-        if config.llm.provider == Some(crate::config::LlmProvider::Anthropic) && !config.llm.tokens.anthropic.is_empty() {
-            let model = config.llm.model.unwrap_or_else(|| "claude-sonnet-4-6".to_string());
-            Some((config.llm.tokens.anthropic, model))
-        } else {
-            None
-        }
+        let (key, model) = config.llm.anthropic_credentials()?;
+        Some((key.to_string(), model.to_string()))
     });
     if let Some((api_key, model)) = api_info {
         if let Some(real_total) = count_tokens_api(

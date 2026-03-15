@@ -129,6 +129,26 @@ pub enum LlmProvider {
     OpenRouter,
 }
 
+impl LlmProvider {
+    /// Default model for this provider (used when no model is explicitly configured).
+    pub fn default_model(&self) -> &'static str {
+        match self {
+            LlmProvider::Anthropic => "claude-sonnet-4-6",
+            LlmProvider::OpenAI => "gpt-5.2",
+            LlmProvider::OpenRouter => "anthropic/claude-sonnet-4-6",
+        }
+    }
+
+    /// Fast/cheap model for this provider (used for triage, sentiment, etc.).
+    pub fn fast_model(&self) -> &'static str {
+        match self {
+            LlmProvider::Anthropic => "claude-haiku-4-5-20251001",
+            LlmProvider::OpenAI => "gpt-5-mini-2025-08-07",
+            LlmProvider::OpenRouter => "anthropic/claude-sonnet-4-6",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LlmConfig {
     #[serde(default)]
@@ -178,6 +198,49 @@ impl Default for Config {
             mcp_servers: Vec::new(),
             github: GithubConfig::default(),
         }
+    }
+}
+
+impl LlmConfig {
+    /// The active model name, falling back to the provider's default.
+    pub fn model_name(&self) -> &str {
+        if let Some(ref m) = self.model {
+            if !m.is_empty() { return m; }
+        }
+        self.provider.as_ref().map_or("claude-sonnet-4-6", |p| p.default_model())
+    }
+
+    /// The API key for the active provider, or None if not configured.
+    pub fn api_key(&self) -> Option<&str> {
+        let key = match self.provider? {
+            LlmProvider::Anthropic => &self.tokens.anthropic,
+            LlmProvider::OpenAI => &self.tokens.open_ai,
+            LlmProvider::OpenRouter => &self.tokens.open_router,
+        };
+        if key.is_empty() { None } else { Some(key) }
+    }
+
+    /// Whether the LLM is fully configured (provider + key).
+    pub fn is_configured(&self) -> bool {
+        self.api_key().is_some()
+    }
+
+    /// List of provider names that have API keys set.
+    pub fn configured_providers(&self) -> Vec<&'static str> {
+        let mut out = Vec::new();
+        if !self.tokens.anthropic.is_empty() { out.push("anthropic"); }
+        if !self.tokens.open_ai.is_empty() { out.push("openai"); }
+        if !self.tokens.open_router.is_empty() { out.push("openrouter"); }
+        if !self.tokens.brave_search.is_empty() { out.push("brave_search"); }
+        out
+    }
+
+    /// Get API key + model for Anthropic specifically (for count_tokens API etc.).
+    /// Returns None if Anthropic is not the active provider or key is missing.
+    pub fn anthropic_credentials(&self) -> Option<(&str, &str)> {
+        if self.provider != Some(LlmProvider::Anthropic) { return None; }
+        let key = if self.tokens.anthropic.is_empty() { return None } else { &self.tokens.anthropic };
+        Some((key, self.model_name()))
     }
 }
 
@@ -266,7 +329,7 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
                 config.llm.provider = Some(LlmProvider::Anthropic);
             }
             if config.llm.model.is_none() {
-                config.llm.model = Some("claude-sonnet-4-6".to_string());
+                config.llm.model = Some(LlmProvider::Anthropic.default_model().to_string());
             }
         }
     }
