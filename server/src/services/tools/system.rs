@@ -891,11 +891,159 @@ fn detect_package_manager(is_root: bool) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
+// get_settings
+// ---------------------------------------------------------------------------
+
+pub struct GetSettingsTool {
+    config_path: PathBuf,
+    workspace_dir: PathBuf,
+    instance_slug: String,
+    instance_dir: PathBuf,
+    google: Option<crate::services::google::GoogleClient>,
+}
+
+impl GetSettingsTool {
+    pub fn new(
+        config_path: &Path,
+        workspace_dir: &Path,
+        instance_slug: &str,
+        google: Option<crate::services::google::GoogleClient>,
+    ) -> Self {
+        Self {
+            config_path: config_path.to_path_buf(),
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
+            google,
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetSettingsArgs {}
+
+impl Tool for GetSettingsTool {
+    const NAME: &'static str = "get_settings";
+    type Error = ToolExecError;
+    type Args = GetSettingsArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "get_settings".into(),
+            description: "Get all current settings and status: companion name, timezone, LLM model, connected accounts (Google, email, GitHub), MCP servers, mood.".into(),
+            parameters: openai_schema::<GetSettingsArgs>(),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let mut lines = Vec::new();
+
+        // Companion name
+        let state_path = self.instance_dir.join("project_state.json");
+        let project_state: serde_json::Value = fs::read_to_string(&state_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        let name = project_state.get("identity")
+            .and_then(|i| i.get("name"))
+            .and_then(|n| n.as_str())
+            .unwrap_or("(not set)");
+        lines.push(format!("companion name: {name}"));
+
+        // Timezone
+        let tz = project_state.get("timezone")
+            .and_then(|t| t.as_str())
+            .unwrap_or("UTC (default)");
+        lines.push(format!("timezone: {tz}"));
+
+        // Mood
+        let mood = load_mood_state(&self.instance_dir);
+        lines.push(format!("mood: {}", mood.companion_mood));
+
+        // LLM
+        if let Ok(raw) = fs::read_to_string(&self.config_path) {
+            if let Ok(config) = toml::from_str::<crate::config::Config>(&raw) {
+                let provider = config.llm.provider
+                    .map(|p| format!("{p:?}").to_lowercase())
+                    .unwrap_or_else(|| "(not set)".into());
+                let model = config.llm.model
+                    .unwrap_or_else(|| "(not set)".into());
+                lines.push(format!("llm: {provider} / {model}"));
+
+                // API keys (configured or not, never show values)
+                let mut keys = Vec::new();
+                if !config.llm.tokens.anthropic.is_empty() { keys.push("anthropic"); }
+                if !config.llm.tokens.open_ai.is_empty() { keys.push("openai"); }
+                if !config.llm.tokens.open_router.is_empty() { keys.push("openrouter"); }
+                if !config.llm.tokens.brave_search.is_empty() { keys.push("brave_search"); }
+                if keys.is_empty() {
+                    lines.push("api keys: none configured".into());
+                } else {
+                    lines.push(format!("api keys: {}", keys.join(", ")));
+                }
+
+                // GitHub
+                if config.github.token.is_empty() {
+                    lines.push("github: not connected".into());
+                } else {
+                    lines.push("github: token configured".into());
+                }
+
+                // MCP servers
+                if config.mcp_servers.is_empty() {
+                    lines.push("extensions (mcp): none".into());
+                } else {
+                    let names: Vec<&str> = config.mcp_servers.iter().map(|s| s.name.as_str()).collect();
+                    lines.push(format!("extensions (mcp): {}", names.join(", ")));
+                }
+            }
+        }
+
+        // Google accounts
+        let google_accounts = if let Some(ref g) = self.google {
+            g.accounts(&self.instance_slug).await.unwrap_or_default()
+        } else {
+            vec![]
+        };
+        if google_accounts.is_empty() {
+            lines.push("google accounts: none connected".into());
+        } else {
+            let emails: Vec<&str> = google_accounts.iter().map(|a| a.email.as_str()).collect();
+            lines.push(format!("google accounts: {}", emails.join(", ")));
+        }
+
+        // Email accounts (SMTP/IMAP)
+        let email_accounts = crate::config::EmailAccounts::load(&self.workspace_dir, &self.instance_slug);
+        if email_accounts.is_empty() {
+            lines.push("email accounts (smtp/imap): none configured".into());
+        } else {
+            let emails: Vec<String> = email_accounts.iter()
+                .map(|a| {
+                    let addr = if a.smtp_from.is_empty() { &a.smtp_user } else { &a.smtp_from };
+                    addr.to_string()
+                })
+                .collect();
+            lines.push(format!("email accounts (smtp/imap): {}", emails.join(", ")));
+        }
+
+        // Soul
+        let soul_exists = self.instance_dir.join("soul.md").exists();
+        lines.push(format!("soul.md: {}", if soul_exists { "exists" } else { "not created" }));
+
+        Ok(lines.join("\n"))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // update_config
 // ---------------------------------------------------------------------------
 
 pub struct UpdateConfigTool {
     config_path: PathBuf,
+    workspace_dir: PathBuf,
+    instance_slug: String,
     instance_dir: PathBuf,
 }
 
@@ -903,6 +1051,8 @@ impl UpdateConfigTool {
     pub fn new(config_path: &Path, workspace_dir: &Path, instance_slug: &str) -> Self {
         Self {
             config_path: config_path.to_path_buf(),
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
             instance_dir: workspace_dir.join("instances").join(instance_slug),
         }
     }
@@ -931,7 +1081,32 @@ pub struct UpdateConfigArgs {
     pub companion_name: Option<String>,
     /// Set the GitHub personal access token. Leave null to keep current.
     pub github_token: Option<String>,
+    /// Add an email account (SMTP/IMAP). Provide as {"smtp_host": "...", "smtp_port": 587, "smtp_user": "...", "smtp_password": "...", "smtp_from": "...", "imap_host": "...", "imap_port": 993, "imap_user": "...", "imap_password": "..."}.
+    pub add_email_account: Option<EmailAccountArg>,
+    /// Remove an email account by address (matches smtp_from or smtp_user).
+    pub remove_email_account: Option<String>,
 }
+
+#[derive(Deserialize, JsonSchema)]
+pub struct EmailAccountArg {
+    pub smtp_host: String,
+    #[serde(default = "default_587")]
+    pub smtp_port: u16,
+    pub smtp_user: String,
+    pub smtp_password: String,
+    pub smtp_from: String,
+    #[serde(default)]
+    pub imap_host: String,
+    #[serde(default = "default_993")]
+    pub imap_port: u16,
+    #[serde(default)]
+    pub imap_user: String,
+    #[serde(default)]
+    pub imap_password: String,
+}
+
+fn default_587() -> u16 { 587 }
+fn default_993() -> u16 { 993 }
 
 #[derive(Deserialize, JsonSchema)]
 pub struct McpServerArg {
@@ -1086,6 +1261,39 @@ impl Tool for UpdateConfigTool {
             let token = token.trim().to_string();
             config.github.token = token.clone();
             changes.push(if token.is_empty() { "github token removed".into() } else { "github token updated".into() });
+        }
+
+        // --- Email account management ---
+        if let Some(acct) = &args.add_email_account {
+            let mut accounts = crate::config::EmailAccounts::load(&self.workspace_dir, &self.instance_slug);
+            let email_cfg = crate::config::EmailConfig {
+                smtp_host: acct.smtp_host.clone(),
+                smtp_port: acct.smtp_port,
+                smtp_user: acct.smtp_user.clone(),
+                smtp_password: acct.smtp_password.clone(),
+                smtp_from: acct.smtp_from.clone(),
+                imap_host: acct.imap_host.clone(),
+                imap_port: acct.imap_port,
+                imap_user: acct.imap_user.clone(),
+                imap_password: acct.imap_password.clone(),
+            };
+            accounts.push(email_cfg);
+            crate::config::EmailAccounts::save(&accounts, &self.workspace_dir, &self.instance_slug)
+                .map_err(|e| ToolExecError(format!("failed to save email account: {e}")))?;
+            changes.push(format!("added email account {}", acct.smtp_from));
+        }
+
+        if let Some(email) = &args.remove_email_account {
+            let email = email.trim().to_string();
+            let mut accounts = crate::config::EmailAccounts::load(&self.workspace_dir, &self.instance_slug);
+            let before = accounts.len();
+            accounts.retain(|a| a.smtp_from != email && a.smtp_user != email && a.imap_user != email);
+            if accounts.len() == before {
+                return Err(ToolExecError(format!("email account '{email}' not found")));
+            }
+            crate::config::EmailAccounts::save(&accounts, &self.workspace_dir, &self.instance_slug)
+                .map_err(|e| ToolExecError(format!("failed to save email config: {e}")))?;
+            changes.push(format!("removed email account {email}"));
         }
 
         if changes.is_empty() {

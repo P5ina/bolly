@@ -50,8 +50,8 @@ pub use project::{
 };
 pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
 pub use system::{
-    ClearContextTool, CreateDropTool, ExploreCodeTool, InstallPackageTool, InteractiveSessionTool,
-    RequestSecretTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
+    ClearContextTool, CreateDropTool, ExploreCodeTool, GetSettingsTool, InstallPackageTool,
+    InteractiveSessionTool, RequestSecretTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
 };
 pub use video::WatchVideoTool;
 pub use web::{BrowseTool, WebFetchTool, WebSearchTool};
@@ -303,6 +303,7 @@ pub fn tool_summary(name: &str, args: &str) -> String {
         "web_fetch" => format!("fetching {}", v["url"].as_str().unwrap_or("?")),
         "update_config" => "updating config".into(),
         "create_drop" => format!("creating drop: {}", v["title"].as_str().unwrap_or("?")),
+        "get_settings" => "reading current settings".into(),
         "send_email" => {
             let to = v["to"].as_str().unwrap_or("?");
             format!("sending email to {to}")
@@ -588,6 +589,7 @@ pub fn build_tools(
     tools.push(wrap(Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug))));
     tools.push(wrap(Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone()))));
     tools.push(wrap(Box::new(InstallPackageTool)));
+    tools.push(wrap(Box::new(GetSettingsTool::new(config_path, workspace_dir, instance_slug, google.clone()))));
     tools.push(wrap(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug))));
     if let Some(ps) = pending_secrets {
         tools.push(wrap(Box::new(RequestSecretTool::new(
