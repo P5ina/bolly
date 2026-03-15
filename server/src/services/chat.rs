@@ -300,7 +300,7 @@ pub async fn run_single_turn(
     }
     let prompt_msg = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
 
-    let history_msgs = if let Some(mut h) = loaded_history {
+    let mut history_msgs = if let Some(mut h) = loaded_history {
         // Check if history already has a compaction block — if so, the context
         // was intentionally reset. Don't patch in old messages.json entries or
         // we'll refill the context and trigger compaction in a loop.
@@ -376,9 +376,65 @@ pub async fn run_single_turn(
     );
     tools::cache_tool_defs(&all_tools).await;
 
+    // ── Manual compaction for OAuth tokens (no server-side compaction) ──
+    // Estimate context size and compact if too large.
+    // ~4 chars per token heuristic. Leave room for response + tools.
     let history_text_chars: usize = history_msgs.iter()
         .map(|m| extract_message_text_len(m))
         .sum();
+    let estimated_history_tokens = history_text_chars / 4;
+    const COMPACT_THRESHOLD_TOKENS: usize = 80_000;
+
+    if estimated_history_tokens > COMPACT_THRESHOLD_TOKENS && history_msgs.len() > 4 {
+        if llm.is_oauth() {
+            // OAuth: no server-side compaction — manually summarize old messages
+            log::info!(
+                "[chat] OAuth compaction: ~{estimated_history_tokens} tokens in {} messages, summarizing",
+                history_msgs.len()
+            );
+            match manual_compact(&history_msgs, llm).await {
+                Ok((summary, kept)) => {
+                    let compacted_count = history_msgs.len() - kept.len();
+                    history_msgs = vec![llm::Message::Assistant {
+                        content: vec![llm::ContentBlock::Compaction { content: summary }],
+                    }];
+                    history_msgs.extend(kept);
+                    let _ = events.send(ServerEvent::ContextCompacting {
+                        instance_slug: instance_slug.clone(),
+                        chat_id: chat_id.clone(),
+                        messages_compacted: compacted_count,
+                    });
+                    log::info!(
+                        "[chat] OAuth compaction done: kept {} messages, compacted {}",
+                        history_msgs.len(), compacted_count
+                    );
+                }
+                Err(e) => log::warn!("[chat] manual compaction failed: {e}"),
+            }
+        } else {
+            // Non-OAuth: server compaction exists, but trim extreme history to leave room
+            // Keep at most ~100k tokens worth of messages so compaction has space to work
+            const MAX_CHARS: usize = 400_000;
+            if history_text_chars > MAX_CHARS && history_msgs.len() > 6 {
+                let mut kept_chars = 0usize;
+                let mut keep_from = history_msgs.len();
+                for (i, msg) in history_msgs.iter().enumerate().rev() {
+                    kept_chars += extract_message_text_len(msg);
+                    if kept_chars > MAX_CHARS {
+                        keep_from = i + 1;
+                        break;
+                    }
+                }
+                let removed = keep_from;
+                history_msgs = history_msgs.split_off(keep_from);
+                log::info!(
+                    "[chat] trimmed {removed} old messages to leave room for compaction ({} remaining)",
+                    history_msgs.len()
+                );
+            }
+        }
+    }
+
     let system_blocks: Vec<&str> = vec![&system_static];
     let tool_result = llm
         .chat_with_tools_streaming(
@@ -1315,6 +1371,76 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
     )
 }
 
+
+/// Manual compaction for OAuth tokens: summarize old messages using Haiku,
+/// return (summary, recent_messages_to_keep).
+async fn manual_compact(
+    history: &[llm::Message],
+    llm: &LlmBackend,
+) -> Result<(String, Vec<llm::Message>), Box<dyn std::error::Error + Send + Sync>> {
+    // Keep last 6 messages intact, summarize everything before
+    let keep_count = 6.min(history.len());
+    let to_summarize = &history[..history.len() - keep_count];
+    let to_keep = history[history.len() - keep_count..].to_vec();
+
+    if to_summarize.is_empty() {
+        return Err("nothing to compact".into());
+    }
+
+    // Build text representation of messages to summarize
+    let mut conversation = String::new();
+    for msg in to_summarize {
+        match msg {
+            llm::Message::User { content } => {
+                for block in content {
+                    if let llm::ContentBlock::Text { text } = block {
+                        conversation.push_str(&format!("user: {text}\n"));
+                    }
+                }
+            }
+            llm::Message::Assistant { content } => {
+                for block in content {
+                    match block {
+                        llm::ContentBlock::Text { text } => {
+                            conversation.push_str(&format!("assistant: {text}\n"));
+                        }
+                        llm::ContentBlock::Compaction { content: c } => {
+                            conversation.push_str(&format!("[previous summary]: {c}\n"));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
+    // Truncate if extremely long
+    if conversation.len() > 30_000 {
+        let mut end = 30_000;
+        while !conversation.is_char_boundary(end) { end -= 1; }
+        conversation.truncate(end);
+        conversation.push_str("\n...(truncated)");
+    }
+
+    let fast = llm.fast_variant();
+    let summary = fast.chat(
+        "you are a conversation summarizer. produce a dense, factual summary that preserves \
+         all important context: what was discussed, decisions made, key facts shared, \
+         emotional tone, and any pending topics. the summary replaces the original messages \
+         so it must capture everything relevant for continuing the conversation.",
+        &format!(
+            "summarize this conversation history into a compact summary (under 2000 chars):\n\n{conversation}"
+        ),
+        vec![],
+    ).await?;
+
+    log::info!(
+        "[manual_compact] summarized {} messages ({} chars) into {} char summary",
+        to_summarize.len(), conversation.len(), summary.len()
+    );
+
+    Ok((summary, to_keep))
+}
 
 async fn extract_sentiment(
     workspace_dir: &Path,

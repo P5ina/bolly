@@ -258,6 +258,14 @@ impl LlmBackend {
         }
     }
 
+    /// Returns true if this backend uses an OAuth token (no server-side compaction).
+    pub fn is_oauth(&self) -> bool {
+        match self {
+            LlmBackend::Anthropic { api_key, .. } => api_key.starts_with("sk-ant-oat"),
+            _ => false,
+        }
+    }
+
     /// Simple chat without tools.
     pub async fn chat(
         &self,
