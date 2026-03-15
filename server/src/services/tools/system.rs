@@ -1523,6 +1523,7 @@ fn is_allowed_secret_target(target: &str) -> bool {
     static PATTERNS: LazyLock<Vec<regex::Regex>> = LazyLock::new(|| {
         vec![
             regex::Regex::new(r"^llm\.tokens\.[a-zA-Z0-9_-]+$").unwrap(),
+            regex::Regex::new(r"^github\.token$").unwrap(),
         ]
     });
     PATTERNS.iter().any(|p| p.is_match(target))
@@ -1549,6 +1550,17 @@ fn write_secret_to_config(
                 "brave_search" | "brave" => config.llm.tokens.brave_search = value.to_string(),
                 _ => return Err(ToolExecError(format!("unsupported token provider: {provider}"))),
             }
+            let output = toml::to_string_pretty(&config)
+                .map_err(|e| ToolExecError(format!("failed to serialize config: {e}")))?;
+            fs::write(config_path, &output)
+                .map_err(|e| ToolExecError(format!("failed to write config: {e}")))?;
+        }
+        ["github", "token"] => {
+            let raw = fs::read_to_string(config_path)
+                .map_err(|e| ToolExecError(format!("failed to read config: {e}")))?;
+            let mut config: crate::config::Config = toml::from_str(&raw)
+                .map_err(|e| ToolExecError(format!("failed to parse config: {e}")))?;
+            config.github.token = value.to_string();
             let output = toml::to_string_pretty(&config)
                 .map_err(|e| ToolExecError(format!("failed to serialize config: {e}")))?;
             fs::write(config_path, &output)
@@ -1590,7 +1602,8 @@ pub struct RequestSecretArgs {
     /// A user-facing prompt explaining what secret is needed (e.g. "Enter your API key").
     pub prompt: String,
     /// Dotted target path where the secret will be stored. Allowed patterns:
-    /// - llm.tokens.<provider>
+    /// - llm.tokens.<provider> (e.g. llm.tokens.anthropic, llm.tokens.openai)
+    /// - github.token
     pub target: String,
 }
 
@@ -1612,8 +1625,8 @@ impl Tool for RequestSecretTool {
         let target = args.target.trim().to_string();
         if !is_allowed_secret_target(&target) {
             return Err(ToolExecError(format!(
-                "target '{target}' is not allowed. allowed patterns: \
-                 llm.tokens.<provider>"
+                "target '{target}' is not allowed. allowed: \
+                 llm.tokens.<provider>, github.token"
             )));
         }
 
