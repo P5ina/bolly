@@ -147,8 +147,6 @@ export interface UploadMeta {
 }
 
 export interface Usage {
-	messages_today: number;
-	messages_limit: number;
 	tokens_this_month: number;
 	tokens_limit: number;
 }

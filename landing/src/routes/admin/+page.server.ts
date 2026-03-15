@@ -28,7 +28,6 @@ export const load: PageServerLoad = async ({ locals }) => {
 			flyMachineId: tenants.flyMachineId,
 			imageChannel: tenants.imageChannel,
 			storageLimit: tenants.storageLimit,
-			messagesPerDay: tenants.messagesPerDay,
 			tokensPerMonth: tenants.tokensPerMonth,
 			errorMessage: tenants.errorMessage,
 			createdAt: tenants.createdAt,
@@ -232,7 +231,6 @@ export const actions: Actions = {
 				.set({
 					storageLimit: config.storageLimit,
 					maxInstances: config.maxInstances,
-					messagesPerDay: config.messagesPerDay,
 					tokensPerMonth: config.tokensPerMonth,
 					updatedAt: new Date(),
 				})

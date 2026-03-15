@@ -283,7 +283,7 @@ impl LlmBackend {
                         model,
                     } => anthropic_complete(http, api_key, model, &[&system], &[], &messages, 16384)
                         .await
-                        .map(|(text, _)| text),
+                        .map(|(text, _, _)| text),
                     LlmBackend::OpenAI {
                         http,
                         api_key,
@@ -292,7 +292,7 @@ impl LlmBackend {
                     } => {
                         openai_complete(http, api_key, base_url, model, &system, &[], &messages, 16384)
                             .await
-                            .map(|(text, _)| text)
+                            .map(|(text, _, _)| text)
                     }
                 }
             }
@@ -591,12 +591,7 @@ async fn complete_once(
             api_key,
             model,
         } => {
-            let (text, stop_reason) =
-                anthropic_complete(http, api_key, model, system, tool_defs, messages, 16384)
-                    .await?;
-            // For non-streaming, parse tool_use from response
-            // The anthropic_complete returns only text; for tool use we need the full response
-            Ok((text, vec![], stop_reason))
+            anthropic_complete(http, api_key, model, system, tool_defs, messages, 16384).await
         }
         LlmBackend::OpenAI {
             http,
@@ -605,9 +600,7 @@ async fn complete_once(
             base_url,
         } => {
             let joined = system.join("\n\n");
-            let (text, stop_reason) =
-                openai_complete(http, api_key, base_url, model, &joined, tool_defs, messages, 16384).await?;
-            Ok((text, vec![], stop_reason))
+            openai_complete(http, api_key, base_url, model, &joined, tool_defs, messages, 16384).await
         }
     }
 }
@@ -714,7 +707,7 @@ async fn anthropic_complete(
     tool_defs: &[ToolDefinition],
     messages: &[Message],
     max_tokens: u64,
-) -> Result<(String, String), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
     let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, false);
 
     let resp = http
@@ -746,25 +739,32 @@ async fn anthropic_complete(
         );
     }
 
-    // Extract text from content blocks
-    let text = resp_json["content"]
-        .as_array()
-        .map(|blocks| {
-            blocks
-                .iter()
-                .filter_map(|b| {
-                    if b["type"].as_str() == Some("text") {
-                        b["text"].as_str().map(|s| s.to_string())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("")
-        })
-        .unwrap_or_default();
+    let mut text = String::new();
+    let mut tool_uses = Vec::new();
 
-    Ok((text, stop_reason))
+    if let Some(blocks) = resp_json["content"].as_array() {
+        for b in blocks {
+            match b["type"].as_str() {
+                Some("text") => {
+                    if let Some(s) = b["text"].as_str() {
+                        text.push_str(s);
+                    }
+                }
+                Some("tool_use") => {
+                    if let (Some(id), Some(name)) = (b["id"].as_str(), b["name"].as_str()) {
+                        tool_uses.push(ToolUseBlock {
+                            id: id.to_string(),
+                            name: name.to_string(),
+                            input: b["input"].clone(),
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    Ok((text, tool_uses, stop_reason))
 }
 
 /// Streaming Anthropic call. Broadcasts text deltas, returns (text, tool_uses, stop_reason).
@@ -1213,7 +1213,7 @@ async fn openai_complete(
     tool_defs: &[ToolDefinition],
     messages: &[Message],
     max_tokens: u64,
-) -> Result<(String, String), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
     let body = build_openai_request(model, system, tool_defs, messages, max_tokens, false);
 
     let resp = http
@@ -1240,6 +1240,24 @@ async fn openai_complete(
         .unwrap_or("stop")
         .to_string();
 
+    // Parse tool calls
+    let mut tool_uses = Vec::new();
+    if let Some(tool_calls) = choice["message"]["tool_calls"].as_array() {
+        for tc in tool_calls {
+            if let (Some(id), Some(name)) = (tc["id"].as_str(), tc["function"]["name"].as_str()) {
+                let input: serde_json::Value = tc["function"]["arguments"]
+                    .as_str()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or(serde_json::json!({}));
+                tool_uses.push(ToolUseBlock {
+                    id: id.to_string(),
+                    name: name.to_string(),
+                    input,
+                });
+            }
+        }
+    }
+
     // Map OpenAI stop reasons to our standard
     let stop_reason = match stop_reason.as_str() {
         "tool_calls" => "tool_use".to_string(),
@@ -1247,7 +1265,7 @@ async fn openai_complete(
         _ => "end_turn".to_string(),
     };
 
-    Ok((text, stop_reason))
+    Ok((text, tool_uses, stop_reason))
 }
 
 /// Streaming OpenAI call. Returns (text, tool_uses, stop_reason).

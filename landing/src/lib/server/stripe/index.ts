@@ -21,7 +21,6 @@ export const PLANS = {
 		cpus: 1,
 		memoryMb: 2048,
 		maxInstances: 1,
-		messagesPerDay: 150,
 		tokensPerMonth: 1_000_000,
 	},
 	companion: {
@@ -31,7 +30,6 @@ export const PLANS = {
 		cpus: 2,
 		memoryMb: 4096,
 		maxInstances: 3,
-		messagesPerDay: 500,
 		tokensPerMonth: 3_000_000,
 	},
 	unlimited: {
@@ -41,7 +39,6 @@ export const PLANS = {
 		cpus: 4,
 		memoryMb: 4096,
 		maxInstances: -1, // unlimited
-		messagesPerDay: -1, // unlimited
 		tokensPerMonth: 10_000_000,
 	},
 } as const;

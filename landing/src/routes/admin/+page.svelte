@@ -395,10 +395,6 @@
 							<!-- Details row -->
 							<div class="mt-4 pt-4 flex items-center gap-6 text-xs text-text-ghost" style="border-top: 1px solid var(--color-border);">
 								<span class="inline-flex items-center gap-1.5">
-									<Cpu size={12} />
-									{tenant.messagesPerDay === -1 ? 'unlimited' : `${tenant.messagesPerDay}/day`}
-								</span>
-								<span class="inline-flex items-center gap-1.5">
 									<Zap size={12} />
 									{formatTokens(tenant.tokensPerMonth)}/mo
 								</span>
@@ -409,7 +405,7 @@
 								{#if tenant.rateLimit}
 									<span class="inline-flex items-center gap-1.5">
 										<MessageSquare size={12} />
-										{tenant.rateLimit.messagesToday} today / {formatTokens(tenant.rateLimit.tokensThisMonth)} tokens
+										{formatTokens(tenant.rateLimit.tokensThisMonth)} tokens used
 									</span>
 									<form method="POST" action="?/resetLimits" class="inline-flex" use:enhance={() => {
 										resetting = tenant.id;
