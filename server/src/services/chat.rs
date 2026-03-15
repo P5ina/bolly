@@ -383,7 +383,7 @@ pub async fn run_single_turn(
         .map(|m| extract_message_text_len(m))
         .sum();
     let estimated_history_tokens = history_text_chars / 4;
-    const COMPACT_THRESHOLD_TOKENS: usize = 80_000;
+    const COMPACT_THRESHOLD_TOKENS: usize = 150_000;
 
     if estimated_history_tokens > COMPACT_THRESHOLD_TOKENS && history_msgs.len() > 4 {
         if llm.is_oauth() {
@@ -414,7 +414,7 @@ pub async fn run_single_turn(
         } else {
             // Non-OAuth: server compaction exists, but trim extreme history to leave room
             // Keep at most ~100k tokens worth of messages so compaction has space to work
-            const MAX_CHARS: usize = 400_000;
+            const MAX_CHARS: usize = 600_000;
             if history_text_chars > MAX_CHARS && history_msgs.len() > 6 {
                 let mut kept_chars = 0usize;
                 let mut keep_from = history_msgs.len();
