@@ -348,14 +348,6 @@
 
 								<div class="flex items-center gap-2">
 									{#if tenant.status === 'running'}
-										<a
-											href="https://{tenant.slug}.bollyai.dev"
-											target="_blank"
-											class="inline-flex items-center gap-1 text-xs py-1.5 px-3 rounded-lg text-text-ghost transition-all duration-300 hover:text-text-dim"
-											style="border: 1px solid var(--color-border);"
-										>
-											<ExternalLink size={12} />
-										</a>
 										<form method="POST" action="?/stopMachine" use:enhance={() => {
 											stopping = tenant.id;
 											actionError = null;
