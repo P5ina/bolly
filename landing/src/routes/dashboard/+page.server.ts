@@ -366,17 +366,21 @@ export const actions: Actions = {
 async function validateApiKey(provider: string, apiKey: string, model?: string | null): Promise<void> {
 	if (provider === 'anthropic') {
 		const isOAuth = apiKey.startsWith('sk-ant-oat');
+		const headers: Record<string, string> = {
+			'anthropic-version': '2023-06-01',
+			'content-type': 'application/json',
+		};
+		if (isOAuth) {
+			headers['Authorization'] = `Bearer ${apiKey}`;
+			headers['User-Agent'] = 'claude-cli/2.1.44 (external, sdk-cli)';
+		} else {
+			headers['x-api-key'] = apiKey;
+		}
 		const res = await fetch('https://api.anthropic.com/v1/messages', {
 			method: 'POST',
-			headers: {
-				...(isOAuth
-					? { 'Authorization': `Bearer ${apiKey}` }
-					: { 'x-api-key': apiKey }),
-				'anthropic-version': '2023-06-01',
-				'content-type': 'application/json',
-			},
+			headers,
 			body: JSON.stringify({
-				model: model || 'claude-haiku-4-5-20251001',
+				model: model || (isOAuth ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001'),
 				max_tokens: 1,
 				messages: [{ role: 'user', content: 'hi' }],
 			}),
