@@ -42,6 +42,16 @@
 		}
 	});
 
+	// Auto-resize textarea to fit content, up to max-height
+	$effect(() => {
+		// Track value so this effect re-runs on every keystroke
+		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+		value;
+		if (!textareaEl) return;
+		textareaEl.style.height = "auto";
+		textareaEl.style.height = `${textareaEl.scrollHeight}px`;
+	});
+
 	function handleSubmit() {
 		const trimmed = value.trim();
 		if ((!trimmed && attachments.length === 0) || disabled) return;
@@ -362,7 +372,8 @@
 		flex: 1;
 		min-width: 0;
 		min-height: 44px;
-		max-height: 120px;
+		max-height: 200px;
+		overflow-y: auto;
 		resize: none;
 		padding: 0.75rem 1rem;
 		font-family: var(--font-body);
