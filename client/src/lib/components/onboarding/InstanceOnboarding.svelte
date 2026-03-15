@@ -103,7 +103,7 @@
 				lines[idx].revealed += char;
 				i++;
 
-				if (i % 3 === 0) playImmediate("typewriter");
+				if (i % 3 === 0) playImmediate("typewriter", { pitchRange: [0.88, 1.15] });
 
 				let delay = speed;
 				if (char === "." || char === "?" || char === "!") delay = speed * 8;

@@ -60,14 +60,30 @@ let playQueue: Promise<void> = Promise.resolve();
 
 export function play(name: string) {
 	if (typeof window === "undefined") return;
+	const ac = getContext();
 
+	// Fast path: buffer cached & context running — play immediately
+	const buffer = buffers.get(name);
+	if (buffer && ac.state === "running") {
+		const now = performance.now();
+		if (now - lastPlayTime < MIN_GAP_MS) return; // skip if too soon
+		const source = ac.createBufferSource();
+		const gain = ac.createGain();
+		gain.gain.value = volumes[name] ?? 0.25;
+		source.buffer = buffer;
+		source.connect(gain).connect(ac.destination);
+		source.start();
+		lastPlayTime = now;
+		return;
+	}
+
+	// Slow path: need to load buffer or resume context
 	playQueue = playQueue.then(() => playSound(name)).catch(() => {});
 }
 
 async function playSound(name: string) {
 	const ac = getContext();
 
-	// Ensure context is running (may be suspended until user gesture)
 	if (ac.state === "suspended") {
 		try {
 			await ac.resume();
@@ -77,19 +93,14 @@ async function playSound(name: string) {
 	}
 	if (ac.state !== "running") return;
 
-	// Enforce minimum gap between sounds
-	const now = performance.now();
-	const elapsed = now - lastPlayTime;
-	if (elapsed < MIN_GAP_MS) {
-		await new Promise((r) => setTimeout(r, MIN_GAP_MS - elapsed));
-	}
-
-	// Load buffer (cached after first load)
 	let buffer = buffers.get(name);
 	if (!buffer) {
 		buffer = (await loadBuffer(name)) ?? undefined;
 		if (!buffer) return;
 	}
+
+	const now = performance.now();
+	if (now - lastPlayTime < MIN_GAP_MS) return;
 
 	const source = ac.createBufferSource();
 	const gain = ac.createGain();
@@ -101,13 +112,17 @@ async function playSound(name: string) {
 }
 
 /** Fire-and-forget playback without queue or gap enforcement. */
-export function playImmediate(name: string) {
+export function playImmediate(name: string, opts?: { pitchRange?: [number, number] }) {
 	if (typeof window === "undefined") return;
 	const ac = getContext();
 	if (ac.state !== "running") return;
 	const buffer = buffers.get(name);
 	if (!buffer) return;
 	const source = ac.createBufferSource();
+	if (opts?.pitchRange) {
+		const [lo, hi] = opts.pitchRange;
+		source.playbackRate.value = lo + Math.random() * (hi - lo);
+	}
 	const gain = ac.createGain();
 	gain.gain.value = volumes[name] ?? 0.25;
 	source.buffer = buffer;

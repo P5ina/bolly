@@ -12,7 +12,7 @@
 	import HeartbeatUpdateBanner from "./HeartbeatUpdateBanner.svelte";
 	import ExcalidrawViewer from "$lib/components/ExcalidrawViewer.svelte";
 	import McpAppViewer from "./McpAppViewer.svelte";
-	import { play } from "$lib/sounds.js";
+	import { play, playImmediate, preload } from "$lib/sounds.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 	import TerminalSquare from "@lucide/svelte/icons/terminal-square";
@@ -56,9 +56,13 @@
 	let displayedLength = $state(0);
 	let typewriterRaf = 0;
 	let lastTypewriterTime = 0;
+	let lastTypeSoundChar = 0;
 
 	const CHARS_PER_FRAME = 2;
 	const FRAME_INTERVAL = 16; // ~60fps
+	const TYPE_SOUND_EVERY = 3; // play sound every N chars
+
+	preload("typewriter", "message_receive", "message_send", "error");
 
 	function startTypewriter() {
 		if (typewriterRaf) return;
@@ -74,6 +78,12 @@
 				const newLen = Math.min(displayedLength + charsToAdd, streamingContent.length);
 				if (newLen !== displayedLength) {
 					displayedLength = newLen;
+					// Play typing sound every N characters
+					const soundsSince = Math.floor(newLen / TYPE_SOUND_EVERY) - Math.floor(lastTypeSoundChar / TYPE_SOUND_EVERY);
+					if (soundsSince > 0) {
+						playImmediate("typewriter", { pitchRange: [0.88, 1.15] });
+						lastTypeSoundChar = newLen;
+					}
 					updateStreamingBubble();
 					scrollToBottom();
 				}
@@ -390,6 +400,7 @@
 				}
 				scrollToBottom();
 			} else if (event.type === "chat_stream_delta") {
+				if (!streamingContent) lastTypeSoundChar = 0;
 				streamingContent += event.delta;
 				startTypewriter();
 			} else if (event.type === "mcp_app_start") {
