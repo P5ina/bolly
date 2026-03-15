@@ -32,9 +32,9 @@
 
 		<!-- desktop -->
 		<ul class="hidden md:flex items-center gap-8 list-none">
-			<li><a href="#features" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Features</a></li>
-			<li><a href="#how" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">How it works</a></li>
-			<li><a href="#pricing" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Pricing</a></li>
+			<li><a href="/#features" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Features</a></li>
+			<li><a href="/#how" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">How it works</a></li>
+			<li><a href="/#pricing" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Pricing</a></li>
 			<li><a href="/skills" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Skills</a></li>
 			<li><a href="https://github.com/P5ina/bolly" target="_blank" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">GitHub</a></li>
 			<li><a href="/login" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Log in</a></li>
@@ -66,9 +66,9 @@
 	<button class="mobile-backdrop" onclick={closeMobile} aria-label="Close menu"></button>
 
 	<div class="mobile-menu">
-		<a href="#features" onclick={closeMobile} class="mobile-link">Features</a>
-		<a href="#how" onclick={closeMobile} class="mobile-link">How it works</a>
-		<a href="#pricing" onclick={closeMobile} class="mobile-link">Pricing</a>
+		<a href="/#features" onclick={closeMobile} class="mobile-link">Features</a>
+		<a href="/#how" onclick={closeMobile} class="mobile-link">How it works</a>
+		<a href="/#pricing" onclick={closeMobile} class="mobile-link">Pricing</a>
 		<a href="/skills" class="mobile-link">Skills</a>
 		<a href="https://github.com/P5ina/bolly" target="_blank" class="mobile-link">GitHub</a>
 
