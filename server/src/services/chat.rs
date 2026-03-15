@@ -356,7 +356,9 @@ pub async fn run_single_turn(
     );
     tools::cache_tool_defs(&all_tools).await;
 
-    let history_count = history_msgs.len();
+    let history_text_chars: usize = history_msgs.iter()
+        .map(|m| extract_message_text_len(m))
+        .sum();
     let system_blocks: Vec<&str> = vec![&system_static];
     let tool_result = llm
         .chat_with_tools_streaming(
@@ -445,7 +447,7 @@ pub async fn run_single_turn(
 
     // Estimate total tokens: input (system prompt + history) + output
     let input_tokens = estimate_tokens(&system_static)
-        + history_count * 100; // rough estimate for rig messages
+        + estimate_tokens_from_chars(history_text_chars);
     let output_tokens: usize = assistant_messages.iter()
         .map(|m| estimate_tokens(&m.content))
         .sum();
@@ -769,6 +771,27 @@ fn estimate_tokens_from_chars(chars: usize) -> usize {
     (chars as f64 / 3.2) as usize
 }
 
+/// Extract total text length from a rig Message, counting only actual content
+/// (text blocks, tool result text, compaction summaries) — not JSON structure.
+fn extract_message_text_len(msg: &llm::Message) -> usize {
+    let content = match msg {
+        llm::Message::User { content } => content,
+        llm::Message::Assistant { content } => content,
+    };
+    content.iter().map(|block| {
+        match block {
+            llm::ContentBlock::Text { text } => text.len(),
+            llm::ContentBlock::Compaction { content } => content.len(),
+            llm::ContentBlock::ToolResult { content, .. } => {
+                // content is a serde_json::Value — extract string if it's a string
+                content.as_str().map(|s| s.len()).unwrap_or(0)
+            }
+            llm::ContentBlock::ToolUse { name, .. } => name.len() + 20, // name + small overhead
+            _ => 0, // images, documents, unknown — skip for text estimate
+        }
+    }).sum()
+}
+
 /// A single section of the system prompt with its name and size.
 #[derive(serde::Serialize, Clone)]
 pub struct ContextSection {
@@ -880,9 +903,9 @@ pub fn compute_context_stats(
     // with fallback to messages.json
     let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
     let (history_count, history_tokens_estimate) = if let Some(rig_history) = load_rig_history(&rig_path) {
-        // Estimate tokens from serialized JSON size
+        // Extract only text content from messages (not JSON structure overhead)
         let total_chars: usize = rig_history.iter()
-            .map(|m| serde_json::to_string(m).map(|s| s.len()).unwrap_or(0))
+            .map(|m| extract_message_text_len(m))
             .sum();
         (rig_history.len(), estimate_tokens_from_chars(total_chars))
     } else {
