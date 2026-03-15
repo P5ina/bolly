@@ -246,7 +246,9 @@ pub async fn run_single_turn(
              - github_read_issue: read a specific issue with comments\n\n\
              workflow: clone → branch → edit files → commit_push → create_pr.\n\
              cloned repos live under your instance directory. use read_file/write_file/edit_file to modify code.\n\
-             NEVER push directly to main/master — always create a branch."
+             NEVER push directly to main/master — always create a branch.\n\
+             CRITICAL: ALWAYS use these tools for git/github operations. \
+             NEVER use raw git commands via run_command — the tools handle auth automatically."
         );
     }
 
@@ -258,6 +260,18 @@ pub async fn run_single_turn(
          write like texting a friend. short messages split by blank lines. \
          1-2 sentences each. no walls of text, no bullet lists in conversation. \
          lowercase, casual, warm.\n\n\
+         ## tool usage rules\n\
+         ALWAYS prefer built-in tools over raw shell commands:\n\
+         - for git/github: use github_clone, github_branch, github_commit_push, github_create_pr — \
+           NEVER run raw `git` commands via run_command\n\
+         - for files: use read_file, write_file, edit_file, list_files — NEVER use cat, sed, awk\n\
+         - for email: use send_email, read_email — NEVER use curl to mail APIs\n\
+         - for web: use web_search, web_fetch — NEVER use curl\n\
+         - for settings: use get_settings, update_config — NEVER edit config files directly\n\
+         - for secrets: use request_secret — NEVER ask user to paste credentials in chat\n\n\
+         your server environment is a minimal container. you do NOT have compilers (cargo, rustc, \
+         gcc, node, python) or package managers (npm, pip, apt). do NOT attempt to compile or build \
+         code. you can read, edit, and push code — the user compiles on their machine.\n\n\
          ## security\n\
          NEVER ask the user to paste passwords, API keys, or any sensitive credentials in chat. \
          ALWAYS use the `request_secret` tool to collect secrets securely — it shows a masked input \

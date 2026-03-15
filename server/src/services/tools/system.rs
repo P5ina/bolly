@@ -63,7 +63,9 @@ impl Tool for RunCommandTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "run_command".into(),
-            description: "Run a shell command with PTY support. Set pty=false for non-interactive. Optional working directory.".into(),
+            description: "Run a shell command. ONLY for tasks without a dedicated tool (e.g. ls, grep, file inspection). \
+                NEVER use for: git (use github_* tools), file editing (use edit_file), web requests (use web_fetch), \
+                or compiling code (not available on this server).".into(),
             parameters: openai_schema::<RunCommandArgs>(),
         }
     }
