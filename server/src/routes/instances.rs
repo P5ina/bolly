@@ -17,6 +17,9 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/secret/{secret_id}", delete(cancel_secret))
         .route("/api/instances/{instance_slug}/context-stats", get(get_context_stats))
         .route("/api/instances/{instance_slug}/{chat_id}/context-stats", get(get_context_stats_chat))
+        .route("/api/instances/{instance_slug}/email", get(get_email_config))
+        .route("/api/instances/{instance_slug}/email", put(set_email_config))
+        .route("/api/instances/{instance_slug}/email", delete(delete_email_config))
 }
 
 async fn list_instances(State(state): State<AppState>) -> Json<Vec<InstanceSummary>> {
@@ -245,4 +248,57 @@ async fn get_context_stats_chat(
     Path((instance_slug, chat_id)): Path<(String, String)>,
 ) -> Json<chat::ContextStats> {
     Json(chat::compute_context_stats(&state.workspace_dir, &instance_slug, &chat_id))
+}
+
+// ---------------------------------------------------------------------------
+// Email config (per-instance SMTP/IMAP)
+// ---------------------------------------------------------------------------
+
+async fn get_email_config(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    match crate::config::EmailConfig::load(&state.workspace_dir, &instance_slug) {
+        Some(cfg) => Ok(Json(serde_json::json!({
+            "configured": true,
+            "smtp_host": cfg.smtp_host,
+            "smtp_port": cfg.smtp_port,
+            "smtp_user": cfg.smtp_user,
+            "smtp_from": cfg.smtp_from,
+            "imap_host": cfg.imap_host,
+            "imap_port": cfg.imap_port,
+            "imap_user": cfg.imap_user,
+            // Never expose passwords
+        }))),
+        None => Ok(Json(serde_json::json!({ "configured": false }))),
+    }
+}
+
+async fn set_email_config(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+    Json(cfg): Json<crate::config::EmailConfig>,
+) -> StatusCode {
+    match cfg.save(&state.workspace_dir, &instance_slug) {
+        Ok(_) => StatusCode::OK,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+async fn delete_email_config(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> StatusCode {
+    let path = state.workspace_dir
+        .join("instances")
+        .join(&instance_slug)
+        .join("email.toml");
+    if path.exists() {
+        match fs::remove_file(&path) {
+            Ok(_) => StatusCode::NO_CONTENT,
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    } else {
+        StatusCode::NO_CONTENT
+    }
 }

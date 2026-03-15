@@ -275,7 +275,8 @@ async fn heartbeat_instance(
             let auth_token = cfg.as_ref().map(|c| c.auth_token.clone()).unwrap_or_default();
             let landing_url = cfg.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
             let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
-            let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google);
+            let email_config = crate::config::EmailConfig::load(workspace_dir, slug);
+            let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google, email_config);
 
             match llm
                 .chat_with_tools_only(&system, &wake_prompt, vec![], heartbeat_tools, 5)
@@ -562,6 +563,7 @@ fn build_heartbeat_tools(
     instance_slug: &str,
     events: broadcast::Sender<ServerEvent>,
     google: Option<crate::services::google::GoogleClient>,
+    email_config: Option<crate::config::EmailConfig>,
 ) -> Vec<Box<dyn ToolDyn>> {
     let mut raw_tools: Vec<Box<dyn ToolDyn>> = vec![
         // Memory library
@@ -576,9 +578,15 @@ fn build_heartbeat_tools(
         Box::new(ReachOutTool::new(workspace_dir, instance_slug, events.clone())),
     ];
 
-    // Google tools (email, calendar)
+    // Email (unified: Gmail + IMAP)
+    let imap_accounts: Vec<crate::config::EmailConfig> = email_config.into_iter().collect();
+    let has_email = google.is_some() || !imap_accounts.is_empty();
+    if has_email {
+        raw_tools.push(Box::new(tools::ReadEmailTool::new(google.clone(), instance_slug, imap_accounts)));
+    }
+
+    // Google (calendar)
     if let Some(g) = google {
-        raw_tools.push(Box::new(tools::ReadEmailTool::new(g.clone(), instance_slug)));
         raw_tools.push(Box::new(tools::ListEventsTool::new(g, instance_slug)));
     }
 

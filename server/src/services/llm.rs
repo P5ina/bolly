@@ -58,7 +58,10 @@ pub enum ContentBlock {
         content: serde_json::Value,
     },
     #[serde(rename = "compaction")]
-    Compaction { summary: String },
+    Compaction {
+        #[serde(alias = "summary")]
+        content: String,
+    },
     /// Catch-all for unknown content block types (e.g. from newer API versions).
     /// Preserves the raw JSON so it can be serialized back without data loss.
     #[serde(untagged)]
@@ -567,7 +570,7 @@ async fn streaming_agent_loop(
         let mut assistant_content = Vec::new();
         if let Some(ref summary) = compaction {
             assistant_content.push(ContentBlock::Compaction {
-                summary: summary.clone(),
+                content: summary.clone(),
             });
             let _ = events.send(ServerEvent::ContextCompacting {
                 instance_slug: instance_slug.to_string(),

@@ -11,8 +11,11 @@
 		updateGithubToken,
 		fetchTimezone,
 		updateTimezone,
+		fetchEmailConfig,
+		updateEmailConfig,
+		deleteEmailConfig,
 	} from "$lib/api/client.js";
-	import type { McpServerInfo } from "$lib/api/client.js";
+	import type { McpServerInfo, EmailConfig } from "$lib/api/client.js";
 
 	const slug = $derived(page.params.slug!);
 
@@ -137,6 +140,73 @@
 		}
 	}
 
+	// Email state
+	let emailConfigured = $state(false);
+	let emailLoading = $state(true);
+	let emailSaving = $state(false);
+	let emailError = $state("");
+	let emailEditing = $state(false);
+	let emailForm = $state<EmailConfig>({
+		smtp_host: "", smtp_port: 587, smtp_user: "", smtp_password: "", smtp_from: "",
+		imap_host: "", imap_port: 993, imap_user: "", imap_password: "",
+	});
+
+	async function loadEmail() {
+		emailLoading = true;
+		try {
+			const res = await fetchEmailConfig(slug);
+			emailConfigured = res.configured;
+			if (res.configured) {
+				emailForm = {
+					smtp_host: res.smtp_host || "",
+					smtp_port: res.smtp_port || 587,
+					smtp_user: res.smtp_user || "",
+					smtp_password: "", // never returned from server
+					smtp_from: res.smtp_from || "",
+					imap_host: res.imap_host || "",
+					imap_port: res.imap_port || 993,
+					imap_user: res.imap_user || "",
+					imap_password: "", // never returned from server
+				};
+			}
+		} catch {
+			// not critical
+		} finally {
+			emailLoading = false;
+		}
+	}
+
+	async function saveEmail() {
+		emailSaving = true;
+		emailError = "";
+		try {
+			await updateEmailConfig(slug, emailForm);
+			emailConfigured = true;
+			emailEditing = false;
+		} catch (e: any) {
+			emailError = e?.message || "failed to save email config";
+		} finally {
+			emailSaving = false;
+		}
+	}
+
+	async function removeEmail() {
+		emailSaving = true;
+		emailError = "";
+		try {
+			await deleteEmailConfig(slug);
+			emailConfigured = false;
+			emailForm = {
+				smtp_host: "", smtp_port: 587, smtp_user: "", smtp_password: "", smtp_from: "",
+				imap_host: "", imap_port: 993, imap_user: "", imap_password: "",
+			};
+		} catch (e: any) {
+			emailError = e?.message || "failed to remove email config";
+		} finally {
+			emailSaving = false;
+		}
+	}
+
 	function isInstalled(name: string): boolean {
 		return mcpServers.some((s) => s.name === name);
 	}
@@ -257,6 +327,7 @@
 		loadMcpServers();
 		loadGithub();
 		loadTimezone();
+		loadEmail();
 	});
 </script>
 
@@ -491,6 +562,92 @@
 
 		{#if error}
 			<p class="error-msg">{error}</p>
+		{/if}
+	</section>
+
+	<!-- Email (SMTP/IMAP) -->
+	<section class="settings-section" style="margin-top: 1rem;">
+		<div class="section-header">
+			<div class="section-icon email-icon">
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<rect x="2" y="4" width="20" height="16" rx="2"/>
+					<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+				</svg>
+			</div>
+			<div>
+				<h3 class="section-label">email</h3>
+				<p class="section-desc">
+					Connect any email via SMTP/IMAP (iCloud, Outlook, Yahoo, etc.)
+					to enable send and read email tools.
+				</p>
+			</div>
+		</div>
+
+		{#if emailLoading}
+			<div class="ext-loading">
+				<div class="loading-dot"></div>
+			</div>
+		{:else if emailConfigured && !emailEditing}
+			<div class="gh-status">
+				<div class="gh-status-info">
+					<span class="gh-status-dot"></span>
+					<span class="gh-status-text">{emailForm.smtp_from || emailForm.smtp_user || "configured"}</span>
+				</div>
+				<div class="gh-status-actions">
+					<button class="ext-form-btn ext-form-cancel" onclick={() => emailEditing = true}>
+						change
+					</button>
+					<button
+						class="ext-remove-btn"
+						disabled={emailSaving}
+						onclick={removeEmail}
+					>
+						{emailSaving ? "..." : "remove"}
+					</button>
+				</div>
+			</div>
+		{:else}
+			<div class="email-form">
+				<div class="email-form-group">
+					<span class="email-form-label">outgoing (smtp)</span>
+					<input class="ext-input" type="text" placeholder="smtp host (e.g. smtp.mail.me.com)" bind:value={emailForm.smtp_host} />
+					<div class="email-form-row">
+						<input class="ext-input" type="number" placeholder="port" bind:value={emailForm.smtp_port} style="width: 5rem;" />
+						<input class="ext-input" style="flex:1" type="text" placeholder="username / email" bind:value={emailForm.smtp_user} />
+					</div>
+					<input class="ext-input" type="password" placeholder="password / app-specific password" bind:value={emailForm.smtp_password} />
+					<input class="ext-input" type="email" placeholder="from address (e.g. user@icloud.com)" bind:value={emailForm.smtp_from} />
+				</div>
+
+				<div class="email-form-group">
+					<span class="email-form-label">incoming (imap)</span>
+					<input class="ext-input" type="text" placeholder="imap host (e.g. imap.mail.me.com)" bind:value={emailForm.imap_host} />
+					<div class="email-form-row">
+						<input class="ext-input" type="number" placeholder="port" bind:value={emailForm.imap_port} style="width: 5rem;" />
+						<input class="ext-input" style="flex:1" type="text" placeholder="username / email" bind:value={emailForm.imap_user} />
+					</div>
+					<input class="ext-input" type="password" placeholder="password / app-specific password" bind:value={emailForm.imap_password} />
+				</div>
+
+				<div class="ext-form-actions">
+					<button
+						class="ext-form-btn ext-form-add"
+						disabled={emailSaving || (!emailForm.smtp_host && !emailForm.imap_host)}
+						onclick={saveEmail}
+					>
+						{emailSaving ? "saving..." : "save"}
+					</button>
+					{#if emailEditing}
+						<button class="ext-form-btn ext-form-cancel" onclick={() => { emailEditing = false; emailError = ""; }}>
+							cancel
+						</button>
+					{/if}
+				</div>
+			</div>
+		{/if}
+
+		{#if emailError}
+			<p class="error-msg">{emailError}</p>
 		{/if}
 	</section>
 
@@ -1043,5 +1200,36 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+	}
+
+	/* --- email --- */
+
+	.email-icon {
+		color: oklch(0.72 0.10 250 / 60%);
+	}
+
+	.email-form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.email-form-group {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+
+	.email-form-label {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: oklch(0.55 0.02 280 / 45%);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+	}
+
+	.email-form-row {
+		display: flex;
+		gap: 0.4rem;
 	}
 </style>

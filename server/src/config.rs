@@ -35,6 +35,56 @@ pub struct GithubConfig {
     pub token: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct EmailConfig {
+    #[serde(default)]
+    pub smtp_host: String,
+    #[serde(default = "default_smtp_port")]
+    pub smtp_port: u16,
+    #[serde(default)]
+    pub smtp_user: String,
+    #[serde(default)]
+    pub smtp_password: String,
+    #[serde(default)]
+    pub smtp_from: String,
+    #[serde(default)]
+    pub imap_host: String,
+    #[serde(default = "default_imap_port")]
+    pub imap_port: u16,
+    #[serde(default)]
+    pub imap_user: String,
+    #[serde(default)]
+    pub imap_password: String,
+}
+
+fn default_smtp_port() -> u16 { 587 }
+fn default_imap_port() -> u16 { 993 }
+
+impl EmailConfig {
+    /// Load email config from `instances/{slug}/email.toml`.
+    pub fn load(workspace_dir: &Path, instance_slug: &str) -> Option<Self> {
+        let path = workspace_dir
+            .join("instances")
+            .join(instance_slug)
+            .join("email.toml");
+        let raw = fs::read_to_string(path).ok()?;
+        let cfg: Self = toml::from_str(&raw).ok()?;
+        if cfg.smtp_host.is_empty() && cfg.imap_host.is_empty() {
+            return None;
+        }
+        Some(cfg)
+    }
+
+    /// Save email config to `instances/{slug}/email.toml`.
+    pub fn save(&self, workspace_dir: &Path, instance_slug: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let dir = workspace_dir.join("instances").join(instance_slug);
+        fs::create_dir_all(&dir)?;
+        let raw = toml::to_string_pretty(self)?;
+        fs::write(dir.join("email.toml"), raw)?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct McpServerConfig {
     /// Human-readable name for this MCP server.

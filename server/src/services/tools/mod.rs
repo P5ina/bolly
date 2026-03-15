@@ -83,9 +83,10 @@ pub fn all_categories() -> HashSet<ToolCategory> {
 
 const TRIAGE_SYSTEM: &str = "\
 You classify which tool categories a chat message needs.
-Categories: web, google, github, project, code, creative, system, skills
+Categories: web, google, email, github, project, code, creative, system, skills
 - web: searching the internet, fetching URLs, browsing pages, watching videos
-- google: email, gmail, calendar, events, google drive files
+- google: gmail, calendar, events, google drive files
+- email: sending or reading email, inbox, messages
 - github: repositories, branches, commits, pull requests, issues
 - project: project state, tasks, kanban board, todos
 - code: searching/exploring code in the codebase
@@ -97,7 +98,7 @@ Respond with a comma-separated list of needed categories, or NONE if only basic 
 Examples:
 User: hey how are you? → NONE
 User: search the web for rust async patterns → web
-User: check my email and create a task for it → google,project
+User: check my email and create a task for it → email,project
 User: clone the repo and explore the code → github,code
 User: remind me tomorrow to review PRs → creative,github
 User: install ffmpeg and update the config → system";
@@ -546,6 +547,7 @@ pub fn build_tools(
     >,
     plan: &str,
     google: Option<crate::services::google::GoogleClient>,
+    email_config: Option<crate::config::EmailConfig>,
     sent_files: SentFiles,
     mcp_snapshot: Option<crate::services::mcp::McpAppSnapshot>,
     mcp_tools: Vec<Box<dyn ToolDyn>>,
@@ -621,10 +623,16 @@ pub fn build_tools(
     tools.push(wrap(Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone()))));
     tools.push(wrap(Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug))));
 
-    // ── Google ──
+    // ── Email (unified: Gmail + SMTP/IMAP) ──
+    let imap_accounts: Vec<crate::config::EmailConfig> = email_config.into_iter().collect();
+    let has_email = google.is_some() || !imap_accounts.is_empty();
+    if has_email {
+        tools.push(wrap(Box::new(SendEmailTool::new(google.clone(), instance_slug, imap_accounts.clone()))));
+        tools.push(wrap(Box::new(ReadEmailTool::new(google.clone(), instance_slug, imap_accounts))));
+    }
+
+    // ── Google (calendar, drive) ──
     if let Some(g) = google {
-        tools.push(wrap(Box::new(SendEmailTool::new(g.clone(), instance_slug))));
-        tools.push(wrap(Box::new(ReadEmailTool::new(g.clone(), instance_slug))));
         tools.push(wrap(Box::new(ListEventsTool::new(g.clone(), instance_slug))));
         tools.push(wrap(Box::new(CreateEventTool::new(g.clone(), instance_slug))));
         tools.push(wrap(Box::new(ListDriveFilesTool::new(g.clone(), instance_slug))));

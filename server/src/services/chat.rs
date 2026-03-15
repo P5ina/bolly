@@ -159,8 +159,15 @@ pub async fn run_single_turn(
     };
     let google_connected = !google_accounts.is_empty();
 
-    let google_hint = if google_connected {
+    let email_config = crate::config::EmailConfig::load(workspace_dir, &instance_slug);
+    let email_configured = email_config.is_some();
+    let has_any_email = google_connected || email_configured;
+    let google_hint = if google_connected && email_configured {
+        " email, google calendar, google drive,"
+    } else if google_connected {
         " gmail, google calendar, google drive,"
+    } else if email_configured {
+        " email,"
     } else {
         ""
     };
@@ -181,31 +188,48 @@ pub async fn run_single_turn(
         ));
     }
 
-    if google_connected {
-        let account_list: String = google_accounts.iter()
-            .map(|a| format!("- {}", a.email))
-            .collect::<Vec<_>>()
-            .join("\n");
+    // Email accounts prompt
+    if has_any_email {
+        let mut account_lines = Vec::new();
+        for a in &google_accounts {
+            account_lines.push(format!("- {} (gmail)", a.email));
+        }
+        if let Some(ref cfg) = email_config {
+            let label = if cfg.smtp_from.is_empty() { &cfg.smtp_user } else { &cfg.smtp_from };
+            account_lines.push(format!("- {} (smtp/imap)", label));
+        }
         system_prompt.push_str(&format!(
-            "\n\n## google integration\n\
-             connected google accounts:\n\
-             {account_list}\n\
-             use the `account` parameter on google tools to pick which account.\n\
-             if not specified, the first account is used.\n\
-             available tools:\n\
-             - send_email / read_email: send and read Gmail messages\n\
-             - list_events / create_event: view and create Google Calendar events\n\
-             - list_drive_files / read_drive_file / upload_drive_file: browse, read, and upload Google Drive files\n\
-             use these tools directly when the user asks about email, calendar, or files."
+            "\n\n## email\n\
+             connected email accounts:\n\
+             {}\n\
+             use the `account` parameter on send_email/read_email to pick which account.\n\
+             if not specified, the first available account is used.",
+            account_lines.join("\n")
         ));
+    }
+
+    // Google services (calendar, drive)
+    if google_connected {
+        system_prompt.push_str(
+            "\n\n## google integration\n\
+             available google tools:\n\
+             - list_events / create_event: Google Calendar\n\
+             - list_drive_files / read_drive_file / upload_drive_file: Google Drive\n\
+             use `account` parameter to pick which google account."
+        );
     } else {
         system_prompt.push_str(
             "\n\n## google integration\n\
-             google is NOT connected. you do NOT have email, calendar, or drive tools.\n\
-             NEVER pretend to read email or access google services.\n\
-             NEVER fabricate email contents, calendar events, or file listings.\n\
-             if the user asks about email, calendar, or drive, tell them to connect \
-             their google account from the settings page first."
+             google is NOT connected. you do NOT have calendar or drive tools.\n\
+             NEVER fabricate calendar events or file listings."
+        );
+    }
+
+    if !has_any_email {
+        system_prompt.push_str(
+            "\nyou do NOT have email tools. \
+             NEVER pretend to read or send email. \
+             if the user asks about email, tell them to configure it in settings."
         );
     }
 
@@ -323,6 +347,7 @@ pub async fn run_single_turn(
         Some(pending_secrets),
         plan,
         google,
+        email_config,
         sent_files,
         Some(mcp_snapshot.clone()),
         mcp_tools,

@@ -203,6 +203,40 @@ export function updateGithubToken(token: string): Promise<{ status: string; conf
 	});
 }
 
+// ---------------------------------------------------------------------------
+// Email config (per-instance SMTP/IMAP)
+// ---------------------------------------------------------------------------
+
+export interface EmailConfig {
+	smtp_host: string;
+	smtp_port: number;
+	smtp_user: string;
+	smtp_password: string;
+	smtp_from: string;
+	imap_host: string;
+	imap_port: number;
+	imap_user: string;
+	imap_password: string;
+}
+
+export function fetchEmailConfig(slug: string): Promise<{ configured: boolean } & Partial<EmailConfig>> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/email`);
+}
+
+export function updateEmailConfig(slug: string, config: EmailConfig): Promise<void> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/email`, {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(config),
+	});
+}
+
+export function deleteEmailConfig(slug: string): Promise<void> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/email`, {
+		method: "DELETE",
+	});
+}
+
 export function fetchSoul(slug: string): Promise<Soul> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/soul`);
 }

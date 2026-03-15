@@ -17,13 +17,4 @@ OPEN_AI = ""
 ANTHROPIC = ""
 BRAVE_SEARCH = ""
 
-[email]
-smtp_host = ""
-smtp_port = 587
-smtp_user = ""
-smtp_password = ""
-smtp_from = ""
-imap_host = ""
-imap_port = 993
-imap_user = ""
-imap_password = ""
+# Email is configured per-instance via Settings UI (stored in instances/{slug}/email.toml)
