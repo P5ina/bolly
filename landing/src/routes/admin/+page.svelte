@@ -46,6 +46,7 @@
 	let resetting = $state<string | null>(null);
 	let migrating = $state(false);
 	let notifying = $state(false);
+	let patching = $state(false);
 	let priceMessage = $state('');
 
 	function currentModel(tenant: (typeof data.tenants)[number]) {
@@ -198,6 +199,33 @@
 							<Loader size={12} class="animate-spin" />
 						{/if}
 						sync plan limits
+					</button>
+				</form>
+				<form method="POST" action="?/patchEnv" use:enhance={() => {
+					patching = true;
+					actionError = null;
+					actionSuccess = null;
+					return async ({ result, update }) => {
+						patching = false;
+						if (result.type === 'failure') {
+							actionError = (result.data as { error?: string })?.error ?? 'Patch failed';
+						} else if (result.type === 'success') {
+							const data = result.data as { patched?: number };
+							actionSuccess = `Patched env on ${data?.patched ?? 0} machine(s)`;
+						}
+						await update();
+					};
+				}}>
+					<button
+						type="submit"
+						disabled={patching}
+						class="text-xs py-1.5 px-4 rounded-lg transition-all duration-300 disabled:opacity-40 inline-flex items-center gap-1.5"
+						style="color: var(--color-warm); border: 1px solid var(--color-border-warm);"
+					>
+						{#if patching}
+							<Loader size={12} class="animate-spin" />
+						{/if}
+						patch env (all machines)
 					</button>
 				</form>
 			</div>
