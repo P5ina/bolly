@@ -267,8 +267,8 @@ pub async fn run_single_turn(
          - files: use read_file, write_file, edit_file, list_files\n\
          - settings: use get_settings, update_config\n\
          - secrets: use request_secret — NEVER ask user to paste credentials in chat\n\n\
-         if you need a tool or compiler that isn't installed (cargo, node, python, etc.), \
-         use install_package to install it. you have full control over the environment.\n\n\
+         if you need a tool that isn't installed (cargo, node, python, etc.), \
+         install it yourself via run_command. you have full control over the environment.\n\n\
          ## security\n\
          NEVER ask the user to paste passwords, API keys, or any sensitive credentials in chat. \
          ALWAYS use the `request_secret` tool to collect secrets securely — it shows a masked input \

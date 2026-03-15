@@ -50,7 +50,7 @@ pub use project::{
 };
 pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
 pub use system::{
-    ClearContextTool, CreateDropTool, ExploreCodeTool, GetSettingsTool, InstallPackageTool,
+    ClearContextTool, CreateDropTool, ExploreCodeTool, GetSettingsTool,
     InteractiveSessionTool, RequestSecretTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
 };
 pub use video::WatchVideoTool;
@@ -324,7 +324,6 @@ pub fn tool_summary(name: &str, args: &str) -> String {
         ),
         "upload_drive_file" => format!("uploading {}", v["name"].as_str().unwrap_or("?")),
         "request_secret" => format!("requesting secret: {}", v["prompt"].as_str().unwrap_or("?")),
-        "install_package" => format!("installing {}", v["packages"].as_str().unwrap_or("?")),
         "read_skill_reference" => format!(
             "reading skill ref {}/{}",
             v["skill_id"].as_str().unwrap_or("?"),
@@ -500,7 +499,6 @@ impl ToolDyn for ObservableTool {
                 });
             }
             if tool_name == "run_command"
-                || tool_name == "install_package"
                 || tool_name == "interactive_session"
                 || tool_name == "send_file"
             {
@@ -588,7 +586,6 @@ pub fn build_tools(
     // ── System ──
     tools.push(wrap(Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug))));
     tools.push(wrap(Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone()))));
-    tools.push(wrap(Box::new(InstallPackageTool)));
     tools.push(wrap(Box::new(GetSettingsTool::new(config_path, workspace_dir, instance_slug, google.clone()))));
     tools.push(wrap(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug))));
     if let Some(ps) = pending_secrets {
