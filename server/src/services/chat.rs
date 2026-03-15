@@ -107,7 +107,6 @@ pub async fn run_single_turn(
     plan: &str,
     pdf_strategy: &llm::PdfStrategy,
     mcp_registry: &crate::services::mcp::McpRegistry,
-    github_token: Option<&str>,
 ) -> io::Result<SingleTurnResult> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
@@ -234,22 +233,19 @@ pub async fn run_single_turn(
     }
 
     // GitHub integration hint
-    if github_token.is_some_and(|t| !t.is_empty()) {
-        system_prompt.push_str(
-            "\n\n## github integration\n\
-             you have GitHub tools available:\n\
-             - github_clone: clone a repo (or pull latest)\n\
-             - github_branch: create a new branch\n\
-             - github_commit_push: stage, commit, and push changes\n\
-             - github_create_pr: open a pull request\n\
-             - github_issues: list issues on a repo\n\
-             - github_read_issue: read a specific issue with comments\n\n\
-             workflow: clone → branch → edit files → commit_push → create_pr.\n\
-             cloned repos live under your instance directory. use read_file/write_file/edit_file to modify code.\n\
-             NEVER push directly to main/master — always create a branch.\n\
-             CRITICAL: ALWAYS use these tools for git/github operations. \
-             NEVER use raw git commands via run_command — the tools handle auth automatically."
-        );
+    {
+        let gh_configured = chat_config.as_ref()
+            .is_some_and(|c| !c.github.token.is_empty());
+        if gh_configured {
+            system_prompt.push_str(
+                "\n\n## github\n\
+                 github token is configured. use `gh` CLI and `git` commands via run_command.\n\
+                 the token is available as GITHUB_TOKEN env var for `gh` auth.\n\
+                 if `gh` is not installed, install it yourself.\n\
+                 workflow: git clone → git checkout -b → edit files → git commit → git push → gh pr create.\n\
+                 NEVER push directly to main/master — always create a branch."
+            );
+        }
     }
 
     let autonomy_prompt = load_autonomy_prompt(workspace_dir, &instance_slug);
@@ -362,7 +358,6 @@ pub async fn run_single_turn(
         sent_files,
         Some(mcp_snapshot.clone()),
         mcp_tools,
-        github_token,
         &openrouter_key,
     );
     tools::cache_tool_defs(&all_tools).await;

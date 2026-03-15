@@ -138,9 +138,9 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         iteration += 1;
 
         let config_path = config::config_path();
-        let (brave_key, plan, auth_token, github_token) = {
+        let (brave_key, plan, auth_token) = {
             let cfg = state.config.read().await;
-            (cfg.llm.tokens.brave_search.clone(), cfg.plan.clone(), cfg.auth_token.clone(), cfg.github.token.clone())
+            (cfg.llm.tokens.brave_search.clone(), cfg.plan.clone(), cfg.auth_token.clone())
         };
 
         let llm_guard = state.llm.read().await;
@@ -171,7 +171,6 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             &plan,
             &pdf_strategy,
             &state.mcp_registry,
-            if github_token.is_empty() { None } else { Some(github_token.as_str()) },
         );
 
         let result = tokio::select! {

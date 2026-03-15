@@ -39,15 +39,8 @@ pub use companion::{
 };
 pub use drive::{ListDriveFilesTool, ReadDriveFileTool, UploadDriveFileTool};
 pub use files::{EditFileTool, ListFilesTool, ReadFileTool, SendFileTool, WriteFileTool};
-pub use github::{
-    GithubBranchTool, GithubCloneTool, GithubCommitPushTool, GithubCreatePrTool, GithubIssuesTool,
-    GithubReadIssueTool,
-};
 pub use memory_tools::{MemoryForgetTool, MemoryListTool, MemoryReadTool, MemoryWriteTool};
-pub use project::{
-    CreateTaskTool, GetProjectStateTool, ListTasksTool, TaskItem, TaskStatus,
-    UpdateProjectStateTool, UpdateTaskTool,
-};
+pub use project::{TaskItem, TaskStatus};
 pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
 pub use system::{
     ClearContextTool, CreateDropTool, ExploreCodeTool, GetSettingsTool,
@@ -296,9 +289,6 @@ pub fn tool_summary(name: &str, args: &str) -> String {
         "set_mood" => format!("mood → {}", v["mood"].as_str().unwrap_or("?")),
         "remember" => "storing a memory".into(),
         "recall" => format!("recalling '{}'", v["query"].as_str().unwrap_or("?")),
-        "create_task" => format!("creating task: {}", v["title"].as_str().unwrap_or("?")),
-        "update_task" => format!("updating task {}", v["id"].as_str().unwrap_or("?")),
-        "update_project_state" => "updating project state".into(),
         "web_search" => format!("web search: {}", v["query"].as_str().unwrap_or("?")),
         "web_fetch" => format!("fetching {}", v["url"].as_str().unwrap_or("?")),
         "update_config" => "updating config".into(),
@@ -339,12 +329,6 @@ pub fn tool_summary(name: &str, args: &str) -> String {
             let n = v["actions"].as_array().map(|a| a.len()).unwrap_or(0);
             format!("browsing {url} ({n} actions)")
         }
-        "github_clone" => format!("cloning {}", v["repo"].as_str().unwrap_or("?")),
-        "github_branch" => format!("creating branch {}", v["branch"].as_str().unwrap_or("?")),
-        "github_commit_push" => format!("committing to {}", v["repo"].as_str().unwrap_or("?")),
-        "github_create_pr" => format!("opening PR: {}", v["title"].as_str().unwrap_or("?")),
-        "github_issues" => format!("listing issues on {}", v["repo"].as_str().unwrap_or("?")),
-        "github_read_issue" => format!("reading issue #{}", v["number"].as_u64().unwrap_or(0)),
         _ => format!("calling {name}"),
     }
 }
@@ -550,7 +534,6 @@ pub fn build_tools(
     sent_files: SentFiles,
     mcp_snapshot: Option<crate::services::mcp::McpAppSnapshot>,
     mcp_tools: Vec<Box<dyn ToolDyn>>,
-    github_token: Option<&str>,
     openrouter_key: &str,
 ) -> (Vec<Box<dyn ToolDyn>>, SentFiles) {
     let snap = mcp_snapshot;
@@ -611,12 +594,6 @@ pub fn build_tools(
     tools.push(wrap(Box::new(SearchCodeTool::new(workspace_dir, instance_slug))));
     tools.push(wrap(Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone()))));
 
-    // ── Project ──
-    tools.push(wrap(Box::new(GetProjectStateTool::new(workspace_dir, instance_slug))));
-    tools.push(wrap(Box::new(UpdateProjectStateTool::new(workspace_dir, instance_slug))));
-    tools.push(wrap(Box::new(CreateTaskTool::new(workspace_dir, instance_slug))));
-    tools.push(wrap(Box::new(UpdateTaskTool::new(workspace_dir, instance_slug))));
-    tools.push(wrap(Box::new(ListTasksTool::new(workspace_dir, instance_slug))));
 
     // ── Creative ──
     tools.push(wrap(Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone()))));
@@ -638,17 +615,6 @@ pub fn build_tools(
         tools.push(wrap(Box::new(UploadDriveFileTool::new(g, instance_slug))));
     }
 
-    // ── GitHub ──
-    if let Some(gh_token) = github_token {
-        if !gh_token.is_empty() {
-            tools.push(wrap(Box::new(GithubCloneTool::new(workspace_dir, instance_slug, gh_token))));
-            tools.push(wrap(Box::new(GithubBranchTool::new(workspace_dir, instance_slug, gh_token))));
-            tools.push(wrap(Box::new(GithubCommitPushTool::new(workspace_dir, instance_slug, gh_token))));
-            tools.push(wrap(Box::new(GithubCreatePrTool::new(workspace_dir, instance_slug, gh_token))));
-            tools.push(wrap(Box::new(GithubIssuesTool::new(workspace_dir, instance_slug, gh_token))));
-            tools.push(wrap(Box::new(GithubReadIssueTool::new(workspace_dir, instance_slug, gh_token))));
-        }
-    }
 
     // MCP tools
     for mcp_tool in mcp_tools {
