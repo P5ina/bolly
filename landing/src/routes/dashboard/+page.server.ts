@@ -365,15 +365,18 @@ export const actions: Actions = {
 /** Validate an API key by making a minimal test call. */
 async function validateApiKey(provider: string, apiKey: string, model?: string | null): Promise<void> {
 	if (provider === 'anthropic') {
+		const isOAuth = apiKey.startsWith('sk-ant-oat');
 		const res = await fetch('https://api.anthropic.com/v1/messages', {
 			method: 'POST',
 			headers: {
-				'x-api-key': apiKey,
+				...(isOAuth
+					? { 'Authorization': `Bearer ${apiKey}`, 'anthropic-beta': 'oauth-2025-04-20,claude-code-20250219' }
+					: { 'x-api-key': apiKey }),
 				'anthropic-version': '2023-06-01',
 				'content-type': 'application/json',
 			},
 			body: JSON.stringify({
-				model: model || 'claude-haiku-4-5-20251001',
+				model: model || 'claude-sonnet-4-6',
 				max_tokens: 1,
 				messages: [{ role: 'user', content: 'hi' }],
 			}),

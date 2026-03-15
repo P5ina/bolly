@@ -611,9 +611,14 @@ async fn complete_once(
 
 fn anthropic_headers(api_key: &str) -> reqwest::header::HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("x-api-key", api_key.parse().unwrap());
+    if api_key.starts_with("sk-ant-oat") {
+        headers.insert("authorization", format!("Bearer {api_key}").parse().unwrap());
+        headers.insert("anthropic-beta", "oauth-2025-04-20,claude-code-20250219".parse().unwrap());
+    } else {
+        headers.insert("x-api-key", api_key.parse().unwrap());
+        headers.insert("anthropic-beta", "compact-2026-01-12".parse().unwrap());
+    }
     headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
-    headers.insert("anthropic-beta", "compact-2026-01-12".parse().unwrap());
     headers.insert("content-type", "application/json".parse().unwrap());
     headers
 }
