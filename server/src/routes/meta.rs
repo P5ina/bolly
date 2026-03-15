@@ -28,6 +28,7 @@ async fn server_meta(State(state): State<AppState>) -> Json<ServerMetaResponse> 
             model: cfg.llm.model.clone(),
             openai_configured: !cfg.llm.tokens.open_ai.trim().is_empty(),
             anthropic_configured: !cfg.llm.tokens.anthropic.trim().is_empty(),
+            openrouter_configured: !cfg.llm.tokens.open_router.trim().is_empty(),
         },
     })
 }
