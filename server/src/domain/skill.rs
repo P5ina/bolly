@@ -34,6 +34,7 @@ pub struct SkillSource {
 
 /// YAML frontmatter parsed from a SKILL.md file (Agent Skills spec).
 #[derive(Debug, Clone, Default, Deserialize)]
+#[allow(dead_code)]
 pub struct SkillFrontmatter {
     #[serde(default)]
     pub name: String,

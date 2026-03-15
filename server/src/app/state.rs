@@ -15,6 +15,7 @@ use crate::{
 
 /// A pending secret request waiting for user input.
 pub struct PendingSecret {
+    #[allow(dead_code)]
     pub target: String,
     pub responder: tokio::sync::oneshot::Sender<String>,
 }

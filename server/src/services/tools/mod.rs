@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt, fs,
     future::Future,
     path::{Path, PathBuf},
@@ -21,7 +21,6 @@ pub mod communication;
 pub mod companion;
 pub mod drive;
 pub mod files;
-pub mod github;
 pub mod memory_tools;
 pub mod project;
 pub mod skills;
@@ -48,95 +47,6 @@ pub use system::{
 };
 pub use video::WatchVideoTool;
 pub use web::{BrowseTool, WebFetchTool, WebSearchTool};
-
-// ---------------------------------------------------------------------------
-// Tool categories for dynamic loading
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ToolCategory {
-    Core,
-    Web,
-    Google,
-    Github,
-    Project,
-    Code,
-    Creative,
-    System,
-    Skills,
-}
-
-/// All categories (used when triage is unavailable).
-pub fn all_categories() -> HashSet<ToolCategory> {
-    use ToolCategory::*;
-    [Core, Web, Google, Github, Project, Code, Creative, System, Skills]
-        .into_iter()
-        .collect()
-}
-
-const TRIAGE_SYSTEM: &str = "\
-You classify which tool categories a chat message needs.
-Categories: web, google, email, github, project, code, creative, system, skills
-- web: searching the internet, fetching URLs, browsing pages, watching videos
-- google: gmail, calendar, events, google drive files
-- email: sending or reading email, inbox, messages
-- github: repositories, branches, commits, pull requests, issues
-- project: project state, tasks, kanban board, todos
-- code: searching/exploring code in the codebase
-- creative: creating drops (poems, art, sketches), scheduling future messages, reminders
-- system: installing packages, changing config/settings, terminal sessions, sending files, API keys/secrets
-- skills: listing/activating skills
-
-Respond with a comma-separated list of needed categories, or NONE if only basic chat is needed.
-Examples:
-User: hey how are you? → NONE
-User: search the web for rust async patterns → web
-User: check my email and create a task for it → email,project
-User: clone the repo and explore the code → github,code
-User: remind me tomorrow to review PRs → creative,github
-User: install ffmpeg and update the config → system";
-
-/// Ask a fast model which tool categories the user's message needs.
-pub async fn triage_categories(
-    llm: &crate::services::llm::LlmBackend,
-    user_message: &str,
-) -> HashSet<ToolCategory> {
-    let fast = llm.fast_variant();
-    let mut cats = HashSet::new();
-    cats.insert(ToolCategory::Core);
-
-    let result = fast.chat(TRIAGE_SYSTEM, user_message, vec![]).await;
-    let response = match result {
-        Ok(r) => r,
-        Err(e) => {
-            log::warn!("tool triage failed, loading all: {e}");
-            return all_categories();
-        }
-    };
-
-    let response = response.trim().to_lowercase();
-    log::info!("tool triage: {response}");
-
-    if response == "none" {
-        return cats;
-    }
-
-    for part in response.split(',') {
-        match part.trim() {
-            "web" => { cats.insert(ToolCategory::Web); }
-            "google" => { cats.insert(ToolCategory::Google); }
-            "github" => { cats.insert(ToolCategory::Github); }
-            "project" => { cats.insert(ToolCategory::Project); }
-            "code" => { cats.insert(ToolCategory::Code); }
-            "creative" => { cats.insert(ToolCategory::Creative); }
-            "system" => { cats.insert(ToolCategory::System); }
-            "skills" => { cats.insert(ToolCategory::Skills); }
-            _ => {}
-        }
-    }
-
-    cats
-}
 
 // ---------------------------------------------------------------------------
 // Cached tool definitions snapshot (populated by build_tools, read by stats)
@@ -719,32 +629,6 @@ fn update_mcp_app_result(
     if let Ok(json) = serde_json::to_string_pretty(&messages) {
         let _ = fs::write(&path, json);
     }
-}
-
-/// Inject a system message into a chat.
-pub fn inject_system_message(
-    workspace_dir: &Path,
-    instance_slug: &str,
-    chat_id: &str,
-    content: &str,
-    events: &broadcast::Sender<ServerEvent>,
-) {
-    let message = crate::domain::chat::ChatMessage {
-        id: format!("sys_{}_{}", tool_call_counter(), unix_millis()),
-        role: crate::domain::chat::ChatRole::Assistant,
-        content: content.to_string(),
-        created_at: unix_millis().to_string(),
-        kind: Default::default(),
-        tool_name: None,
-        mcp_app_html: None,
-        mcp_app_input: None,
-    };
-    append_message_to_chat(workspace_dir, instance_slug, chat_id, &message);
-    let _ = events.send(ServerEvent::ChatMessageCreated {
-        instance_slug: instance_slug.to_string(),
-        chat_id: chat_id.to_string(),
-        message,
-    });
 }
 
 /// Shared collector for file attachments produced by send_file during a turn.

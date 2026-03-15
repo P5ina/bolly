@@ -15,7 +15,6 @@ use crate::{
     services::{
         llm::{self, LlmBackend},
         memory,
-        rhythm,
         tools,
         skills,
         workspace,

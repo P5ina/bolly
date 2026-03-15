@@ -91,34 +91,6 @@ pub fn build_memory_prompt(workspace_dir: &Path, instance_slug: &str) -> String 
     prompt
 }
 
-/// Build a compact memory summary for heartbeat context.
-/// Includes all file contents up to a budget, then falls back to catalog-only.
-pub fn load_memory_for_heartbeat(workspace_dir: &Path, instance_slug: &str) -> String {
-    let dir = memory_dir(workspace_dir, instance_slug);
-    let entries = scan_library(workspace_dir, instance_slug);
-    if entries.is_empty() {
-        return String::new();
-    }
-
-    let mut result = String::new();
-    let mut budget = 3000usize;
-
-    for entry in &entries {
-        let full_path = dir.join(&entry.path);
-        let content = std::fs::read_to_string(&full_path).unwrap_or_default();
-        let chunk = format!("[{}]\n{}\n\n", entry.path, content.trim());
-        if chunk.len() > budget {
-            // Just show the catalog entry for remaining files
-            result.push_str(&format!("[{}] — {}\n", entry.path, entry.summary));
-        } else {
-            result.push_str(&chunk);
-            budget = budget.saturating_sub(chunk.len());
-        }
-    }
-
-    result
-}
-
 /// Build a full library catalog for memory maintenance (heartbeat).
 /// Shows every file path, size, and first-line summary.
 pub fn build_library_catalog(workspace_dir: &Path, instance_slug: &str) -> String {
@@ -478,32 +450,6 @@ fn sanitize_memory_path(path: &str) -> String {
     } else {
         result
     }
-}
-
-/// Search memory files by keyword. Returns matching entries with content snippets.
-pub fn search_memories(workspace_dir: &Path, instance_slug: &str, query: &str) -> Vec<(MemoryEntry, String)> {
-    let dir = memory_dir(workspace_dir, instance_slug);
-    let entries = scan_library(workspace_dir, instance_slug);
-    let query_lower = query.to_lowercase();
-    let query_words: Vec<&str> = query_lower.split_whitespace().collect();
-
-    let mut results: Vec<(MemoryEntry, String, usize)> = Vec::new();
-
-    for entry in entries {
-        let full_path = dir.join(&entry.path);
-        let content = std::fs::read_to_string(&full_path).unwrap_or_default();
-        let combined = format!("{} {}", entry.path, content).to_lowercase();
-
-        let score = query_words.iter().filter(|w| combined.contains(*w)).count();
-        if score > 0 {
-            // Extract a relevant snippet
-            let snippet: String = content.chars().take(200).collect();
-            results.push((entry, snippet, score));
-        }
-    }
-
-    results.sort_by(|a, b| b.2.cmp(&a.2));
-    results.into_iter().map(|(e, s, _)| (e, s)).collect()
 }
 
 /// Remove memory files matching a query. Returns the number removed.

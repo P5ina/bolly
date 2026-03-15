@@ -14,15 +14,6 @@ use crate::domain::rhythm::InteractionRhythm;
 /// Session gap threshold: 2 hours of silence = new session.
 const SESSION_GAP_SECS: i64 = 2 * 3600;
 
-/// Load persisted rhythm state from disk.
-pub fn load_rhythm(instance_dir: &Path) -> InteractionRhythm {
-    let path = instance_dir.join("rhythm.json");
-    fs::read_to_string(&path)
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default()
-}
-
 /// Save rhythm state to disk.
 pub fn save_rhythm(instance_dir: &Path, rhythm: &InteractionRhythm) {
     let path = instance_dir.join("rhythm.json");

@@ -107,12 +107,6 @@ impl ContentBlock {
         }
     }
 
-    pub fn tool_result_error(tool_use_id: String, error: String) -> Self {
-        ContentBlock::ToolResult {
-            tool_use_id,
-            content: serde_json::Value::String(error),
-        }
-    }
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -304,69 +298,6 @@ impl LlmBackend {
             }
         })
         .await
-    }
-
-    /// Chat with tools (non-streaming agent loop).
-    pub async fn chat_with_tools(
-        &self,
-        system_prompt: &[&str],
-        prompt: Message,
-        history: Vec<Message>,
-        tools: Vec<Box<dyn ToolDyn>>,
-    ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>> {
-        log::info!("chat_with_tools: {} tools registered", tools.len());
-
-        let prompt_text = extract_text_from_message(&prompt);
-        if tools.is_empty() {
-            let joined = system_prompt.join("\n\n");
-            let text = self.chat(&joined, &prompt_text, history).await?;
-            return Ok(ToolChatResult {
-                text,
-                rig_history: None,
-                tokens_used: 0,
-            });
-        }
-
-        const MAX_TURNS: usize = 4;
-        let tool_defs = collect_tool_defs(&tools).await;
-        let mut messages = history;
-        // Add the user prompt as the last message
-        if let Message::User { content } = prompt {
-            messages.push(Message::User { content });
-        }
-
-        let result = agent_loop(self, system_prompt, &tool_defs, &tools, &mut messages, MAX_TURNS).await;
-
-        match result {
-            Ok(text) => Ok(ToolChatResult {
-                text,
-                rig_history: Some(messages),
-                tokens_used: 0,
-            }),
-            Err(e) if is_rate_limit_error(&e.to_string()) => {
-                // Retry with backoff (simple chat, no tools)
-                log::warn!("Rate limited during tool agent, retrying with backoff");
-                for attempt in 1..=MAX_RETRIES {
-                    let delay = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1);
-                    log::info!("Rate limit retry {attempt}/{MAX_RETRIES}, waiting {delay}ms");
-                    tokio::time::sleep(Duration::from_millis(delay)).await;
-                    let fallback_sys = system_prompt.join("\n\n");
-                    match self.chat(&fallback_sys, &prompt_text, vec![]).await {
-                        Ok(text) => {
-                            return Ok(ToolChatResult {
-                                text,
-                                rig_history: None,
-                                tokens_used: 0,
-                            })
-                        }
-                        Err(e) if is_rate_limit_error(&e.to_string()) => continue,
-                        Err(e) => return Err(e),
-                    }
-                }
-                Err("rate limited — try again in a moment".into())
-            }
-            Err(e) => Err(e),
-        }
     }
 
     /// Streaming chat with tools.
@@ -1454,21 +1385,6 @@ async fn openai_stream(
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
-fn extract_text_from_message(msg: &Message) -> String {
-    match msg {
-        Message::User { content } | Message::Assistant { content } => content
-            .iter()
-            .find_map(|c| {
-                if let ContentBlock::Text { text } = c {
-                    Some(text.clone())
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_default(),
-    }
-}
 
 fn extract_last_assistant_text(messages: &[Message]) -> String {
     for msg in messages.iter().rev() {

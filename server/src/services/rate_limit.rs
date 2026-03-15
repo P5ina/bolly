@@ -150,8 +150,3 @@ pub struct Usage {
     pub tokens_this_month: i32,
     pub tokens_limit: i32,
 }
-
-/// Estimate token count from text (rough heuristic: ~3.2 chars per token).
-pub fn estimate_tokens(text: &str) -> i32 {
-    (text.len() as f64 / 3.2) as i32
-}

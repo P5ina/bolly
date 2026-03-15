@@ -25,12 +25,6 @@ pub enum ServerEvent {
         instance_slug: String,
         chat_id: String,
     },
-    ToolActivity {
-        instance_slug: String,
-        chat_id: String,
-        tool_name: String,
-        summary: String,
-    },
     DropCreated {
         instance_slug: String,
         drop: Drop,
