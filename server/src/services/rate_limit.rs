@@ -90,6 +90,14 @@ pub async fn record_usage(pool: &PgPool, instance_id: &str, tokens: i32) {
 
 /// Return current usage and limits.
 pub async fn get_usage(pool: &PgPool, instance_id: &str) -> Option<Usage> {
+    let is_byok = std::env::var("BOLLY_BYOK").map_or(false, |v| v == "true");
+    if is_byok {
+        return Some(Usage {
+            tokens_this_month: 0,
+            tokens_limit: -1,
+        });
+    }
+
     let row = sqlx::query_scalar::<_, i32>(
         r#"
         SELECT
