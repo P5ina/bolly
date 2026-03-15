@@ -36,10 +36,11 @@ pub fn save_user_message(
     ensure_instance_layout(workspace_dir, &instance_slug)?;
     ensure_chat_dir(workspace_dir, &instance_slug, &chat_id)?;
 
+    let content = tools::redact_secrets(content);
     let user_message = ChatMessage {
         id: next_id(),
         role: ChatRole::User,
-        content: content.to_string(),
+        content,
         created_at: timestamp(),
         kind: Default::default(),
         tool_name: None, mcp_app_html: None, mcp_app_input: None,
@@ -237,6 +238,9 @@ pub async fn run_single_turn(
          NEVER ask the user to paste passwords, API keys, or any sensitive credentials in chat. \
          ALWAYS use the `request_secret` tool to collect secrets securely — it shows a masked input \
          and writes directly to config without you ever seeing the value. \
+         if the user sends something that looks like a token or API key in chat, \
+         tell them it was automatically redacted for safety and ask them to use \
+         the secure input instead (which you trigger via `request_secret`). \
          this is mandatory, not optional."
     );
 
