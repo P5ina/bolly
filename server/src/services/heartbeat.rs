@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use chrono::Utc;
+use chrono::{Timelike, Utc};
 use crate::services::tool::ToolDyn;
 use tokio::sync::{broadcast, RwLock};
 
@@ -23,7 +23,7 @@ use crate::services::tools::{
     self, load_mood_state, save_mood_state, CreateDropTool,
     MemoryForgetTool, MemoryListTool,
     MemoryReadTool, MemoryWriteTool, ReachOutTool,
-    ALLOWED_MOODS,
+    ALLOWED_MOODS, DeepResearchTool,
 };
 
 static HEARTBEAT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -181,8 +181,23 @@ async fn heartbeat_instance(
         .chat(&triage_system, &reflection, vec![])
         .await?;
 
-    let triage_line = triage_response.trim();
+    let mut triage_line = triage_response.trim().to_string();
     log::info!("[heartbeat] {slug} triage: {triage_line}");
+
+    // ── Nighttime memory maintenance ──
+    // If it's nighttime (1am–5am local) and triage decided QUIET,
+    // override to WAKE for memory maintenance. Max once per night.
+    if triage_line.eq_ignore_ascii_case("QUIET") {
+        if let Some(should_maintain) = should_run_night_maintenance(instance_dir) {
+            if should_maintain {
+                log::info!("[heartbeat] {slug} nighttime — triggering memory maintenance");
+                triage_line = "WAKE:nighttime memory maintenance — review and clean up the memory library. \
+                    merge duplicates, delete outdated entries, reorganize messy folders, trim verbose files. \
+                    be thorough but efficient.".to_string();
+                mark_night_maintenance_done(instance_dir);
+            }
+        }
+    }
 
     // ── Phase 2: Execute the decision ──
     let mut actions = Vec::new();
@@ -276,10 +291,12 @@ async fn heartbeat_instance(
             let landing_url = cfg.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
             let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
             let email_accounts = crate::config::EmailAccounts::load(workspace_dir, slug);
-            let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google, email_accounts);
+            let config_path = crate::config::config_path();
+            let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google, email_accounts, llm, &config_path);
 
+            let max_turns = if triage_line.contains("nighttime memory maintenance") { 10 } else { 5 };
             match llm
-                .chat_with_tools_only(&system, &wake_prompt, vec![], heartbeat_tools, 5)
+                .chat_with_tools_only(&system, &wake_prompt, vec![], heartbeat_tools, max_turns)
                 .await
             {
                 Ok(response) => {
@@ -564,6 +581,8 @@ fn build_heartbeat_tools(
     events: broadcast::Sender<ServerEvent>,
     google: Option<crate::services::google::GoogleClient>,
     email_accounts: Vec<crate::config::EmailConfig>,
+    llm: &LlmBackend,
+    config_path: &Path,
 ) -> Vec<Box<dyn ToolDyn>> {
     let mut raw_tools: Vec<Box<dyn ToolDyn>> = vec![
         // Memory library
@@ -571,11 +590,12 @@ fn build_heartbeat_tools(
         Box::new(MemoryReadTool::new(workspace_dir, instance_slug)),
         Box::new(MemoryListTool::new(workspace_dir, instance_slug)),
         Box::new(MemoryForgetTool::new(workspace_dir, instance_slug)),
-        // Mood is managed by triage MOOD: action, not a tool.
         // Drops
         Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
         // Reach out
         Box::new(ReachOutTool::new(workspace_dir, instance_slug, events.clone())),
+        // Research (sub-agent)
+        Box::new(DeepResearchTool::new(workspace_dir, instance_slug, llm.clone(), config_path)),
     ];
 
     // Email (unified: Gmail + IMAP)
@@ -617,6 +637,49 @@ fn strip_tool_artifacts(response: &str) -> String {
     result = blank_lines_re.replace_all(&result, "\n\n").to_string();
 
     result.trim().to_string()
+}
+
+/// Check if we should run nighttime memory maintenance.
+/// Returns Some(true) if it's 1am–5am local time and we haven't maintained tonight.
+/// Returns Some(false) if it's nighttime but already maintained.
+/// Returns None if timezone is not configured or it's not nighttime.
+fn should_run_night_maintenance(instance_dir: &Path) -> Option<bool> {
+    let tz_str = crate::routes::instances::read_timezone(instance_dir)?;
+    let tz: chrono_tz::Tz = tz_str.parse().ok()?;
+    let local_hour = Utc::now().with_timezone(&tz).hour();
+
+    // Only during 1am–5am local time
+    if !(1..=5).contains(&local_hour) {
+        return None;
+    }
+
+    // Check if we already ran tonight (marker file with today's date)
+    let marker_path = instance_dir.join(".last_night_maintenance");
+    let today = Utc::now().with_timezone(&tz).format("%Y-%m-%d").to_string();
+
+    if let Ok(last_date) = fs::read_to_string(&marker_path) {
+        if last_date.trim() == today {
+            return Some(false); // Already done tonight
+        }
+    }
+
+    Some(true)
+}
+
+/// Mark that nighttime maintenance was performed today.
+fn mark_night_maintenance_done(instance_dir: &Path) {
+    let marker_path = instance_dir.join(".last_night_maintenance");
+    // Use the instance timezone for the date
+    let date = if let Some(tz_str) = crate::routes::instances::read_timezone(instance_dir) {
+        if let Ok(tz) = tz_str.parse::<chrono_tz::Tz>() {
+            Utc::now().with_timezone(&tz).format("%Y-%m-%d").to_string()
+        } else {
+            Utc::now().format("%Y-%m-%d").to_string()
+        }
+    } else {
+        Utc::now().format("%Y-%m-%d").to_string()
+    };
+    let _ = fs::write(&marker_path, &date);
 }
 
 fn unix_millis() -> u128 {

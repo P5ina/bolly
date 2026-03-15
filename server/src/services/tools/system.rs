@@ -1593,6 +1593,122 @@ impl Tool for ExploreCodeTool {
 }
 
 // ---------------------------------------------------------------------------
+// deep_research — general-purpose sub-agent
+// ---------------------------------------------------------------------------
+
+pub struct DeepResearchTool {
+    workspace_dir: PathBuf,
+    instance_slug: String,
+    llm: crate::services::llm::LlmBackend,
+    config_path: PathBuf,
+}
+
+impl DeepResearchTool {
+    pub fn new(
+        workspace_dir: &Path,
+        instance_slug: &str,
+        llm: crate::services::llm::LlmBackend,
+        config_path: &Path,
+    ) -> Self {
+        Self {
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
+            llm: llm.fast_variant(),
+            config_path: config_path.to_path_buf(),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct DeepResearchArgs {
+    /// The research question or task to investigate. Be specific — e.g.
+    /// "find recent news about X", "research how Y works and summarize",
+    /// "look up Z in my memories and cross-reference with web sources".
+    pub task: String,
+}
+
+impl Tool for DeepResearchTool {
+    const NAME: &'static str = "deep_research";
+    type Error = ToolExecError;
+    type Args = DeepResearchArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "deep_research".into(),
+            description: "Delegate a research task to a sub-agent that can search the web, \
+                read files, explore code, and access your memory library. \
+                Use for complex questions that need multiple steps of investigation."
+                .into(),
+            parameters: openai_schema::<DeepResearchArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let task = args.task.trim();
+        if task.is_empty() {
+            return Err(ToolExecError("task cannot be empty".into()));
+        }
+
+        let brave_key = crate::config::load_config()
+            .ok()
+            .map(|c| c.llm.tokens.brave_search.clone())
+            .unwrap_or_default();
+
+        let tools: Vec<Box<dyn ToolDyn>> = vec![
+            Box::new(super::web::WebSearchTool::new(
+                if brave_key.is_empty() { None } else { Some(brave_key.as_str()) },
+                &self.config_path,
+            )),
+            Box::new(super::web::WebFetchTool),
+            Box::new(super::files::ReadFileTool::new(&self.workspace_dir, &self.instance_slug)),
+            Box::new(super::files::ListFilesTool::new(&self.workspace_dir, &self.instance_slug)),
+            Box::new(SearchCodeTool::new(&self.workspace_dir, &self.instance_slug)),
+            Box::new(super::memory_tools::MemoryReadTool::new(&self.workspace_dir, &self.instance_slug)),
+            Box::new(super::memory_tools::MemoryListTool::new(&self.workspace_dir, &self.instance_slug)),
+        ];
+
+        let system_prompt = "\
+            you are a research agent. your job is to thoroughly investigate a question or task \
+            using all available tools.\n\n\
+            ## tools at your disposal\n\
+            - web_search — search the internet for information\n\
+            - web_fetch — fetch and read a specific URL\n\
+            - read_file / list_files / search_code — explore local files and code\n\
+            - memory_read / memory_list — access the companion's memory library\n\n\
+            ## rules\n\
+            - be thorough — use multiple sources when possible\n\
+            - cross-reference web results with local knowledge (memory)\n\
+            - if a web search doesn't return good results, try different queries\n\
+            - NEVER give up — always try alternative approaches\n\n\
+            ## your final response MUST include\n\
+            1. a clear, comprehensive answer\n\
+            2. key sources (URLs, file paths) for verification\n\
+            3. any caveats or uncertainties\n\n\
+            keep your answer focused and under 3000 chars.";
+
+        log::info!("[deep_research] starting sub-agent for: {task}");
+        let start = std::time::Instant::now();
+
+        let result = self
+            .llm
+            .chat_with_tools_only(system_prompt, task, vec![], tools, 12)
+            .await
+            .map_err(|e| {
+                log::warn!("[deep_research] sub-agent failed after {:?}: {e}", start.elapsed());
+                ToolExecError(format!("research agent failed: {e}"))
+            })?;
+
+        log::info!(
+            "[deep_research] completed in {:?}, result: {} chars",
+            start.elapsed(),
+            result.len()
+        );
+        Ok(result)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // request_secret
 // ---------------------------------------------------------------------------
 

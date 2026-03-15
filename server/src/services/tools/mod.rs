@@ -42,7 +42,7 @@ pub use memory_tools::{MemoryForgetTool, MemoryListTool, MemoryReadTool, MemoryW
 pub use project::{TaskItem, TaskStatus};
 pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
 pub use system::{
-    ClearContextTool, CreateDropTool, ExploreCodeTool, GetSettingsTool,
+    ClearContextTool, CreateDropTool, DeepResearchTool, ExploreCodeTool, GetSettingsTool,
     InteractiveSessionTool, RequestSecretTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
 };
 pub use video::WatchVideoTool;
@@ -503,7 +503,7 @@ pub fn build_tools(
     // ── Code ──
     tools.push(wrap(Box::new(SearchCodeTool::new(workspace_dir, instance_slug))));
     tools.push(wrap(Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone()))));
-
+    tools.push(wrap(Box::new(DeepResearchTool::new(workspace_dir, instance_slug, llm.clone(), config_path))));
 
     // ── Creative ──
     tools.push(wrap(Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone()))));
