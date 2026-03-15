@@ -630,6 +630,7 @@ fn build_anthropic_request(
     messages: &[Message],
     max_tokens: u64,
     stream: bool,
+    api_key: &str,
 ) -> serde_json::Value {
     // System blocks — no manual cache_control needed, Anthropic auto-caches
     let system_blocks: Vec<serde_json::Value> = system
@@ -694,8 +695,8 @@ fn build_anthropic_request(
     if stream {
         req["stream"] = serde_json::json!(true);
     }
-    // Server-side context compaction — only supported on opus/sonnet 4.6+
-    if model.contains("opus-4") || model.contains("sonnet-4") {
+    // Server-side context compaction — only supported on opus/sonnet 4.6+ with API keys (not OAuth)
+    if !api_key.starts_with("sk-ant-oat") && (model.contains("opus-4") || model.contains("sonnet-4")) {
         req["context_management"] = serde_json::json!({
             "edits": [{"type": "compact_20260112"}]
         });
@@ -713,7 +714,7 @@ async fn anthropic_complete(
     messages: &[Message],
     max_tokens: u64,
 ) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
-    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, false);
+    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, false, api_key);
 
     let resp = http
         .post("https://api.anthropic.com/v1/messages")
@@ -786,7 +787,7 @@ async fn anthropic_stream(
     chat_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
 ) -> Result<(String, Vec<ToolUseBlock>, String, Option<String>, u64), Box<dyn std::error::Error + Send + Sync>> {
-    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true);
+    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, api_key);
 
     let resp = http
         .post("https://api.anthropic.com/v1/messages")
