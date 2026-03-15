@@ -569,14 +569,16 @@ async fn streaming_agent_loop(
         // Build assistant message
         let mut assistant_content = Vec::new();
         if let Some(ref summary) = compaction {
-            assistant_content.push(ContentBlock::Compaction {
-                content: summary.clone(),
-            });
-            let _ = events.send(ServerEvent::ContextCompacting {
-                instance_slug: instance_slug.to_string(),
-                chat_id: chat_id.to_string(),
-                messages_compacted: messages.len(),
-            });
+            if !summary.is_empty() {
+                assistant_content.push(ContentBlock::Compaction {
+                    content: summary.clone(),
+                });
+                let _ = events.send(ServerEvent::ContextCompacting {
+                    instance_slug: instance_slug.to_string(),
+                    chat_id: chat_id.to_string(),
+                    messages_compacted: messages.len(),
+                });
+            }
         }
         if !turn_text.is_empty() {
             assistant_content.push(ContentBlock::text(&turn_text));
@@ -752,12 +754,22 @@ fn build_anthropic_request(
         for msg in arr.iter_mut() {
             if let Some(content_arr) = msg.get_mut("content").and_then(|c| c.as_array_mut()) {
                 content_arr.retain(|block| {
-                    if block.get("type").and_then(|t| t.as_str()) == Some("image") {
+                    let block_type = block.get("type").and_then(|t| t.as_str());
+                    // Strip oversized base64 images
+                    if block_type == Some("image") {
                         if let Some(data) = block.pointer("/source/data").and_then(|d| d.as_str()) {
                             if data.len() > 5 * 1024 * 1024 {
                                 log::info!("stripping oversized base64 image ({} bytes)", data.len());
                                 return false;
                             }
+                        }
+                    }
+                    // Strip compaction blocks with empty content
+                    if block_type == Some("compaction") {
+                        let content = block.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                        if content.is_empty() {
+                            log::info!("stripping empty compaction block");
+                            return false;
                         }
                     }
                     true
