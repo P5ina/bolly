@@ -384,7 +384,6 @@ impl LlmBackend {
     ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>> {
         log::info!("chat_with_tools_streaming: {} tools", tools.len());
 
-        const MAX_TURNS: usize = 16;
         let tool_defs = collect_tool_defs(&tools).await;
         let mut messages = history;
         if let Message::User { content } = prompt {
@@ -397,7 +396,6 @@ impl LlmBackend {
             &tool_defs,
             &tools,
             &mut messages,
-            MAX_TURNS,
             &events,
             instance_slug,
             chat_id,
@@ -512,7 +510,6 @@ async fn streaming_agent_loop(
     tool_defs: &[ToolDefinition],
     tools: &[Box<dyn ToolDyn>],
     messages: &mut Vec<Message>,
-    max_turns: usize,
     events: &broadcast::Sender<ServerEvent>,
     instance_slug: &str,
     chat_id: &str,
@@ -522,7 +519,7 @@ async fn streaming_agent_loop(
     let mut all_text = String::new();
     let mut total_tokens: u64 = 0;
 
-    for _turn in 0..max_turns {
+    loop {
         let turn = stream_once(
             backend, system, tool_defs, messages, events,
             instance_slug, chat_id, mcp_snapshot,
@@ -623,35 +620,6 @@ async fn streaming_agent_loop(
         // Persist rig_history after each tool cycle so restarts don't lose context
         let rig_path = super::chat::rig_history_path(workspace_dir, instance_slug, chat_id);
         super::chat::save_rig_history(&rig_path, messages);
-    }
-
-    if all_text.trim().is_empty() {
-        log::warn!("[llm] agent loop completed {max_turns} turns with no final text");
-    }
-
-    // If loop exhausted max_turns or ended with empty text (all tool use, no final response),
-    // ask the LLM for a brief wrap-up so the user isn't left with silence.
-    if all_text.trim().is_empty() {
-        log::info!("[llm] agent loop ended with no text output — requesting wrap-up");
-        messages.push(Message::User {
-            content: vec![ContentBlock::text(
-                "[system: you've been working on the task using tools. now give the user a brief \
-                 summary of what you did and the result. keep it concise.]"
-            )],
-        });
-
-        if let Ok(wrapup) = stream_once(
-            backend, system, tool_defs, messages, events,
-            instance_slug, chat_id, mcp_snapshot,
-        ).await {
-            total_tokens += wrapup.tokens_used;
-            if !wrapup.text.trim().is_empty() {
-                all_text = wrapup.text;
-                messages.push(Message::Assistant {
-                    content: vec![ContentBlock::text(&all_text)],
-                });
-            }
-        }
     }
 
     Ok((all_text, total_tokens))
