@@ -9,6 +9,8 @@
 		removeMcpServer,
 		fetchGithubConfig,
 		updateGithubToken,
+		fetchTimezone,
+		updateTimezone,
 	} from "$lib/api/client.js";
 	import type { McpServerInfo } from "$lib/api/client.js";
 
@@ -95,6 +97,43 @@
 			ghError = e?.message || "failed to disconnect";
 		} finally {
 			ghSaving = false;
+		}
+	}
+
+	// Timezone state
+	let tzValue = $state("");
+	let tzLoading = $state(true);
+	let tzSaving = $state(false);
+
+	const COMMON_TIMEZONES = [
+		"Asia/Bishkek", "Asia/Almaty", "Asia/Tashkent",
+		"Europe/Moscow", "Europe/London", "Europe/Berlin", "Europe/Paris",
+		"America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+		"Asia/Tokyo", "Asia/Shanghai", "Asia/Kolkata", "Asia/Dubai",
+		"Australia/Sydney", "Pacific/Auckland",
+	];
+
+	async function loadTimezone() {
+		tzLoading = true;
+		try {
+			const res = await fetchTimezone(slug);
+			tzValue = res.timezone || "";
+		} catch {
+			// not critical
+		} finally {
+			tzLoading = false;
+		}
+	}
+
+	async function saveTimezone(tz: string) {
+		tzSaving = true;
+		try {
+			await updateTimezone(slug, tz);
+			tzValue = tz;
+		} catch {
+			// ignore
+		} finally {
+			tzSaving = false;
 		}
 	}
 
@@ -217,11 +256,53 @@
 		loadAccounts();
 		loadMcpServers();
 		loadGithub();
+		loadTimezone();
 	});
 </script>
 
 <div class="settings-page">
 	<h2 class="settings-title">settings</h2>
+
+	<!-- Timezone -->
+	<section class="settings-section">
+		<div class="section-header">
+			<div class="section-icon tz-icon">
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<circle cx="12" cy="12" r="10"/>
+					<path d="M12 6v6l4 2"/>
+				</svg>
+			</div>
+			<div>
+				<h3 class="section-label">timezone</h3>
+				<p class="section-desc">
+					Set your local timezone so your companion knows the right time of day.
+				</p>
+			</div>
+		</div>
+
+		{#if tzLoading}
+			<div class="ext-loading">
+				<div class="loading-dot"></div>
+			</div>
+		{:else}
+			<div class="tz-picker">
+				<select
+					class="tz-select"
+					value={tzValue}
+					disabled={tzSaving}
+					onchange={(e) => saveTimezone((e.target as HTMLSelectElement).value)}
+				>
+					<option value="">UTC (default)</option>
+					{#each COMMON_TIMEZONES as tz}
+						<option value={tz} selected={tzValue === tz}>{tz.replace(/_/g, " ")}</option>
+					{/each}
+				</select>
+				{#if tzValue}
+					<span class="tz-current">{tzValue.replace(/_/g, " ")}</span>
+				{/if}
+			</div>
+		{/if}
+	</section>
 
 	<!-- Extensions (MCP Servers) -->
 	<section class="settings-section">
@@ -528,6 +609,45 @@
 
 	.ext-icon {
 		color: oklch(0.78 0.12 75 / 60%);
+	}
+
+	.tz-icon {
+		color: oklch(0.75 0.10 200 / 60%);
+	}
+
+	.tz-picker {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.tz-select {
+		flex: 1;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		color: oklch(0.88 0.02 75 / 80%);
+		background: oklch(1 0 0 / 3%);
+		border: 1px solid oklch(1 0 0 / 8%);
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.5rem;
+		outline: none;
+		transition: border-color 0.2s ease;
+		appearance: none;
+		cursor: pointer;
+	}
+	.tz-select:focus {
+		border-color: oklch(0.78 0.12 75 / 30%);
+	}
+	.tz-select option {
+		background: oklch(0.10 0.015 280);
+		color: oklch(0.88 0.02 75 / 80%);
+	}
+
+	.tz-current {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: oklch(0.75 0.10 200 / 50%);
+		white-space: nowrap;
 	}
 
 	.section-label {

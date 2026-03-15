@@ -11,6 +11,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/mood", get(get_mood))
         .route("/api/instances/{instance_slug}/companion-name", get(get_companion_name))
         .route("/api/instances/{instance_slug}/companion-name", put(set_companion_name))
+        .route("/api/instances/{instance_slug}/timezone", get(get_timezone))
+        .route("/api/instances/{instance_slug}/timezone", put(set_timezone))
         .route("/api/instances/{instance_slug}/secret", post(submit_secret))
         .route("/api/instances/{instance_slug}/secret/{secret_id}", delete(cancel_secret))
         .route("/api/instances/{instance_slug}/context-stats", get(get_context_stats))
@@ -114,6 +116,77 @@ fn read_identity_name(instance_dir: &std::path::Path) -> Option<String> {
     let state: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let name = state.get("identity")?.get("name")?.as_str()?;
     if name.is_empty() { None } else { Some(name.to_string()) }
+}
+
+// ---------------------------------------------------------------------------
+// Timezone
+// ---------------------------------------------------------------------------
+
+async fn get_timezone(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> Json<serde_json::Value> {
+    let instance_dir = state.workspace_dir.join("instances").join(&instance_slug);
+    let tz = read_timezone(&instance_dir).unwrap_or_default();
+    Json(serde_json::json!({ "timezone": tz }))
+}
+
+#[derive(Deserialize)]
+struct SetTimezoneRequest {
+    timezone: String,
+}
+
+async fn set_timezone(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+    Json(req): Json<SetTimezoneRequest>,
+) -> StatusCode {
+    // Validate timezone string
+    if !req.timezone.is_empty() {
+        if req.timezone.parse::<chrono_tz::Tz>().is_err() {
+            return StatusCode::BAD_REQUEST;
+        }
+    }
+
+    let instance_dir = state.workspace_dir.join("instances").join(&instance_slug);
+    let state_path = instance_dir.join("project_state.json");
+
+    let mut project_state: serde_json::Value = fs::read_to_string(&state_path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    project_state["timezone"] = serde_json::Value::String(req.timezone);
+
+    fs::create_dir_all(&instance_dir).ok();
+    match serde_json::to_string_pretty(&project_state) {
+        Ok(body) => {
+            if fs::write(&state_path, body).is_ok() {
+                StatusCode::OK
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+        }
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+/// Format current time in the instance's configured timezone (or UTC).
+pub fn format_instance_now(instance_dir: &std::path::Path) -> String {
+    let now = chrono::Utc::now();
+    if let Some(tz_str) = read_timezone(instance_dir) {
+        if let Ok(tz) = tz_str.parse::<chrono_tz::Tz>() {
+            return now.with_timezone(&tz).format("%A, %B %-d, %Y %H:%M %Z").to_string();
+        }
+    }
+    now.format("%A, %B %-d, %Y %H:%M UTC").to_string()
+}
+
+pub fn read_timezone(instance_dir: &std::path::Path) -> Option<String> {
+    let raw = fs::read_to_string(instance_dir.join("project_state.json")).ok()?;
+    let state: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let tz = state.get("timezone")?.as_str()?;
+    if tz.is_empty() { None } else { Some(tz.to_string()) }
 }
 
 // ---------------------------------------------------------------------------

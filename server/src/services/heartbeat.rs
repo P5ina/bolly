@@ -152,6 +152,7 @@ async fn heartbeat_instance(
         &rhythm_insights,
         &recent_drops,
         &library_catalog,
+        instance_dir,
     );
 
     // ── Phase 1: Cheap triage with Haiku ──
@@ -377,8 +378,9 @@ fn build_reflection_prompt(
     rhythm_insights: &str,
     recent_drops: &str,
     library_catalog: &str,
+    instance_dir: &std::path::Path,
 ) -> String {
-    let now = Utc::now().format("%Y-%m-%d %H:%M UTC").to_string();
+    let now = crate::routes::instances::format_instance_now(instance_dir);
     let mut prompt = format!("current time: {now}\n\n");
 
     // Mood context

@@ -258,7 +258,8 @@ pub async fn run_single_turn(
     let last_user = existing.iter().rev()
         .find(|m| m.role == ChatRole::User)
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "no user message to process"))?;
-    let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
+    let instance_dir = workspace_dir.join("instances").join(&instance_slug);
+    let now = crate::routes::instances::format_instance_now(&instance_dir);
     let mut content_with_time = format!("[{now}]\n{}", last_user.content);
     if !memory_prompt.is_empty() {
         content_with_time.push_str(&format!("\n\n[context]\n{memory_prompt}"));
@@ -598,12 +599,6 @@ pub fn notify_restart(workspace_dir: &Path, events: &broadcast::Sender<ServerEve
         Err(_) => return vec![],
     };
 
-    let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
-    let content = format!(
-        "[restart] server restarted at {now}. \
-         you were interrupted — review your recent tool activity above and continue where you left off."
-    );
-
     let mut notified = Vec::new();
 
     for entry in entries.filter_map(Result::ok) {
@@ -620,6 +615,12 @@ pub fn notify_restart(workspace_dir: &Path, events: &broadcast::Sender<ServerEve
 
         // Clear the stale marker — the new agent loop will set its own
         clear_agent_running(workspace_dir, &slug, "default");
+
+        let now = crate::routes::instances::format_instance_now(&instance_dir);
+        let content = format!(
+            "[restart] server restarted at {now}. \
+             you were interrupted — review your recent tool activity above and continue where you left off."
+        );
 
         if let Ok(msg) = save_user_message(workspace_dir, &slug, "default", &content) {
             let _ = events.send(ServerEvent::ChatMessageCreated {

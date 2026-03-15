@@ -179,6 +179,18 @@ export function removeMcpServer(name: string): Promise<void> {
 	});
 }
 
+export function fetchTimezone(slug: string): Promise<{ timezone: string }> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/timezone`);
+}
+
+export function updateTimezone(slug: string, timezone: string): Promise<void> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/timezone`, {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ timezone }),
+	});
+}
+
 export function fetchGithubConfig(): Promise<{ configured: boolean }> {
 	return json("/api/config/github");
 }
