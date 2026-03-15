@@ -124,11 +124,8 @@ pub async fn run_single_turn(
         .map(|m| m.content.as_str())
         .unwrap_or("");
 
-    // Build memory prompt from library
+    // Build memory prompt from library — appended to user prompt, not system
     let memory_prompt = memory::build_memory_prompt(workspace_dir, &instance_slug);
-
-    let mood_prompt = load_mood_prompt(workspace_dir, &instance_slug);
-    let rhythm_prompt = load_rhythm_prompt(workspace_dir, &instance_slug);
 
     let chat_config = crate::config::load_config().ok();
     let auth_token = std::env::var("BOLLY_AUTH_TOKEN")
@@ -243,23 +240,10 @@ pub async fn run_single_turn(
          this is mandatory, not optional."
     );
 
-    // Split system prompt: static part (cached) + dynamic part (not cached).
-    // Anthropic caches the longest matching prefix, so we put the stable
-    // soul/skills/style as a separate system block with cache_control.
-    let system_static = system_prompt; // everything built so far is stable
-
-    let mut system_dynamic = String::new();
-    if !memory_prompt.is_empty() {
-        system_dynamic.push_str(&memory_prompt);
-    }
-    if !mood_prompt.is_empty() {
-        if !system_dynamic.is_empty() { system_dynamic.push_str("\n\n"); }
-        system_dynamic.push_str(&mood_prompt);
-    }
-    if !rhythm_prompt.is_empty() {
-        if !system_dynamic.is_empty() { system_dynamic.push_str("\n\n"); }
-        system_dynamic.push_str(&rhythm_prompt);
-    }
+    // System prompt is fully static (soul, skills, style, integrations).
+    // Mood and rhythm changes are recorded as messages in rig_history.
+    // Memory catalog is lightweight context injected with the user prompt.
+    let system_static = system_prompt;
 
     // Build Rig message history from rig_history.json (source of truth) or
     // fall back to converting messages.json.
@@ -275,7 +259,10 @@ pub async fn run_single_turn(
         .find(|m| m.role == ChatRole::User)
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "no user message to process"))?;
     let now = chrono::Local::now().format("%A, %B %-d, %Y %H:%M %Z");
-    let content_with_time = format!("[{now}]\n{}", last_user.content);
+    let mut content_with_time = format!("[{now}]\n{}", last_user.content);
+    if !memory_prompt.is_empty() {
+        content_with_time.push_str(&format!("\n\n[context]\n{memory_prompt}"));
+    }
     let prompt_msg = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
 
     let history_msgs = if let Some(mut h) = loaded_history {
@@ -315,7 +302,7 @@ pub async fn run_single_turn(
         "context: model={} history_msgs={} system_prompt_len={}",
         llm.model_name(),
         history_msgs.len(),
-        system_static.len() + system_dynamic.len(),
+        system_static.len(),
     );
 
     let sent_files = tools::SentFiles::default();
@@ -340,7 +327,7 @@ pub async fn run_single_turn(
     tools::cache_tool_defs(&all_tools).await;
 
     let history_count = history_msgs.len();
-    let system_blocks: Vec<&str> = vec![&system_static, &system_dynamic];
+    let system_blocks: Vec<&str> = vec![&system_static];
     let tool_result = llm
         .chat_with_tools_streaming(
             &system_blocks, prompt_msg, history_msgs, all_tools,
@@ -427,7 +414,7 @@ pub async fn run_single_turn(
     }
 
     // Estimate total tokens: input (system prompt + history) + output
-    let input_tokens = estimate_tokens(&system_static) + estimate_tokens(&system_dynamic)
+    let input_tokens = estimate_tokens(&system_static)
         + history_count * 100; // rough estimate for rig messages
     let output_tokens: usize = assistant_messages.iter()
         .map(|m| estimate_tokens(&m.content))
@@ -898,7 +885,7 @@ pub fn rig_history_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str
     chat_dir(workspace_dir, instance_slug, chat_id).join("rig_history.json")
 }
 
-fn load_rig_history(path: &Path) -> Option<Vec<llm::Message>> {
+pub fn load_rig_history(path: &Path) -> Option<Vec<llm::Message>> {
     let raw = fs::read_to_string(path).ok()?;
     match serde_json::from_str(&raw) {
         Ok(h) => Some(h),
@@ -954,31 +941,6 @@ fn unix_millis() -> u128 {
         .as_millis()
 }
 
-/// Load the most recent journal entries to inject into the system prompt.
-fn load_mood_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
-    let instance_dir = workspace_dir.join("instances").join(instance_slug);
-    let mood = tools::load_mood_state(&instance_dir);
-
-    let mut prompt = String::from("## emotional state\n");
-    if !mood.companion_mood.is_empty() {
-        prompt.push_str(&format!("your current mood: {}\n", mood.companion_mood));
-    }
-    if !mood.user_sentiment.is_empty() {
-        prompt.push_str(&format!(
-            "last observed user sentiment: {}\n",
-            mood.user_sentiment
-        ));
-    }
-    if !mood.emotional_context.is_empty() {
-        prompt.push_str(&format!("{}\n", mood.emotional_context));
-    }
-
-    prompt.push_str(
-        "\nyour mood is updated automatically based on conversation tone. \
-         let it color your responses naturally — never announce mood changes."
-    );
-    prompt
-}
 
 /// Build a prompt section listing active skills and their instructions.
 fn build_skills_prompt(workspace_dir: &Path) -> String {
@@ -1223,7 +1185,7 @@ respond ONLY with those three lines."#,
     tools::save_mood_state(&instance_dir, &mood);
 
     if mood_changed {
-        // Save mood change to chat history so it survives page reload
+        // Save mood change to chat history and rig_history
         let label = format!("[system] mood → {}", mood.companion_mood);
         match save_system_message(workspace_dir, instance_slug, chat_id, &label) {
             Ok(msg) => {
@@ -1235,6 +1197,13 @@ respond ONLY with those three lines."#,
             }
             Err(e) => log::warn!("failed to save mood message: {e}"),
         }
+        // Append to rig_history so the LLM sees it on the next turn
+        let rig_path = rig_history_path(workspace_dir, instance_slug, chat_id);
+        if let Some(mut h) = load_rig_history(&rig_path) {
+            h.push(llm::Message::user(&label));
+            h.push(llm::Message::assistant("understood."));
+            save_rig_history(&rig_path, &h);
+        }
         let _ = events.send(ServerEvent::MoodUpdated {
             instance_slug: instance_slug.to_string(),
             mood: mood.companion_mood.clone(),
@@ -1244,11 +1213,4 @@ respond ONLY with those three lines."#,
 
 }
 
-/// Load rhythm insights for injection into the chat system prompt.
-/// Uses the last persisted rhythm (recomputed during heartbeat).
-fn load_rhythm_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
-    let instance_dir = workspace_dir.join("instances").join(instance_slug);
-    let rhythm_data = rhythm::load_rhythm(&instance_dir);
-    rhythm::build_rhythm_insights(workspace_dir, instance_slug, &rhythm_data)
-}
 

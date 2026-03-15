@@ -726,17 +726,13 @@ fn build_anthropic_request(
     stream: bool,
     use_cache: bool,
 ) -> serde_json::Value {
-    // System blocks — cache all but the last (dynamic) block.
-    // This lets the static prefix (soul, skills, style) stay cached even when
-    // mood/rhythm/memory change.
+    // System blocks — cache all blocks (system prompt is now fully static).
     let system_blocks: Vec<serde_json::Value> = system
         .iter()
-        .enumerate()
-        .filter(|(_, s)| !s.is_empty())
-        .map(|(i, s)| {
+        .filter(|s| !s.is_empty())
+        .map(|s| {
             let mut block = serde_json::json!({"type": "text", "text": *s});
-            // Cache every block except the last one (which is dynamic)
-            if use_cache && i < system.len() - 1 {
+            if use_cache {
                 block["cache_control"] = serde_json::json!({"type": "ephemeral"});
             }
             block
@@ -780,17 +776,23 @@ fn build_anthropic_request(
             }
         }
     }
+    // Cache breakpoint on the second-to-last message so the conversation
+    // history up to the previous turn is cached. The last message (new prompt)
+    // changes every turn, so caching it would always miss.
     if use_cache {
         if let Some(arr) = msgs.as_array_mut() {
-            if let Some(last_msg) = arr.last_mut() {
-                if let Some(content) = last_msg.get_mut("content") {
-                    if let Some(content_arr) = content.as_array_mut() {
-                        if let Some(last_block) = content_arr.last_mut() {
-                            if let Some(obj) = last_block.as_object_mut() {
-                                obj.insert(
-                                    "cache_control".to_string(),
-                                    serde_json::json!({"type": "ephemeral"}),
-                                );
+            let len = arr.len();
+            if len >= 2 {
+                if let Some(msg) = arr.get_mut(len - 2) {
+                    if let Some(content) = msg.get_mut("content") {
+                        if let Some(content_arr) = content.as_array_mut() {
+                            if let Some(last_block) = content_arr.last_mut() {
+                                if let Some(obj) = last_block.as_object_mut() {
+                                    obj.insert(
+                                        "cache_control".to_string(),
+                                        serde_json::json!({"type": "ephemeral"}),
+                                    );
+                                }
                             }
                         }
                     }

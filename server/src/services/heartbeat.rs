@@ -128,6 +128,17 @@ async fn heartbeat_instance(
     rhythm::save_rhythm(instance_dir, &rhythm_data);
     let rhythm_insights = rhythm::build_rhythm_insights(workspace_dir, slug, &rhythm_data);
 
+    // Save rhythm insights to rig_history so the LLM sees updated patterns
+    if !rhythm_insights.trim().is_empty() {
+        let rig_path = chat::rig_history_path(workspace_dir, slug, "default");
+        if let Some(mut h) = chat::load_rig_history(&rig_path) {
+            let label = format!("[system] rhythm update\n{rhythm_insights}");
+            h.push(crate::services::llm::Message::user(&label));
+            h.push(crate::services::llm::Message::assistant("noted."));
+            chat::save_rig_history(&rig_path, &h);
+        }
+    }
+
     // Load recent drops
     let recent_drops = load_recent_drops_context(workspace_dir, slug);
 
