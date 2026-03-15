@@ -570,13 +570,22 @@ async fn streaming_agent_loop(
         let mut assistant_content = Vec::new();
         if let Some(ref summary) = compaction {
             if !summary.is_empty() {
+                // Compaction: API will ignore all messages before the compaction block.
+                // Drop old messages locally to keep the payload small and avoid re-triggering.
+                let compacted_count = messages.len();
+                messages.clear();
+                log::info!(
+                    "[llm] compaction triggered — dropped {compacted_count} messages, keeping summary ({} chars)",
+                    summary.len()
+                );
+
                 assistant_content.push(ContentBlock::Compaction {
                     content: summary.clone(),
                 });
                 let _ = events.send(ServerEvent::ContextCompacting {
                     instance_slug: instance_slug.to_string(),
                     chat_id: chat_id.to_string(),
-                    messages_compacted: messages.len(),
+                    messages_compacted: compacted_count,
                 });
             }
         }
