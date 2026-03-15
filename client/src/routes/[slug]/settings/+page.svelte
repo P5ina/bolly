@@ -568,8 +568,11 @@
 <style>
 	.settings-page {
 		padding: 2rem 1.5rem;
+		padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
 		max-width: 560px;
 		margin: 0 auto;
+		height: 100%;
+		overflow-y: auto;
 	}
 
 	.settings-title {
