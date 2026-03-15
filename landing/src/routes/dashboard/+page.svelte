@@ -416,7 +416,6 @@
 											<input id="byok-model-{tenant.id}" name="model" type="text" placeholder="default" value={tenant.byok?.model ?? ''} class="w-full py-2 px-3 rounded-lg text-sm text-text outline-none" style="background: var(--color-bg-raised); border: 1px solid var(--color-border);" />
 										</div>
 									</div>
-									<p class="text-xs text-text-ghost/50 leading-relaxed max-w-full">Supports API keys and Claude subscription tokens (<code class="text-text-ghost/70">sk-ant-oat...</code> via <code class="text-text-ghost/70">claude setup-token</code>). Subscription tokens are not officially supported by Anthropic for third-party use — use at your own risk.</p>
 									<div class="flex items-center justify-between">
 										<p class="text-xs text-text-ghost/60 max-w-md">Your key will be validated and your subscription switches to hosting-only pricing. The companion will restart.</p>
 										<button type="submit" disabled={byokSaving === tenant.id} class="text-xs py-2 px-5 rounded-lg text-warm transition-all duration-300 disabled:opacity-40" style="background: var(--color-warm-glow); border: 1px solid var(--color-border-warm);">
