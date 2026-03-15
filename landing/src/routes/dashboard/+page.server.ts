@@ -380,9 +380,8 @@ async function validateApiKey(provider: string, apiKey: string, model?: string |
 		});
 		if (!res.ok) {
 			const text = await res.text();
-			if (res.status === 401) throw new Error('Invalid API key');
-			if (res.status === 403) throw new Error('API key does not have access');
-			throw new Error(`API returned ${res.status}: ${text.slice(0, 200)}`);
+			console.error(`BYOK validation failed (anthropic ${res.status}):`, text.slice(0, 500));
+			throw new Error(tryParseApiError(text) || `API error ${res.status}`);
 		}
 	} else {
 		// OpenAI / OpenRouter
@@ -403,8 +402,17 @@ async function validateApiKey(provider: string, apiKey: string, model?: string |
 		});
 		if (!res.ok) {
 			const text = await res.text();
-			if (res.status === 401) throw new Error('Invalid API key');
-			throw new Error(`API returned ${res.status}: ${text.slice(0, 200)}`);
+			console.error(`BYOK validation failed (${provider} ${res.status}):`, text.slice(0, 500));
+			throw new Error(tryParseApiError(text) || `API error ${res.status}`);
 		}
+	}
+}
+
+function tryParseApiError(text: string): string | null {
+	try {
+		const json = JSON.parse(text);
+		return json.error?.message || json.message || null;
+	} catch {
+		return null;
 	}
 }
