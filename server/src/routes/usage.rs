@@ -9,10 +9,11 @@ pub fn router() -> Router<AppState> {
 async fn get_usage(
     State(state): State<AppState>,
 ) -> Result<Json<rate_limit::Usage>, StatusCode> {
-    let pool = state.pg_pool.as_ref().ok_or(StatusCode::NOT_FOUND)?;
-    let iid = state.instance_id.as_deref().ok_or(StatusCode::NOT_FOUND)?;
+    if state.landing_url.is_empty() {
+        return Err(StatusCode::NOT_FOUND);
+    }
 
-    let usage = rate_limit::get_usage(pool, iid)
+    let usage = rate_limit::get_usage(&state.http_client, &state.landing_url, &state.landing_auth_token)
         .await
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 

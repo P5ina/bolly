@@ -1,123 +1,66 @@
-use sqlx::PgPool;
+use reqwest::Client;
 
-/// Plan limits read from the tenants table.
-struct PlanLimits {
-    tokens_per_month: i32,
-}
+/// Check rate limits via landing API. Returns Ok(()) if allowed, Err(message) if exceeded.
+/// Fails open on network errors.
+pub async fn check(http: &Client, landing_url: &str, auth_token: &str) -> Result<(), String> {
+    let res = http
+        .post(format!("{landing_url}/api/internal/check-rate-limit"))
+        .bearer_auth(auth_token)
+        .send()
+        .await;
 
-/// Fetch plan limits from the tenants table. Falls back to starter defaults.
-async fn fetch_limits(pool: &PgPool, instance_id: &str) -> PlanLimits {
-    let row = sqlx::query_scalar::<_, i32>(
-        "SELECT tokens_per_month FROM tenants WHERE id = $1",
-    )
-    .bind(instance_id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
-
-    PlanLimits {
-        tokens_per_month: row.unwrap_or(500_000),
-    }
-}
-
-/// Check rate limits. Returns Ok(()) if allowed, Err(message) if exceeded.
-pub async fn check(pool: &PgPool, instance_id: &str) -> Result<(), String> {
-    let row = sqlx::query_scalar::<_, i32>(
-        r#"
-        INSERT INTO rate_limits (instance_id, messages_today, tokens_this_month, last_reset_daily, last_reset_monthly)
-        VALUES ($1, 0, 0, now(), now())
-        ON CONFLICT (instance_id) DO UPDATE SET
-            -- reset monthly counter if last_reset_monthly is before start of current month
-            tokens_this_month = CASE
-                WHEN rate_limits.last_reset_monthly < date_trunc('month', CURRENT_DATE)
-                THEN 0
-                ELSE rate_limits.tokens_this_month
-            END,
-            last_reset_monthly = CASE
-                WHEN rate_limits.last_reset_monthly < date_trunc('month', CURRENT_DATE)
-                THEN now()
-                ELSE rate_limits.last_reset_monthly
-            END
-        RETURNING tokens_this_month
-        "#,
-    )
-    .bind(instance_id)
-    .fetch_one(pool)
-    .await
-    .map_err(|e| {
-        log::warn!("rate_limit check failed: {e}");
-        return;
-    });
-
-    let tokens_this_month = match row {
+    let res = match res {
         Ok(r) => r,
-        Err(_) => return Ok(()), // fail open
+        Err(e) => {
+            log::warn!("rate_limit check failed (network): {e}");
+            return Ok(()); // fail open
+        }
     };
 
-    let limits = fetch_limits(pool, instance_id).await;
+    let body: serde_json::Value = match res.json().await {
+        Ok(b) => b,
+        Err(e) => {
+            log::warn!("rate_limit check failed (parse): {e}");
+            return Ok(()); // fail open
+        }
+    };
 
-    if limits.tokens_per_month > 0 && tokens_this_month >= limits.tokens_per_month {
-        return Err(format!(
-            "monthly token limit reached ({})",
-            limits.tokens_per_month
-        ));
+    if body["allowed"].as_bool() == Some(true) {
+        Ok(())
+    } else {
+        let reason = body["reason"].as_str().unwrap_or("rate limit exceeded").to_string();
+        Err(reason)
     }
-
-    Ok(())
 }
 
-/// Increment usage counters after a successful response.
-pub async fn record_usage(pool: &PgPool, instance_id: &str, tokens: i32) {
-    let result = sqlx::query(
-        r#"
-        INSERT INTO rate_limits (instance_id, messages_today, tokens_this_month, last_reset_daily, last_reset_monthly)
-        VALUES ($1, 1, $2, now(), now())
-        ON CONFLICT (instance_id) DO UPDATE SET
-            messages_today = rate_limits.messages_today + 1,
-            tokens_this_month = rate_limits.tokens_this_month + $2
-        "#,
-    )
-    .bind(instance_id)
-    .bind(tokens)
-    .execute(pool)
-    .await;
+/// Record token usage via landing API.
+pub async fn record_usage(http: &Client, landing_url: &str, auth_token: &str, tokens: i32) {
+    let result = http
+        .post(format!("{landing_url}/api/internal/record-usage"))
+        .bearer_auth(auth_token)
+        .json(&serde_json::json!({ "tokens": tokens }))
+        .send()
+        .await;
 
     if let Err(e) = result {
         log::warn!("rate_limit record_usage failed: {e}");
     }
 }
 
-/// Return current usage and limits.
-pub async fn get_usage(pool: &PgPool, instance_id: &str) -> Option<Usage> {
-    let is_byok = std::env::var("BOLLY_BYOK").map_or(false, |v| v == "true");
-    if is_byok {
-        return Some(Usage {
-            tokens_this_month: 0,
-            tokens_limit: -1,
-        });
-    }
+/// Fetch current usage and limits via landing API.
+pub async fn get_usage(http: &Client, landing_url: &str, auth_token: &str) -> Option<Usage> {
+    let res = http
+        .get(format!("{landing_url}/api/internal/usage"))
+        .bearer_auth(auth_token)
+        .send()
+        .await
+        .ok()?;
 
-    let row = sqlx::query_scalar::<_, i32>(
-        r#"
-        SELECT
-            CASE WHEN last_reset_monthly < date_trunc('month', CURRENT_DATE) THEN 0 ELSE tokens_this_month END
-        FROM rate_limits
-        WHERE instance_id = $1
-        "#,
-    )
-    .bind(instance_id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
-
-    let tokens_this_month = row.unwrap_or(0);
-    let limits = fetch_limits(pool, instance_id).await;
+    let body: serde_json::Value = res.json().await.ok()?;
 
     Some(Usage {
-        tokens_this_month,
-        tokens_limit: limits.tokens_per_month,
+        tokens_this_month: body["tokens_this_month"].as_i64().unwrap_or(0) as i32,
+        tokens_limit: body["tokens_limit"].as_i64().unwrap_or(0) as i32,
     })
 }
 

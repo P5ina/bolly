@@ -46,16 +46,13 @@ async fn post_chat(
         return Err((StatusCode::BAD_REQUEST, "slug and content required".into()));
     }
 
-    // Rate limit check (only when DATABASE_URL is configured, skip for BYOK)
-    let is_byok = std::env::var("BOLLY_BYOK").map_or(false, |v| v == "true");
-    if !is_byok {
-        if let (Some(pool), Some(iid)) = (&state.pg_pool, &state.instance_id) {
-            if let Err(reason) = rate_limit::check(pool, iid).await {
-                return Err((
-                    StatusCode::TOO_MANY_REQUESTS,
-                    serde_json::json!({ "error": "rate limit exceeded", "detail": reason }).to_string(),
-                ));
-            }
+    // Rate limit check (via landing API)
+    if !state.landing_url.is_empty() {
+        if let Err(reason) = rate_limit::check(&state.http_client, &state.landing_url, &state.landing_auth_token).await {
+            return Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                serde_json::json!({ "error": "rate limit exceeded", "detail": reason }).to_string(),
+            ));
         }
     }
 
@@ -206,8 +203,8 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                 }
 
                 // Record usage for rate limiting (input + output tokens)
-                if let (Some(pool), Some(iid)) = (&state.pg_pool, &state.instance_id) {
-                    rate_limit::record_usage(pool, iid, turn.estimated_tokens).await;
+                if !state.landing_url.is_empty() {
+                    rate_limit::record_usage(&state.http_client, &state.landing_url, &state.landing_auth_token, turn.estimated_tokens).await;
                 }
 
                 // Check if the agent wants to continue or if a new user message arrived

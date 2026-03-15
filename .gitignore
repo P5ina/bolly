@@ -5,3 +5,4 @@ target/
 .vercel
 
 .DS_Store
+.env.test_token

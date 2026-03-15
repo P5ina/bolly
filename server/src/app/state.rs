@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use sqlx::PgPool;
 use tokio::sync::{broadcast, Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 
@@ -28,14 +27,16 @@ pub struct AppState {
     pub llm: Arc<RwLock<Option<LlmBackend>>>,
     /// Active agent tasks per instance slug — cancellation tokens.
     pub agent_tasks: Arc<Mutex<HashMap<String, CancellationToken>>>,
-    /// Shared Postgres pool for rate limiting (None for self-hosted).
-    pub pg_pool: Option<PgPool>,
-    /// Instance identifier for rate limit tracking.
-    pub instance_id: Option<String>,
     /// Pending secret requests awaiting user input.
     pub pending_secrets: Arc<Mutex<HashMap<String, PendingSecret>>>,
     /// Connected MCP servers and their tools.
     pub mcp_registry: McpRegistry,
+    /// Shared HTTP client for landing API calls.
+    pub http_client: reqwest::Client,
+    /// Landing server URL (empty for self-hosted).
+    pub landing_url: String,
+    /// Auth token for landing API calls.
+    pub landing_auth_token: String,
 }
 
 impl AppState {
@@ -51,31 +52,27 @@ impl AppState {
             log::info!("MCP: {} tools from external servers", mcp_tool_count);
         }
 
-        let (pg_pool, instance_id) = match std::env::var("DATABASE_URL") {
-            Ok(url) if !url.is_empty() => {
-                let pool = PgPool::connect(&url).await.ok();
-                if pool.is_none() {
-                    log::warn!("DATABASE_URL set but connection failed — rate limiting disabled");
-                }
-                let id = std::env::var("BOLLY_INSTANCE_ID").ok().filter(|s| !s.is_empty());
-                (pool, id)
-            }
-            _ => (None, None),
-        };
+        let http_client = reqwest::Client::new();
+        let landing_url = config.landing_url.clone();
+        let landing_auth_token = config.auth_token.clone();
 
-        // Fetch plan from landing DB if we have a pool + instance ID
-        if let (Some(pool), Some(id)) = (&pg_pool, &instance_id) {
-            match sqlx::query_scalar::<_, String>("SELECT plan::text FROM tenants WHERE id = $1")
-                .bind(id)
-                .fetch_optional(pool)
+        // Fetch plan from landing API if configured
+        if !landing_url.is_empty() && !landing_auth_token.is_empty() {
+            match http_client
+                .get(format!("{landing_url}/api/internal/plan"))
+                .bearer_auth(&landing_auth_token)
+                .send()
                 .await
             {
-                Ok(Some(plan)) => {
-                    log::info!("fetched plan from DB: {plan}");
-                    config.plan = plan;
+                Ok(res) => {
+                    if let Ok(body) = res.json::<serde_json::Value>().await {
+                        if let Some(plan) = body["plan"].as_str() {
+                            log::info!("fetched plan from landing API: {plan}");
+                            config.plan = plan.to_string();
+                        }
+                    }
                 }
-                Ok(None) => log::warn!("instance {id} not found in tenants table"),
-                Err(e) => log::warn!("failed to fetch plan from DB: {e}"),
+                Err(e) => log::warn!("failed to fetch plan from landing API: {e}"),
             }
         }
 
@@ -85,10 +82,11 @@ impl AppState {
             events,
             llm: Arc::new(RwLock::new(llm)),
             agent_tasks: Arc::new(Mutex::new(HashMap::new())),
-            pg_pool,
-            instance_id,
             pending_secrets: Arc::new(Mutex::new(HashMap::new())),
             mcp_registry,
+            http_client,
+            landing_url,
+            landing_auth_token,
         }
     }
 
@@ -125,7 +123,7 @@ impl AppState {
             log::info!("config reloaded: MCP servers reconnected ({} tools)", self.mcp_registry.tool_count().await);
         }
 
-        // Preserve plan from DB — it's not in config.toml
+        // Preserve plan from API — it's not in config.toml
         let mut cfg = self.config.write().await;
         let plan = cfg.plan.clone();
         *cfg = new_config;

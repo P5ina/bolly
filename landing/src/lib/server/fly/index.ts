@@ -157,7 +157,7 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 					BOLLY_AUTH_TOKEN: opts.authToken,
 					BOLLY_INSTANCE_ID: opts.instanceId,
 					BOLLY_PUBLIC_URL: opts.publicUrl,
-					DATABASE_URL: env.DATABASE_URL ?? '',
+					// DATABASE_URL intentionally not passed — instances use landing API instead
 					OPENROUTER_API_KEY: env.OPENROUTER_API_KEY ?? '',
 					ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
 					OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
