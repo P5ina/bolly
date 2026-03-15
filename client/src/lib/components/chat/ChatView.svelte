@@ -25,7 +25,8 @@
 		| { type: "message"; data: ChatMessage }
 		| { type: "activity"; id: string; kind: "tool" | "mood" | "state" | "output"; label: string; timestamp: string }
 		| { type: "sketch"; id: string; title: string; scene: string; timestamp: string }
-		| { type: "mcp_app"; id: string; toolName: string; toolInput: string; toolOutput: string; html: string };
+		| { type: "mcp_app"; id: string; toolName: string; toolInput: string; toolOutput: string; html: string }
+		| { type: "compaction"; id: string; count: number; timestamp: string };
 
 	let activeChatId = $derived(chatId);
 	let chats = $state<ChatSummary[]>([]);
@@ -419,7 +420,13 @@
 					stream = stream; // trigger reactivity
 				}
 			} else if (event.type === "context_compacting") {
-				pushActivity("state", `compacting ${event.messages_compacted} messages...`);
+				stream = [...stream, {
+					type: "compaction",
+					id: `compact_${Date.now()}`,
+					count: event.messages_compacted,
+					timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+				}];
+				scrollToBottom();
 			}
 		});
 		return unsub;
@@ -591,6 +598,16 @@
 									toolInput={item.toolInput}
 									toolOutput={item.toolOutput}
 								/>
+							{:else if item.type === "compaction"}
+								<div class="compaction-notice">
+									<svg class="compaction-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+										<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+										<polyline points="7.5 4.21 12 6.81 16.5 4.21"/>
+										<line x1="12" y1="22.08" x2="12" y2="12"/>
+									</svg>
+									<span class="compaction-text">context compacted</span>
+									<span class="compaction-time">{item.timestamp}</span>
+								</div>
 							{:else if showToolActivity}
 								<StreamActivity kind={item.kind} label={item.label} timestamp={item.timestamp} />
 							{/if}
@@ -913,6 +930,40 @@
 	@keyframes bounce {
 		0%, 60%, 100% { transform: translateY(0); opacity: 0.25; }
 		30% { transform: translateY(-5px); opacity: 1; }
+	}
+
+	/* --- compaction notice --- */
+
+	.compaction-notice {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		margin: 0.4rem 0;
+		border-radius: 0.5rem;
+		background: oklch(0.55 0.08 280 / 5%);
+		border: 1px dashed oklch(0.55 0.08 280 / 15%);
+		animation: act-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	.compaction-icon {
+		color: oklch(0.60 0.10 280 / 50%);
+		flex-shrink: 0;
+	}
+
+	.compaction-text {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		letter-spacing: 0.03em;
+		color: oklch(0.60 0.06 280 / 55%);
+		flex: 1;
+	}
+
+	.compaction-time {
+		font-family: var(--font-mono);
+		font-size: 0.58rem;
+		color: oklch(0.50 0.01 280 / 35%);
+		white-space: nowrap;
 	}
 
 	/* --- responsive --- */
