@@ -12,6 +12,7 @@ import type {
 	SoulTemplate,
 	Thought,
 	UpdateLlmRequest,
+	MemoryEntry,
 	UploadMeta,
 	Usage,
 } from "./types.js";
@@ -290,6 +291,10 @@ export function setCompanionName(slug: string, name: string): Promise<void> {
 
 export function fetchThoughts(slug: string): Promise<Thought[]> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/thoughts`);
+}
+
+export function fetchMemory(slug: string): Promise<MemoryEntry[]> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/memory`);
 }
 
 export function fetchDrops(slug: string): Promise<Drop[]> {

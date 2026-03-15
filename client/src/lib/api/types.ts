@@ -174,6 +174,12 @@ export interface HeartbeatUpdate {
 	preview: string;
 }
 
+export interface MemoryEntry {
+	path: string;
+	summary: string;
+	size: number;
+}
+
 export type ServerEvent =
 	| {
 			type: "chat_message_created";
