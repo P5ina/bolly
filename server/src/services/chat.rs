@@ -301,26 +301,41 @@ pub async fn run_single_turn(
     let prompt_msg = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
 
     let history_msgs = if let Some(mut h) = loaded_history {
-        // Count user messages in rig history to find where messages.json diverges
-        let rig_user_count = h.iter().filter(|m| matches!(m, llm::Message::User { .. })).count();
-        // +1 because the last user message becomes the prompt, not history
-        let msgs_user_count = existing.iter().filter(|m| m.role == ChatRole::User).count();
-        if msgs_user_count > rig_user_count + 1 {
-            // messages.json has entries from an interrupted turn — append them
-            let skip = rig_user_count;
-            let mut seen_users = 0;
-            for m in &existing {
-                if m.role == ChatRole::User { seen_users += 1; }
-                if seen_users > skip && m.id != last_user.id {
-                    h.push(match m.role {
-                        ChatRole::User => llm::Message::user(&m.content),
-                        ChatRole::Assistant => llm::Message::assistant(&m.content),
-                    });
-                }
+        // Check if history already has a compaction block — if so, the context
+        // was intentionally reset. Don't patch in old messages.json entries or
+        // we'll refill the context and trigger compaction in a loop.
+        let has_compaction = h.iter().any(|msg| {
+            if let llm::Message::Assistant { content } = msg {
+                content.iter().any(|b| matches!(b, llm::ContentBlock::Compaction { .. }))
+            } else {
+                false
             }
-            log::info!("loaded {} rig history messages + patched interrupted turn", h.len());
+        });
+
+        if has_compaction {
+            log::info!("loaded {} rig history messages (post-compaction, skipping patch)", h.len());
         } else {
-            log::info!("loaded {} rig history messages from disk", h.len());
+            // Count user messages in rig history to find where messages.json diverges
+            let rig_user_count = h.iter().filter(|m| matches!(m, llm::Message::User { .. })).count();
+            // +1 because the last user message becomes the prompt, not history
+            let msgs_user_count = existing.iter().filter(|m| m.role == ChatRole::User).count();
+            if msgs_user_count > rig_user_count + 1 {
+                // messages.json has entries from an interrupted turn — append them
+                let skip = rig_user_count;
+                let mut seen_users = 0;
+                for m in &existing {
+                    if m.role == ChatRole::User { seen_users += 1; }
+                    if seen_users > skip && m.id != last_user.id {
+                        h.push(match m.role {
+                            ChatRole::User => llm::Message::user(&m.content),
+                            ChatRole::Assistant => llm::Message::assistant(&m.content),
+                        });
+                    }
+                }
+                log::info!("loaded {} rig history messages + patched interrupted turn", h.len());
+            } else {
+                log::info!("loaded {} rig history messages from disk", h.len());
+            }
         }
         h
     } else {
