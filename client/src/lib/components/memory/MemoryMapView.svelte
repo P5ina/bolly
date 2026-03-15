@@ -26,9 +26,7 @@
 		}
 	}
 
-	$effect(() => {
-		load();
-	});
+	$effect(() => { load(); });
 
 	$effect(() => {
 		if (!containerEl) return;
@@ -43,7 +41,7 @@
 		return () => ro.disconnect();
 	});
 
-	// --- data transforms ---
+	// --- data ---
 
 	interface FolderNode {
 		name: string;
@@ -69,7 +67,7 @@
 
 	let totalSize = $derived(folders.reduce((s, f) => s + f.totalSize, 0));
 
-	// --- folder colors ---
+	// --- colors ---
 
 	const folderColors: Record<string, string> = {
 		about: "oklch(0.72 0.10 200)",
@@ -80,21 +78,20 @@
 		interests: "oklch(0.75 0.14 310)",
 		people: "oklch(0.70 0.12 30)",
 		emotions: "oklch(0.72 0.14 350)",
+		knowledge: "oklch(0.70 0.10 170)",
+		technical: "oklch(0.68 0.08 230)",
 		"(root)": "oklch(0.65 0.06 240)",
 	};
 
 	function getColor(folder: string): string {
 		if (folderColors[folder]) return folderColors[folder];
-		// Generate a deterministic color from folder name
 		let hash = 0;
-		for (let i = 0; i < folder.length; i++) {
-			hash = folder.charCodeAt(i) + ((hash << 5) - hash);
-		}
+		for (let i = 0; i < folder.length; i++) hash = folder.charCodeAt(i) + ((hash << 5) - hash);
 		const hue = ((hash % 360) + 360) % 360;
 		return `oklch(0.72 0.11 ${hue})`;
 	}
 
-	// --- circle packing layout ---
+	// --- circle packing (front-chain algorithm) ---
 
 	interface Circle {
 		x: number;
@@ -104,95 +101,124 @@
 		label: string;
 		color: string;
 		size: number;
+		fileCount?: number;
 		entry?: MemoryEntry;
 		folder?: FolderNode;
 	}
 
+	/**
+	 * Place circles without overlap using a simple physics-based approach.
+	 * Uses log scale for radii to prevent one huge circle from dominating.
+	 */
 	function packCircles(
-		items: { id: string; size: number }[],
-		cx: number,
-		cy: number,
-		containerR: number,
+		items: { id: string; weight: number }[],
+		w: number,
+		h: number,
+		minR: number,
+		maxR: number,
 	): { id: string; x: number; y: number; r: number }[] {
 		if (items.length === 0) return [];
-		const totalSize = items.reduce((s, i) => s + i.size, 0);
-		if (totalSize === 0) return items.map((i) => ({ id: i.id, x: cx, y: cy, r: 8 }));
 
-		// Compute radii proportional to sqrt of size (area-based)
-		const minR = 18;
-		const maxUsableArea = Math.PI * containerR * containerR * 0.72;
-		const scale = maxUsableArea / totalSize;
+		const maxWeight = Math.max(...items.map((i) => i.weight));
+		const minWeight = Math.min(...items.map((i) => i.weight));
+		const range = Math.max(maxWeight - minWeight, 1);
+
+		// Map weights to radii using log scale — dampens extreme differences
 		const circles = items.map((item) => {
-			const area = item.size * scale;
-			const r = Math.max(minR, Math.sqrt(area / Math.PI));
-			return { id: item.id, x: cx, y: cy, r, placed: false };
+			const norm = (item.weight - minWeight) / range; // 0..1
+			const logNorm = Math.log1p(norm * 9) / Math.log(10); // log scale 0..1
+			const r = minR + logNorm * (maxR - minR);
+			return { id: item.id, x: w / 2, y: h / 2, r };
 		});
 
-		// Sort largest first
+		// Sort largest first for placement
 		circles.sort((a, b) => b.r - a.r);
 
-		// Place first circle at center
-		circles[0].placed = true;
+		// Place first at center
+		circles[0].x = w / 2;
+		circles[0].y = h / 2;
 
-		// Greedy placement — spiral outward
+		const pad = 6;
+
+		// Place each subsequent circle touching the closest placed circle
 		for (let i = 1; i < circles.length; i++) {
 			const c = circles[i];
-			let bestDist = Infinity;
-			let bestX = cx;
-			let bestY = cy;
+			let bestX = w / 2;
+			let bestY = h / 2;
+			let bestScore = Infinity;
 
-			// Try positions in a spiral
-			for (let angle = 0; angle < Math.PI * 8; angle += 0.15) {
-				for (let dist = 0; dist < containerR; dist += 3) {
-					const tx = cx + Math.cos(angle) * dist;
-					const ty = cy + Math.sin(angle) * dist;
+			// Try placing adjacent to each already-placed circle at various angles
+			for (let j = 0; j < i; j++) {
+				const ref = circles[j];
+				const dist = ref.r + c.r + pad;
 
-					// Check if fits within container
-					if (Math.sqrt((tx - cx) ** 2 + (ty - cy) ** 2) + c.r > containerR - 2) continue;
+				for (let a = 0; a < Math.PI * 2; a += Math.PI / 12) {
+					const tx = ref.x + Math.cos(a) * dist;
+					const ty = ref.y + Math.sin(a) * dist;
 
-					// Check overlap with placed circles
+					// Stay within bounds (with padding)
+					if (tx - c.r < pad || tx + c.r > w - pad || ty - c.r < pad || ty + c.r > h - pad) continue;
+
+					// Check overlaps
 					let overlaps = false;
-					for (let j = 0; j < i; j++) {
-						if (!circles[j].placed) continue;
-						const dx = tx - circles[j].x;
-						const dy = ty - circles[j].y;
-						const minDist = c.r + circles[j].r + 3;
-						if (dx * dx + dy * dy < minDist * minDist) {
+					for (let k = 0; k < i; k++) {
+						const dx = tx - circles[k].x;
+						const dy = ty - circles[k].y;
+						const minD = c.r + circles[k].r + pad;
+						if (dx * dx + dy * dy < minD * minD) {
 							overlaps = true;
 							break;
 						}
 					}
 
 					if (!overlaps) {
-						const d = Math.sqrt((tx - cx) ** 2 + (ty - cy) ** 2);
-						if (d < bestDist) {
-							bestDist = d;
+						// Score: prefer positions closer to center
+						const dcx = tx - w / 2;
+						const dcy = ty - h / 2;
+						const score = dcx * dcx + dcy * dcy;
+						if (score < bestScore) {
+							bestScore = score;
 							bestX = tx;
 							bestY = ty;
 						}
-						// Found a close enough spot, break inner loop
-						if (d < c.r * 2) break;
 					}
 				}
-				if (bestDist < circles[i].r * 2) break;
 			}
 
 			c.x = bestX;
 			c.y = bestY;
-			c.placed = true;
 		}
 
-		return circles.map(({ id, x, y, r }) => ({ id, x, y, r }));
+		// Re-center the whole group
+		let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+		for (const c of circles) {
+			minX = Math.min(minX, c.x - c.r);
+			maxX = Math.max(maxX, c.x + c.r);
+			minY = Math.min(minY, c.y - c.r);
+			maxY = Math.max(maxY, c.y + c.r);
+		}
+		const groupW = maxX - minX;
+		const groupH = maxY - minY;
+		const offsetX = (w - groupW) / 2 - minX;
+		const offsetY = (h - groupH) / 2 - minY;
+		for (const c of circles) {
+			c.x += offsetX;
+			c.y += offsetY;
+		}
+
+		return circles;
 	}
+
+	let svgH = $derived(containerHeight - 48);
 
 	// Top-level folder bubbles
 	let folderCircles = $derived.by((): Circle[] => {
 		if (folders.length === 0) return [];
-		const r = Math.min(containerWidth, containerHeight) / 2 - 10;
-		const cx = containerWidth / 2;
-		const cy = containerHeight / 2;
-		const items = folders.map((f) => ({ id: f.name, size: f.totalSize }));
-		const packed = packCircles(items, cx, cy, r);
+		const short = Math.min(containerWidth, svgH);
+		const maxR = Math.min(short * 0.28, 140);
+		const minR = Math.max(short * 0.06, 28);
+		const items = folders.map((f) => ({ id: f.name, weight: f.totalSize }));
+		const packed = packCircles(items, containerWidth, svgH, minR, maxR);
 		return packed.map((p) => {
 			const folder = folders.find((f) => f.name === p.id)!;
 			return {
@@ -200,27 +226,27 @@
 				label: folder.name,
 				color: getColor(folder.name),
 				size: folder.totalSize,
+				fileCount: folder.files.length,
 				folder,
 			};
 		});
 	});
 
-	// When focused on a folder, show its files
+	// File-level bubbles when drilled into a folder
 	let fileCircles = $derived.by((): Circle[] => {
 		if (!focusedFolder) return [];
 		const folder = folders.find((f) => f.name === focusedFolder);
 		if (!folder) return [];
-		const r = Math.min(containerWidth, containerHeight) / 2 - 30;
-		const cx = containerWidth / 2;
-		const cy = containerHeight / 2;
-		const items = folder.files.map((f) => ({ id: f.path, size: Math.max(f.size, 40) }));
-		const packed = packCircles(items, cx, cy, r);
+		const short = Math.min(containerWidth, svgH);
+		const maxR = Math.min(short * 0.18, 80);
+		const minR = Math.max(short * 0.03, 16);
+		const items = folder.files.map((f) => ({ id: f.path, weight: Math.max(f.size, 20) }));
+		const packed = packCircles(items, containerWidth, svgH, minR, maxR);
 		return packed.map((p) => {
 			const entry = folder.files.find((f) => f.path === p.id)!;
-			const fileName = entry.path.split("/").pop()?.replace(".md", "") ?? entry.path;
 			return {
 				...p,
-				label: fileName,
+				label: entry.path.split("/").pop()?.replace(".md", "") ?? entry.path,
 				color: getColor(folder.name),
 				size: entry.size,
 				entry,
@@ -233,6 +259,7 @@
 	function handleCircleClick(circle: Circle) {
 		if (!focusedFolder && circle.folder) {
 			focusedFolder = circle.folder.name;
+			hoveredNode = null;
 		}
 	}
 
@@ -248,6 +275,12 @@
 	function formatSize(bytes: number): string {
 		if (bytes < 1024) return `${bytes} B`;
 		return `${(bytes / 1024).toFixed(1)} KB`;
+	}
+
+	function truncLabel(label: string, r: number): string {
+		const maxChars = Math.floor(r / 4.5);
+		if (label.length <= maxChars) return label;
+		return label.slice(0, Math.max(maxChars - 2, 3)) + "..";
 	}
 </script>
 
@@ -288,15 +321,16 @@
 		</div>
 
 		<div class="memory-map">
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<svg
 				width={containerWidth}
-				height={containerHeight - 48}
-				viewBox="0 0 {containerWidth} {containerHeight - 48}"
+				height={svgH}
+				viewBox="0 0 {containerWidth} {svgH}"
 			>
 				{#each activeCircles as circle (circle.id)}
 					{@const isHovered = hoveredNode === circle.id}
 					{@const isFolderView = !focusedFolder}
+					{@const fontSize = Math.max(Math.min(circle.r * 0.3, 14), 9)}
+					{@const subFontSize = Math.max(fontSize - 2, 8)}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<g
 						class="memory-node"
@@ -305,16 +339,16 @@
 						onmouseleave={() => hoveredNode = null}
 						onclick={() => handleCircleClick(circle)}
 					>
-						<!-- Glow -->
+						<!-- Glow ring on hover -->
 						{#if isHovered}
 							<circle
 								cx={circle.x}
 								cy={circle.y}
-								r={circle.r + 4}
+								r={circle.r + 3}
 								fill="none"
 								stroke={circle.color}
 								stroke-width="1"
-								opacity="0.2"
+								opacity="0.25"
 							/>
 						{/if}
 
@@ -324,61 +358,50 @@
 							cy={circle.y}
 							r={circle.r}
 							fill={circle.color}
-							fill-opacity={isHovered ? 0.18 : 0.10}
+							fill-opacity={isHovered ? 0.16 : 0.08}
 							stroke={circle.color}
 							stroke-width={isHovered ? 1.5 : 1}
-							stroke-opacity={isHovered ? 0.5 : 0.25}
-						/>
-
-						<!-- Inner glow dot -->
-						<circle
-							cx={circle.x}
-							cy={circle.y - circle.r * 0.15}
-							r={circle.r * 0.12}
-							fill={circle.color}
-							fill-opacity="0.25"
+							stroke-opacity={isHovered ? 0.55 : 0.22}
 						/>
 
 						<!-- Label -->
-						{#if circle.r > 22}
+						<text
+							x={circle.x}
+							y={circle.y - (circle.r > 40 ? fontSize * 0.45 : 0)}
+							text-anchor="middle"
+							dominant-baseline="central"
+							fill={circle.color}
+							fill-opacity={isHovered ? 0.95 : 0.75}
+							font-size={fontSize}
+							font-family="var(--font-mono)"
+							letter-spacing="0.03em"
+						>
+							{truncLabel(circle.label, circle.r)}
+						</text>
+
+						<!-- Subtitle (file count / size) -->
+						{#if circle.r > 40}
 							<text
 								x={circle.x}
-								y={circle.y - (circle.r > 45 ? 6 : 0)}
+								y={circle.y + fontSize * 0.7}
 								text-anchor="middle"
 								dominant-baseline="central"
 								fill={circle.color}
-								fill-opacity={isHovered ? 0.9 : 0.7}
-								font-size={Math.min(circle.r * 0.35, 13)}
+								fill-opacity={isHovered ? 0.5 : 0.3}
+								font-size={subFontSize}
 								font-family="var(--font-mono)"
-								letter-spacing="0.03em"
 							>
-								{circle.label.length > 16 ? circle.label.slice(0, 14) + '..' : circle.label}
+								{isFolderView
+									? `${circle.fileCount} files`
+									: formatSize(circle.size)}
 							</text>
-
-							<!-- Size / count subtitle -->
-							{#if circle.r > 45}
-								<text
-									x={circle.x}
-									y={circle.y + 10}
-									text-anchor="middle"
-									dominant-baseline="central"
-									fill={circle.color}
-									fill-opacity="0.35"
-									font-size={Math.min(circle.r * 0.22, 10)}
-									font-family="var(--font-mono)"
-								>
-									{isFolderView
-										? `${circle.folder?.files.length} files`
-										: formatSize(circle.size)}
-								</text>
-							{/if}
 						{/if}
 					</g>
 				{/each}
 			</svg>
 		</div>
 
-		<!-- Tooltip / detail panel -->
+		<!-- Tooltip -->
 		{#if hoveredNode}
 			{@const circle = activeCircles.find(c => c.id === hoveredNode)}
 			{#if circle}
@@ -392,11 +415,11 @@
 					{:else if circle.folder}
 						<div class="memory-tooltip-summary">{circle.folder.files.length} memories · {formatSize(circle.folder.totalSize)}</div>
 						<div class="memory-tooltip-files">
-							{#each circle.folder.files.slice(0, 5) as file}
+							{#each circle.folder.files.slice(0, 6) as file}
 								<div class="memory-tooltip-file">{fileName(file.path)}</div>
 							{/each}
-							{#if circle.folder.files.length > 5}
-								<div class="memory-tooltip-file memory-tooltip-more">+{circle.folder.files.length - 5} more</div>
+							{#if circle.folder.files.length > 6}
+								<div class="memory-tooltip-file memory-tooltip-more">+{circle.folder.files.length - 6} more</div>
 							{/if}
 						</div>
 					{/if}
@@ -518,7 +541,7 @@
 	}
 
 	.memory-node {
-		transition: opacity 0.2s ease;
+		transition: opacity 0.15s ease;
 	}
 
 	.memory-node-clickable {
@@ -527,13 +550,13 @@
 
 	.memory-node circle {
 		transition:
-			fill-opacity 0.25s ease,
-			stroke-opacity 0.25s ease,
-			stroke-width 0.25s ease;
+			fill-opacity 0.2s ease,
+			stroke-opacity 0.2s ease,
+			stroke-width 0.2s ease;
 	}
 
 	.memory-node text {
-		transition: fill-opacity 0.25s ease;
+		transition: fill-opacity 0.2s ease;
 		pointer-events: none;
 		user-select: none;
 	}
@@ -542,18 +565,19 @@
 
 	.memory-tooltip {
 		position: absolute;
-		bottom: 1.5rem;
+		bottom: 1.25rem;
 		left: 50%;
 		transform: translateX(-50%);
-		background: oklch(0.10 0.01 280 / 90%);
+		background: oklch(0.10 0.01 280 / 92%);
 		backdrop-filter: blur(12px);
 		border: 1px solid oklch(1 0 0 / 8%);
 		border-radius: 0.75rem;
 		padding: 0.75rem 1rem;
 		max-width: 320px;
 		min-width: 180px;
-		animation: tooltip-enter 0.15s ease;
+		animation: tooltip-enter 0.12s ease;
 		pointer-events: none;
+		z-index: 10;
 	}
 
 	@keyframes tooltip-enter {
