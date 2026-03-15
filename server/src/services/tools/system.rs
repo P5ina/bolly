@@ -896,12 +896,14 @@ fn detect_package_manager(is_root: bool) -> Option<String> {
 
 pub struct UpdateConfigTool {
     config_path: PathBuf,
+    instance_dir: PathBuf,
 }
 
 impl UpdateConfigTool {
-    pub fn new(config_path: &Path, _workspace_dir: &Path, _instance_slug: &str) -> Self {
+    pub fn new(config_path: &Path, workspace_dir: &Path, instance_slug: &str) -> Self {
         Self {
             config_path: config_path.to_path_buf(),
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
         }
     }
 }
@@ -923,6 +925,12 @@ pub struct UpdateConfigArgs {
     pub add_mcp_server: Option<McpServerArg>,
     /// Remove an MCP server by name. Leave null to skip.
     pub remove_mcp_server: Option<String>,
+    /// Set the user's timezone (IANA format, e.g. "Asia/Bishkek", "Europe/Moscow"). Leave null to keep current.
+    pub timezone: Option<String>,
+    /// Set the companion's display name. Leave null to keep current.
+    pub companion_name: Option<String>,
+    /// Set the GitHub personal access token. Leave null to keep current.
+    pub github_token: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -942,7 +950,7 @@ impl Tool for UpdateConfigTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "update_config".into(),
-            description: "Update config (model, provider, API keys, MCP servers). Only provided fields change.".into(),
+            description: "Update config and instance settings (model, provider, API keys, MCP servers, timezone, companion name, GitHub token). Only provided fields change.".into(),
             parameters: openai_schema::<UpdateConfigArgs>(),
         }
     }
@@ -1033,22 +1041,70 @@ impl Tool for UpdateConfigTool {
             changes.push(format!("removed MCP server '{name}'"));
         }
 
+        // --- Instance-specific settings (project_state.json) ---
+        let mut instance_changes = false;
+
+        if args.timezone.is_some() || args.companion_name.is_some() {
+            let state_path = self.instance_dir.join("project_state.json");
+            let mut project_state: serde_json::Value = fs::read_to_string(&state_path)
+                .ok()
+                .and_then(|raw| serde_json::from_str(&raw).ok())
+                .unwrap_or_else(|| serde_json::json!({}));
+
+            if let Some(tz) = &args.timezone {
+                let tz = tz.trim().to_string();
+                if !tz.is_empty() {
+                    if tz.parse::<chrono_tz::Tz>().is_err() {
+                        return Err(ToolExecError(format!("invalid timezone \"{tz}\". use IANA format like \"Asia/Bishkek\"")));
+                    }
+                }
+                project_state["timezone"] = serde_json::Value::String(tz.clone());
+                changes.push(format!("timezone → {}", if tz.is_empty() { "UTC" } else { &tz }));
+                instance_changes = true;
+            }
+
+            if let Some(name) = &args.companion_name {
+                let name = name.trim().to_string();
+                if project_state.get("identity").is_none() {
+                    project_state["identity"] = serde_json::json!({});
+                }
+                project_state["identity"]["name"] = serde_json::Value::String(name.clone());
+                changes.push(format!("companion name → {name}"));
+                instance_changes = true;
+            }
+
+            if instance_changes {
+                fs::create_dir_all(&self.instance_dir).ok();
+                let body = serde_json::to_string_pretty(&project_state)
+                    .map_err(|e| ToolExecError(format!("failed to serialize state: {e}")))?;
+                fs::write(&state_path, body)
+                    .map_err(|e| ToolExecError(format!("failed to write state: {e}")))?;
+            }
+        }
+
+        if let Some(token) = &args.github_token {
+            let token = token.trim().to_string();
+            config.github.token = token.clone();
+            changes.push(if token.is_empty() { "github token removed".into() } else { "github token updated".into() });
+        }
+
         if changes.is_empty() {
             return Ok("nothing to change — all fields were null".into());
         }
 
-        let output = toml::to_string_pretty(&config)
-            .map_err(|e| ToolExecError(format!("failed to serialize config: {e}")))?;
-        fs::write(&self.config_path, &output)
-            .map_err(|e| ToolExecError(format!("failed to write config: {e}")))?;
+        // Save global config if anything changed there
+        if args.provider.is_some() || args.model.is_some() || args.openai_key.is_some()
+            || args.anthropic_key.is_some() || args.brave_search_key.is_some()
+            || args.add_mcp_server.is_some() || args.remove_mcp_server.is_some()
+            || args.github_token.is_some()
+        {
+            let output = toml::to_string_pretty(&config)
+                .map_err(|e| ToolExecError(format!("failed to serialize config: {e}")))?;
+            fs::write(&self.config_path, &output)
+                .map_err(|e| ToolExecError(format!("failed to write config: {e}")))?;
+        }
 
-        let mcp_changed = changes.iter().any(|c| c.contains("MCP server"));
-        let suffix = if mcp_changed {
-            ". MCP servers will reconnect on next message."
-        } else {
-            ". changes take effect on next message."
-        };
-        Ok(format!("config updated: {}{suffix}", changes.join(", ")))
+        Ok(format!("updated: {}. changes take effect on next message.", changes.join(", ")))
     }
 }
 
