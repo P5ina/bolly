@@ -63,9 +63,9 @@ impl Tool for RunCommandTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "run_command".into(),
-            description: "Run a shell command. ONLY for tasks without a dedicated tool (e.g. ls, grep, file inspection). \
-                NEVER use for: git (use github_* tools), file editing (use edit_file), web requests (use web_fetch), \
-                or compiling code (not available on this server).".into(),
+            description: "Run a shell command. Prefer built-in tools when available (github_* for git, \
+                edit_file for editing, web_fetch for HTTP). Use run_command for everything else: \
+                builds, tests, scripts, system commands.".into(),
             parameters: openai_schema::<RunCommandArgs>(),
         }
     }
