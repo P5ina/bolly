@@ -181,6 +181,9 @@ pub struct ToolChatResult {
     pub text: String,
     /// Full message history including tool call/result entries.
     pub rig_history: Option<Vec<Message>>,
+    /// Total tokens used (input + output) across all turns, from API usage.
+    /// 0 if provider doesn't report usage (OpenAI streaming).
+    pub tokens_used: u64,
 }
 
 #[derive(Clone)]
@@ -320,6 +323,7 @@ impl LlmBackend {
             return Ok(ToolChatResult {
                 text,
                 rig_history: None,
+                tokens_used: 0,
             });
         }
 
@@ -337,6 +341,7 @@ impl LlmBackend {
             Ok(text) => Ok(ToolChatResult {
                 text,
                 rig_history: Some(messages),
+                tokens_used: 0,
             }),
             Err(e) if is_rate_limit_error(&e.to_string()) => {
                 // Retry with backoff (simple chat, no tools)
@@ -351,6 +356,7 @@ impl LlmBackend {
                             return Ok(ToolChatResult {
                                 text,
                                 rig_history: None,
+                                tokens_used: 0,
                             })
                         }
                         Err(e) if is_rate_limit_error(&e.to_string()) => continue,
@@ -401,9 +407,10 @@ impl LlmBackend {
         .await;
 
         match result {
-            Ok(text) => Ok(ToolChatResult {
+            Ok((text, tokens_used)) => Ok(ToolChatResult {
                 text,
                 rig_history: Some(messages),
+                tokens_used,
             }),
             Err(e) => Err(e),
         }
@@ -511,25 +518,24 @@ async fn streaming_agent_loop(
     chat_id: &str,
     workspace_dir: &Path,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, u64), Box<dyn std::error::Error + Send + Sync>> {
     let mut all_text = String::new();
+    let mut total_tokens: u64 = 0;
 
     for _turn in 0..max_turns {
-        let (turn_text, tool_uses, stop_reason, compaction) = stream_once(
-            backend,
-            system,
-            tool_defs,
-            messages,
-            events,
-            instance_slug,
-            chat_id,
-            mcp_snapshot,
-        )
-        .await?;
+        let turn = stream_once(
+            backend, system, tool_defs, messages, events,
+            instance_slug, chat_id, mcp_snapshot,
+        ).await?;
+
+        total_tokens += turn.tokens_used;
+        let turn_text = turn.text;
+        let tool_uses = turn.tool_uses;
+        let stop_reason = turn.stop_reason;
 
         // Build assistant message
         let mut assistant_content = Vec::new();
-        if let Some(ref summary) = compaction {
+        if let Some(ref summary) = turn.compaction {
             if !summary.is_empty() {
                 // Compaction: API will ignore all messages before the compaction block.
                 // Drop old messages locally to keep the payload small and avoid re-triggering.
@@ -619,7 +625,7 @@ async fn streaming_agent_loop(
         super::chat::save_rig_history(&rig_path, messages);
     }
 
-    Ok(all_text)
+    Ok((all_text, total_tokens))
 }
 
 async fn execute_tool(tools: &[Box<dyn ToolDyn>], name: &str, input: &serde_json::Value) -> String {
@@ -846,7 +852,7 @@ async fn anthropic_stream(
     instance_slug: &str,
     chat_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
-) -> Result<(String, Vec<ToolUseBlock>, String, Option<String>), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, Vec<ToolUseBlock>, String, Option<String>, u64), Box<dyn std::error::Error + Send + Sync>> {
     let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true);
 
     let resp = http
@@ -866,6 +872,8 @@ async fn anthropic_stream(
     let mut tool_uses: Vec<ToolUseBlock> = Vec::new();
     let mut stop_reason = String::new();
     let mut compaction_summary: Option<String> = None;
+    let mut input_tokens: u64 = 0;
+    let mut output_tokens: u64 = 0;
 
     // Current block being built
     let mut current_block_type = String::new();
@@ -924,11 +932,12 @@ async fn anthropic_stream(
             match event_type.as_str() {
                 "message_start" => {
                     if let Some(usage) = ev.get("message").and_then(|m| m.get("usage")) {
+                        input_tokens = usage["input_tokens"].as_u64().unwrap_or(0);
                         log::info!(
                             "anthropic cache: read={} write={} input={}",
                             usage["cache_read_input_tokens"].as_u64().unwrap_or(0),
                             usage["cache_creation_input_tokens"].as_u64().unwrap_or(0),
-                            usage["input_tokens"].as_u64().unwrap_or(0),
+                            input_tokens,
                         );
                     }
                 }
@@ -1045,10 +1054,8 @@ async fn anthropic_stream(
                         }
                     }
                     if let Some(usage) = ev.get("usage") {
-                        log::info!(
-                            "anthropic output tokens: {}",
-                            usage["output_tokens"].as_u64().unwrap_or(0)
-                        );
+                        output_tokens = usage["output_tokens"].as_u64().unwrap_or(0);
+                        log::info!("anthropic output tokens: {}", output_tokens);
                     }
                 }
                 "message_stop" => {
@@ -1065,7 +1072,16 @@ async fn anthropic_stream(
         }
     }
 
-    Ok((text, tool_uses, stop_reason, compaction_summary))
+    Ok((text, tool_uses, stop_reason, compaction_summary, input_tokens + output_tokens))
+}
+
+/// Result of a single streaming turn.
+struct StreamOnceResult {
+    text: String,
+    tool_uses: Vec<ToolUseBlock>,
+    stop_reason: String,
+    compaction: Option<String>,
+    tokens_used: u64,
 }
 
 /// Streaming dispatch: route to provider-specific streaming.
@@ -1078,27 +1094,19 @@ async fn stream_once(
     instance_slug: &str,
     chat_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
-) -> Result<(String, Vec<ToolUseBlock>, String, Option<String>), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<StreamOnceResult, Box<dyn std::error::Error + Send + Sync>> {
     match backend {
         LlmBackend::Anthropic {
             http,
             api_key,
             model,
         } => {
-            anthropic_stream(
-                http,
-                api_key,
-                model,
-                system,
-                tool_defs,
-                messages,
-                16384,
-                events,
-                instance_slug,
-                chat_id,
-                mcp_snapshot,
-            )
-            .await
+            let (text, tool_uses, stop_reason, compaction, tokens_used) =
+                anthropic_stream(
+                    http, api_key, model, system, tool_defs, messages,
+                    16384, events, instance_slug, chat_id, mcp_snapshot,
+                ).await?;
+            Ok(StreamOnceResult { text, tool_uses, stop_reason, compaction, tokens_used })
         }
         LlmBackend::OpenAI {
             http,
@@ -1108,20 +1116,10 @@ async fn stream_once(
         } => {
             let joined = system.join("\n\n");
             let (text, tool_uses, stop_reason) = openai_stream(
-                http,
-                api_key,
-                base_url,
-                model,
-                &joined,
-                tool_defs,
-                messages,
-                16384,
-                events,
-                instance_slug,
-                chat_id,
-            )
-            .await?;
-            Ok((text, tool_uses, stop_reason, None))
+                http, api_key, base_url, model, &joined, tool_defs, messages,
+                16384, events, instance_slug, chat_id,
+            ).await?;
+            Ok(StreamOnceResult { text, tool_uses, stop_reason, compaction: None, tokens_used: 0 })
         }
     }
 }

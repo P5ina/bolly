@@ -381,7 +381,7 @@ pub async fn run_single_turn(
                 log::error!("LLM error details: {e:?}");
                 "something went wrong on my end — try again?".to_string()
             };
-            llm::ToolChatResult { text, rig_history: None }
+            llm::ToolChatResult { text, rig_history: None, tokens_used: 0 }
         });
 
     // Strip any leaked tool-call JSON the model may have output as text
@@ -445,13 +445,17 @@ pub async fn run_single_turn(
         save_rig_history(&rig_path, h);
     }
 
-    // Estimate total tokens: input (system prompt + history) + output
-    let input_tokens = estimate_tokens(&system_static)
-        + estimate_tokens_from_chars(history_text_chars);
-    let output_tokens: usize = assistant_messages.iter()
-        .map(|m| estimate_tokens(&m.content))
-        .sum();
-    let estimated_tokens = (input_tokens + output_tokens) as i32;
+    // Use real token count from API if available, fall back to estimate
+    let estimated_tokens = if tool_result.tokens_used > 0 {
+        tool_result.tokens_used as i32
+    } else {
+        let input_tokens = estimate_tokens(&system_static)
+            + estimate_tokens_from_chars(history_text_chars);
+        let output_tokens: usize = assistant_messages.iter()
+            .map(|m| estimate_tokens(&m.content))
+            .sum();
+        (input_tokens + output_tokens) as i32
+    };
 
     Ok(SingleTurnResult {
         messages: assistant_messages,
