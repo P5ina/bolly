@@ -59,7 +59,7 @@
 						</div>
 						<div class="text-[0.8125rem] text-text-ghost mb-8">per month</div>
 
-						<ul class="list-none mb-8 space-y-1.5">
+						<ul class="list-none mb-8 space-y-1.5 flex-1">
 							{#each plan.features as feature}
 								<li class="text-[0.8125rem] text-text-dim flex items-center gap-2">
 									<span class="w-1 h-1 rounded-full bg-warm-dim shrink-0"></span>
@@ -110,6 +110,8 @@
 		background: var(--color-bg);
 		transition: all 0.4s ease;
 		position: relative;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.price-card:hover {
