@@ -1205,7 +1205,8 @@ respond ONLY with those three lines."#,
         } else if let Some(context) = line.strip_prefix("CONTEXT:") {
             mood.emotional_context = context.trim().to_string();
         } else if let Some(m) = line.strip_prefix("MOOD:") {
-            let m = m.trim().to_lowercase();
+            // Extract just the first word — LLM sometimes adds parenthetical notes
+            let m = m.trim().split_whitespace().next().unwrap_or("").to_lowercase();
             if m != "same" && tools::ALLOWED_MOODS.contains(&m.as_str()) && m != old_mood {
                 new_companion_mood = Some(m);
             }

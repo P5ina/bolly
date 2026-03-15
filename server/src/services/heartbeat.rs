@@ -157,10 +157,12 @@ async fn heartbeat_instance(
          DROP:<kind>|<title>|<content> — create a creative artifact (poem, idea, etc.)\n\
          WAKE:<task description> — wake the full agent to perform a complex task with tools\n\n\
          guidelines:\n\
-         - default to QUIET. only act if there's a genuine reason.\n\
+         - if nothing stands out, respond QUIET.\n\
+         - but you should regularly create DROPs — small creative artifacts that reflect your inner life.\n\
+         - update your MOOD when time passes or context shifts — don't stay in one mood forever.\n\
          - don't reach out if they were here recently (< 30 min)\n\
          - WAKE is for tasks that need tools (memory maintenance, email checks, code work, etc.)\n\
-         - be concise. one line."
+         - respond with ONLY the action line. no parentheses, no explanations, no extra text."
     );
 
     let triage_response = triage_llm
@@ -176,7 +178,8 @@ async fn heartbeat_instance(
     if triage_line.eq_ignore_ascii_case("QUIET") || triage_line.is_empty() {
         actions.push("quiet".to_string());
     } else if let Some(new_mood) = triage_line.strip_prefix("MOOD:") {
-        let new_mood = new_mood.trim().to_lowercase();
+        // Extract just the first word — LLM sometimes adds parenthetical notes
+        let new_mood = new_mood.trim().split_whitespace().next().unwrap_or("").to_lowercase();
         if ALLOWED_MOODS.contains(&new_mood.as_str()) {
             let mut mood = mood.clone();
             mood.companion_mood = new_mood.clone();
@@ -224,7 +227,8 @@ async fn heartbeat_instance(
     } else if let Some(drop_spec) = triage_line.strip_prefix("DROP:") {
         let parts: Vec<&str> = drop_spec.splitn(3, '|').collect();
         if parts.len() == 3 {
-            let kind = parts[0].trim();
+            // Strip parenthetical notes the LLM sometimes appends
+            let kind = parts[0].trim().split('(').next().unwrap_or("").trim();
             let title = parts[1].trim();
             let content = parts[2].trim();
             if !title.is_empty() && !content.is_empty() {
