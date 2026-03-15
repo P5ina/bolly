@@ -15,7 +15,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!locals.user) error(401, 'Not authenticated');
 
-	const { slug, plan } = await request.json();
+	const { slug, plan, byok } = await request.json();
 
 	if (!slug || !/^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/.test(slug)) {
 		error(400, 'Invalid slug. Use lowercase letters, numbers, and hyphens (3-32 chars).');
@@ -36,13 +36,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const customerId = await ensureCustomer(locals.user);
 		const checkoutUrl = await createCheckoutSession({
 			customerId,
-			priceId: priceIdForPlan(plan as PlanId),
+			priceId: priceIdForPlan(plan as PlanId, !!byok),
 			successUrl: `${origin}/dashboard?checkout=success`,
 			cancelUrl: `${origin}/dashboard?checkout=cancelled`,
 			metadata: {
 				user_id: locals.user.id,
 				slug,
 				plan,
+				byok: byok ? 'true' : '',
 			},
 		});
 

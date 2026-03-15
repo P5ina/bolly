@@ -37,6 +37,7 @@
 	let creating = $state(false);
 	let slugInput = $state('');
 	let selectedPlan = $state<'starter' | 'companion' | 'unlimited'>('starter');
+	let createByok = $state(false);
 	let errorMsg = $state('');
 	let showCreate = $state(false);
 	let provisioning = $state(page.url.searchParams.get('checkout') === 'success');
@@ -64,7 +65,7 @@
 			const res = await fetch('/api/tenants', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ slug: slugInput.trim().toLowerCase(), plan: selectedPlan }),
+				body: JSON.stringify({ slug: slugInput.trim().toLowerCase(), plan: selectedPlan, byok: createByok }),
 			});
 
 			const body = await res.json().catch(() => ({ message: res.statusText }));
@@ -150,9 +151,9 @@
 							class="py-2.5 px-4 rounded-lg text-sm text-text outline-none"
 							style="background: var(--color-bg); border: 1px solid var(--color-border);"
 						>
-							<option value="starter">Starter ($12/mo) — 1M tokens</option>
-							<option value="companion">Companion ($29/mo) — 3M tokens</option>
-							<option value="unlimited">Unlimited ($59/mo) — 10M tokens</option>
+							<option value="starter">Starter ({createByok ? '$5' : '$12'}/mo) — 1M tokens</option>
+							<option value="companion">Companion ({createByok ? '$10' : '$29'}/mo) — 3M tokens</option>
+							<option value="unlimited">Unlimited ({createByok ? '$19' : '$59'}/mo) — 10M tokens</option>
 						</select>
 					</div>
 					<button
@@ -164,6 +165,10 @@
 						{creating ? 'Creating...' : 'Create'}
 					</button>
 				</div>
+				<label class="mt-3 flex items-center gap-2 cursor-pointer">
+					<input type="checkbox" bind:checked={createByok} class="accent-[oklch(0.78_0.12_75)]" />
+					<span class="text-xs text-text-ghost">I'll use my own API key <span class="text-text-ghost/50">(hosting-only pricing, no rate limits)</span></span>
+				</label>
 				{#if errorMsg}
 					<p class="mt-3 text-xs text-red-400/70 italic">{errorMsg}</p>
 				{/if}
