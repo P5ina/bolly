@@ -319,11 +319,15 @@
 
 	let activeCircles = $derived(focusedFolder ? fileCircles : folderCircles);
 
+	function resetView() {
+		panX = 0; panY = 0; zoom = 1;
+	}
+
 	function handleCircleClick(circle: Circle) {
 		if (!focusedFolder && circle.folder) {
 			focusedFolder = circle.folder.name;
 			hoveredNode = null;
-			panX = 0; panY = 0;
+			resetView();
 			viewKey++;
 		} else if (focusedFolder && circle.entry) {
 			openDocument(circle.entry);
@@ -337,7 +341,7 @@
 		} else {
 			focusedFolder = null;
 			hoveredNode = null;
-			panX = 0; panY = 0;
+			resetView();
 			viewKey++;
 		}
 	}
@@ -370,10 +374,27 @@
 		return label.slice(0, Math.max(maxChars - 2, 3)) + "..";
 	}
 
-	// Pan: mousedown on empty area starts drag, mousemove updates, mouseup ends.
-	// Bubbles handle their own clicks — pan only activates on the map background.
+	// Zoom
+	let zoom = $state(1);
+	const ZOOM_MIN = 0.3;
+	const ZOOM_MAX = 3;
+
+	function onWheel(e: WheelEvent) {
+		e.preventDefault();
+		const delta = e.deltaY > 0 ? 0.9 : 1.1;
+		const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom * delta));
+
+		// Zoom toward cursor position
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		const cx = e.clientX - rect.left;
+		const cy = e.clientY - rect.top;
+		panX = cx - (cx - panX) * (newZoom / zoom);
+		panY = cy - (cy - panY) * (newZoom / zoom);
+		zoom = newZoom;
+	}
+
+	// Pan: mousedown on empty area starts drag
 	function onMapMouseDown(e: MouseEvent) {
-		// Only start pan if clicking directly on the map, not on a bubble
 		if ((e.target as HTMLElement).closest(".bubble")) return;
 		if (e.button !== 0) return;
 		isPanning = true;
@@ -461,8 +482,9 @@
 				class="memory-map"
 				style="height: {mapH}px"
 				onmousedown={onMapMouseDown}
+				onwheel={onWheel}
 			>
-				<div class="memory-map-inner" style="transform: translate({panX}px, {panY}px)">
+				<div class="memory-map-inner" style="transform: translate({panX}px, {panY}px) scale({zoom}); transform-origin: 0 0">
 					{#each activeCircles as circle, i (circle.id)}
 						{@const isHovered = hoveredNode === circle.id}
 						{@const isFolderView = !focusedFolder}
