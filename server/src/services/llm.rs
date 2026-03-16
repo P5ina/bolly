@@ -943,6 +943,11 @@ async fn anthropic_stream(
                                     current_compaction_text.push_str(s);
                                 }
                             }
+                            Some("compaction_delta") => {
+                                if let Some(c) = delta["content"].as_str() {
+                                    current_compaction_text.push_str(c);
+                                }
+                            }
                             Some("input_json_delta") => {
                                 if let Some(partial) = delta["partial_json"].as_str() {
                                     current_tool_input_json.push_str(partial);
