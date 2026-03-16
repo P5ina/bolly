@@ -38,7 +38,7 @@ pub use companion::{
 };
 pub use drive::{ListDriveFilesTool, ReadDriveFileTool, UploadDriveFileTool};
 pub use files::{EditFileTool, ListFilesTool, ReadFileTool, SendFileTool, WriteFileTool};
-pub use memory_tools::{MemoryForgetTool, MemoryListTool, MemoryReadTool, MemoryWriteTool};
+pub use memory_tools::{MemoryForgetTool, MemoryListTool, MemoryReadTool, MemorySearchTool, MemoryWriteTool};
 pub use project::{TaskItem, TaskStatus};
 pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
 pub use system::{
@@ -470,6 +470,7 @@ pub fn build_tools(
         wrap(Box::new(MemoryReadTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(MemoryListTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(MemoryForgetTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(MemorySearchTool::new(workspace_dir, instance_slug))),
         // Mood is managed by background sentiment extraction + heartbeat, not tools.
         wrap(Box::new(EditSoulTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug, chat_id, events.clone()))),

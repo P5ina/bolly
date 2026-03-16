@@ -298,6 +298,200 @@ impl Tool for MemoryForgetTool {
 }
 
 // ---------------------------------------------------------------------------
+// memory_search — BM25-style semantic search across memory files
+// ---------------------------------------------------------------------------
+
+pub struct MemorySearchTool {
+    memory_dir: PathBuf,
+}
+
+impl MemorySearchTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            memory_dir: workspace_dir.join("instances").join(instance_slug).join("memory"),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct MemorySearchArgs {
+    /// Natural language search query. Can be a question, keywords, or a topic.
+    /// Examples: "what does the user do for work", "music preferences", "that bug we discussed"
+    pub query: String,
+    /// Maximum number of results to return. Default: 5.
+    pub limit: Option<usize>,
+}
+
+impl Tool for MemorySearchTool {
+    const NAME: &'static str = "memory_search";
+    type Error = ToolExecError;
+    type Args = MemorySearchArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "memory_search".into(),
+            description: "Search the memory library using natural language. \
+                Finds relevant memories by matching words and concepts across all files. \
+                Large files are searched at chunk level for precise results. \
+                Use this instead of memory_list when looking for something specific."
+                .into(),
+            parameters: openai_schema::<MemorySearchArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let query = args.query.trim().to_lowercase();
+        if query.is_empty() {
+            return Err(ToolExecError("query cannot be empty".into()));
+        }
+        let limit = args.limit.unwrap_or(5).min(20);
+
+        // Tokenize query
+        let query_terms: Vec<&str> = query
+            .split(|c: char| !c.is_alphanumeric() && c != '\'')
+            .filter(|w| w.len() > 1)
+            .collect();
+
+        if query_terms.is_empty() {
+            return Err(ToolExecError("query has no searchable terms".into()));
+        }
+
+        // Scan all memory files and build chunks
+        let entries = crate::services::memory::scan_library(
+            self.memory_dir.parent().and_then(|p| p.parent()).and_then(|p| p.parent()).unwrap_or(&self.memory_dir),
+            self.memory_dir.parent().and_then(|p| p.file_name()).and_then(|s| s.to_str()).unwrap_or(""),
+        );
+
+        if entries.is_empty() {
+            return Ok("(empty library — no memories to search)".into());
+        }
+
+        // Count document frequency for IDF
+        let total_chunks: f64;
+        let mut chunks: Vec<ScoredChunk> = Vec::new();
+
+        // Build chunks from all files
+        let mut all_chunks: Vec<(String, String)> = Vec::new(); // (path, text)
+        for entry in &entries {
+            let full_path = self.memory_dir.join(&entry.path);
+            let content = fs::read_to_string(&full_path).unwrap_or_default();
+
+            if content.len() < 800 {
+                // Small file — treat as single chunk
+                all_chunks.push((entry.path.clone(), content));
+            } else {
+                // Large file — split into chunks by paragraphs
+                let paragraphs: Vec<&str> = content.split("\n\n").collect();
+                let mut current_chunk = String::new();
+                let mut chunk_idx = 0;
+
+                for para in paragraphs {
+                    current_chunk.push_str(para);
+                    current_chunk.push_str("\n\n");
+
+                    if current_chunk.len() >= 600 {
+                        all_chunks.push((
+                            format!("{}#chunk{}", entry.path, chunk_idx),
+                            current_chunk.clone(),
+                        ));
+                        current_chunk.clear();
+                        chunk_idx += 1;
+                    }
+                }
+                if !current_chunk.trim().is_empty() {
+                    all_chunks.push((
+                        format!("{}#chunk{}", entry.path, chunk_idx),
+                        current_chunk,
+                    ));
+                }
+            }
+        }
+
+        total_chunks = all_chunks.len() as f64;
+
+        // Compute document frequency for each query term
+        let mut df: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for (_, text) in &all_chunks {
+            let lower = text.to_lowercase();
+            for term in &query_terms {
+                if lower.contains(term) {
+                    *df.entry(term).or_insert(0) += 1;
+                }
+            }
+        }
+
+        // Score each chunk using BM25-like formula
+        let k1 = 1.5f64;
+        let b = 0.75f64;
+        let avg_len: f64 = all_chunks.iter().map(|(_, t)| t.len() as f64).sum::<f64>() / total_chunks.max(1.0);
+
+        for (path, text) in &all_chunks {
+            let lower = text.to_lowercase();
+            let doc_len = text.len() as f64;
+            let mut score = 0.0f64;
+
+            for term in &query_terms {
+                // Term frequency in this chunk
+                let tf = lower.matches(term).count() as f64;
+                if tf == 0.0 { continue; }
+
+                // IDF: log((N - n + 0.5) / (n + 0.5))
+                let n = *df.get(term).unwrap_or(&0) as f64;
+                let idf = ((total_chunks - n + 0.5) / (n + 0.5) + 1.0).ln();
+
+                // BM25 score
+                let tf_norm = (tf * (k1 + 1.0)) / (tf + k1 * (1.0 - b + b * doc_len / avg_len));
+                score += idf * tf_norm;
+            }
+
+            // Bonus: path contains query terms
+            let path_lower = path.to_lowercase();
+            for term in &query_terms {
+                if path_lower.contains(term) {
+                    score += 2.0;
+                }
+            }
+
+            if score > 0.0 {
+                chunks.push(ScoredChunk {
+                    path: path.clone(),
+                    text: text.clone(),
+                    score,
+                });
+            }
+        }
+
+        chunks.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        chunks.truncate(limit);
+
+        if chunks.is_empty() {
+            return Ok(format!("no memories matched \"{query}\""));
+        }
+
+        let mut result = format!("found {} relevant memories:\n\n", chunks.len());
+        for (i, chunk) in chunks.iter().enumerate() {
+            let path_display = chunk.path.split('#').next().unwrap_or(&chunk.path);
+            let preview: String = chunk.text.chars().take(500).collect();
+            let preview = preview.trim();
+            result.push_str(&format!(
+                "--- [{}/{} · {path_display} · score: {:.1}] ---\n{preview}\n\n",
+                i + 1,
+                chunks.len(),
+                chunk.score,
+            ));
+        }
+        Ok(result)
+    }
+}
+
+struct ScoredChunk {
+    path: String,
+    text: String,
+    score: f64,
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

@@ -21,7 +21,7 @@ use crate::domain::thought::Thought;
 use crate::services::{chat, drops, llm::LlmBackend, memory, rhythm, thoughts};
 use crate::services::tools::{
     self, load_mood_state, save_mood_state, CreateDropTool,
-    MemoryForgetTool, MemoryListTool,
+    MemoryForgetTool, MemoryListTool, MemorySearchTool,
     MemoryReadTool, MemoryWriteTool, ReachOutTool,
     ALLOWED_MOODS, DeepResearchTool,
 };
@@ -590,6 +590,7 @@ fn build_heartbeat_tools(
         Box::new(MemoryReadTool::new(workspace_dir, instance_slug)),
         Box::new(MemoryListTool::new(workspace_dir, instance_slug)),
         Box::new(MemoryForgetTool::new(workspace_dir, instance_slug)),
+        Box::new(MemorySearchTool::new(workspace_dir, instance_slug)),
         // Drops
         Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
         // Reach out
