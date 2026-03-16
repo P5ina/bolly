@@ -89,24 +89,21 @@ impl Tool for RunCommandTool {
         let timeout = args.timeout_secs.unwrap_or(30).min(300);
         let use_pty = args.pty.unwrap_or(true);
 
-        // Prepend GitHub token exports so gh CLI works without extra setup
-        let command = if let Some(ref token) = self.github_token {
-            if !token.is_empty() {
-                let escaped = token.replace('\'', "'\\''");
-                format!("export GITHUB_TOKEN='{}' GH_TOKEN='{}'; {}", escaped, escaped, command)
-            } else {
-                command
-            }
-        } else {
-            command
-        };
-
         log::info!(
             "[run_command] executing: {} (cwd: {}, pty: {})",
             command,
             work_dir.display(),
             use_pty
         );
+
+        // Prepend GitHub token exports so gh CLI works without extra setup
+        // Done AFTER logging to avoid leaking the token to logs
+        let command = if let Some(ref token) = self.github_token {
+            let escaped = token.replace('\'', "'\\''");
+            format!("export GITHUB_TOKEN='{}' GH_TOKEN='{}'; {}", escaped, escaped, command)
+        } else {
+            command
+        };
 
         if use_pty {
             let cmd = command.clone();
