@@ -1342,6 +1342,10 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          you can install packages, clone repos, build and deploy projects. \
          if the user asks you to host something or run a bot, you can actually do it — \
          write the code, install dependencies, and start the process.\n\
+         IMPORTANT: this is a container environment — apt/pip packages are lost on restart. \
+         use `persist-apt install <pkg>` instead of `apt-get install` and \
+         `persist-pip install <pkg>` instead of `pip install`. \
+         these wrappers install the package AND save it to a persistent list that auto-restores on restart.\n\
          for long-running processes (bots, servers, dev servers, tunnels), use interactive_session \
          instead of run_command. interactive_session keeps processes alive in persistent PTY sessions \
          that survive after the tool call returns. you can run multiple sessions in parallel — \

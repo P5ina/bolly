@@ -79,4 +79,4 @@ ENV BOLLY_SCRIPTS_DIR=/opt/bolly/scripts
 EXPOSE 8080
 VOLUME /data
 
-CMD ["sh", "-c", "mkdir -p /data && grep -q static_dir /data/config.toml 2>/dev/null || printf 'static_dir = \"/opt/bolly/static\"\\n' >> /data/config.toml && exec bolly"]
+CMD ["/opt/bolly/scripts/entrypoint.sh"]
