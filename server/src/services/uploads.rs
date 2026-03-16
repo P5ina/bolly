@@ -7,7 +7,7 @@ use std::{
 
 use crate::domain::upload::UploadMeta;
 
-const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024; // 100 MB
+const MAX_FILE_SIZE: u64 = 500 * 1024 * 1024; // 500 MB
 
 const BLOCKED_EXTENSIONS: &[&str] = &[
     "exe", "dll", "so", "dylib", "bin", "msi", "dmg", "iso",

@@ -19,7 +19,7 @@ pub fn router() -> Router<AppState> {
             "/api/instances/{instance_slug}/uploads",
             get(list_uploads).post(upload_file),
         )
-        .layer(DefaultBodyLimit::max(100 * 1024 * 1024)) // 100 MB
+        .layer(DefaultBodyLimit::max(500 * 1024 * 1024)) // 500 MB
         .route(
             "/api/instances/{instance_slug}/uploads/{upload_id}",
             get(get_upload_meta).delete(delete_upload),
