@@ -298,80 +298,35 @@ async fn get_stats(
 ) -> Json<StatsResponse> {
     let instance_dir = state.workspace_dir.join("instances").join(&instance_slug);
 
-    // Load archived stats (accumulated from cleared messages via snapshot_before_clear)
-    let archive: crate::domain::rhythm::InteractionRhythm = fs::read_to_string(instance_dir.join("rhythm.json"))
+    // Load all daily stats files — one per day, no double-counting
+    let days = crate::services::daily_stats::load_all(&state.workspace_dir, &instance_slug);
+
+    let mut hourly_activity = [0u32; 24];
+    let mut daily_activity = [0u32; 7];
+    let mut total_messages: u32 = 0;
+    let mut total_chars: u64 = 0;
+
+    for day in &days {
+        total_messages += day.messages;
+        total_chars += day.chars;
+        for (h, count) in day.hours.iter().enumerate() {
+            hourly_activity[h] += count;
+        }
+        daily_activity[day.weekday as usize % 7] += day.messages;
+    }
+
+    let daily_history: Vec<(String, u32)> = days.iter()
+        .map(|d| (d.date.clone(), d.messages))
+        .collect();
+
+    let avg_message_length = if total_messages > 0 { total_chars as f64 / total_messages as f64 } else { 0.0 };
+
+    // Load avg_response_interval from rhythm.json (still computed by heartbeat)
+    let rhythm: crate::domain::rhythm::InteractionRhythm = fs::read_to_string(instance_dir.join("rhythm.json"))
         .ok()
         .and_then(|r| serde_json::from_str(&r).ok())
         .unwrap_or_default();
-
-    let tz: chrono_tz::Tz = read_timezone(&instance_dir)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(chrono_tz::UTC);
-
-    // Compute live stats from current messages on disk
-    let chats_dir = instance_dir.join("chats");
-    let mut hourly_activity = [0u32; 24];
-    let mut daily_activity = [0u32; 7];
-    let mut live_daily: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
-    let mut live_total: u32 = 0;
-    let mut live_chars: u64 = 0;
-    let mut live_timestamps: Vec<i64> = Vec::new();
-
-    if let Ok(entries) = fs::read_dir(&chats_dir) {
-        for entry in entries.filter_map(Result::ok) {
-            let msgs_path = entry.path().join("messages.json");
-            if let Ok(raw) = fs::read_to_string(&msgs_path) {
-                if let Ok(msgs) = serde_json::from_str::<Vec<serde_json::Value>>(&raw) {
-                    for msg in &msgs {
-                        if msg["role"].as_str() != Some("user") { continue; }
-                        if let Some(ts_str) = msg["created_at"].as_str() {
-                            if let Ok(ts_ms) = ts_str.parse::<i64>() {
-                                let ts = ts_ms / 1000;
-                                live_timestamps.push(ts);
-                                live_total += 1;
-                                live_chars += msg["content"].as_str().map(|s| s.len() as u64).unwrap_or(0);
-                                if let Some(dt) = chrono::DateTime::from_timestamp(ts, 0) {
-                                    let local = dt.with_timezone(&tz);
-                                    hourly_activity[local.hour() as usize] += 1;
-                                    daily_activity[local.weekday().num_days_from_monday() as usize] += 1;
-                                    let date = local.format("%Y-%m-%d").to_string();
-                                    *live_daily.entry(date).or_insert(0) += 1;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Merge: archived hourly/daily + live
-    for i in 0..24 { hourly_activity[i] += archive.hourly_activity[i]; }
-    for i in 0..7 { daily_activity[i] += archive.daily_activity[i]; }
-
-    // Merge daily_history: archive + live (archive has cleared data, live has current)
-    let mut daily_map = archive.daily_history.clone();
-    for (date, count) in &live_daily {
-        *daily_map.entry(date.clone()).or_insert(0) += count;
-    }
-    let daily_history: Vec<(String, u32)> = daily_map.into_iter().collect();
-
-    let total_messages = archive.total_messages + live_total;
-    let total_chars = archive.total_chars + live_chars;
-    let avg_message_length = if total_messages > 0 { total_chars as f64 / total_messages as f64 } else { 0.0 };
-
-    // Response interval from live messages (more accurate than archived average)
-    live_timestamps.sort();
-    let mut intervals: Vec<f64> = Vec::new();
-    for pair in live_timestamps.windows(2) {
-        let gap = (pair[1] - pair[0]) as f64;
-        if gap > 0.0 && gap < 7200.0 { intervals.push(gap); }
-    }
-    let avg_response_interval_secs = if !intervals.is_empty() {
-        intervals.iter().sum::<f64>() / intervals.len() as f64
-    } else {
-        archive.avg_response_interval_secs
-    };
+    let avg_response_interval_secs = rhythm.avg_response_interval_secs;
 
     // Scan thoughts for mood distribution
     let mut mood_counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
@@ -392,6 +347,9 @@ async fn get_stats(
     }
 
     // Streak: consecutive days ending today or yesterday (local time)
+    let tz: chrono_tz::Tz = read_timezone(&instance_dir)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(chrono_tz::UTC);
     let local_now = chrono::Utc::now().with_timezone(&tz);
     let today = local_now.format("%Y-%m-%d").to_string();
     let yesterday = (local_now - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
@@ -409,12 +367,11 @@ async fn get_stats(
         }
     }
 
-    // First message: earliest date from daily_history (covers both archived + live)
-    let first_message_at = daily_history.first().and_then(|(date_str, _)| {
-        chrono::NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()
-            .map(|d| {
-                let dt = d.and_hms_opt(0, 0, 0).unwrap();
-                let ts = chrono::NaiveDateTime::and_utc(&dt).timestamp();
+    // First message: earliest date from daily stats
+    let first_message_at = days.first().and_then(|d| {
+        chrono::NaiveDate::parse_from_str(&d.date, "%Y-%m-%d").ok()
+            .map(|nd| {
+                let ts = nd.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
                 (ts * 1000).to_string()
             })
     });

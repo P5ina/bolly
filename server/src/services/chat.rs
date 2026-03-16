@@ -15,6 +15,7 @@ use crate::{
     services::{
         llm::{self, LlmBackend},
         memory,
+        daily_stats,
         tools,
         skills,
         rhythm,
@@ -55,6 +56,9 @@ pub fn save_user_message(
     let mut mood = tools::load_mood_state(&instance_dir);
     mood.last_interaction = chrono::Utc::now().timestamp();
     tools::save_mood_state(&instance_dir, &mood);
+
+    // Record in daily stats (persistent, survives context clears)
+    daily_stats::record_message(workspace_dir, &instance_slug, user_message.content.len());
 
     Ok(user_message)
 }
@@ -543,8 +547,8 @@ pub fn clear_context(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
 
-    // Snapshot message stats into rhythm.json before clearing
-    rhythm::snapshot_before_clear(workspace_dir, &instance_slug);
+    // No need to snapshot stats — daily_stats files are written incrementally
+    // and never deleted by clear_context.
 
     let compact = compact_path(workspace_dir, &instance_slug, &chat_id);
     if compact.exists() {

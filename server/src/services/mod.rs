@@ -1,4 +1,5 @@
 pub mod chat;
+pub mod daily_stats;
 pub mod google;
 pub mod rate_limit;
 pub mod drops;
