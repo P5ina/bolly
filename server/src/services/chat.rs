@@ -385,53 +385,30 @@ pub async fn run_single_turn(
     let estimated_history_tokens = history_text_chars / 4;
     const COMPACT_THRESHOLD_TOKENS: usize = 150_000;
 
-    if estimated_history_tokens > COMPACT_THRESHOLD_TOKENS && history_msgs.len() > 4 {
-        if llm.is_oauth() {
-            // OAuth: no server-side compaction — manually summarize old messages
-            log::info!(
-                "[chat] OAuth compaction: ~{estimated_history_tokens} tokens in {} messages, summarizing",
-                history_msgs.len()
-            );
-            match manual_compact(&history_msgs, llm).await {
-                Ok((summary, kept)) => {
-                    let compacted_count = history_msgs.len() - kept.len();
-                    history_msgs = vec![llm::Message::Assistant {
-                        content: vec![llm::ContentBlock::Compaction { content: summary }],
-                    }];
-                    history_msgs.extend(kept);
-                    let _ = events.send(ServerEvent::ContextCompacting {
-                        instance_slug: instance_slug.clone(),
-                        chat_id: chat_id.clone(),
-                        messages_compacted: compacted_count,
-                    });
-                    log::info!(
-                        "[chat] OAuth compaction done: kept {} messages, compacted {}",
-                        history_msgs.len(), compacted_count
-                    );
-                }
-                Err(e) => log::warn!("[chat] manual compaction failed: {e}"),
-            }
-        } else {
-            // Non-OAuth: server compaction exists, but trim extreme history to leave room
-            // Keep at most ~100k tokens worth of messages so compaction has space to work
-            const MAX_CHARS: usize = 600_000;
-            if history_text_chars > MAX_CHARS && history_msgs.len() > 6 {
-                let mut kept_chars = 0usize;
-                let mut keep_from = history_msgs.len();
-                for (i, msg) in history_msgs.iter().enumerate().rev() {
-                    kept_chars += extract_message_text_len(msg);
-                    if kept_chars > MAX_CHARS {
-                        keep_from = i + 1;
-                        break;
-                    }
-                }
-                let removed = keep_from;
-                history_msgs = history_msgs.split_off(keep_from);
+    // OAuth tokens don't support server-side compaction — manually summarize when context grows too large
+    if llm.is_oauth() && estimated_history_tokens > COMPACT_THRESHOLD_TOKENS && history_msgs.len() > 4 {
+        log::info!(
+            "[chat] OAuth compaction: ~{estimated_history_tokens} tokens in {} messages, summarizing",
+            history_msgs.len()
+        );
+        match manual_compact(&history_msgs, llm).await {
+            Ok((summary, kept)) => {
+                let compacted_count = history_msgs.len() - kept.len();
+                history_msgs = vec![llm::Message::Assistant {
+                    content: vec![llm::ContentBlock::Compaction { content: summary }],
+                }];
+                history_msgs.extend(kept);
+                let _ = events.send(ServerEvent::ContextCompacting {
+                    instance_slug: instance_slug.clone(),
+                    chat_id: chat_id.clone(),
+                    messages_compacted: compacted_count,
+                });
                 log::info!(
-                    "[chat] trimmed {removed} old messages to leave room for compaction ({} remaining)",
-                    history_msgs.len()
+                    "[chat] OAuth compaction done: kept {} messages, compacted {}",
+                    history_msgs.len(), compacted_count
                 );
             }
+            Err(e) => log::warn!("[chat] manual compaction failed: {e}"),
         }
     }
 
