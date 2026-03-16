@@ -332,6 +332,14 @@ async fn set_email_config(
         }
     };
 
+    // Reject accounts with empty passwords — they won't work and are likely
+    // Google OAuth accounts mistakenly added as SMTP/IMAP
+    for acct in &accounts {
+        if acct.smtp_password.is_empty() || acct.imap_password.is_empty() {
+            return StatusCode::BAD_REQUEST;
+        }
+    }
+
     match crate::config::EmailAccounts::save(&accounts, &state.workspace_dir, &instance_slug) {
         Ok(_) => StatusCode::OK,
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
