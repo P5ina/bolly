@@ -321,16 +321,40 @@ export async function deleteDrop(slug: string, dropId: string): Promise<void> {
 	);
 }
 
-export async function uploadFile(slug: string, file: File): Promise<UploadMeta> {
-	const form = new FormData();
-	form.append("file", file);
-	const res = await authedFetch(
-		`/api/instances/${encodeURIComponent(slug)}/uploads`,
-		{ method: "POST", body: form },
-	);
-	if (res.status === 401) throw new AuthError();
-	if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
-	return res.json();
+export async function uploadFile(
+	slug: string,
+	file: File,
+	onProgress?: (loaded: number, total: number) => void,
+): Promise<UploadMeta> {
+	return new Promise((resolve, reject) => {
+		const xhr = new XMLHttpRequest();
+		xhr.open("POST", `${BASE}/api/instances/${encodeURIComponent(slug)}/uploads`);
+
+		const token = getAuthToken();
+		if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+
+		if (onProgress) {
+			xhr.upload.onprogress = (e) => {
+				if (e.lengthComputable) onProgress(e.loaded, e.total);
+			};
+		}
+
+		xhr.onload = () => {
+			if (xhr.status === 401) return reject(new AuthError());
+			if (xhr.status < 200 || xhr.status >= 300) return reject(new Error(xhr.responseText || xhr.statusText));
+			try {
+				resolve(JSON.parse(xhr.responseText));
+			} catch {
+				reject(new Error("invalid response"));
+			}
+		};
+
+		xhr.onerror = () => reject(new Error("upload failed"));
+
+		const form = new FormData();
+		form.append("file", file);
+		xhr.send(form);
+	});
 }
 
 export function fetchUploads(slug: string): Promise<UploadMeta[]> {

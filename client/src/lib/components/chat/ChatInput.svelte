@@ -16,7 +16,7 @@
 		disabled?: boolean;
 		agentRunning?: boolean;
 		mood?: string;
-		uploadProgress?: { done: number; total: number } | null;
+		uploadProgress?: { fileIndex: number; fileCount: number; loaded: number; total: number } | null;
 	} = $props();
 
 	let value = $state("");
@@ -227,9 +227,16 @@
 			{/if}
 		</div>
 		{#if uploadProgress}
+			{@const pct = uploadProgress.total > 0 ? (uploadProgress.loaded / uploadProgress.total) * 100 : 0}
+			{@const mb = (s: number) => s < 1024 * 1024 ? `${(s / 1024).toFixed(0)} KB` : `${(s / 1024 / 1024).toFixed(1)} MB`}
 			<div class="upload-progress">
-				<div class="upload-progress-bar" style="width: {(uploadProgress.done / uploadProgress.total) * 100}%"></div>
-				<span class="upload-progress-label">uploading {uploadProgress.done}/{uploadProgress.total}</span>
+				<div class="upload-progress-bar" style="width: {pct}%"></div>
+				<span class="upload-progress-label">
+					{#if uploadProgress.fileCount > 1}
+						file {uploadProgress.fileIndex + 1}/{uploadProgress.fileCount} ·
+					{/if}
+					{mb(uploadProgress.loaded)} / {mb(uploadProgress.total)} ({pct.toFixed(0)}%)
+				</span>
 			</div>
 		{/if}
 		<UsageBar tick={usageTick} />

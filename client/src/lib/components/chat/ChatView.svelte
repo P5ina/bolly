@@ -449,7 +449,7 @@
 		return unsub;
 	});
 
-	let uploadProgress = $state<{ done: number; total: number } | null>(null);
+	let uploadProgress = $state<{ fileIndex: number; fileCount: number; loaded: number; total: number } | null>(null);
 
 	async function handleSend(content: string, files?: File[]) {
 		sending = true;
@@ -457,11 +457,12 @@
 			// Upload files first, then reference them in the message
 			let finalContent = content;
 			if (files && files.length > 0) {
-				uploadProgress = { done: 0, total: files.length };
 				const uploadResults = [];
-				for (const f of files) {
-					uploadResults.push(await uploadFile(slug, f));
-					uploadProgress = { done: uploadResults.length, total: files.length };
+				for (let i = 0; i < files.length; i++) {
+					uploadProgress = { fileIndex: i, fileCount: files.length, loaded: 0, total: files[i].size };
+					uploadResults.push(await uploadFile(slug, files[i], (loaded, total) => {
+						uploadProgress = { fileIndex: i, fileCount: files.length, loaded, total };
+					}));
 				}
 				uploadProgress = null;
 				const refs = uploadResults
