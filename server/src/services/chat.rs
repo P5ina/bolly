@@ -17,6 +17,7 @@ use crate::{
         memory,
         tools,
         skills,
+        rhythm,
         workspace,
     },
 };
@@ -541,6 +542,10 @@ pub fn load_messages(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -
 pub fn clear_context(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
+
+    // Snapshot message stats into rhythm.json before clearing
+    rhythm::snapshot_before_clear(workspace_dir, &instance_slug);
+
     let compact = compact_path(workspace_dir, &instance_slug, &chat_id);
     if compact.exists() {
         let _ = fs::remove_file(&compact);
@@ -552,7 +557,7 @@ pub fn clear_context(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
         let _ = fs::remove_file(&rig_path);
         log::info!("cleared rig history for {instance_slug}/{chat_id}");
     }
-    // Also clear messages
+    // Clear messages
     let msgs = messages_path(workspace_dir, &instance_slug, &chat_id);
     if msgs.exists() {
         let _ = fs::write(&msgs, "[]");

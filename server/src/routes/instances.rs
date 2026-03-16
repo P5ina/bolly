@@ -1,4 +1,5 @@
 use axum::{Json, Router, extract::{Path, State}, http::StatusCode, routing::{delete, get, post, put}};
+use chrono::{Datelike, Timelike};
 use serde::{Deserialize, Serialize};
 use std::fs;
 
@@ -297,16 +298,26 @@ async fn get_stats(
 ) -> Json<StatsResponse> {
     let instance_dir = state.workspace_dir.join("instances").join(&instance_slug);
 
-    // Load rhythm data
+    // Load accumulated rhythm data (survives context clears)
     let rhythm: crate::domain::rhythm::InteractionRhythm = fs::read_to_string(instance_dir.join("rhythm.json"))
         .ok()
         .and_then(|r| serde_json::from_str(&r).ok())
         .unwrap_or_default();
 
-    // Scan all messages for daily history + mood counts
+    let tz: chrono_tz::Tz = read_timezone(&instance_dir)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(chrono_tz::UTC);
+
+    // Start with accumulated rhythm data
+    let mut hourly_activity = rhythm.hourly_activity;
+    let mut daily_activity = rhythm.daily_activity;
+    let mut daily_map: std::collections::BTreeMap<String, u32> = rhythm.daily_history.clone();
+    let mut total_messages = rhythm.total_messages;
+    let mut total_chars = rhythm.total_chars;
+
+    // Add live messages on top (not yet snapshotted)
     let chats_dir = instance_dir.join("chats");
-    let mut all_timestamps: Vec<i64> = Vec::new();
-    let mut mood_counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    let mut live_timestamps: Vec<i64> = Vec::new();
 
     if let Ok(entries) = fs::read_dir(&chats_dir) {
         for entry in entries.filter_map(Result::ok) {
@@ -314,11 +325,20 @@ async fn get_stats(
             if let Ok(raw) = fs::read_to_string(&msgs_path) {
                 if let Ok(msgs) = serde_json::from_str::<Vec<serde_json::Value>>(&raw) {
                     for msg in &msgs {
-                        let role = msg["role"].as_str().unwrap_or("");
-                        if role != "user" { continue; }
+                        if msg["role"].as_str() != Some("user") { continue; }
                         if let Some(ts_str) = msg["created_at"].as_str() {
                             if let Ok(ts_ms) = ts_str.parse::<i64>() {
-                                all_timestamps.push(ts_ms / 1000);
+                                let ts = ts_ms / 1000;
+                                live_timestamps.push(ts);
+                                total_messages += 1;
+                                total_chars += msg["content"].as_str().map(|s| s.len() as u64).unwrap_or(0);
+                                if let Some(dt) = chrono::DateTime::from_timestamp(ts, 0) {
+                                    let local = dt.with_timezone(&tz);
+                                    hourly_activity[local.hour() as usize] += 1;
+                                    daily_activity[local.weekday().num_days_from_monday() as usize] += 1;
+                                    let date = local.format("%Y-%m-%d").to_string();
+                                    *daily_map.entry(date).or_insert(0) += 1;
+                                }
                             }
                         }
                     }
@@ -327,7 +347,12 @@ async fn get_stats(
         }
     }
 
+    let daily_history: Vec<(String, u32)> = daily_map.into_iter().collect();
+    let avg_message_length = if total_messages > 0 { total_chars as f64 / total_messages as f64 } else { 0.0 };
+    let avg_response_interval_secs = rhythm.avg_response_interval_secs;
+
     // Scan thoughts for mood distribution
+    let mut mood_counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
     let thoughts_dir = instance_dir.join("thoughts");
     if let Ok(entries) = fs::read_dir(&thoughts_dir) {
         for entry in entries.filter_map(Result::ok) {
@@ -344,31 +369,17 @@ async fn get_stats(
         }
     }
 
-    all_timestamps.sort();
-
-    // Build daily history
-    let mut daily_map: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
-    for &ts in &all_timestamps {
-        let date = chrono::DateTime::from_timestamp(ts, 0)
-            .map(|dt| dt.format("%Y-%m-%d").to_string())
-            .unwrap_or_default();
-        if !date.is_empty() {
-            *daily_map.entry(date).or_insert(0) += 1;
-        }
-    }
-    let daily_history: Vec<(String, u32)> = daily_map.into_iter().collect();
-
-    // Streak: consecutive days ending today (or yesterday)
-    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let yesterday = (chrono::Utc::now() - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
-    let mut streak_days = 0u32;
+    // Streak: consecutive days ending today or yesterday (local time)
+    let local_now = chrono::Utc::now().with_timezone(&tz);
+    let today = local_now.format("%Y-%m-%d").to_string();
+    let yesterday = (local_now - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
     let dates: std::collections::HashSet<String> = daily_history.iter().map(|(d, _)| d.clone()).collect();
-    let mut check_date = if dates.contains(&today) { chrono::Utc::now().date_naive() }
-        else if dates.contains(&yesterday) { (chrono::Utc::now() - chrono::Duration::days(1)).date_naive() }
-        else { chrono::Utc::now().date_naive() };
+    let mut streak_days = 0u32;
+    let mut check_date = if dates.contains(&today) { local_now.date_naive() }
+        else if dates.contains(&yesterday) { (local_now - chrono::Duration::days(1)).date_naive() }
+        else { local_now.date_naive() };
     loop {
-        let ds = check_date.format("%Y-%m-%d").to_string();
-        if dates.contains(&ds) {
+        if dates.contains(&check_date.format("%Y-%m-%d").to_string()) {
             streak_days += 1;
             check_date -= chrono::Duration::days(1);
         } else {
@@ -376,14 +387,18 @@ async fn get_stats(
         }
     }
 
-    let first_message_at = all_timestamps.first().map(|ts| (ts * 1000).to_string());
+    // First message: check both daily_history keys and live timestamps
+    let first_date = daily_history.first().map(|(d, _)| d.clone());
+    let first_message_at = live_timestamps.iter().min()
+        .map(|ts| (ts * 1000).to_string())
+        .or_else(|| first_date.map(|_| "0".to_string()));
 
     Json(StatsResponse {
-        hourly_activity: rhythm.hourly_activity,
-        daily_activity: rhythm.daily_activity,
-        total_messages: rhythm.total_messages,
-        avg_message_length: rhythm.avg_message_length,
-        avg_response_interval_secs: rhythm.avg_response_interval_secs,
+        hourly_activity,
+        daily_activity,
+        total_messages,
+        avg_message_length,
+        avg_response_interval_secs,
         daily_history,
         mood_counts,
         streak_days,

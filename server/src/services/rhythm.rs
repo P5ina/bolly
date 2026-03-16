@@ -7,6 +7,7 @@ use std::fs;
 use std::path::Path;
 
 use chrono::{DateTime, Datelike, TimeZone, Timelike, Utc};
+use chrono_tz;
 
 use crate::domain::chat::{ChatMessage, ChatRole};
 use crate::domain::rhythm::InteractionRhythm;
@@ -92,6 +93,76 @@ pub fn recompute_rhythm(workspace_dir: &Path, slug: &str) -> InteractionRhythm {
     }
 
     rhythm
+}
+
+/// Snapshot message data into rhythm.json before clearing messages.
+/// Merges current messages into the accumulated stats so nothing is lost.
+pub fn snapshot_before_clear(workspace_dir: &Path, slug: &str) {
+    let instance_dir = workspace_dir.join("instances").join(slug);
+    let tz: chrono_tz::Tz = crate::routes::instances::read_timezone(&instance_dir)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(chrono_tz::UTC);
+
+    // Load existing rhythm (accumulated data)
+    let mut rhythm: InteractionRhythm = fs::read_to_string(instance_dir.join("rhythm.json"))
+        .ok()
+        .and_then(|r| serde_json::from_str(&r).ok())
+        .unwrap_or_default();
+
+    // Scan current messages
+    let chats_dir = workspace_dir.join("instances").join(slug).join("chats");
+    let mut msg_count = 0u32;
+    let mut total_chars = 0u64;
+    let mut timestamps: Vec<i64> = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(&chats_dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let msgs_path = entry.path().join("messages.json");
+            if let Ok(raw) = fs::read_to_string(&msgs_path) {
+                let messages: Vec<ChatMessage> = serde_json::from_str(&raw).unwrap_or_default();
+                for msg in &messages {
+                    if !matches!(msg.role, ChatRole::User) { continue; }
+                    if let Ok(ts_ms) = msg.created_at.parse::<i64>() {
+                        let ts = ts_ms / 1000;
+                        timestamps.push(ts);
+                        msg_count += 1;
+                        total_chars += msg.content.len() as u64;
+
+                        if let Some(dt) = Utc.timestamp_opt(ts, 0).single() {
+                            let local = dt.with_timezone(&tz);
+                            rhythm.hourly_activity[local.hour() as usize] += 1;
+                            rhythm.daily_activity[local.weekday().num_days_from_monday() as usize] += 1;
+                            let date = local.format("%Y-%m-%d").to_string();
+                            *rhythm.daily_history.entry(date).or_insert(0) += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if msg_count == 0 {
+        return;
+    }
+
+    rhythm.total_messages += msg_count;
+    rhythm.total_chars += total_chars;
+    rhythm.avg_message_length = rhythm.total_chars as f64 / rhythm.total_messages as f64;
+
+    // Update avg response interval
+    timestamps.sort();
+    let mut intervals: Vec<i64> = Vec::new();
+    for w in timestamps.windows(2) {
+        let gap = w[1] - w[0];
+        if gap > 0 && gap < SESSION_GAP_SECS { intervals.push(gap); }
+    }
+    if !intervals.is_empty() {
+        rhythm.avg_response_interval_secs = intervals.iter().sum::<i64>() as f64 / intervals.len() as f64;
+    }
+
+    rhythm.updated_at = Utc::now().timestamp();
+    save_rhythm(&instance_dir, &rhythm);
+    log::info!("[rhythm] snapshot before clear: {} messages accumulated for {slug}", rhythm.total_messages);
 }
 
 /// Build a human-readable rhythm insight string for injection into prompts.

@@ -28,4 +28,13 @@ pub struct InteractionRhythm {
     /// Unix timestamp of last rhythm update.
     #[serde(default)]
     pub updated_at: i64,
+
+    /// Accumulated daily message counts: {date_str: count}.
+    /// Persists across context clears so stats aren't lost.
+    #[serde(default)]
+    pub daily_history: std::collections::BTreeMap<String, u32>,
+
+    /// Accumulated total chars for avg_message_length across clears.
+    #[serde(default)]
+    pub total_chars: u64,
 }
