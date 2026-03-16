@@ -497,7 +497,14 @@ pub fn build_tools(
     // ── Web ──
     tools.push(wrap(Box::new(WebSearchTool::new(brave_api_key, config_path))));
     tools.push(wrap(Box::new(WebFetchTool)));
-    tools.push(wrap(Box::new(WatchVideoTool::new(openrouter_key))));
+    {
+        let cfg = crate::config::load_config().ok();
+        let landing_url = cfg.as_ref().map(|c| c.landing_url.as_str()).unwrap_or("");
+        let auth_token = cfg.as_ref().map(|c| c.auth_token.as_str()).unwrap_or("");
+        tools.push(wrap(Box::new(WatchVideoTool::new(
+            openrouter_key, workspace_dir, instance_slug, landing_url, auth_token,
+        ))));
+    }
     if browser_enabled {
         tools.push(wrap(Box::new(BrowseTool::new(workspace_dir, instance_slug))));
     }
