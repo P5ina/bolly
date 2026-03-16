@@ -706,10 +706,7 @@ fn build_anthropic_request(
     // Server-side context compaction — only supported on opus/sonnet 4.6+ with API keys (not OAuth)
     if !api_key.starts_with("sk-ant-oat") && (model.contains("opus-4") || model.contains("sonnet-4")) {
         req["context_management"] = serde_json::json!({
-            "edits": [{
-                "type": "compact_20260112",
-                "trigger": {"type": "input_tokens", "value": 100000}
-            }]
+            "edits": [{"type": "compact_20260112"}]
         });
     }
     req
