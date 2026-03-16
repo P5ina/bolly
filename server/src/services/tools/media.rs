@@ -102,7 +102,8 @@ impl MediaType {
         match self { MediaType::Video => "video.mp4", MediaType::Audio => "audio.mp3" }
     }
     fn content_key(self) -> &'static str {
-        match self { MediaType::Video => "video_url", MediaType::Audio => "audio_url" }
+        // OpenRouter only supports video_url — Gemini handles audio through it too
+        "video_url"
     }
     fn yt_dlp_format(self) -> &'static str {
         match self {
