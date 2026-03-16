@@ -48,7 +48,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       ca-certificates curl sudo procps \
       python3 python3-pip python3-venv \
-      git jq \
+      git jq ffmpeg \
       fontconfig \
       fonts-liberation fonts-dejavu-core fonts-noto-core fonts-noto-cjk \
       fonts-noto-color-emoji fonts-noto-mono \
