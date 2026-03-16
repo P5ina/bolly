@@ -158,6 +158,7 @@ pub async fn run_single_turn(
     let google_connected = !google_accounts.is_empty();
 
     let email_accounts = crate::config::EmailAccounts::load(workspace_dir, &instance_slug);
+    let instance_cfg = crate::config::InstanceConfig::load(workspace_dir, &instance_slug);
     let email_configured = !email_accounts.is_empty();
     let has_any_email = google_connected || email_configured;
     let google_hint = if google_connected && email_configured {
@@ -233,8 +234,8 @@ pub async fn run_single_turn(
 
     // GitHub integration hint
     {
-        let gh_configured = chat_config.as_ref()
-            .is_some_and(|c| !c.github.token.is_empty());
+        let global_gh = chat_config.as_ref().is_some_and(|c| !c.github.token.is_empty());
+        let gh_configured = global_gh || !instance_cfg.github.token.is_empty();
         if gh_configured {
             system_prompt.push_str(
                 "\n\n## github\n\
@@ -362,6 +363,13 @@ pub async fn run_single_turn(
         .as_ref()
         .map(|c| c.llm.tokens.open_router.clone())
         .unwrap_or_default();
+    // Prefer instance-level github token; fall back to global config
+    let github_token = {
+        let global_token = chat_config.as_ref().map(|c| c.github.token.clone()).unwrap_or_default();
+        let instance_token = instance_cfg.github.token.clone();
+        let t = if !instance_token.is_empty() { instance_token } else { global_token };
+        if t.is_empty() { None } else { Some(t) }
+    };
     let (all_tools, sent_files) = tools::build_tools(
         workspace_dir, &instance_slug, &chat_id, brave_api_key,
         config_path, events.clone(), llm,
@@ -373,6 +381,7 @@ pub async fn run_single_turn(
         Some(mcp_snapshot.clone()),
         mcp_tools,
         &openrouter_key,
+        github_token,
     );
     tools::cache_tool_defs(&all_tools).await;
 

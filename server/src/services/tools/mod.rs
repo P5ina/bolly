@@ -445,6 +445,7 @@ pub fn build_tools(
     mcp_snapshot: Option<crate::services::mcp::McpAppSnapshot>,
     mcp_tools: Vec<Box<dyn ToolDyn>>,
     openrouter_key: &str,
+    github_token: Option<String>,
 ) -> (Vec<Box<dyn ToolDyn>>, SentFiles) {
     let snap = mcp_snapshot;
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
@@ -473,7 +474,7 @@ pub fn build_tools(
         wrap(Box::new(MemorySearchTool::new(workspace_dir, instance_slug))),
         // Mood is managed by background sentiment extraction + heartbeat, not tools.
         wrap(Box::new(EditSoulTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug, chat_id, events.clone()))),
+        wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug, chat_id, events.clone(), github_token))),
         wrap(Box::new(ClearContextTool::new(workspace_dir, instance_slug))),
     ];
 
