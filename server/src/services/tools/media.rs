@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use base64::Engine;
 use crate::services::tool::{ToolDefinition, Tool};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -55,8 +56,10 @@ impl MediaContext {
         ))
     }
 
-    /// Process input (local file, YouTube URL, or direct URL) → public URL for Gemini.
-    async fn resolve_media_url(
+    /// Process input → reference for Gemini.
+    /// Video: returns a public URL (uploaded).
+    /// Audio: returns a local file path (for base64 encoding).
+    async fn resolve_media_ref(
         &self,
         input: &str,
         media_type: MediaType,
@@ -66,26 +69,39 @@ impl MediaContext {
 
         if is_local {
             let processed = maybe_compress(input, media_type).await?;
-            let bytes = std::fs::read(&processed)
-                .map_err(|e| ToolExecError(format!("failed to read file: {e}")))?;
-            if processed != input { let _ = std::fs::remove_file(&processed); }
-            let name = local_path.file_name().and_then(|n| n.to_str())
-                .unwrap_or(media_type.default_filename());
-            self.save_and_get_url(name, &bytes)
+            match media_type {
+                MediaType::Audio => Ok(processed), // keep local for base64
+                MediaType::Video => {
+                    let bytes = std::fs::read(&processed)
+                        .map_err(|e| ToolExecError(format!("failed to read file: {e}")))?;
+                    if processed != input { let _ = std::fs::remove_file(&processed); }
+                    let name = local_path.file_name().and_then(|n| n.to_str())
+                        .unwrap_or(media_type.default_filename());
+                    self.save_and_get_url(name, &bytes)
+                }
+            }
         } else if is_youtube_url(input) {
             log::info!("[media] downloading from YouTube...");
             let downloaded = download_youtube(input, media_type).await?;
             let processed = maybe_compress(&downloaded, media_type).await?;
-            let bytes = std::fs::read(&processed)
-                .map_err(|e| ToolExecError(format!("failed to read file: {e}")))?;
-            let _ = std::fs::remove_file(&downloaded);
-            if processed != downloaded { let _ = std::fs::remove_file(&processed); }
-            let name = format!("youtube_{}", media_type.default_filename());
-            let url = self.save_and_get_url(&name, &bytes)?;
-            log::info!("[media] YouTube → upload ({:.1} MB)", bytes.len() as f64 / 1024.0 / 1024.0);
-            Ok(url)
+            if processed != downloaded { let _ = std::fs::remove_file(&downloaded); }
+
+            match media_type {
+                MediaType::Audio => {
+                    log::info!("[media] YouTube audio ready: {processed}");
+                    Ok(processed) // keep local for base64
+                }
+                MediaType::Video => {
+                    let bytes = std::fs::read(&processed)
+                        .map_err(|e| ToolExecError(format!("failed to read file: {e}")))?;
+                    let _ = std::fs::remove_file(&processed);
+                    let name = format!("youtube_{}", media_type.default_filename());
+                    let url = self.save_and_get_url(&name, &bytes)?;
+                    log::info!("[media] YouTube video → upload ({:.1} MB)", bytes.len() as f64 / 1024.0 / 1024.0);
+                    Ok(url)
+                }
+            }
         } else {
-            // Direct URL — pass through
             Ok(input.to_string())
         }
     }
@@ -100,10 +116,6 @@ enum MediaType {
 impl MediaType {
     fn default_filename(self) -> &'static str {
         match self { MediaType::Video => "video.mp4", MediaType::Audio => "audio.mp3" }
-    }
-    fn content_key(self) -> &'static str {
-        // OpenRouter only supports video_url — Gemini handles audio through it too
-        "video_url"
     }
     fn yt_dlp_format(self) -> &'static str {
         match self {
@@ -156,8 +168,8 @@ impl Tool for WatchVideoTool {
         if input.is_empty() { return Err(ToolExecError("url/path cannot be empty".into())); }
         let prompt = args.prompt.as_deref()
             .unwrap_or("Watch this video carefully and provide a detailed summary. Include key points, any text/code shown, and notable visual elements.");
-        let url = self.ctx.resolve_media_url(input, MediaType::Video).await?;
-        analyze_with_gemini(&self.ctx.openrouter_key, &url, prompt, MediaType::Video).await
+        let media_ref = self.ctx.resolve_media_ref(input, MediaType::Video).await?;
+        analyze_with_gemini(&self.ctx.openrouter_key, &media_ref, prompt, MediaType::Video).await
     }
 }
 
@@ -202,8 +214,13 @@ impl Tool for ListenMusicTool {
         if input.is_empty() { return Err(ToolExecError("url/path cannot be empty".into())); }
         let prompt = args.prompt.as_deref()
             .unwrap_or("Listen to this audio carefully. Describe what you hear: genre, mood, instruments, lyrics (if any), and overall impression.");
-        let url = self.ctx.resolve_media_url(input, MediaType::Audio).await?;
-        analyze_with_gemini(&self.ctx.openrouter_key, &url, prompt, MediaType::Audio).await
+        let media_ref = self.ctx.resolve_media_ref(input, MediaType::Audio).await?;
+        let result = analyze_with_gemini(&self.ctx.openrouter_key, &media_ref, prompt, MediaType::Audio).await;
+        // Clean up temp audio file if it was downloaded/compressed
+        if media_ref != input && Path::new(&media_ref).exists() {
+            let _ = std::fs::remove_file(&media_ref);
+        }
+        result
     }
 }
 
@@ -305,16 +322,36 @@ async fn compress_media(path: &Path, media_type: MediaType) -> Result<String, To
     Ok(output_path)
 }
 
+/// For audio: pass file path to read + base64 encode.
+/// For video: pass public URL.
 async fn analyze_with_gemini(
     api_key: &str,
-    media_url: &str,
+    media_ref: &str,
     prompt: &str,
     media_type: MediaType,
 ) -> Result<String, ToolExecError> {
-    let content_block = serde_json::json!({
-        "type": media_type.content_key(),
-        media_type.content_key(): { "url": media_url }
-    });
+    let content_block = match media_type {
+        MediaType::Video => {
+            serde_json::json!({
+                "type": "video_url",
+                "video_url": { "url": media_ref }
+            })
+        }
+        MediaType::Audio => {
+            // Audio must be base64-encoded — URLs not supported
+            let bytes = std::fs::read(media_ref)
+                .map_err(|e| ToolExecError(format!("failed to read audio file: {e}")))?;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            let ext = Path::new(media_ref)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("mp3");
+            serde_json::json!({
+                "type": "input_audio",
+                "input_audio": { "data": b64, "format": ext }
+            })
+        }
+    };
 
     let body = serde_json::json!({
         "model": GEMINI_MODEL,
