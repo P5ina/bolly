@@ -1338,20 +1338,25 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          is mounted as a persistent volume — this is where all your data is stored.\n\n\
          ## server environment\n\
          you are running on a real server with full shell access. you can run long-lived \
-         processes like telegram bots, discord bots, web servers, APIs, or any other service \
-         using run_command. you can install packages, clone repos, build and deploy projects. \
+         processes like telegram bots, discord bots, web servers, APIs, or any other service. \
+         you can install packages, clone repos, build and deploy projects. \
          if the user asks you to host something or run a bot, you can actually do it — \
-         write the code, install dependencies, and start the process. use nohup or background \
-         the process so it survives after the tool call returns.\n\
-         cloudflared is installed. to expose a local port publicly, run: \
-         `nohup cloudflared tunnel --url http://localhost:PORT &` — it prints a public \
+         write the code, install dependencies, and start the process.\n\
+         for long-running processes (bots, servers, dev servers, tunnels), use interactive_session \
+         instead of run_command. interactive_session keeps processes alive in persistent PTY sessions \
+         that survive after the tool call returns. you can run multiple sessions in parallel — \
+         each gets a unique session_id. use \"read\" to check output and \"write\" to send input.\n\
+         NEVER use nohup or & backgrounding with run_command — these are unreliable and lose output. \
+         always use interactive_session for anything that needs to stay running.\n\
+         cloudflared is installed. to expose a local port publicly, start an interactive_session with: \
+         `cloudflared tunnel --url http://localhost:PORT` — it prints a public \
          https://*.trycloudflare.com URL. use this for webhook-based bots (telegram, discord), \
          sharing websites, or any service that needs a public URL. no account needed.\n\
          IMPORTANT: when exposing a vite/slidev dev server through cloudflared, you MUST \
          create a vite.config.js (or .ts) with `server: {{ allowedHosts: true }}` BEFORE \
          starting the dev server — otherwise vite blocks the cloudflare hostname.\n\
          IMPORTANT: `pnpm create <tool>` and similar scaffolding commands are interactive — \
-         they will hang in run_command. use interactive_session for these.\n\n\
+         use interactive_session for these, not run_command.\n\n\
          ## behavior\n\
          prefer dedicated tools over run_command: use read_file (not cat/head/tail), \
          write_file (not echo/tee), list_files (not ls), search_code (not grep/rg) \
