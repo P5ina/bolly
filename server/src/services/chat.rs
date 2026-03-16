@@ -397,7 +397,7 @@ pub async fn run_single_turn(
         .map(|m| extract_message_text_len(m))
         .sum();
     let estimated_history_tokens = history_text_chars / 4;
-    const COMPACT_THRESHOLD_TOKENS: usize = 100_000;
+    const COMPACT_THRESHOLD_TOKENS: usize = 150_000;
 
     log::info!(
         "[chat] context estimate: ~{estimated_history_tokens} tokens, {} messages, oauth={}",
