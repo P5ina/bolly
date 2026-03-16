@@ -472,25 +472,25 @@ async fn streaming_agent_loop(
         // Build assistant message
         let mut assistant_content = Vec::new();
         if let Some(ref summary) = turn.compaction {
-            if !summary.is_empty() {
-                // Compaction: API will ignore all messages before the compaction block.
-                // Drop old messages locally to keep the payload small and avoid re-triggering.
-                let compacted_count = messages.len();
-                messages.clear();
-                log::info!(
-                    "[llm] compaction triggered — dropped {compacted_count} messages, keeping summary ({} chars)",
-                    summary.len()
-                );
+            // Compaction: API drops all messages before the compaction block.
+            // We must do the same locally to stay in sync and avoid re-triggering.
+            let compacted_count = messages.len();
+            messages.clear();
+            log::info!(
+                "[llm] compaction triggered — dropped {compacted_count} messages, summary: {} chars",
+                summary.len()
+            );
 
+            if !summary.is_empty() {
                 assistant_content.push(ContentBlock::Compaction {
                     content: summary.clone(),
                 });
-                let _ = events.send(ServerEvent::ContextCompacting {
-                    instance_slug: instance_slug.to_string(),
-                    chat_id: chat_id.to_string(),
-                    messages_compacted: compacted_count,
-                });
             }
+            let _ = events.send(ServerEvent::ContextCompacting {
+                instance_slug: instance_slug.to_string(),
+                chat_id: chat_id.to_string(),
+                messages_compacted: compacted_count,
+            });
         }
         if !turn_text.is_empty() {
             assistant_content.push(ContentBlock::text(&turn_text));
@@ -514,17 +514,6 @@ async fn streaming_agent_loop(
             messages.push(Message::User {
                 content: vec![ContentBlock::text(
                     "[system: your previous response was cut off due to length. please continue exactly where you left off.]",
-                )],
-            });
-            continue;
-        }
-
-        // Compaction: context was summarized, ask model to continue where it left off
-        if stop_reason == "compaction" {
-            log::info!("[llm] compaction stop — requesting continuation");
-            messages.push(Message::User {
-                content: vec![ContentBlock::text(
-                    "[system: context was compacted. continue where you left off.]",
                 )],
             });
             continue;
