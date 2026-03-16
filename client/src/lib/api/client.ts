@@ -13,6 +13,7 @@ import type {
 	Thought,
 	UpdateLlmRequest,
 	MemoryEntry,
+	Stats,
 	UploadMeta,
 	Usage,
 } from "./types.js";
@@ -291,6 +292,10 @@ export function setCompanionName(slug: string, name: string): Promise<void> {
 
 export function fetchThoughts(slug: string): Promise<Thought[]> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/thoughts`);
+}
+
+export function fetchStats(slug: string): Promise<Stats> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/stats`);
 }
 
 export function fetchMemory(slug: string): Promise<MemoryEntry[]> {

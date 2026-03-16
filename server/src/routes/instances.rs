@@ -17,6 +17,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/secret/{secret_id}", delete(cancel_secret))
         .route("/api/instances/{instance_slug}/context-stats", get(get_context_stats))
         .route("/api/instances/{instance_slug}/{chat_id}/context-stats", get(get_context_stats_chat))
+        .route("/api/instances/{instance_slug}/stats", get(get_stats))
         .route("/api/instances/{instance_slug}/memory", get(list_memory))
         .route("/api/instances/{instance_slug}/memory/search", get(search_memory))
         .route("/api/instances/{instance_slug}/memory/{*path}", get(read_memory_file))
@@ -262,6 +263,132 @@ async fn get_context_stats_chat(
         chat::compute_context_stats_async(wd, slug, cid).await
     }).await.unwrap_or_else(|_| chat::compute_context_stats(&state.workspace_dir, &instance_slug, &chat_id));
     Json(stats)
+}
+
+// ---------------------------------------------------------------------------
+// Stats / Analytics
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct StatsResponse {
+    /// Messages per hour of day (0-23)
+    hourly_activity: [u32; 24],
+    /// Messages per day of week (0=Mon, 6=Sun)
+    daily_activity: [u32; 7],
+    /// Total user messages
+    total_messages: u32,
+    /// Average message length (chars)
+    avg_message_length: f64,
+    /// Average seconds between messages in a session
+    avg_response_interval_secs: f64,
+    /// Daily message counts: [(date_str, count)]
+    daily_history: Vec<(String, u32)>,
+    /// Mood distribution: {mood: count}
+    mood_counts: std::collections::HashMap<String, u32>,
+    /// Current streak (consecutive days with messages)
+    streak_days: u32,
+    /// First message timestamp (millis)
+    first_message_at: Option<String>,
+}
+
+async fn get_stats(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> Json<StatsResponse> {
+    let instance_dir = state.workspace_dir.join("instances").join(&instance_slug);
+
+    // Load rhythm data
+    let rhythm: crate::domain::rhythm::InteractionRhythm = fs::read_to_string(instance_dir.join("rhythm.json"))
+        .ok()
+        .and_then(|r| serde_json::from_str(&r).ok())
+        .unwrap_or_default();
+
+    // Scan all messages for daily history + mood counts
+    let chats_dir = instance_dir.join("chats");
+    let mut all_timestamps: Vec<i64> = Vec::new();
+    let mut mood_counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+
+    if let Ok(entries) = fs::read_dir(&chats_dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let msgs_path = entry.path().join("messages.json");
+            if let Ok(raw) = fs::read_to_string(&msgs_path) {
+                if let Ok(msgs) = serde_json::from_str::<Vec<serde_json::Value>>(&raw) {
+                    for msg in &msgs {
+                        let role = msg["role"].as_str().unwrap_or("");
+                        if role != "user" { continue; }
+                        if let Some(ts_str) = msg["created_at"].as_str() {
+                            if let Ok(ts_ms) = ts_str.parse::<i64>() {
+                                all_timestamps.push(ts_ms / 1000);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Scan thoughts for mood distribution
+    let thoughts_dir = instance_dir.join("thoughts");
+    if let Ok(entries) = fs::read_dir(&thoughts_dir) {
+        for entry in entries.filter_map(Result::ok) {
+            if entry.path().extension().and_then(|e| e.to_str()) != Some("json") { continue; }
+            if let Ok(raw) = fs::read_to_string(entry.path()) {
+                if let Ok(thought) = serde_json::from_str::<serde_json::Value>(&raw) {
+                    if let Some(m) = thought["mood"].as_str() {
+                        if !m.is_empty() {
+                            *mood_counts.entry(m.to_string()).or_insert(0) += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    all_timestamps.sort();
+
+    // Build daily history
+    let mut daily_map: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
+    for &ts in &all_timestamps {
+        let date = chrono::DateTime::from_timestamp(ts, 0)
+            .map(|dt| dt.format("%Y-%m-%d").to_string())
+            .unwrap_or_default();
+        if !date.is_empty() {
+            *daily_map.entry(date).or_insert(0) += 1;
+        }
+    }
+    let daily_history: Vec<(String, u32)> = daily_map.into_iter().collect();
+
+    // Streak: consecutive days ending today (or yesterday)
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let yesterday = (chrono::Utc::now() - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
+    let mut streak_days = 0u32;
+    let dates: std::collections::HashSet<String> = daily_history.iter().map(|(d, _)| d.clone()).collect();
+    let mut check_date = if dates.contains(&today) { chrono::Utc::now().date_naive() }
+        else if dates.contains(&yesterday) { (chrono::Utc::now() - chrono::Duration::days(1)).date_naive() }
+        else { chrono::Utc::now().date_naive() };
+    loop {
+        let ds = check_date.format("%Y-%m-%d").to_string();
+        if dates.contains(&ds) {
+            streak_days += 1;
+            check_date -= chrono::Duration::days(1);
+        } else {
+            break;
+        }
+    }
+
+    let first_message_at = all_timestamps.first().map(|ts| (ts * 1000).to_string());
+
+    Json(StatsResponse {
+        hourly_activity: rhythm.hourly_activity,
+        daily_activity: rhythm.daily_activity,
+        total_messages: rhythm.total_messages,
+        avg_message_length: rhythm.avg_message_length,
+        avg_response_interval_secs: rhythm.avg_response_interval_secs,
+        daily_history,
+        mood_counts,
+        streak_days,
+        first_message_at,
+    })
 }
 
 // ---------------------------------------------------------------------------
