@@ -10,6 +10,7 @@ let { children } = $props();
 
 <svelte:head>
 	<title>Bolly — A companion that lives on your server</title>
+	<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 </svelte:head>
 
 {@render children()}
