@@ -370,32 +370,29 @@
 		return label.slice(0, Math.max(maxChars - 2, 3)) + "..";
 	}
 
-	// Pan handlers — only activate after 5px of movement to not block clicks
-	let didDrag = $state(false);
-
-	function onPanStart(e: PointerEvent) {
+	// Pan: mousedown on empty area starts drag, mousemove updates, mouseup ends.
+	// Bubbles handle their own clicks — pan only activates on the map background.
+	function onMapMouseDown(e: MouseEvent) {
+		// Only start pan if clicking directly on the map, not on a bubble
+		if ((e.target as HTMLElement).closest(".bubble")) return;
 		if (e.button !== 0) return;
 		isPanning = true;
-		didDrag = false;
 		panStartX = e.clientX;
 		panStartY = e.clientY;
 		panStartPanX = panX;
 		panStartPanY = panY;
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-	}
 
-	function onPanMove(e: PointerEvent) {
-		if (!isPanning) return;
-		const dx = e.clientX - panStartX;
-		const dy = e.clientY - panStartY;
-		if (!didDrag && Math.abs(dx) + Math.abs(dy) < 5) return;
-		didDrag = true;
-		panX = panStartPanX + dx;
-		panY = panStartPanY + dy;
-	}
-
-	function onPanEnd() {
-		isPanning = false;
+		const onMove = (me: MouseEvent) => {
+			panX = panStartPanX + (me.clientX - panStartX);
+			panY = panStartPanY + (me.clientY - panStartY);
+		};
+		const onUp = () => {
+			isPanning = false;
+			window.removeEventListener("mousemove", onMove);
+			window.removeEventListener("mouseup", onUp);
+		};
+		window.addEventListener("mousemove", onMove);
+		window.addEventListener("mouseup", onUp);
 	}
 </script>
 
@@ -463,10 +460,7 @@
 			<div
 				class="memory-map"
 				style="height: {mapH}px"
-				onpointerdown={onPanStart}
-				onpointermove={onPanMove}
-				onpointerup={onPanEnd}
-				onpointercancel={onPanEnd}
+				onmousedown={onMapMouseDown}
 			>
 				<div class="memory-map-inner" style="transform: translate({panX}px, {panY}px)">
 					{#each activeCircles as circle, i (circle.id)}
@@ -499,7 +493,7 @@
 								"
 								onmouseenter={() => hoveredNode = circle.id}
 								onmouseleave={() => hoveredNode = null}
-								onclick={(e) => { e.stopPropagation(); if (!didDrag) handleCircleClick(circle); }}
+								onclick={() => handleCircleClick(circle)}
 							>
 								<div class="bubble-core"></div>
 								<div class="bubble-shine"></div>
