@@ -17,6 +17,10 @@
 	let containerHeight = $state(500);
 	let viewKey = $state(0);
 
+	// Search state
+	let searchQuery = $state("");
+	let searchOpen = $state(false);
+
 	// Document viewer state
 	let viewingEntry = $state<MemoryEntry | null>(null);
 	let viewingContent = $state<string>("");
@@ -166,6 +170,59 @@
 	});
 
 	let totalSize = $derived(folders.reduce((s, f) => s + f.totalSize, 0));
+
+	// --- fuzzy search ---
+
+	function fuzzyMatch(text: string, query: string): number {
+		// Returns score (higher = better match). 0 = no match.
+		const lower = text.toLowerCase();
+		const q = query.toLowerCase();
+
+		// Exact substring — best
+		if (lower.includes(q)) return 100 + (q.length / lower.length) * 50;
+
+		// All query words present
+		const words = q.split(/\s+/).filter(Boolean);
+		if (words.length > 1 && words.every((w) => lower.includes(w))) return 80;
+
+		// Fuzzy: characters in order
+		let qi = 0;
+		let consecutive = 0;
+		let maxConsecutive = 0;
+		for (let i = 0; i < lower.length && qi < q.length; i++) {
+			if (lower[i] === q[qi]) {
+				qi++;
+				consecutive++;
+				maxConsecutive = Math.max(maxConsecutive, consecutive);
+			} else {
+				consecutive = 0;
+			}
+		}
+		if (qi === q.length) return 30 + maxConsecutive * 5;
+
+		return 0;
+	}
+
+	let searchResults = $derived.by(() => {
+		const q = searchQuery.trim();
+		if (q.length < 2) return [];
+
+		const scored: { entry: MemoryEntry; score: number }[] = [];
+		for (const e of entries) {
+			const pathScore = fuzzyMatch(e.path, q);
+			const summaryScore = fuzzyMatch(e.summary, q) * 0.8;
+			const score = Math.max(pathScore, summaryScore);
+			if (score > 0) scored.push({ entry: e, score });
+		}
+
+		scored.sort((a, b) => b.score - a.score);
+		return scored.slice(0, 30);
+	});
+
+	function toggleSearch() {
+		searchOpen = !searchOpen;
+		searchQuery = "";
+	}
 
 	// --- colors ---
 
@@ -474,8 +531,52 @@
 			{:else}
 				<span class="memory-count">{entries.length} memories · {folders.length} folders · {formatSize(totalSize)}</span>
 			{/if}
+			<button class="search-toggle" class:search-toggle-active={searchOpen} onclick={toggleSearch} title="search memories">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+					<circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" stroke-linecap="round"/>
+				</svg>
+			</button>
 		</div>
 
+		{#if searchOpen}
+			<div class="search-bar">
+				<input
+					class="search-input"
+					type="text"
+					placeholder="search memories..."
+					bind:value={searchQuery}
+					autofocus
+					onkeydown={(e) => e.key === "Escape" && toggleSearch()}
+				/>
+				{#if searchQuery.length >= 2}
+					<span class="search-count">{searchResults.length} results</span>
+				{/if}
+			</div>
+
+			{#if searchResults.length > 0}
+				<div class="search-results">
+					{#each searchResults as { entry, score }}
+						{@const folder = entry.path.split("/")[0] ?? "(root)"}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div
+							class="search-result"
+							style="--c: {getHex(folder)}"
+							onclick={() => openDocument(entry)}
+						>
+							<div class="search-result-path">
+								<span class="search-result-folder" style="color: {getHex(folder)}">{folder}/</span>{fileName(entry.path)}
+							</div>
+							<div class="search-result-summary">{entry.summary}</div>
+							<div class="search-result-meta">{formatSize(entry.size)}</div>
+						</div>
+					{/each}
+				</div>
+			{:else if searchQuery.length >= 2}
+				<div class="search-empty">no matches</div>
+			{/if}
+		{/if}
+
+		{#if !searchOpen}
 		{#key viewKey}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
@@ -563,6 +664,7 @@
 				</div>
 			{/if}
 		{/if}
+		{/if}
 	{/if}
 </div>
 
@@ -643,6 +745,75 @@
 	}
 	.memory-breadcrumb { font-family: var(--font-mono); font-size: 0.68rem; color: oklch(0.78 0.12 75 / 50%); }
 	.memory-count { font-family: var(--font-mono); font-size: 0.6rem; color: oklch(0.78 0.12 75 / 20%); letter-spacing: 0.04em; margin-left: auto; }
+
+	/* ═══════ Search ═══════ */
+
+	.search-toggle {
+		display: flex; align-items: center; justify-content: center;
+		width: 28px; height: 28px; color: oklch(0.78 0.12 75 / 30%);
+		background: none; border: 1px solid oklch(1 0 0 / 6%);
+		border-radius: 50%; cursor: pointer; transition: all 0.25s ease;
+		flex-shrink: 0;
+	}
+	.search-toggle:hover, .search-toggle-active {
+		color: oklch(0.78 0.12 75 / 65%);
+		border-color: oklch(0.78 0.12 75 / 20%);
+		background: oklch(0.78 0.12 75 / 6%);
+	}
+
+	.search-bar {
+		display: flex; align-items: center; gap: 0.5rem;
+		padding: 0.5rem 1.5rem; flex-shrink: 0; z-index: 2;
+	}
+	.search-input {
+		flex: 1; font-family: var(--font-mono); font-size: 0.7rem;
+		background: oklch(1 0 0 / 3%); border: 1px solid oklch(1 0 0 / 8%);
+		border-radius: 0.5rem; padding: 0.4rem 0.75rem;
+		color: oklch(0.90 0.02 75 / 80%); outline: none;
+		transition: border-color 0.2s ease;
+	}
+	.search-input:focus { border-color: oklch(0.78 0.12 75 / 25%); }
+	.search-input::placeholder { color: oklch(0.78 0.12 75 / 18%); }
+	.search-count {
+		font-family: var(--font-mono); font-size: 0.55rem;
+		color: oklch(0.78 0.12 75 / 22%); white-space: nowrap;
+	}
+
+	.search-results {
+		flex: 1; min-height: 0; overflow-y: auto; z-index: 2;
+		padding: 0.25rem 1.5rem 1.5rem; display: flex; flex-direction: column; gap: 0.35rem;
+	}
+	.search-result {
+		padding: 0.6rem 0.75rem; border-radius: 0.5rem;
+		border: 1px solid oklch(1 0 0 / 5%); background: oklch(1 0 0 / 2%);
+		cursor: pointer; transition: all 0.2s ease;
+		display: flex; flex-direction: column; gap: 0.15rem;
+	}
+	.search-result:hover {
+		border-color: color-mix(in srgb, var(--c) 20%, transparent);
+		background: color-mix(in srgb, var(--c) 4%, transparent);
+	}
+	.search-result-path {
+		font-family: var(--font-mono); font-size: 0.65rem;
+		color: oklch(0.90 0.02 75 / 65%);
+	}
+	.search-result-folder {
+		font-size: 0.6rem; opacity: 0.7;
+	}
+	.search-result-summary {
+		font-family: var(--font-body); font-size: 0.64rem;
+		color: oklch(0.88 0.02 75 / 38%); line-height: 1.4;
+		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	}
+	.search-result-meta {
+		font-family: var(--font-mono); font-size: 0.5rem;
+		color: oklch(0.78 0.12 75 / 15%);
+	}
+	.search-empty {
+		font-family: var(--font-mono); font-size: 0.65rem;
+		color: oklch(0.78 0.12 75 / 20%); text-align: center;
+		padding: 2rem; z-index: 2;
+	}
 
 	/* ═══════ Document Viewer ═══════ */
 
