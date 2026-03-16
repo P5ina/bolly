@@ -298,15 +298,26 @@ async fn get_stats(
 ) -> Json<StatsResponse> {
     let instance_dir = state.workspace_dir.join("instances").join(&instance_slug);
 
-    // Resolve timezone for local time computation
+    // Load accumulated rhythm data (survives context clears)
+    let rhythm: crate::domain::rhythm::InteractionRhythm = fs::read_to_string(instance_dir.join("rhythm.json"))
+        .ok()
+        .and_then(|r| serde_json::from_str(&r).ok())
+        .unwrap_or_default();
+
     let tz: chrono_tz::Tz = read_timezone(&instance_dir)
         .and_then(|s| s.parse().ok())
         .unwrap_or(chrono_tz::UTC);
 
-    // Scan ALL messages across all chats
+    // Start with accumulated rhythm data
+    let mut hourly_activity = rhythm.hourly_activity;
+    let mut daily_activity = rhythm.daily_activity;
+    let mut daily_map: std::collections::BTreeMap<String, u32> = rhythm.daily_history.clone();
+    let mut total_messages = rhythm.total_messages;
+    let mut total_chars = rhythm.total_chars;
+
+    // Add live messages on top (not yet snapshotted)
     let chats_dir = instance_dir.join("chats");
-    let mut user_timestamps: Vec<i64> = Vec::new(); // seconds
-    let mut total_chars: u64 = 0;
+    let mut live_timestamps: Vec<i64> = Vec::new();
 
     if let Ok(entries) = fs::read_dir(&chats_dir) {
         for entry in entries.filter_map(Result::ok) {
@@ -317,8 +328,17 @@ async fn get_stats(
                         if msg["role"].as_str() != Some("user") { continue; }
                         if let Some(ts_str) = msg["created_at"].as_str() {
                             if let Ok(ts_ms) = ts_str.parse::<i64>() {
-                                user_timestamps.push(ts_ms / 1000);
+                                let ts = ts_ms / 1000;
+                                live_timestamps.push(ts);
+                                total_messages += 1;
                                 total_chars += msg["content"].as_str().map(|s| s.len() as u64).unwrap_or(0);
+                                if let Some(dt) = chrono::DateTime::from_timestamp(ts, 0) {
+                                    let local = dt.with_timezone(&tz);
+                                    hourly_activity[local.hour() as usize] += 1;
+                                    daily_activity[local.weekday().num_days_from_monday() as usize] += 1;
+                                    let date = local.format("%Y-%m-%d").to_string();
+                                    *daily_map.entry(date).or_insert(0) += 1;
+                                }
                             }
                         }
                     }
@@ -327,37 +347,9 @@ async fn get_stats(
         }
     }
 
-    user_timestamps.sort();
-    let total_messages = user_timestamps.len() as u32;
-
-    // Compute hourly & daily activity + daily_history from timestamps using local timezone
-    let mut hourly_activity = [0u32; 24];
-    let mut daily_activity = [0u32; 7];
-    let mut daily_map: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
-
-    for &ts in &user_timestamps {
-        if let Some(dt) = chrono::DateTime::from_timestamp(ts, 0) {
-            let local = dt.with_timezone(&tz);
-            hourly_activity[local.hour() as usize] += 1;
-            daily_activity[local.weekday().num_days_from_monday() as usize] += 1;
-            let date = local.format("%Y-%m-%d").to_string();
-            *daily_map.entry(date).or_insert(0) += 1;
-        }
-    }
-
     let daily_history: Vec<(String, u32)> = daily_map.into_iter().collect();
-
-    // Average message length
     let avg_message_length = if total_messages > 0 { total_chars as f64 / total_messages as f64 } else { 0.0 };
-
-    // Average response interval (within sessions, gap < 2h)
-    let mut intervals: Vec<f64> = Vec::new();
-    for pair in user_timestamps.windows(2) {
-        let gap = (pair[1] - pair[0]) as f64;
-        if gap < 7200.0 && gap > 0.0 { intervals.push(gap); }
-    }
-    let avg_response_interval_secs = if intervals.is_empty() { 0.0 }
-        else { intervals.iter().sum::<f64>() / intervals.len() as f64 };
+    let avg_response_interval_secs = rhythm.avg_response_interval_secs;
 
     // Scan thoughts for mood distribution
     let mut mood_counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
@@ -395,7 +387,11 @@ async fn get_stats(
         }
     }
 
-    let first_message_at = user_timestamps.first().map(|ts| (ts * 1000).to_string());
+    // First message: check both daily_history keys and live timestamps
+    let first_date = daily_history.first().map(|(d, _)| d.clone());
+    let first_message_at = live_timestamps.iter().min()
+        .map(|ts| (ts * 1000).to_string())
+        .or_else(|| first_date.map(|_| "0".to_string()));
 
     Json(StatsResponse {
         hourly_activity,
