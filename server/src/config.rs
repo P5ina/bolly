@@ -61,6 +61,51 @@ pub struct EmailConfig {
 fn default_smtp_port() -> u16 { 587 }
 fn default_imap_port() -> u16 { 993 }
 
+/// Per-instance configuration stored at `instances/{slug}/instance.toml`.
+/// Holds settings that are specific to one user/instance, such as GitHub token.
+/// Takes precedence over global `config.toml` for the same fields.
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct InstanceConfig {
+    #[serde(default)]
+    pub github: GithubConfig,
+}
+
+impl InstanceConfig {
+    /// Load per-instance config from `instances/{slug}/instance.toml`.
+    /// Returns default (empty) config if the file doesn't exist.
+    pub fn load(workspace_dir: &Path, instance_slug: &str) -> Self {
+        let path = workspace_dir
+            .join("instances")
+            .join(instance_slug)
+            .join("instance.toml");
+        let raw = match fs::read_to_string(&path) {
+            Ok(r) => r,
+            Err(_) => return Self::default(),
+        };
+        toml::from_str::<InstanceConfig>(&raw).unwrap_or_default()
+    }
+
+    /// Save per-instance config to `instances/{slug}/instance.toml`.
+    pub fn save(&self, workspace_dir: &Path, instance_slug: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let dir = workspace_dir.join("instances").join(instance_slug);
+        fs::create_dir_all(&dir)?;
+        let raw = toml::to_string_pretty(self)?;
+        fs::write(dir.join("instance.toml"), raw)?;
+        Ok(())
+    }
+
+    /// Return the effective GitHub token: instance-level if set, otherwise fall back to global.
+    pub fn effective_github_token<'a>(&'a self, global: &'a Config) -> Option<&'a str> {
+        if !self.github.token.is_empty() {
+            return Some(&self.github.token);
+        }
+        if !global.github.token.is_empty() {
+            return Some(&global.github.token);
+        }
+        None
+    }
+}
+
 /// Wrapper for `instances/{slug}/email.toml` — supports multiple accounts.
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct EmailAccounts {

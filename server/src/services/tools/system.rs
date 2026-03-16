@@ -867,10 +867,13 @@ impl Tool for GetSettingsTool {
                 }
 
                 // GitHub
-                if config.github.token.is_empty() {
-                    lines.push("github: not connected".into());
-                } else {
+                // GitHub — check instance config first, then fall back to global
+                let instance_cfg = crate::config::InstanceConfig::load(&self.workspace_dir, &self.instance_slug);
+                let github_token_set = !instance_cfg.github.token.is_empty() || !config.github.token.is_empty();
+                if github_token_set {
                     lines.push("github: token configured".into());
+                } else {
+                    lines.push("github: not connected".into());
                 }
 
                 // MCP servers
@@ -1141,7 +1144,11 @@ impl Tool for UpdateConfigTool {
 
         if let Some(token) = &args.github_token {
             let token = token.trim().to_string();
-            config.github.token = token.clone();
+            // Write github token to per-instance config, not global
+            let mut instance_cfg = crate::config::InstanceConfig::load(&self.workspace_dir, &self.instance_slug);
+            instance_cfg.github.token = token.clone();
+            instance_cfg.save(&self.workspace_dir, &self.instance_slug)
+                .map_err(|e| ToolExecError(format!("failed to save instance config: {e}")))?;
             changes.push(if token.is_empty() { "github token removed".into() } else { "github token updated".into() });
         }
 
@@ -1186,7 +1193,6 @@ impl Tool for UpdateConfigTool {
         if args.provider.is_some() || args.model.is_some() || args.openai_key.is_some()
             || args.anthropic_key.is_some() || args.brave_search_key.is_some()
             || args.add_mcp_server.is_some() || args.remove_mcp_server.is_some()
-            || args.github_token.is_some()
         {
             let output = toml::to_string_pretty(&config)
                 .map_err(|e| ToolExecError(format!("failed to serialize config: {e}")))?;
@@ -1737,7 +1743,8 @@ fn is_allowed_secret_target(target: &str) -> bool {
 
 /// Write a secret value to the appropriate config file based on the dotted target path.
 fn write_secret_to_config(
-    _instance_dir: &Path,
+    workspace_dir: &Path,
+    instance_slug: &str,
     config_path: &Path,
     target: &str,
     value: &str,
@@ -1762,15 +1769,10 @@ fn write_secret_to_config(
                 .map_err(|e| ToolExecError(format!("failed to write config: {e}")))?;
         }
         ["github", "token"] => {
-            let raw = fs::read_to_string(config_path)
-                .map_err(|e| ToolExecError(format!("failed to read config: {e}")))?;
-            let mut config: crate::config::Config = toml::from_str(&raw)
-                .map_err(|e| ToolExecError(format!("failed to parse config: {e}")))?;
-            config.github.token = value.to_string();
-            let output = toml::to_string_pretty(&config)
-                .map_err(|e| ToolExecError(format!("failed to serialize config: {e}")))?;
-            fs::write(config_path, &output)
-                .map_err(|e| ToolExecError(format!("failed to write config: {e}")))?;
+            let mut instance_cfg = crate::config::InstanceConfig::load(workspace_dir, instance_slug);
+            instance_cfg.github.token = value.to_string();
+            instance_cfg.save(workspace_dir, instance_slug)
+                .map_err(|e| ToolExecError(format!("failed to save instance config: {e}")))?;
         }
         _ => return Err(ToolExecError(format!("unsupported target path: {target}"))),
     }
@@ -1779,6 +1781,7 @@ fn write_secret_to_config(
 
 pub struct RequestSecretTool {
     instance_slug: String,
+    workspace_dir: PathBuf,
     instance_dir: PathBuf,
     config_path: PathBuf,
     events: broadcast::Sender<ServerEvent>,
@@ -1795,6 +1798,7 @@ impl RequestSecretTool {
     ) -> Self {
         Self {
             instance_slug: instance_slug.to_string(),
+            workspace_dir: workspace_dir.to_path_buf(),
             instance_dir: workspace_dir.join("instances").join(instance_slug),
             config_path: config_path.to_path_buf(),
             events,
@@ -1879,7 +1883,7 @@ impl Tool for RequestSecretTool {
             .map_err(|_| ToolExecError("secret request was cancelled".into()))?;
 
         // Write to config
-        write_secret_to_config(&self.instance_dir, &self.config_path, &target, &value)?;
+        write_secret_to_config(&self.workspace_dir, &self.instance_slug, &self.config_path, &target, &value)?;
 
         log::info!("[request_secret] secret saved to {target}");
         Ok(format!("secret saved to {target}"))
