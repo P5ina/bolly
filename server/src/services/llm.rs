@@ -519,6 +519,17 @@ async fn streaming_agent_loop(
             continue;
         }
 
+        // Compaction: context was summarized, ask model to continue where it left off
+        if stop_reason == "compaction" {
+            log::info!("[llm] compaction stop — requesting continuation");
+            messages.push(Message::User {
+                content: vec![ContentBlock::text(
+                    "[system: context was compacted. continue where you left off.]",
+                )],
+            });
+            continue;
+        }
+
         // For the final turn (no more tool use), only keep this turn's text.
         // Intermediate texts from tool-use turns are saved individually below.
         all_text = turn_text.clone();
@@ -706,7 +717,10 @@ fn build_anthropic_request(
     // Server-side context compaction — only supported on opus/sonnet 4.6+ with API keys (not OAuth)
     if !api_key.starts_with("sk-ant-oat") && (model.contains("opus-4") || model.contains("sonnet-4")) {
         req["context_management"] = serde_json::json!({
-            "edits": [{"type": "compact_20260112"}]
+            "edits": [{
+                "type": "compact_20260112",
+                "trigger": {"type": "input_tokens", "value": 100000}
+            }]
         });
     }
     req
