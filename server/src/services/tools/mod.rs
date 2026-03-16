@@ -25,7 +25,7 @@ pub mod memory_tools;
 pub mod project;
 pub mod skills;
 pub mod system;
-pub mod video;
+pub mod media;
 pub mod web;
 
 // Re-export public items so external code uses `tools::FooTool` paths
@@ -45,7 +45,7 @@ pub use system::{
     ClearContextTool, CreateDropTool, DeepResearchTool, ExploreCodeTool, GetSettingsTool,
     InteractiveSessionTool, RequestSecretTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
 };
-pub use video::WatchVideoTool;
+pub use media::{WatchVideoTool, ListenMusicTool};
 pub use web::{BrowseTool, WebFetchTool, WebSearchTool};
 
 // ---------------------------------------------------------------------------
@@ -502,6 +502,9 @@ pub fn build_tools(
         let landing_url = cfg.as_ref().map(|c| c.landing_url.as_str()).unwrap_or("");
         let auth_token = cfg.as_ref().map(|c| c.auth_token.as_str()).unwrap_or("");
         tools.push(wrap(Box::new(WatchVideoTool::new(
+            openrouter_key, workspace_dir, instance_slug, landing_url, auth_token,
+        ))));
+        tools.push(wrap(Box::new(ListenMusicTool::new(
             openrouter_key, workspace_dir, instance_slug, landing_url, auth_token,
         ))));
     }
