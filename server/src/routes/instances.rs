@@ -18,6 +18,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/context-stats", get(get_context_stats))
         .route("/api/instances/{instance_slug}/{chat_id}/context-stats", get(get_context_stats_chat))
         .route("/api/instances/{instance_slug}/memory", get(list_memory))
+        .route("/api/instances/{instance_slug}/memory/*path", get(read_memory_file))
         .route("/api/instances/{instance_slug}/email", get(get_email_config))
         .route("/api/instances/{instance_slug}/email", put(set_email_config))
         .route("/api/instances/{instance_slug}/email", delete(delete_email_config))
@@ -271,6 +272,22 @@ async fn list_memory(
     Path(instance_slug): Path<String>,
 ) -> Json<Vec<MemoryEntry>> {
     Json(memory::scan_library(&state.workspace_dir, &instance_slug))
+}
+
+async fn read_memory_file(
+    State(state): State<AppState>,
+    Path((instance_slug, file_path)): Path<(String, String)>,
+) -> Result<String, StatusCode> {
+    // Validate path — prevent traversal
+    if file_path.contains("..") || file_path.starts_with('/') {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let full_path = state.workspace_dir
+        .join("instances")
+        .join(&instance_slug)
+        .join("memory")
+        .join(&file_path);
+    fs::read_to_string(&full_path).map_err(|_| StatusCode::NOT_FOUND)
 }
 
 // ---------------------------------------------------------------------------

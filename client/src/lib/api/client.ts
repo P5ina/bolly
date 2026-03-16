@@ -297,6 +297,13 @@ export function fetchMemory(slug: string): Promise<MemoryEntry[]> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/memory`);
 }
 
+export async function fetchMemoryContent(slug: string, path: string): Promise<string> {
+	const res = await authedFetch(`/api/instances/${encodeURIComponent(slug)}/memory/${path}`);
+	if (res.status === 401) throw new AuthError();
+	if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
+	return res.text();
+}
+
 export function fetchDrops(slug: string): Promise<Drop[]> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/drops`);
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { fetchMemory } from "$lib/api/client.js";
+	import { fetchMemory, fetchMemoryContent } from "$lib/api/client.js";
 	import type { MemoryEntry } from "$lib/api/types.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 
@@ -15,7 +15,21 @@
 	let canvasEl = $state<HTMLCanvasElement | null>(null);
 	let containerWidth = $state(600);
 	let containerHeight = $state(500);
-	let viewKey = $state(0); // bump to trigger re-entrance animations
+	let viewKey = $state(0);
+
+	// Document viewer state
+	let viewingEntry = $state<MemoryEntry | null>(null);
+	let viewingContent = $state<string>("");
+	let viewingLoading = $state(false);
+
+	// Pan state
+	let panX = $state(0);
+	let panY = $state(0);
+	let isPanning = $state(false);
+	let panStartX = 0;
+	let panStartY = 0;
+	let panStartPanX = 0;
+	let panStartPanY = 0;
 
 	async function load() {
 		loading = true;
@@ -30,7 +44,6 @@
 
 	$effect(() => { load(); });
 
-	// --- resize observer ---
 	$effect(() => {
 		if (!containerEl) return;
 		const ro = new ResizeObserver((es) => {
@@ -44,7 +57,7 @@
 		return () => ro.disconnect();
 	});
 
-	// --- particle constellation canvas ---
+	// --- particle canvas ---
 	$effect(() => {
 		if (!canvasEl || loading) return;
 		const ctx = canvasEl.getContext("2d");
@@ -70,13 +83,11 @@
 		const particles: Particle[] = Array.from({ length: PARTICLE_COUNT }, () => {
 			const baseOp = Math.random() * 0.25 + 0.08;
 			return {
-				x: Math.random() * w,
-				y: Math.random() * h,
+				x: Math.random() * w, y: Math.random() * h,
 				vx: (Math.random() - 0.5) * 0.25,
 				vy: (Math.random() - 0.5) * 0.25,
 				r: Math.random() * 1.2 + 0.4,
-				opacity: baseOp,
-				baseOpacity: baseOp,
+				opacity: baseOp, baseOpacity: baseOp,
 			};
 		});
 
@@ -87,29 +98,22 @@
 			time += 0.016;
 			ctx!.clearRect(0, 0, w, h);
 
-			// Update positions
 			for (const p of particles) {
 				p.x += p.vx;
 				p.y += p.vy;
-				// Gentle sine drift
 				p.x += Math.sin(time * 0.5 + p.y * 0.01) * 0.08;
 				p.y += Math.cos(time * 0.4 + p.x * 0.01) * 0.06;
-				// Wrap
 				if (p.x < -10) p.x = w + 10;
 				if (p.x > w + 10) p.x = -10;
 				if (p.y < -10) p.y = h + 10;
 				if (p.y > h + 10) p.y = -10;
-				// Twinkle
 				p.opacity = p.baseOpacity + Math.sin(time * 2 + p.x * 0.05) * 0.08;
 			}
 
-			// Draw connection lines
 			for (let i = 0; i < particles.length; i++) {
 				for (let j = i + 1; j < particles.length; j++) {
-					const a = particles[i];
-					const b = particles[j];
-					const dx = a.x - b.x;
-					const dy = a.y - b.y;
+					const a = particles[i], b = particles[j];
+					const dx = a.x - b.x, dy = a.y - b.y;
 					const dist = Math.sqrt(dx * dx + dy * dy);
 					if (dist < CONNECTION_DIST) {
 						const alpha = (1 - dist / CONNECTION_DIST) * 0.06;
@@ -123,7 +127,6 @@
 				}
 			}
 
-			// Draw particles
 			for (const p of particles) {
 				ctx!.beginPath();
 				ctx!.arc(p.x, p.y, p.r, 0, Math.PI * 2);
@@ -138,7 +141,7 @@
 		return () => cancelAnimationFrame(raf);
 	});
 
-	// --- data transforms ---
+	// --- data ---
 
 	interface FolderNode {
 		name: string;
@@ -164,50 +167,35 @@
 
 	let totalSize = $derived(folders.reduce((s, f) => s + f.totalSize, 0));
 
-	// --- colors (hex for CSS var compatibility) ---
+	// --- colors ---
 
 	const folderHex: Record<string, string> = {
-		about: "#5ba8d4",
-		facts: "#6bc47a",
-		moments: "#d46b6b",
-		preferences: "#d4a55a",
-		projects: "#7b7bd4",
-		interests: "#c475d4",
-		people: "#d49060",
-		emotions: "#d46ba0",
-		knowledge: "#5ab8a0",
-		technical: "#7090c0",
-		"(root)": "#8888a0",
+		about: "#5ba8d4", facts: "#6bc47a", moments: "#d46b6b",
+		preferences: "#d4a55a", projects: "#7b7bd4", interests: "#c475d4",
+		people: "#d49060", emotions: "#d46ba0", knowledge: "#5ab8a0",
+		technical: "#7090c0", "(root)": "#8888a0",
 	};
 
 	function getHex(folder: string): string {
 		if (folderHex[folder]) return folderHex[folder];
 		let hash = 0;
 		for (let i = 0; i < folder.length; i++) hash = folder.charCodeAt(i) + ((hash << 5) - hash);
-		const h = ((hash % 360) + 360) % 360;
-		return `hsl(${h}, 50%, 62%)`;
+		return `hsl(${((hash % 360) + 360) % 360}, 50%, 62%)`;
 	}
 
 	// --- circle packing ---
 
 	interface Circle {
-		x: number;
-		y: number;
-		r: number;
-		id: string;
-		label: string;
-		hex: string;
-		size: number;
-		fileCount?: number;
-		entry?: MemoryEntry;
-		folder?: FolderNode;
+		x: number; y: number; r: number;
+		id: string; label: string; hex: string;
+		size: number; fileCount?: number;
+		entry?: MemoryEntry; folder?: FolderNode;
 		floatSeed: number;
 	}
 
 	function packCircles(
 		items: { id: string; weight: number }[],
-		w: number,
-		h: number,
+		w: number, h: number,
 	): { id: string; x: number; y: number; r: number }[] {
 		if (items.length === 0) return [];
 		if (items.length === 1) {
@@ -224,12 +212,11 @@
 			return { id: item.id, logW: Math.log1p(norm * 9) / Math.log(10) };
 		});
 
-		// Scale so total area ≈ 45% of viewport
-		const targetArea = w * h * 0.45;
+		const targetArea = w * h * 0.40;
 		const sumLogSq = normed.reduce((s, n) => s + (0.35 + 0.65 * n.logW) ** 2, 0);
 		const scale = Math.sqrt(targetArea / (Math.PI * sumLogSq));
 		const minR = 28;
-		const maxR = Math.min(w, h) * 0.25;
+		const maxR = Math.min(w, h) * 0.22;
 
 		const circles = normed.map((n) => {
 			const r = Math.max(minR, Math.min(maxR, (0.35 + 0.65 * n.logW) * scale));
@@ -238,7 +225,7 @@
 
 		circles.sort((a, b) => b.r - a.r);
 
-		const pad = 12;
+		const pad = 14;
 		circles[0].x = w / 2;
 		circles[0].y = h / 2;
 
@@ -256,6 +243,10 @@
 					const a = (ai / 36) * Math.PI * 2;
 					const tx = ref.x + Math.cos(a) * touchDist;
 					const ty = ref.y + Math.sin(a) * touchDist;
+
+					// Clamp within viewport with margin
+					const margin = c.r + 16;
+					if (tx < margin || tx > w - margin || ty < margin || ty > h - margin) continue;
 
 					let ok = true;
 					for (let k = 0; k < i; k++) {
@@ -278,7 +269,7 @@
 			c.y = bestY;
 		}
 
-		// Re-center
+		// Re-center within viewport
 		let bx0 = Infinity, bx1 = -Infinity, by0 = Infinity, by1 = -Infinity;
 		for (const c of circles) {
 			bx0 = Math.min(bx0, c.x - c.r);
@@ -295,7 +286,6 @@
 
 	let mapH = $derived(containerHeight - 44);
 
-	// Folder-level
 	let folderCircles = $derived.by((): Circle[] => {
 		if (folders.length === 0) return [];
 		const items = folders.map((f) => ({ id: f.name, weight: f.totalSize }));
@@ -310,7 +300,6 @@
 		});
 	});
 
-	// File-level
 	let fileCircles = $derived.by((): Circle[] => {
 		if (!focusedFolder) return [];
 		const folder = folders.find((f) => f.name === focusedFolder);
@@ -334,14 +323,35 @@
 		if (!focusedFolder && circle.folder) {
 			focusedFolder = circle.folder.name;
 			hoveredNode = null;
+			panX = 0; panY = 0;
 			viewKey++;
+		} else if (focusedFolder && circle.entry) {
+			openDocument(circle.entry);
 		}
 	}
 
 	function handleBack() {
-		focusedFolder = null;
-		hoveredNode = null;
-		viewKey++;
+		if (viewingEntry) {
+			viewingEntry = null;
+			viewingContent = "";
+		} else {
+			focusedFolder = null;
+			hoveredNode = null;
+			panX = 0; panY = 0;
+			viewKey++;
+		}
+	}
+
+	async function openDocument(entry: MemoryEntry) {
+		viewingEntry = entry;
+		viewingLoading = true;
+		try {
+			viewingContent = await fetchMemoryContent(slug, entry.path);
+		} catch {
+			viewingContent = "(failed to load)";
+		} finally {
+			viewingLoading = false;
+		}
 	}
 
 	function fileName(path: string): string {
@@ -359,10 +369,30 @@
 		if (label.length <= maxChars) return label;
 		return label.slice(0, Math.max(maxChars - 2, 3)) + "..";
 	}
+
+	// Pan handlers
+	function onPanStart(e: PointerEvent) {
+		if (e.button !== 0) return;
+		isPanning = true;
+		panStartX = e.clientX;
+		panStartY = e.clientY;
+		panStartPanX = panX;
+		panStartPanY = panY;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+	}
+
+	function onPanMove(e: PointerEvent) {
+		if (!isPanning) return;
+		panX = panStartPanX + (e.clientX - panStartX);
+		panY = panStartPanY + (e.clientY - panStartY);
+	}
+
+	function onPanEnd() {
+		isPanning = false;
+	}
 </script>
 
 <div class="memory-container" bind:this={containerEl}>
-	<!-- Particle constellation background -->
 	<canvas
 		class="particle-canvas"
 		bind:this={canvasEl}
@@ -385,11 +415,28 @@
 				<div class="empty-orb empty-orb-3"></div>
 			</div>
 			<p class="memory-empty-text">no memories yet</p>
-			<p class="memory-empty-hint">
-				memories form as you talk — your companion learns and remembers.
-			</p>
+			<p class="memory-empty-hint">memories form as you talk — your companion learns and remembers.</p>
+		</div>
+	{:else if viewingEntry}
+		<!-- Document viewer -->
+		<div class="memory-header">
+			<button class="memory-back" onclick={handleBack}>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+					<path d="M19 12H5m0 0l7 7m-7-7l7-7" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+			</button>
+			<span class="memory-breadcrumb">{viewingEntry.path}</span>
+			<span class="memory-count">{formatSize(viewingEntry.size)}</span>
+		</div>
+		<div class="doc-viewer">
+			{#if viewingLoading}
+				<div class="doc-loading">loading...</div>
+			{:else}
+				<pre class="doc-content">{viewingContent}</pre>
+			{/if}
 		</div>
 	{:else}
+		<!-- Map view -->
 		<div class="memory-header">
 			{#if focusedFolder}
 				<button class="memory-back" onclick={handleBack}>
@@ -404,85 +451,80 @@
 			{/if}
 		</div>
 
-		<!-- Bubble map -->
 		{#key viewKey}
-			<div class="memory-map" style="height: {mapH}px">
-				{#each activeCircles as circle, i (circle.id)}
-					{@const isHovered = hoveredNode === circle.id}
-					{@const isFolderView = !focusedFolder}
-					{@const diameter = circle.r * 2}
-					{@const showLabel = circle.r > 20}
-					{@const showSub = circle.r > 42}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div
-						class="bubble-anchor"
-						style="
-							left: {circle.x}px;
-							top: {circle.y}px;
-							animation-delay: {i * 60 + 50}ms;
-						"
-					>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="memory-map"
+				style="height: {mapH}px"
+				onpointerdown={onPanStart}
+				onpointermove={onPanMove}
+				onpointerup={onPanEnd}
+				onpointercancel={onPanEnd}
+			>
+				<div class="memory-map-inner" style="transform: translate({panX}px, {panY}px)">
+					{#each activeCircles as circle, i (circle.id)}
+						{@const isHovered = hoveredNode === circle.id}
+						{@const isFolderView = !focusedFolder}
+						{@const diameter = circle.r * 2}
+						{@const showLabel = circle.r > 20}
+						{@const showSub = circle.r > 42}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
-							class="bubble"
-							class:bubble-hovered={isHovered}
-							class:bubble-clickable={isFolderView}
+							class="bubble-anchor"
 							style="
-								width: {diameter}px;
-								height: {diameter}px;
-								--c: {circle.hex};
-								--float-x: {Math.sin(circle.floatSeed) * 6}px;
-								--float-y: {Math.cos(circle.floatSeed * 0.7) * 8}px;
-								--float-dur: {5 + circle.floatSeed % 3}s;
-								--float-delay: {circle.floatSeed * -0.4}s;
+								left: {circle.x}px;
+								top: {circle.y}px;
+								animation-delay: {i * 60 + 50}ms;
 							"
-							onmouseenter={() => hoveredNode = circle.id}
-							onmouseleave={() => hoveredNode = null}
-							onclick={() => handleCircleClick(circle)}
 						>
-							<!-- Inner glow core -->
-							<div class="bubble-core"></div>
-
-							<!-- Glass shine -->
-							<div class="bubble-shine"></div>
-
-							<!-- Hover ring -->
-							{#if isHovered}
-								<div class="bubble-ring"></div>
-							{/if}
-
-							<!-- Labels -->
-							{#if showLabel}
-								<span class="bubble-label">
-									{truncLabel(circle.label, circle.r)}
-								</span>
-								{#if showSub}
-									<span class="bubble-sub">
-										{isFolderView
-											? `${circle.fileCount} files`
-											: formatSize(circle.size)}
-									</span>
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<div
+								class="bubble bubble-clickable"
+								class:bubble-hovered={isHovered}
+								style="
+									width: {diameter}px;
+									height: {diameter}px;
+									--c: {circle.hex};
+									--float-x: {Math.sin(circle.floatSeed) * 5}px;
+									--float-y: {Math.cos(circle.floatSeed * 0.7) * 6}px;
+									--float-dur: {5 + circle.floatSeed % 3}s;
+									--float-delay: {circle.floatSeed * -0.4}s;
+								"
+								onmouseenter={() => hoveredNode = circle.id}
+								onmouseleave={() => hoveredNode = null}
+								onclick={(e) => { e.stopPropagation(); handleCircleClick(circle); }}
+							>
+								<div class="bubble-core"></div>
+								<div class="bubble-shine"></div>
+								{#if isHovered}
+									<div class="bubble-ring"></div>
 								{/if}
-							{/if}
+								{#if showLabel}
+									<span class="bubble-label">{truncLabel(circle.label, circle.r)}</span>
+									{#if showSub}
+										<span class="bubble-sub">
+											{isFolderView ? `${circle.fileCount} files` : formatSize(circle.size)}
+										</span>
+									{/if}
+								{/if}
+							</div>
 						</div>
-					</div>
-				{/each}
+					{/each}
+				</div>
 			</div>
 		{/key}
 
 		<!-- Tooltip -->
-		{#if hoveredNode}
+		{#if hoveredNode && !isPanning}
 			{@const circle = activeCircles.find(c => c.id === hoveredNode)}
 			{#if circle}
 				<div class="memory-tooltip" style="--c: {circle.hex}">
 					<div class="memory-tooltip-dot" style="background: {circle.hex}"></div>
 					<div class="memory-tooltip-body">
-						<div class="memory-tooltip-name">
-							{circle.label}
-						</div>
+						<div class="memory-tooltip-name">{circle.label}</div>
 						{#if circle.entry}
 							<div class="memory-tooltip-summary">{circle.entry.summary}</div>
-							<div class="memory-tooltip-meta">{formatSize(circle.entry.size)}</div>
+							<div class="memory-tooltip-meta">{formatSize(circle.entry.size)} · click to read</div>
 						{:else if circle.folder}
 							<div class="memory-tooltip-summary">{circle.folder.files.length} memories · {formatSize(circle.folder.totalSize)}</div>
 							<div class="memory-tooltip-files">
@@ -502,19 +544,13 @@
 </div>
 
 <style>
-	/* ═══════════════ Container ═══════════════ */
-
 	.memory-container {
 		height: 100%;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
 		position: relative;
-		background: radial-gradient(
-			ellipse 80% 70% at 50% 45%,
-			oklch(0.09 0.02 75 / 40%) 0%,
-			transparent 70%
-		);
+		background: radial-gradient(ellipse 80% 70% at 50% 45%, oklch(0.09 0.02 75 / 40%) 0%, transparent 70%);
 	}
 
 	.particle-canvas {
@@ -524,183 +560,118 @@
 		z-index: 0;
 	}
 
-	/* ═══════════════ Loading ═══════════════ */
+	/* ═══════ Loading ═══════ */
 
-	.memory-loading {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		height: 100%;
-		z-index: 1;
-	}
-
-	.memory-loading-orb {
-		position: relative;
-		width: 48px;
-		height: 48px;
-	}
-
+	.memory-loading { display: flex; align-items: center; justify-content: center; height: 100%; z-index: 1; }
+	.memory-loading-orb { position: relative; width: 48px; height: 48px; }
 	.memory-loading-ring {
-		position: absolute;
-		inset: 0;
-		border-radius: 50%;
+		position: absolute; inset: 0; border-radius: 50%;
 		border: 1px solid oklch(0.78 0.12 75 / 15%);
 		animation: loading-spin 3s linear infinite;
 	}
-
 	.memory-loading-ring::after {
-		content: "";
-		position: absolute;
-		top: -1px;
-		left: 50%;
-		width: 6px;
-		height: 2px;
-		background: oklch(0.78 0.12 75 / 60%);
-		border-radius: 1px;
-		transform: translateX(-50%);
+		content: ""; position: absolute; top: -1px; left: 50%;
+		width: 6px; height: 2px; background: oklch(0.78 0.12 75 / 60%);
+		border-radius: 1px; transform: translateX(-50%);
 	}
-
-	.memory-loading-ring-2 {
-		inset: 8px;
-		animation-direction: reverse;
-		animation-duration: 2s;
-		border-color: oklch(0.78 0.12 75 / 10%);
-	}
-
+	.memory-loading-ring-2 { inset: 8px; animation-direction: reverse; animation-duration: 2s; border-color: oklch(0.78 0.12 75 / 10%); }
 	.memory-loading-dot {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		width: 4px;
-		height: 4px;
-		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 40%);
-		transform: translate(-50%, -50%);
-		animation: pulse-alive 1.5s ease-in-out infinite;
+		position: absolute; top: 50%; left: 50%; width: 4px; height: 4px;
+		border-radius: 50%; background: oklch(0.78 0.12 75 / 40%);
+		transform: translate(-50%, -50%); animation: pulse-alive 1.5s ease-in-out infinite;
 	}
+	@keyframes loading-spin { to { transform: rotate(360deg); } }
 
-	@keyframes loading-spin {
-		to { transform: rotate(360deg); }
-	}
-
-	/* ═══════════════ Empty ═══════════════ */
+	/* ═══════ Empty ═══════ */
 
 	.memory-empty {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		height: 100%;
-		gap: 1rem;
-		text-align: center;
-		z-index: 1;
+		display: flex; flex-direction: column; align-items: center; justify-content: center;
+		height: 100%; gap: 1rem; text-align: center; z-index: 1;
 	}
-
-	.memory-empty-orbs {
-		position: relative;
-		width: 80px;
-		height: 60px;
-	}
-
+	.memory-empty-orbs { position: relative; width: 80px; height: 60px; }
 	.empty-orb {
-		position: absolute;
-		border-radius: 50%;
+		position: absolute; border-radius: 50%;
 		border: 1px solid oklch(0.78 0.12 75 / 12%);
 		background: radial-gradient(circle at 35% 35%, oklch(0.78 0.12 75 / 8%), transparent 70%);
 	}
+	.empty-orb-1 { width: 40px; height: 40px; left: 20px; top: 0; animation: breathe-slow 4s ease-in-out infinite; }
+	.empty-orb-2 { width: 24px; height: 24px; left: 0; top: 28px; animation: breathe-slow 5s ease-in-out infinite 0.5s; }
+	.empty-orb-3 { width: 18px; height: 18px; right: 4px; top: 34px; animation: breathe-slow 3.5s ease-in-out infinite 1s; }
+	@keyframes breathe-slow { 0%, 100% { opacity: 0.4; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.08); } }
+	.memory-empty-text { font-family: var(--font-display); font-size: 0.95rem; font-style: italic; color: oklch(0.78 0.12 75 / 40%); }
+	.memory-empty-hint { font-size: 0.7rem; color: oklch(0.78 0.12 75 / 18%); max-width: 26ch; line-height: 1.5; }
 
-	.empty-orb-1 {
-		width: 40px; height: 40px;
-		left: 20px; top: 0;
-		animation: breathe-slow 4s ease-in-out infinite;
-	}
-
-	.empty-orb-2 {
-		width: 24px; height: 24px;
-		left: 0; top: 28px;
-		animation: breathe-slow 5s ease-in-out infinite 0.5s;
-	}
-
-	.empty-orb-3 {
-		width: 18px; height: 18px;
-		right: 4px; top: 34px;
-		animation: breathe-slow 3.5s ease-in-out infinite 1s;
-	}
-
-	@keyframes breathe-slow {
-		0%, 100% { opacity: 0.4; transform: scale(1); }
-		50% { opacity: 0.8; transform: scale(1.08); }
-	}
-
-	.memory-empty-text {
-		font-family: var(--font-display);
-		font-size: 0.95rem;
-		font-style: italic;
-		color: oklch(0.78 0.12 75 / 40%);
-	}
-
-	.memory-empty-hint {
-		font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 18%);
-		max-width: 26ch;
-		line-height: 1.5;
-	}
-
-	/* ═══════════════ Header ═══════════════ */
+	/* ═══════ Header ═══════ */
 
 	.memory-header {
-		display: flex;
-		align-items: center;
-		gap: 0.625rem;
-		padding: 0.75rem 1.5rem 0;
-		flex-shrink: 0;
-		z-index: 2;
+		display: flex; align-items: center; gap: 0.625rem;
+		padding: 0.75rem 1.5rem 0; flex-shrink: 0; z-index: 2;
 	}
-
 	.memory-back {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
-		color: oklch(0.78 0.12 75 / 35%);
-		background: oklch(1 0 0 / 3%);
-		border: 1px solid oklch(1 0 0 / 6%);
-		border-radius: 50%;
-		cursor: pointer;
-		transition: all 0.25s ease;
+		display: flex; align-items: center; justify-content: center;
+		width: 28px; height: 28px; color: oklch(0.78 0.12 75 / 35%);
+		background: oklch(1 0 0 / 3%); border: 1px solid oklch(1 0 0 / 6%);
+		border-radius: 50%; cursor: pointer; transition: all 0.25s ease;
 	}
-
 	.memory-back:hover {
 		color: oklch(0.78 0.12 75 / 70%);
 		border-color: oklch(0.78 0.12 75 / 20%);
 		background: oklch(0.78 0.12 75 / 6%);
 	}
+	.memory-breadcrumb { font-family: var(--font-mono); font-size: 0.68rem; color: oklch(0.78 0.12 75 / 50%); }
+	.memory-count { font-family: var(--font-mono); font-size: 0.6rem; color: oklch(0.78 0.12 75 / 20%); letter-spacing: 0.04em; margin-left: auto; }
 
-	.memory-breadcrumb {
-		font-family: var(--font-mono);
-		font-size: 0.68rem;
-		color: oklch(0.78 0.12 75 / 50%);
+	/* ═══════ Document Viewer ═══════ */
+
+	.doc-viewer {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		padding: 1.25rem 1.5rem 2rem;
+		z-index: 1;
 	}
 
-	.memory-count {
+	.doc-loading {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
-		color: oklch(0.78 0.12 75 / 20%);
-		letter-spacing: 0.04em;
-		margin-left: auto;
+		font-size: 0.65rem;
+		color: oklch(0.78 0.12 75 / 25%);
+		padding: 2rem;
+		text-align: center;
 	}
 
-	/* ═══════════════ Bubble Map ═══════════════ */
+	.doc-content {
+		font-family: var(--font-body);
+		font-size: 0.78rem;
+		line-height: 1.7;
+		color: oklch(0.90 0.02 75 / 70%);
+		white-space: pre-wrap;
+		word-wrap: break-word;
+		margin: 0;
+		max-width: 560px;
+	}
+
+	/* ═══════ Bubble Map ═══════ */
 
 	.memory-map {
 		position: relative;
 		flex: 1;
 		min-height: 0;
 		z-index: 1;
+		overflow: hidden;
+		cursor: grab;
+		touch-action: none;
 	}
 
-	/* Anchor — handles position + entrance animation */
+	.memory-map:active {
+		cursor: grabbing;
+	}
+
+	.memory-map-inner {
+		position: absolute;
+		inset: 0;
+		will-change: transform;
+	}
+
 	.bubble-anchor {
 		position: absolute;
 		transform: translate(-50%, -50%);
@@ -709,35 +680,19 @@
 	}
 
 	@keyframes bubble-enter {
-		0% {
-			opacity: 0;
-			transform: translate(-50%, -50%) scale(0);
-			filter: blur(12px);
-		}
-		60% {
-			opacity: 1;
-			transform: translate(-50%, -50%) scale(1.06);
-			filter: blur(1px);
-		}
-		100% {
-			opacity: 1;
-			transform: translate(-50%, -50%) scale(1);
-			filter: blur(0);
-		}
+		0% { opacity: 0; transform: translate(-50%, -50%) scale(0); filter: blur(12px); }
+		60% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); filter: blur(1px); }
+		100% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0); }
 	}
 
-	/* Bubble — glass orb with floating idle */
 	.bubble {
 		position: relative;
 		border-radius: 50%;
-		cursor: default;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
 		gap: 2px;
-
-		/* Glass morphism */
 		background: radial-gradient(
 			circle at 38% 32%,
 			color-mix(in srgb, var(--c) 14%, transparent) 0%,
@@ -748,15 +703,11 @@
 		box-shadow:
 			0 0 40px color-mix(in srgb, var(--c) 6%, transparent),
 			inset 0 0 30px color-mix(in srgb, var(--c) 4%, transparent);
-
-		/* Floating idle */
 		animation: bubble-float var(--float-dur) ease-in-out infinite var(--float-delay);
 		transition: border-color 0.3s ease, box-shadow 0.3s ease;
 	}
 
-	.bubble-clickable {
-		cursor: pointer;
-	}
+	.bubble-clickable { cursor: pointer; }
 
 	.bubble-hovered {
 		border-color: color-mix(in srgb, var(--c) 35%, transparent);
@@ -768,27 +719,13 @@
 	}
 
 	@keyframes bubble-float {
-		0%, 100% {
-			transform: translate(0, 0);
-		}
-		33% {
-			transform: translate(var(--float-x), var(--float-y));
-		}
-		66% {
-			transform: translate(
-				calc(var(--float-x) * -0.6),
-				calc(var(--float-y) * -0.4)
-			);
-		}
+		0%, 100% { transform: translate(0, 0); }
+		33% { transform: translate(var(--float-x), var(--float-y)); }
+		66% { transform: translate(calc(var(--float-x) * -0.6), calc(var(--float-y) * -0.4)); }
 	}
 
-	/* Inner glow core */
 	.bubble-core {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		width: 30%;
-		height: 30%;
+		position: absolute; top: 50%; left: 50%; width: 30%; height: 30%;
 		border-radius: 50%;
 		background: radial-gradient(circle, color-mix(in srgb, var(--c) 20%, transparent), transparent 70%);
 		transform: translate(-50%, -50%);
@@ -800,181 +737,74 @@
 		50% { opacity: 1; transform: translate(-50%, -50%) scale(1.3); }
 	}
 
-	/* Glass highlight */
 	.bubble-shine {
-		position: absolute;
-		top: 12%;
-		left: 22%;
-		width: 32%;
-		height: 18%;
+		position: absolute; top: 12%; left: 22%; width: 32%; height: 18%;
 		border-radius: 50%;
-		background: radial-gradient(
-			ellipse at center,
-			rgba(255, 255, 255, 0.1) 0%,
-			transparent 70%
-		);
-		transform: rotate(-20deg);
-		pointer-events: none;
+		background: radial-gradient(ellipse at center, rgba(255,255,255,0.1) 0%, transparent 70%);
+		transform: rotate(-20deg); pointer-events: none;
 	}
 
-	/* Hover ring pulse */
 	.bubble-ring {
-		position: absolute;
-		inset: -6px;
-		border-radius: 50%;
+		position: absolute; inset: -6px; border-radius: 50%;
 		border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
 		animation: ring-expand 1.2s ease-out infinite;
 		pointer-events: none;
 	}
 
 	@keyframes ring-expand {
-		0% {
-			opacity: 0.6;
-			inset: -4px;
-		}
-		100% {
-			opacity: 0;
-			inset: -20px;
-		}
+		0% { opacity: 0.6; inset: -4px; }
+		100% { opacity: 0; inset: -20px; }
 	}
 
-	/* Labels */
 	.bubble-label {
-		font-family: var(--font-mono);
-		font-size: 0.62rem;
-		letter-spacing: 0.05em;
+		font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.05em;
 		color: color-mix(in srgb, var(--c) 85%, white);
 		text-shadow: 0 1px 8px color-mix(in srgb, var(--c) 30%, transparent);
-		pointer-events: none;
-		user-select: none;
-		z-index: 2;
-		text-align: center;
-		line-height: 1;
-		max-width: 85%;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		pointer-events: none; user-select: none; z-index: 2;
+		text-align: center; line-height: 1; max-width: 85%;
+		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 	}
 
 	.bubble-sub {
-		font-family: var(--font-mono);
-		font-size: 0.5rem;
+		font-family: var(--font-mono); font-size: 0.5rem;
 		color: color-mix(in srgb, var(--c) 45%, transparent);
-		pointer-events: none;
-		user-select: none;
-		z-index: 2;
+		pointer-events: none; user-select: none; z-index: 2;
 	}
 
-	/* ═══════════════ Tooltip ═══════════════ */
+	/* ═══════ Tooltip ═══════ */
 
 	.memory-tooltip {
-		position: absolute;
-		bottom: 1.25rem;
-		left: 50%;
-		transform: translateX(-50%);
-		display: flex;
-		gap: 0.625rem;
+		position: absolute; bottom: 1.25rem; left: 50%;
+		transform: translateX(-50%); display: flex; gap: 0.625rem;
 		align-items: flex-start;
-		background: oklch(0.08 0.01 280 / 85%);
-		backdrop-filter: blur(16px);
-		border: 1px solid oklch(1 0 0 / 7%);
-		border-radius: 0.875rem;
-		padding: 0.75rem 1rem;
-		max-width: 340px;
-		min-width: 180px;
+		background: oklch(0.08 0.01 280 / 85%); backdrop-filter: blur(16px);
+		border: 1px solid oklch(1 0 0 / 7%); border-radius: 0.875rem;
+		padding: 0.75rem 1rem; max-width: 340px; min-width: 180px;
 		animation: tooltip-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-		pointer-events: none;
-		z-index: 20;
-		box-shadow:
-			0 8px 32px oklch(0 0 0 / 40%),
-			0 0 60px color-mix(in srgb, var(--c) 6%, transparent);
+		pointer-events: none; z-index: 20;
+		box-shadow: 0 8px 32px oklch(0 0 0 / 40%), 0 0 60px color-mix(in srgb, var(--c) 6%, transparent);
 	}
-
 	@keyframes tooltip-enter {
-		from {
-			opacity: 0;
-			transform: translateX(-50%) translateY(8px) scale(0.96);
-		}
-		to {
-			opacity: 1;
-			transform: translateX(-50%) translateY(0) scale(1);
-		}
+		from { opacity: 0; transform: translateX(-50%) translateY(8px) scale(0.96); }
+		to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 	}
 
-	.memory-tooltip-dot {
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		flex-shrink: 0;
-		margin-top: 4px;
-		box-shadow: 0 0 8px currentColor;
-	}
-
-	.memory-tooltip-body {
-		display: flex;
-		flex-direction: column;
-		gap: 0.2rem;
-		min-width: 0;
-	}
-
-	.memory-tooltip-name {
-		font-family: var(--font-mono);
-		font-size: 0.72rem;
-		font-weight: 500;
-		letter-spacing: 0.03em;
-		color: oklch(0.92 0.02 75 / 85%);
-	}
-
-	.memory-tooltip-summary {
-		font-family: var(--font-body);
-		font-size: 0.66rem;
-		color: oklch(0.88 0.02 75 / 45%);
-		line-height: 1.4;
-	}
-
-	.memory-tooltip-meta {
-		font-family: var(--font-mono);
-		font-size: 0.55rem;
-		color: oklch(0.78 0.12 75 / 20%);
-	}
-
-	.memory-tooltip-files {
-		margin-top: 0.2rem;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.25rem;
-	}
-
+	.memory-tooltip-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; box-shadow: 0 0 8px currentColor; }
+	.memory-tooltip-body { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+	.memory-tooltip-name { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500; letter-spacing: 0.03em; color: oklch(0.92 0.02 75 / 85%); }
+	.memory-tooltip-summary { font-family: var(--font-body); font-size: 0.66rem; color: oklch(0.88 0.02 75 / 45%); line-height: 1.4; }
+	.memory-tooltip-meta { font-family: var(--font-mono); font-size: 0.55rem; color: oklch(0.78 0.12 75 / 20%); }
+	.memory-tooltip-files { margin-top: 0.2rem; display: flex; flex-wrap: wrap; gap: 0.25rem; }
 	.memory-tooltip-file {
-		font-family: var(--font-mono);
-		font-size: 0.52rem;
-		color: oklch(0.88 0.02 75 / 30%);
-		background: oklch(1 0 0 / 3%);
-		padding: 0.1rem 0.35rem;
-		border-radius: 0.25rem;
+		font-family: var(--font-mono); font-size: 0.52rem; color: oklch(0.88 0.02 75 / 30%);
+		background: oklch(1 0 0 / 3%); padding: 0.1rem 0.35rem; border-radius: 0.25rem;
 		border: 1px solid oklch(1 0 0 / 4%);
 	}
-
-	.memory-tooltip-more {
-		color: oklch(0.78 0.12 75 / 18%);
-		font-style: italic;
-		border: none;
-		background: none;
-		padding: 0.1rem 0;
-	}
-
-	/* ═══════════════ Mobile ═══════════════ */
+	.memory-tooltip-more { color: oklch(0.78 0.12 75 / 18%); font-style: italic; border: none; background: none; padding: 0.1rem 0; }
 
 	@media (max-width: 640px) {
-		.memory-header {
-			padding: 0.5rem 0.75rem 0;
-		}
-		.memory-tooltip {
-			left: 0.75rem;
-			right: 0.75rem;
-			transform: none;
-			max-width: none;
-		}
+		.memory-header { padding: 0.5rem 0.75rem 0; }
+		.memory-tooltip { left: 0.75rem; right: 0.75rem; transform: none; max-width: none; }
 		@keyframes tooltip-enter {
 			from { opacity: 0; transform: translateY(8px) scale(0.96); }
 			to { opacity: 1; transform: translateY(0) scale(1); }
