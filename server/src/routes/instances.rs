@@ -18,7 +18,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/context-stats", get(get_context_stats))
         .route("/api/instances/{instance_slug}/{chat_id}/context-stats", get(get_context_stats_chat))
         .route("/api/instances/{instance_slug}/memory", get(list_memory))
-        .route("/api/instances/{instance_slug}/memory/*path", get(read_memory_file))
+        .route("/api/instances/{instance_slug}/memory/{*path}", get(read_memory_file))
         .route("/api/instances/{instance_slug}/email", get(get_email_config))
         .route("/api/instances/{instance_slug}/email", put(set_email_config))
         .route("/api/instances/{instance_slug}/email", delete(delete_email_config))
