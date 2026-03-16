@@ -472,13 +472,12 @@ async fn streaming_agent_loop(
         // Build assistant message
         let mut assistant_content = Vec::new();
         if let Some(ref summary) = turn.compaction {
-            // Compaction: API drops all messages before the compaction block.
-            // We must do the same locally to stay in sync and avoid re-triggering.
-            let compacted_count = messages.len();
-            messages.clear();
+            // Compaction: the API will automatically drop all messages before
+            // the compaction block on the NEXT request. We just append the
+            // compaction block to the response — don't clear messages ourselves.
             log::info!(
-                "[llm] compaction triggered — dropped {compacted_count} messages, summary: {} chars",
-                summary.len()
+                "[llm] compaction block received — summary: {} chars, messages: {}",
+                summary.len(), messages.len()
             );
 
             if !summary.is_empty() {
@@ -489,7 +488,7 @@ async fn streaming_agent_loop(
             let _ = events.send(ServerEvent::ContextCompacting {
                 instance_slug: instance_slug.to_string(),
                 chat_id: chat_id.to_string(),
-                messages_compacted: compacted_count,
+                messages_compacted: messages.len(),
             });
         }
         if !turn_text.is_empty() {
