@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::services::tool::{ToolDefinition, Tool};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -5,6 +7,8 @@ use serde::Deserialize;
 use super::{openai_schema, ToolExecError};
 
 const GEMINI_MODEL: &str = "google/gemini-2.5-flash";
+/// Max video size to send to Gemini (20 MB). Larger files get compressed.
+const MAX_VIDEO_SIZE: u64 = 20 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // watch_video
@@ -24,7 +28,9 @@ impl WatchVideoTool {
 
 #[derive(Deserialize, JsonSchema)]
 pub struct WatchVideoArgs {
-    /// URL of the video to watch. Supports YouTube links and direct video URLs (.mp4, .webm, etc.).
+    /// URL or local file path of the video to watch.
+    /// Supports: YouTube links, direct video URLs (.mp4, .webm),
+    /// and local file paths (from uploads or filesystem).
     pub url: String,
     /// What to focus on when watching. E.g. "summarize this video", "what happens at 2:30?",
     /// "extract all code shown", "describe the UI demo". Defaults to a general summary.
@@ -40,15 +46,18 @@ impl Tool for WatchVideoTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "watch_video".into(),
-            description: "Analyze a video via Gemini vision AI. YouTube URLs or direct links.".into(),
+            description: "Analyze a video via Gemini vision AI. \
+                Accepts YouTube URLs, direct video links, or local file paths. \
+                Large videos are automatically compressed before analysis."
+                .into(),
             parameters: openai_schema::<WatchVideoArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let url = args.url.trim();
-        if url.is_empty() {
-            return Err(ToolExecError("url cannot be empty".into()));
+        let input = args.url.trim().to_string();
+        if input.is_empty() {
+            return Err(ToolExecError("url/path cannot be empty".into()));
         }
 
         let prompt = args
@@ -57,17 +66,47 @@ impl Tool for WatchVideoTool {
             .unwrap_or("Watch this video carefully and provide a detailed summary. \
                 Include key points, any text/code shown, and notable visual elements.");
 
-        // For YouTube URLs, get a direct video URL via yt-dlp
-        let video_url = if is_youtube_url(url) {
-            get_direct_url(url).await?
+        // Determine if input is a local file or URL
+        let local_path = Path::new(&input);
+        let is_local = local_path.exists() && local_path.is_file();
+
+        if is_local {
+            // Local file — upload to a temporary host or convert to data URL
+            let file_size = std::fs::metadata(local_path)
+                .map(|m| m.len())
+                .unwrap_or(0);
+
+            let video_path = if file_size > MAX_VIDEO_SIZE {
+                // Compress with ffmpeg
+                log::info!(
+                    "[watch_video] compressing local video ({:.1} MB > {:.1} MB limit)",
+                    file_size as f64 / 1024.0 / 1024.0,
+                    MAX_VIDEO_SIZE as f64 / 1024.0 / 1024.0
+                );
+                compress_video(local_path).await?
+            } else {
+                input.clone()
+            };
+
+            // Upload to tmpfiles.org for a temporary public URL (1 hour)
+            let public_url = upload_tmp_file(&video_path).await?;
+
+            // Clean up compressed file if we created one
+            if video_path != input {
+                let _ = std::fs::remove_file(&video_path);
+            }
+
+            log::info!("[watch_video] local file uploaded to temporary URL");
+            analyze_with_gemini(&self.openrouter_key, &public_url, prompt).await
+        } else if is_youtube_url(&input) {
+            let video_url = get_direct_url(&input).await?;
+            log::info!("[watch_video] YouTube → direct URL");
+            analyze_with_gemini(&self.openrouter_key, &video_url, prompt).await
         } else {
-            url.to_string()
-        };
-
-        log::info!("[watch_video] sending video URL to Gemini: {video_url}");
-
-        // Send to Gemini via OpenRouter
-        analyze_with_gemini(&self.openrouter_key, &video_url, prompt).await
+            // Direct URL
+            log::info!("[watch_video] sending URL to Gemini: {input}");
+            analyze_with_gemini(&self.openrouter_key, &input, prompt).await
+        }
     }
 }
 
@@ -76,9 +115,125 @@ fn is_youtube_url(url: &str) -> bool {
     lower.contains("youtube.com/") || lower.contains("youtu.be/")
 }
 
+/// Compress video with ffmpeg to fit within size limits.
+async fn compress_video(path: &Path) -> Result<String, ToolExecError> {
+    // Check ffmpeg is available
+    let check = tokio::process::Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .await;
+    if check.is_err() || !check.as_ref().unwrap().status.success() {
+        return Err(ToolExecError("ffmpeg is not installed — cannot compress video".into()));
+    }
+
+    let output_path = format!("/tmp/compressed_{}.mp4", std::process::id());
+
+    let result = tokio::process::Command::new("ffmpeg")
+        .args([
+            "-i", &path.display().to_string(),
+            "-vf", "scale=-2:480",           // Scale to 480p
+            "-c:v", "libx264",
+            "-crf", "28",                     // Quality (higher = smaller)
+            "-preset", "fast",
+            "-c:a", "aac",
+            "-b:a", "64k",                    // Audio bitrate
+            "-movflags", "+faststart",
+            "-y",                              // Overwrite
+            &output_path,
+        ])
+        .output()
+        .await
+        .map_err(|e| ToolExecError(format!("ffmpeg failed to start: {e}")))?;
+
+    if !result.status.success() {
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        // Try simpler compression without scaling
+        let result2 = tokio::process::Command::new("ffmpeg")
+            .args([
+                "-i", &path.display().to_string(),
+                "-c:v", "libx264",
+                "-crf", "32",
+                "-preset", "ultrafast",
+                "-c:a", "aac",
+                "-b:a", "48k",
+                "-y",
+                &output_path,
+            ])
+            .output()
+            .await
+            .map_err(|e| ToolExecError(format!("ffmpeg retry failed: {e}")))?;
+
+        if !result2.status.success() {
+            return Err(ToolExecError(format!(
+                "ffmpeg compression failed: {}",
+                stderr.chars().take(300).collect::<String>()
+            )));
+        }
+    }
+
+    let compressed_size = std::fs::metadata(&output_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    log::info!(
+        "[watch_video] compressed to {:.1} MB",
+        compressed_size as f64 / 1024.0 / 1024.0
+    );
+
+    Ok(output_path)
+}
+
+/// Upload a file to tmpfiles.org for a temporary public URL.
+async fn upload_tmp_file(path: &str) -> Result<String, ToolExecError> {
+    let file_bytes = std::fs::read(path)
+        .map_err(|e| ToolExecError(format!("failed to read file: {e}")))?;
+
+    let file_name = Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("video.mp4");
+
+    let part = reqwest::multipart::Part::bytes(file_bytes)
+        .file_name(file_name.to_string())
+        .mime_str("video/mp4")
+        .map_err(|e| ToolExecError(format!("mime error: {e}")))?;
+
+    let form = reqwest::multipart::Form::new().part("file", part);
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| ToolExecError(format!("failed to build HTTP client: {e}")))?;
+
+    let response = client
+        .post("https://tmpfiles.org/api/v1/upload")
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| ToolExecError(format!("upload failed: {e}")))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(ToolExecError(format!("tmpfiles.org returned HTTP {status}: {body}")));
+    }
+
+    let result: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| ToolExecError(format!("failed to parse upload response: {e}")))?;
+
+    // tmpfiles.org returns {"status":"ok","data":{"url":"https://tmpfiles.org/12345/video.mp4"}}
+    // Direct download URL replaces /12345/ with /dl/12345/
+    let page_url = result["data"]["url"]
+        .as_str()
+        .ok_or_else(|| ToolExecError("no URL in upload response".into()))?;
+
+    let direct_url = page_url.replacen("tmpfiles.org/", "tmpfiles.org/dl/", 1);
+    Ok(direct_url)
+}
+
 /// Use yt-dlp to extract a direct video URL without downloading.
 async fn get_direct_url(url: &str) -> Result<String, ToolExecError> {
-    // Ensure yt-dlp is available
     let check = tokio::process::Command::new("yt-dlp")
         .arg("--version")
         .output()
@@ -87,7 +242,6 @@ async fn get_direct_url(url: &str) -> Result<String, ToolExecError> {
     if check.is_err() || !check.as_ref().unwrap().status.success() {
         log::info!("[watch_video] installing yt-dlp...");
 
-        // Try pipx first (works on externally-managed Python environments)
         let pipx = tokio::process::Command::new("pipx")
             .args(["install", "yt-dlp"])
             .output()
@@ -96,7 +250,6 @@ async fn get_direct_url(url: &str) -> Result<String, ToolExecError> {
         let pipx_ok = pipx.as_ref().map(|o| o.status.success()).unwrap_or(false);
 
         if !pipx_ok {
-            // Fallback: download standalone binary
             let install = tokio::process::Command::new("sh")
                 .args([
                     "-c",
@@ -115,7 +268,6 @@ async fn get_direct_url(url: &str) -> Result<String, ToolExecError> {
         }
     }
 
-    // Get direct URL without downloading
     let result = tokio::process::Command::new("yt-dlp")
         .args([
             "-f", "best[ext=mp4][filesize<50M]/best[ext=mp4]/best",
@@ -139,9 +291,7 @@ async fn get_direct_url(url: &str) -> Result<String, ToolExecError> {
         return Err(ToolExecError("yt-dlp returned empty URL".into()));
     }
 
-    // yt-dlp may return multiple URLs (video + audio), take the first
     let first_url = direct_url.lines().next().unwrap_or(&direct_url).to_string();
-
     Ok(first_url)
 }
 

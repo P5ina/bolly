@@ -61,6 +61,16 @@ fn mime_from_ext(ext: &str) -> &'static str {
         | "dockerfile" | "makefile" | "cmake"
         | "r" | "lua" | "php" | "pl" | "ex" | "exs" | "zig" | "nim"
         | "dart" | "elm" | "clj" | "hs" | "ml" | "fs" | "erl" => "text/plain",
+        "mp4" | "m4v" => "video/mp4",
+        "webm" => "video/webm",
+        "mov" => "video/quicktime",
+        "avi" => "video/x-msvideo",
+        "mkv" => "video/x-matroska",
+        "flv" => "video/x-flv",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "ogg" => "audio/ogg",
+        "m4a" => "audio/mp4",
         "zip" => "application/zip",
         "tar" | "gz" | "tgz" | "bz2" | "xz" => "application/octet-stream",
         _ => "application/octet-stream",

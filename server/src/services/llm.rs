@@ -1593,6 +1593,21 @@ pub fn build_multimodal_prompt(
                     log::warn!("failed to extract zip {name}: {e}");
                 }
             }
+        } else if meta.mime_type.starts_with("video/") || meta.mime_type.starts_with("audio/") {
+            // Video/audio: tell the LLM about the file and how to analyze it
+            let kind = if meta.mime_type.starts_with("video/") { "video" } else { "audio" };
+            let size_mb = bytes.len() as f64 / (1024.0 * 1024.0);
+            let file_path = super::uploads::get_upload_file_path(workspace_dir, instance_slug, upload_id)
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
+            let mime = &meta.mime_type;
+            contents.push(ContentBlock::text(format!(
+                "[{kind}: {name} — {mime}, {size_mb:.1} MB]\n\
+                 local path: {file_path}\n\
+                 to analyze this {kind}, call watch_video with the local path above.\n\
+                 watch_video will compress it if needed and send it to a vision model."
+            )));
+            log::info!("attached {kind}: {name} ({}, {size_mb:.1} MB)", meta.mime_type);
         } else {
             contents.push(ContentBlock::text(format!(
                 "[file: {name} — {}, {} bytes, binary format]",
