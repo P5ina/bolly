@@ -1600,11 +1600,14 @@ pub fn build_multimodal_prompt(
                 .map(|p| p.display().to_string())
                 .unwrap_or_default();
             let mime = &meta.mime_type;
+            let tool_name = if kind == "audio" { "listen_music" } else { "watch_video" };
             contents.push(ContentBlock::text(format!(
                 "[{kind}: {name} — {mime}, {size_mb:.1} MB]\n\
                  local path: {file_path}\n\
-                 to analyze this {kind}, call watch_video with the local path above.\n\
-                 watch_video will compress it if needed and send it to a vision model."
+                 to analyze this {kind}, call {tool_name} with the local path above.\n\
+                 IMPORTANT: in the prompt field, include ALL context you know about this file — \
+                 filename, what the user said about it, where it's from, etc. \
+                 this context helps the model give a much better analysis."
             )));
             log::info!("attached {kind}: {name} ({}, {size_mb:.1} MB)", meta.mime_type);
         } else {
