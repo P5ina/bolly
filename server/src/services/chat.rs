@@ -363,6 +363,12 @@ pub async fn run_single_turn(
         .as_ref()
         .map(|c| c.llm.tokens.open_router.clone())
         .unwrap_or_default();
+    let github_token = chat_config
+        .as_ref()
+        .and_then(|c| {
+            let t = c.github.token.clone();
+            if t.is_empty() { None } else { Some(t) }
+        });
     let (all_tools, sent_files) = tools::build_tools(
         workspace_dir, &instance_slug, &chat_id, brave_api_key,
         config_path, events.clone(), llm,
@@ -374,6 +380,7 @@ pub async fn run_single_turn(
         Some(mcp_snapshot.clone()),
         mcp_tools,
         &openrouter_key,
+        github_token,
     );
     tools::cache_tool_defs(&all_tools).await;
 

@@ -24,6 +24,7 @@ pub struct RunCommandTool {
     events: broadcast::Sender<ServerEvent>,
     instance_slug: String,
     chat_id: String,
+    github_token: Option<String>,
 }
 
 impl RunCommandTool {
@@ -32,12 +33,14 @@ impl RunCommandTool {
         instance_slug: &str,
         chat_id: &str,
         events: broadcast::Sender<ServerEvent>,
+        github_token: Option<String>,
     ) -> Self {
         Self {
             instance_dir: workspace_dir.join("instances").join(instance_slug),
             events,
             instance_slug: instance_slug.to_string(),
             chat_id: chat_id.to_string(),
+            github_token,
         }
     }
 }
@@ -92,6 +95,15 @@ impl Tool for RunCommandTool {
             work_dir.display(),
             use_pty
         );
+
+        // Prepend GitHub token exports so gh CLI works without extra setup
+        // Done AFTER logging to avoid leaking the token to logs
+        let command = if let Some(ref token) = self.github_token {
+            let escaped = token.replace('\'', "'\\''");
+            format!("export GITHUB_TOKEN='{}' GH_TOKEN='{}'; {}", escaped, escaped, command)
+        } else {
+            command
+        };
 
         if use_pty {
             let cmd = command.clone();

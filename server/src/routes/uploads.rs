@@ -141,12 +141,22 @@ async fn serve_file_inner(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let content_disposition = format!(
+        "attachment; filename=\"{}\"",
+        meta.original_name.replace('"', "_")
+    );
+
     Response::builder()
         .header(
             header::CONTENT_TYPE,
             HeaderValue::from_str(&meta.mime_type).unwrap_or_else(|_| {
                 HeaderValue::from_static("application/octet-stream")
             }),
+        )
+        .header(
+            header::CONTENT_DISPOSITION,
+            HeaderValue::from_str(&content_disposition)
+                .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
         )
         .header(
             header::CACHE_CONTROL,
