@@ -9,12 +9,14 @@
 		disabled = false,
 		agentRunning = false,
 		mood = "calm",
+		uploadProgress = null,
 	}: {
 		onSend: (content: string, files?: File[]) => void;
 		onStop: () => void;
 		disabled?: boolean;
 		agentRunning?: boolean;
 		mood?: string;
+		uploadProgress?: { done: number; total: number } | null;
 	} = $props();
 
 	let value = $state("");
@@ -224,6 +226,12 @@
 				</button>
 			{/if}
 		</div>
+		{#if uploadProgress}
+			<div class="upload-progress">
+				<div class="upload-progress-bar" style="width: {(uploadProgress.done / uploadProgress.total) * 100}%"></div>
+				<span class="upload-progress-label">uploading {uploadProgress.done}/{uploadProgress.total}</span>
+			</div>
+		{/if}
 		<UsageBar tick={usageTick} />
 	</div>
 </div>
@@ -475,6 +483,35 @@
 	@keyframes dropzone-enter {
 		from { opacity: 0; }
 		to { opacity: 1; }
+	}
+
+	/* upload progress */
+	.upload-progress {
+		position: relative;
+		height: 18px;
+		margin-top: 0.375rem;
+		border-radius: 4px;
+		background: oklch(1 0 0 / 3%);
+		overflow: hidden;
+	}
+	.upload-progress-bar {
+		position: absolute;
+		inset: 0;
+		background: oklch(0.78 0.12 75 / 15%);
+		border-radius: 4px;
+		transition: width 0.3s ease;
+	}
+	.upload-progress-label {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 100%;
+		font-family: var(--font-mono);
+		font-size: 0.55rem;
+		color: oklch(0.78 0.12 75 / 45%);
+		letter-spacing: 0.04em;
 	}
 
 	@media (max-width: 720px) {

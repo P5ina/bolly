@@ -449,15 +449,21 @@
 		return unsub;
 	});
 
+	let uploadProgress = $state<{ done: number; total: number } | null>(null);
+
 	async function handleSend(content: string, files?: File[]) {
 		sending = true;
 		try {
 			// Upload files first, then reference them in the message
 			let finalContent = content;
 			if (files && files.length > 0) {
-				const uploadResults = await Promise.all(
-					files.map((f) => uploadFile(slug, f)),
-				);
+				uploadProgress = { done: 0, total: files.length };
+				const uploadResults = [];
+				for (const f of files) {
+					uploadResults.push(await uploadFile(slug, f));
+					uploadProgress = { done: uploadResults.length, total: files.length };
+				}
+				uploadProgress = null;
 				const refs = uploadResults
 					.map((u) => `[attached: ${u.original_name} (${u.id})]`)
 					.join("\n");
@@ -620,7 +626,7 @@
 				</div>
 			</div>
 
-			<ChatInput onSend={handleSend} onStop={handleStop} disabled={sending || agentRunning} {agentRunning} />
+			<ChatInput onSend={handleSend} onStop={handleStop} disabled={sending || agentRunning} {agentRunning} {uploadProgress} />
 		</div>
 
 		<aside class="chat-creature">
