@@ -370,10 +370,13 @@
 		return label.slice(0, Math.max(maxChars - 2, 3)) + "..";
 	}
 
-	// Pan handlers
+	// Pan handlers — only activate after 5px of movement to not block clicks
+	let didDrag = $state(false);
+
 	function onPanStart(e: PointerEvent) {
 		if (e.button !== 0) return;
 		isPanning = true;
+		didDrag = false;
 		panStartX = e.clientX;
 		panStartY = e.clientY;
 		panStartPanX = panX;
@@ -383,8 +386,12 @@
 
 	function onPanMove(e: PointerEvent) {
 		if (!isPanning) return;
-		panX = panStartPanX + (e.clientX - panStartX);
-		panY = panStartPanY + (e.clientY - panStartY);
+		const dx = e.clientX - panStartX;
+		const dy = e.clientY - panStartY;
+		if (!didDrag && Math.abs(dx) + Math.abs(dy) < 5) return;
+		didDrag = true;
+		panX = panStartPanX + dx;
+		panY = panStartPanY + dy;
 	}
 
 	function onPanEnd() {
@@ -492,7 +499,7 @@
 								"
 								onmouseenter={() => hoveredNode = circle.id}
 								onmouseleave={() => hoveredNode = null}
-								onclick={(e) => { e.stopPropagation(); handleCircleClick(circle); }}
+								onclick={(e) => { e.stopPropagation(); if (!didDrag) handleCircleClick(circle); }}
 							>
 								<div class="bubble-core"></div>
 								<div class="bubble-shine"></div>
