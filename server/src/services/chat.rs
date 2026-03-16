@@ -397,7 +397,12 @@ pub async fn run_single_turn(
         .map(|m| extract_message_text_len(m))
         .sum();
     let estimated_history_tokens = history_text_chars / 4;
-    const COMPACT_THRESHOLD_TOKENS: usize = 150_000;
+    const COMPACT_THRESHOLD_TOKENS: usize = 100_000;
+
+    log::info!(
+        "[chat] context estimate: ~{estimated_history_tokens} tokens, {} messages, oauth={}",
+        history_msgs.len(), llm.is_oauth()
+    );
 
     // OAuth tokens don't support server-side compaction — manually summarize when context grows too large
     if llm.is_oauth() && estimated_history_tokens > COMPACT_THRESHOLD_TOKENS && history_msgs.len() > 4 {
@@ -408,9 +413,15 @@ pub async fn run_single_turn(
         match manual_compact(&history_msgs, llm).await {
             Ok((summary, kept)) => {
                 let compacted_count = history_msgs.len() - kept.len();
-                history_msgs = vec![llm::Message::Assistant {
-                    content: vec![llm::ContentBlock::Compaction { content: summary }],
-                }];
+                // Use text block, not Compaction — OAuth API doesn't support compaction type
+                history_msgs = vec![
+                    llm::Message::User {
+                        content: vec![llm::ContentBlock::text("[system: previous conversation was summarized to save context]")],
+                    },
+                    llm::Message::Assistant {
+                        content: vec![llm::ContentBlock::text(format!("[conversation summary]\n{summary}"))],
+                    },
+                ];
                 history_msgs.extend(kept);
                 let _ = events.send(ServerEvent::ContextCompacting {
                     instance_slug: instance_slug.clone(),
