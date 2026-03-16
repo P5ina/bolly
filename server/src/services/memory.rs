@@ -480,6 +480,126 @@ pub fn forget_memories(workspace_dir: &Path, instance_slug: &str, query: &str) -
 }
 
 // ---------------------------------------------------------------------------
+// BM25 search
+// ---------------------------------------------------------------------------
+
+/// A search result with path, matched chunk text, and relevance score.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SearchResult {
+    /// File path (e.g. "about/work.md"). May have #chunkN suffix for large files.
+    pub path: String,
+    /// The matched text chunk.
+    pub text: String,
+    /// BM25 relevance score (higher = better).
+    pub score: f64,
+}
+
+/// Search the memory library using BM25 scoring with chunking for large files.
+pub fn search(workspace_dir: &Path, instance_slug: &str, query: &str, limit: usize) -> Vec<SearchResult> {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return Vec::new();
+    }
+
+    let terms: Vec<&str> = query
+        .split(|c: char| !c.is_alphanumeric() && c != '\'')
+        .filter(|w| w.len() > 1)
+        .collect();
+
+    if terms.is_empty() {
+        return Vec::new();
+    }
+
+    let dir = memory_dir(workspace_dir, instance_slug);
+    let entries = scan_library(workspace_dir, instance_slug);
+    if entries.is_empty() {
+        return Vec::new();
+    }
+
+    // Build chunks from all files
+    let mut all_chunks: Vec<(String, String)> = Vec::new(); // (path, text)
+    for entry in &entries {
+        let full_path = dir.join(&entry.path);
+        let content = std::fs::read_to_string(&full_path).unwrap_or_default();
+
+        if content.len() < 800 {
+            all_chunks.push((entry.path.clone(), content));
+        } else {
+            let paragraphs: Vec<&str> = content.split("\n\n").collect();
+            let mut current = String::new();
+            let mut idx = 0;
+            for para in paragraphs {
+                current.push_str(para);
+                current.push_str("\n\n");
+                if current.len() >= 600 {
+                    all_chunks.push((format!("{}#chunk{}", entry.path, idx), current.clone()));
+                    current.clear();
+                    idx += 1;
+                }
+            }
+            if !current.trim().is_empty() {
+                all_chunks.push((format!("{}#chunk{}", entry.path, idx), current));
+            }
+        }
+    }
+
+    let total = all_chunks.len() as f64;
+
+    // Document frequency per term
+    let mut df: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for (_, text) in &all_chunks {
+        let lower = text.to_lowercase();
+        for term in &terms {
+            if lower.contains(term) {
+                *df.entry(term).or_insert(0) += 1;
+            }
+        }
+    }
+
+    // BM25 scoring
+    let k1 = 1.5f64;
+    let b = 0.75f64;
+    let avg_len = all_chunks.iter().map(|(_, t)| t.len() as f64).sum::<f64>() / total.max(1.0);
+
+    let mut results: Vec<SearchResult> = Vec::new();
+
+    for (path, text) in &all_chunks {
+        let lower = text.to_lowercase();
+        let doc_len = text.len() as f64;
+        let mut score = 0.0f64;
+
+        for term in &terms {
+            let tf = lower.matches(term).count() as f64;
+            if tf == 0.0 { continue; }
+            let n = *df.get(term).unwrap_or(&0) as f64;
+            let idf = ((total - n + 0.5) / (n + 0.5) + 1.0).ln();
+            let tf_norm = (tf * (k1 + 1.0)) / (tf + k1 * (1.0 - b + b * doc_len / avg_len));
+            score += idf * tf_norm;
+        }
+
+        // Path bonus
+        let path_lower = path.to_lowercase();
+        for term in &terms {
+            if path_lower.contains(term) {
+                score += 2.0;
+            }
+        }
+
+        if score > 0.0 {
+            results.push(SearchResult {
+                path: path.clone(),
+                text: text.clone(),
+                score,
+            });
+        }
+    }
+
+    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    results.truncate(limit);
+    results
+}
+
+// ---------------------------------------------------------------------------
 // Parsing
 // ---------------------------------------------------------------------------
 

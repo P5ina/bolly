@@ -18,6 +18,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/context-stats", get(get_context_stats))
         .route("/api/instances/{instance_slug}/{chat_id}/context-stats", get(get_context_stats_chat))
         .route("/api/instances/{instance_slug}/memory", get(list_memory))
+        .route("/api/instances/{instance_slug}/memory/search", get(search_memory))
         .route("/api/instances/{instance_slug}/memory/{*path}", get(read_memory_file))
         .route("/api/instances/{instance_slug}/email", get(get_email_config))
         .route("/api/instances/{instance_slug}/email", put(set_email_config))
@@ -272,6 +273,23 @@ async fn list_memory(
     Path(instance_slug): Path<String>,
 ) -> Json<Vec<MemoryEntry>> {
     Json(memory::scan_library(&state.workspace_dir, &instance_slug))
+}
+
+#[derive(Deserialize)]
+struct SearchQuery {
+    q: String,
+    #[serde(default = "default_search_limit")]
+    limit: usize,
+}
+
+fn default_search_limit() -> usize { 10 }
+
+async fn search_memory(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<SearchQuery>,
+) -> Json<Vec<memory::SearchResult>> {
+    Json(memory::search(&state.workspace_dir, &instance_slug, &params.q, params.limit))
 }
 
 async fn read_memory_file(

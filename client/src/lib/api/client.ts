@@ -297,6 +297,16 @@ export function fetchMemory(slug: string): Promise<MemoryEntry[]> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/memory`);
 }
 
+export interface MemorySearchResult {
+	path: string;
+	text: string;
+	score: number;
+}
+
+export function searchMemory(slug: string, query: string, limit = 10): Promise<MemorySearchResult[]> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/memory/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+}
+
 export async function fetchMemoryContent(slug: string, path: string): Promise<string> {
 	const res = await authedFetch(`/api/instances/${encodeURIComponent(slug)}/memory/${path}`);
 	if (res.status === 401) throw new AuthError();

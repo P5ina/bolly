@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { fetchMemory, fetchMemoryContent } from "$lib/api/client.js";
+	import { fetchMemory, fetchMemoryContent, searchMemory, type MemorySearchResult } from "$lib/api/client.js";
 	import type { MemoryEntry } from "$lib/api/types.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 
@@ -171,57 +171,35 @@
 
 	let totalSize = $derived(folders.reduce((s, f) => s + f.totalSize, 0));
 
-	// --- fuzzy search ---
+	// --- search (server-side BM25) ---
 
-	function fuzzyMatch(text: string, query: string): number {
-		// Returns score (higher = better match). 0 = no match.
-		const lower = text.toLowerCase();
-		const q = query.toLowerCase();
+	let searchResults = $state<MemorySearchResult[]>([]);
+	let searchLoading = $state(false);
+	let searchDebounce: ReturnType<typeof setTimeout> | null = null;
 
-		// Exact substring — best
-		if (lower.includes(q)) return 100 + (q.length / lower.length) * 50;
-
-		// All query words present
-		const words = q.split(/\s+/).filter(Boolean);
-		if (words.length > 1 && words.every((w) => lower.includes(w))) return 80;
-
-		// Fuzzy: characters in order
-		let qi = 0;
-		let consecutive = 0;
-		let maxConsecutive = 0;
-		for (let i = 0; i < lower.length && qi < q.length; i++) {
-			if (lower[i] === q[qi]) {
-				qi++;
-				consecutive++;
-				maxConsecutive = Math.max(maxConsecutive, consecutive);
-			} else {
-				consecutive = 0;
-			}
-		}
-		if (qi === q.length) return 30 + maxConsecutive * 5;
-
-		return 0;
-	}
-
-	let searchResults = $derived.by(() => {
+	$effect(() => {
 		const q = searchQuery.trim();
-		if (q.length < 2) return [];
-
-		const scored: { entry: MemoryEntry; score: number }[] = [];
-		for (const e of entries) {
-			const pathScore = fuzzyMatch(e.path, q);
-			const summaryScore = fuzzyMatch(e.summary, q) * 0.8;
-			const score = Math.max(pathScore, summaryScore);
-			if (score > 0) scored.push({ entry: e, score });
+		if (q.length < 2) {
+			searchResults = [];
+			return;
 		}
-
-		scored.sort((a, b) => b.score - a.score);
-		return scored.slice(0, 30);
+		searchLoading = true;
+		if (searchDebounce) clearTimeout(searchDebounce);
+		searchDebounce = setTimeout(async () => {
+			try {
+				searchResults = await searchMemory(slug, q, 20);
+			} catch {
+				searchResults = [];
+			} finally {
+				searchLoading = false;
+			}
+		}, 250);
 	});
 
 	function toggleSearch() {
 		searchOpen = !searchOpen;
 		searchQuery = "";
+		searchResults = [];
 	}
 
 	// --- colors ---
@@ -549,29 +527,34 @@
 					onkeydown={(e) => e.key === "Escape" && toggleSearch()}
 				/>
 				{#if searchQuery.length >= 2}
-					<span class="search-count">{searchResults.length} results</span>
+					<span class="search-count">{searchLoading ? "searching..." : `${searchResults.length} results`}</span>
 				{/if}
 			</div>
 
 			{#if searchResults.length > 0}
 				<div class="search-results">
-					{#each searchResults as { entry, score }}
-						{@const folder = entry.path.split("/")[0] ?? "(root)"}
+					{#each searchResults as result}
+						{@const basePath = result.path.split("#")[0]}
+						{@const folder = basePath.split("/")[0] ?? "(root)"}
+						{@const preview = result.text.trim().slice(0, 200)}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							class="search-result"
 							style="--c: {getHex(folder)}"
-							onclick={() => openDocument(entry)}
+							onclick={() => {
+								const entry = entries.find(e => e.path === basePath);
+								if (entry) openDocument(entry);
+							}}
 						>
 							<div class="search-result-path">
-								<span class="search-result-folder" style="color: {getHex(folder)}">{folder}/</span>{fileName(entry.path)}
+								<span class="search-result-folder" style="color: {getHex(folder)}">{folder}/</span>{fileName(basePath)}
 							</div>
-							<div class="search-result-summary">{entry.summary}</div>
-							<div class="search-result-meta">{formatSize(entry.size)}</div>
+							<div class="search-result-summary">{preview}</div>
+							<div class="search-result-meta">score: {result.score.toFixed(1)}</div>
 						</div>
 					{/each}
 				</div>
-			{:else if searchQuery.length >= 2}
+			{:else if searchQuery.length >= 2 && !searchLoading}
 				<div class="search-empty">no matches</div>
 			{/if}
 		{/if}
