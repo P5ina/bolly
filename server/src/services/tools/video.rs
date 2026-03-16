@@ -7,8 +7,8 @@ use serde::Deserialize;
 use super::{openai_schema, ToolExecError};
 
 const GEMINI_MODEL: &str = "google/gemini-2.5-flash";
-/// Max video size to send to Gemini (20 MB). Larger files get compressed.
-const MAX_VIDEO_SIZE: u64 = 20 * 1024 * 1024;
+/// Max video size to send to Gemini (45 MB). Larger files get compressed.
+const MAX_VIDEO_SIZE: u64 = 45 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // watch_video
