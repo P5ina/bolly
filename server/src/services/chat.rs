@@ -302,6 +302,21 @@ pub async fn run_single_turn(
     let prompt_msg = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
 
     let mut history_msgs = if let Some(mut h) = loaded_history {
+        // Strip [context] blocks from historical user messages — they contain the
+        // memory catalog which is re-injected fresh with the current message.
+        // Keeping them in history multiplies catalog size by message count.
+        for msg in h.iter_mut() {
+            if let llm::Message::User { content } = msg {
+                for block in content.iter_mut() {
+                    if let llm::ContentBlock::Text { text } = block {
+                        if let Some(ctx_pos) = text.find("\n\n[context]\n") {
+                            text.truncate(ctx_pos);
+                        }
+                    }
+                }
+            }
+        }
+
         // Check if history already has a compaction block — if so, the context
         // was intentionally reset. Don't patch in old messages.json entries or
         // we'll refill the context and trigger compaction in a loop.
