@@ -825,15 +825,27 @@ async fn anthropic_stream(
     let status = resp.status();
     if !status.is_success() {
         let err_text = resp.text().await.unwrap_or_default();
-        let body_str = serde_json::to_string(&body).unwrap_or_default();
         log::error!(
-            "[llm] streaming API {status} — model={model}, msgs={}, body_chars={}",
-            messages.len(), body_str.len(),
+            "[llm] streaming API {status} — model={model}, msgs={}",
+            messages.len(),
         );
-        // Dump request body to /tmp for debugging
-        let dump_path = format!("/tmp/llm_error_{}.json", std::process::id());
-        let _ = std::fs::write(&dump_path, &body_str);
-        log::error!("[llm] request body dumped to {dump_path}");
+        // Log the message types to help debug which content block is invalid
+        for (i, msg) in messages.iter().enumerate() {
+            let (role, blocks) = match msg {
+                Message::User { content } => ("user", content),
+                Message::Assistant { content } => ("assistant", content),
+            };
+            let types: Vec<&str> = blocks.iter().map(|b| match b {
+                ContentBlock::Text { .. } => "text",
+                ContentBlock::Image { .. } => "image",
+                ContentBlock::Document { .. } => "document",
+                ContentBlock::ToolUse { .. } => "tool_use",
+                ContentBlock::ToolResult { .. } => "tool_result",
+                ContentBlock::Compaction { .. } => "compaction",
+                ContentBlock::Unknown(_) => "unknown",
+            }).collect();
+            log::error!("[llm] msg[{i}] {role}: {:?}", types);
+        }
         return Err(format!("Anthropic API error {status}: {err_text}").into());
     }
 
