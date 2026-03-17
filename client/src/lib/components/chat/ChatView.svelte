@@ -119,6 +119,30 @@
 	}
 
 	const ws = getWebSocket();
+	let hadConnection = false;
+
+	// Reload full chat after WebSocket reconnect to pick up missed messages
+	$effect(() => {
+		const isConnected = ws.connected;
+		untrack(() => {
+			if (!isConnected) return;
+			if (!hadConnection) {
+				// First connection — skip, the main load effect handles this
+				hadConnection = true;
+				return;
+			}
+			// Reconnected — re-fetch to pick up messages we missed
+			fetchMessages(slug, chatId)
+				.then((res) => {
+					messages = res.messages.filter((m) => !isToolActivity(m));
+					stream = messagesToStream(res.messages);
+					agentRunning = res.agent_running;
+					if (agentRunning) pushActivity("state", "thinking...");
+					scrollToBottom();
+				})
+				.catch(() => {});
+		});
+	});
 
 	function scrollToBottom() {
 		requestAnimationFrame(() => {
