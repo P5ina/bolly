@@ -375,6 +375,10 @@
 				streamingContent = "";
 				displayedLength = 0;
 				if (typewriterRaf) { cancelAnimationFrame(typewriterRaf); typewriterRaf = 0; }
+				// Clean up any promoted streaming messages stuck in wrong position
+				stream = stream.filter((s) =>
+					!(s.type === "message" && typeof s.data.id === "string" && s.data.id.startsWith("__promoted_"))
+				);
 			} else if (event.type === "tool_activity") {
 				if (event.summary.startsWith("mood →")) return;
 				const isOutput = event.tool_name.endsWith("_output");
