@@ -52,6 +52,7 @@ export async function provisionTenant(opts: {
 			stripeSubscriptionId: opts.stripeSubscriptionId,
 			storageLimit: planConfig.storageLimit,
 			maxInstances: planConfig.maxInstances,
+			tokensPer4h: planConfig.tokensPer4h,
 			tokensPerMonth: planConfig.tokensPerMonth,
 		})
 		.returning();

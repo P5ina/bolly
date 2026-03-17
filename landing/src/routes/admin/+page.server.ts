@@ -232,6 +232,7 @@ export const actions: Actions = {
 				.set({
 					storageLimit: config.storageLimit,
 					maxInstances: config.maxInstances,
+					tokensPer4h: config.tokensPer4h,
 					tokensPerMonth: config.tokensPerMonth,
 					updatedAt: new Date(),
 				})
@@ -263,7 +264,6 @@ export const actions: Actions = {
 				tokensLast4h: 0,
 				tokensThisWeek: 0,
 				tokensThisMonth: 0,
-				rollover4h: 0,
 				lastReset4h: new Date(),
 				lastResetWeekly: new Date(),
 				lastResetMonthly: new Date(),
