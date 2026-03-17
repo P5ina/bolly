@@ -40,11 +40,12 @@ pub fn build_router(state: AppState, static_dir: Option<PathBuf>) -> Router {
         .with_state(state);
 
     // Serve static client files as fallback (SPA routing)
+    // Priority: external static_dir > embedded assets
     if let Some(dir) = static_dir {
         let index = dir.join("index.html");
         let serve = ServeDir::new(dir).not_found_service(ServeFile::new(index));
         app.fallback_service(serve)
     } else {
-        app
+        app.fallback_service(super::embedded_static::EmbeddedStaticService)
     }
 }

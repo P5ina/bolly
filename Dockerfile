@@ -29,6 +29,8 @@ RUN cargo chef cook --release --recipe-path recipe.json -p server
 FROM deps AS server-build
 COPY Cargo.toml Cargo.lock ./
 COPY server/ server/
+# Copy client build for rust-embed to bundle into binary
+COPY --from=client-build /app/client/build client/build/
 ARG GIT_HASH=dev
 RUN echo "build: ${GIT_HASH}" > /tmp/build-info && \
     GIT_HASH=${GIT_HASH} cargo build --release -p server
@@ -70,7 +72,7 @@ COPY server/scripts/ /opt/bolly/scripts/
 RUN cd /opt/bolly/scripts && npm install --omit=dev
 
 COPY --from=server-build /app/target/release/server /usr/local/bin/bolly
-COPY --from=client-build /app/client/build /opt/bolly/static
+# Client is embedded in the binary via rust-embed — no separate static dir needed
 
 ENV BOLLY_HOME=/data
 ENV RUST_LOG=info,rig=warn

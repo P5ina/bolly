@@ -28,6 +28,7 @@ portable-pty = "0.9"
 zip = "2"
 pdf-extract = "0.10.0"
 chrono-tz = { version = "0.10.4", features = ["case-insensitive"] }
+rust-embed = { version = "8", features = ["mime-guess"] }
 lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
 imap = "2"
 native-tls = "0.2"

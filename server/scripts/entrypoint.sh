@@ -4,7 +4,6 @@ set -e
 PERSIST_DIR="${BOLLY_HOME:-/data}"
 BIN_DIR="$PERSIST_DIR/bin"
 PERSISTENT_BINARY="$BIN_DIR/bolly"
-STATIC_DIR="$PERSIST_DIR/static"
 PKG_LIST="$PERSIST_DIR/.apt-packages"
 PIP_LIST="$PERSIST_DIR/.pip-packages"
 NPM_LIST="$PERSIST_DIR/.npm-packages"
@@ -16,11 +15,6 @@ if [ -f /opt/bolly/scripts/update-bolly.sh ]; then
     /opt/bolly/scripts/update-bolly.sh &
 fi
 
-# --- Copy static files to persistent storage (for self-update compat) ---
-if [ -d /opt/bolly/static ] && [ ! -d "$STATIC_DIR" ]; then
-    cp -r /opt/bolly/static "$STATIC_DIR"
-    echo "[entrypoint] copied static files to $STATIC_DIR"
-fi
 
 # --- Restore apt packages ---
 if [ -f "$PKG_LIST" ] && [ -s "$PKG_LIST" ]; then
@@ -44,11 +38,6 @@ fi
 
 # --- Setup config ---
 mkdir -p "$PERSIST_DIR"
-if [ -d "$STATIC_DIR" ]; then
-    grep -q static_dir "$PERSIST_DIR/config.toml" 2>/dev/null || printf "static_dir = \"$STATIC_DIR\"\n" >> "$PERSIST_DIR/config.toml"
-else
-    grep -q static_dir "$PERSIST_DIR/config.toml" 2>/dev/null || printf 'static_dir = "/opt/bolly/static"\n' >> "$PERSIST_DIR/config.toml"
-fi
 
 # --- Install wrapper scripts ---
 cat > /usr/local/bin/persist-apt <<'WRAPPER'
