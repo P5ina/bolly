@@ -5,6 +5,7 @@ import { tenants, users, rateLimits } from '$lib/server/db/schema.js';
 import { eq, ne } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
 import * as fly from '$lib/server/fly/index.js';
+import { provisionTenant } from '$lib/server/tenants.js';
 import { PLANS, type PlanId, stripe, priceIdForPlan } from '$lib/server/stripe/index.js';
 import { sendPriceChangeEmail } from '$lib/server/email/index.js';
 
@@ -259,9 +260,12 @@ export const actions: Actions = {
 		await db()
 			.update(rateLimits)
 			.set({
-				messagesToday: 0,
+				tokensLast4h: 0,
+				tokensThisWeek: 0,
 				tokensThisMonth: 0,
-				lastResetDaily: new Date(),
+				rollover4h: 0,
+				lastReset4h: new Date(),
+				lastResetWeekly: new Date(),
 				lastResetMonthly: new Date(),
 			})
 			.where(eq(rateLimits.instanceId, tenantId));
@@ -358,6 +362,37 @@ export const actions: Actions = {
 		}
 
 		return { success: true, sent };
+	},
+
+	provisionMachine: async ({ request, locals }) => {
+		if (!locals.user || !isAdmin(locals.user.email)) error(403, 'Forbidden');
+
+		const form = await request.formData();
+		const tenantId = form.get('tenantId') as string;
+		if (!tenantId) return fail(400, { error: 'Missing tenantId' });
+
+		const [tenant] = await db()
+			.select()
+			.from(tenants)
+			.innerJoin(users, eq(tenants.userId, users.id))
+			.where(eq(tenants.id, tenantId))
+			.limit(1);
+
+		if (!tenant) return fail(404, { error: 'Tenant not found' });
+
+		try {
+			await provisionTenant({
+				userId: tenant.tenants.userId,
+				slug: tenant.tenants.slug,
+				plan: tenant.tenants.plan as PlanId,
+				stripeSubscriptionId: tenant.tenants.stripeSubscriptionId ?? undefined,
+			});
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'Unknown error';
+			return fail(500, { error: `Provisioning failed: ${msg}` });
+		}
+
+		return { success: true, tenantId };
 	},
 
 	patchEnv: async ({ locals }) => {

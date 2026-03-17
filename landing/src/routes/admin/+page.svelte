@@ -38,6 +38,7 @@
 	let updating = $state<string | null>(null);
 	let stopping = $state<string | null>(null);
 	let starting = $state<string | null>(null);
+	let provisioning = $state<string | null>(null);
 	let actionError = $state<string | null>(null);
 	let actionSuccess = $state<string | null>(null);
 	let refreshing = $state(false);
@@ -403,11 +404,38 @@
 												start
 											</button>
 										</form>
-									{:else if tenant.status === 'error'}
+									{:else if tenant.status === 'error' || tenant.status === 'provisioning'}
 										<span class="inline-flex items-center gap-1 text-xs text-red-400/70">
 											<AlertTriangle size={12} />
-											{tenant.errorMessage ?? 'unknown error'}
+											{tenant.status === 'error' ? (tenant.errorMessage ?? 'unknown error') : 'provisioning...'}
 										</span>
+										<form method="POST" action="?/provisionMachine" use:enhance={() => {
+											provisioning = tenant.id;
+											actionError = null;
+											return async ({ result, update }) => {
+												provisioning = null;
+												if (result.type === 'failure') {
+													actionError = (result.data as { error?: string })?.error ?? 'Provisioning failed';
+												}
+												await update();
+											};
+										}}>
+											<input type="hidden" name="tenantId" value={tenant.id} />
+											<button
+												type="submit"
+												disabled={provisioning === tenant.id}
+												class="inline-flex items-center gap-1 text-xs py-1.5 px-3 rounded-lg transition-all duration-300 disabled:opacity-40"
+												style="color: oklch(0.72 0.12 200); background: oklch(0.72 0.12 200 / 8%); border: 1px solid oklch(0.72 0.12 200 / 20%);"
+												title="Provision machine"
+											>
+												{#if provisioning === tenant.id}
+													<Loader size={12} class="animate-spin" />
+												{:else}
+													<Server size={12} />
+												{/if}
+												provision
+											</button>
+										</form>
 									{/if}
 								</div>
 							</div>
