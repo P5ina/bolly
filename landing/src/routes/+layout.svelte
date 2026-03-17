@@ -1,5 +1,6 @@
 <script lang="ts">
 import "../app.css";
+import favicon from '$lib/assets/favicon.png';
 import { dev } from "$app/environment";
 import { injectAnalytics } from "@vercel/analytics/sveltekit";
 
@@ -10,7 +11,7 @@ let { children } = $props();
 
 <svelte:head>
 	<title>Bolly — A companion that lives on your server</title>
-	<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+	<link rel="icon" href={favicon} />
 </svelte:head>
 
 {@render children()}
