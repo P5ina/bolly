@@ -448,6 +448,7 @@ export const actions: Actions = {
 			const canonicalEnv: Record<string, string> = {
 				BOLLY_HOME: '/data',
 				RUST_LOG: 'info,rig=warn',
+				BOLLY_CHANNEL: (t.imageChannel as string) ?? 'stable',
 				BOLLY_AUTH_TOKEN: t.authToken ?? '',
 				BOLLY_INSTANCE_ID: t.id,
 				BOLLY_PUBLIC_URL: `https://${t.slug}.bollyai.dev`,

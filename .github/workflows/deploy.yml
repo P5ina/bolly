@@ -85,6 +85,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Extract nightly binary and publish to GitHub nightly release
+      - name: Publish nightly binary
+        if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker create --name extract-nightly "${{ env.FLY_NIGHTLY }}"
+          docker cp extract-nightly:/usr/local/bin/bolly ./bolly-x86_64-unknown-linux-gnu
+          docker rm extract-nightly
+          chmod +x ./bolly-x86_64-unknown-linux-gnu
+          # Delete existing nightly release if it exists, then recreate
+          gh release delete nightly --yes 2>/dev/null || true
+          git tag -f nightly
+          git push origin nightly --force
+          gh release create nightly \
+            --title "Nightly $(date -u +%Y-%m-%d)" \
+            --notes "Auto-built from main ($(git rev-parse --short HEAD))" \
+            --prerelease \
+            bolly-x86_64-unknown-linux-gnu
+
       # Update nightly machines on every push to main
       - name: Update nightly machines
         if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
