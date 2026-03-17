@@ -89,8 +89,8 @@ pub fn rebuild_catalog_snapshot(workspace_dir: &Path, instance_slug: &str) {
         prompt.push_str(&format!("- {} — {}\n", entry.path, entry.summary));
     }
     prompt.push_str(
-        "\nNOTE: this catalog is a static snapshot — it may be outdated. \
-         if you write, delete, or rename memory files, the list above won't update until the next session. \
+        "\nNOTE: this catalog is a snapshot — it updates on context clear and compaction, \
+         NOT after every memory_write/memory_forget. if you modified memories during this session, \
          use memory_list or memory_search for the current state.\n\
          use these memories naturally — `recall` what you need. don't announce that you remember — just know."
     );
