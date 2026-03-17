@@ -42,11 +42,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - name: Build client
-        run: cd client && pnpm install --frozen-lockfile && pnpm build
+        run: |
+          corepack enable
+          cd client
+          pnpm install --frozen-lockfile
+          pnpm build
 
       # Build server (with embedded client)
       - uses: dtolnay/rust-toolchain@stable
