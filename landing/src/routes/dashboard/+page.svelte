@@ -270,26 +270,6 @@
 												<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
 												<span class="text-text-ghost">running</span>
 											</span>
-											<form method="POST" action="?/switchChannel" use:enhance={() => {
-												switchingChannel = tenant.id;
-												return async ({ update }) => {
-													switchingChannel = null;
-													await update();
-												};
-											}} class="inline-flex items-center">
-												<input type="hidden" name="tenantId" value={tenant.id} />
-												<input type="hidden" name="channel" value={tenant.imageChannel === 'stable' ? 'nightly' : 'stable'} />
-												<button
-													type="submit"
-													disabled={switchingChannel === tenant.id}
-													class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full transition-all duration-300 disabled:opacity-40"
-													style="background: {tenant.imageChannel === 'nightly' ? 'oklch(0.65 0.15 300 / 12%)' : 'oklch(0.5 0 0 / 8%)'}; border: 1px solid {tenant.imageChannel === 'nightly' ? 'oklch(0.65 0.15 300 / 25%)' : 'oklch(0.5 0 0 / 15%)'}; color: {tenant.imageChannel === 'nightly' ? 'oklch(0.75 0.12 300)' : 'var(--color-text-ghost)'};"
-													title="Switch to {tenant.imageChannel === 'stable' ? 'nightly' : 'stable'} channel"
-												>
-													<RefreshCw size={10} class={switchingChannel === tenant.id ? 'animate-spin' : ''} />
-													{tenant.imageChannel}
-												</button>
-											</form>
 										</div>
 									</div>
 								</div>

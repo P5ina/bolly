@@ -195,28 +195,6 @@ export const actions: Actions = {
 			return fail(500, { error: 'Provisioning failed again. Please contact support.' });
 		}
 	},
-	switchChannel: async ({ request, locals }) => {
-		if (!locals.user) redirect(302, '/login');
-
-		const formData = await request.formData();
-		const tenantId = formData.get('tenantId') as string;
-		const channel = formData.get('channel') as string;
-
-		if (!tenantId || !channel) return fail(400, { error: 'Missing fields' });
-		if (channel !== 'stable' && channel !== 'nightly') return fail(400, { error: 'Invalid channel' });
-
-		const tenant = await getTenantBySlug(
-			(await getTenantsByUser(locals.user.id)).find((t) => t.id === tenantId)?.slug ?? ''
-		);
-		if (!tenant || tenant.userId !== locals.user.id) return fail(403, { error: 'Not your companion' });
-		if (tenant.status !== 'running') return fail(400, { error: 'Tenant is not running' });
-
-		try {
-			await switchTenantChannel(tenantId, channel);
-		} catch {
-			return fail(500, { error: 'Failed to switch channel' });
-		}
-	},
 	cancelSubscription: async ({ request, locals }) => {
 		if (!locals.user) redirect(302, '/dashboard');
 
