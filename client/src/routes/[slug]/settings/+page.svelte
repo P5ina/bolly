@@ -605,6 +605,12 @@
 			</div>
 		{:else}
 			{#if accounts.length > 0}
+				<div class="reconnect-banner">
+					<span class="reconnect-icon">!</span>
+					<span class="reconnect-text">
+						Google Drive access updated. Please disconnect and reconnect your account to enable full Drive access.
+					</span>
+				</div>
 				<div class="accounts-list">
 					{#each accounts as account}
 						<div class="account-row">
@@ -1218,6 +1224,38 @@
 	}
 
 	/* --- google / shared --- */
+
+	.reconnect-banner {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		padding: 0.625rem 0.75rem;
+		border-radius: 0.5rem;
+		background: oklch(0.78 0.12 75 / 6%);
+		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		margin-bottom: 0.75rem;
+	}
+	.reconnect-icon {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		font-weight: 700;
+		color: oklch(0.78 0.12 75 / 70%);
+		background: oklch(0.78 0.12 75 / 15%);
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		margin-top: 1px;
+	}
+	.reconnect-text {
+		font-family: var(--font-body);
+		font-size: 0.68rem;
+		line-height: 1.4;
+		color: oklch(0.88 0.02 75 / 55%);
+	}
 
 	.accounts-list {
 		display: flex;
