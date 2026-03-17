@@ -642,10 +642,11 @@
 	}
 
 	.home-version {
-		position: absolute;
+		position: fixed;
 		bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
-		left: 50%;
-		transform: translateX(-50%);
+		left: 0;
+		right: 0;
+		text-align: center;
 		font-family: var(--font-body);
 		font-size: 0.6rem;
 		letter-spacing: 0.05em;
