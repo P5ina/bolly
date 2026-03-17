@@ -96,14 +96,7 @@ impl Tool for RunCommandTool {
             use_pty
         );
 
-        // Prepend GitHub token exports so gh CLI works without extra setup
-        // Done AFTER logging to avoid leaking the token to logs
-        let command = if let Some(ref token) = self.github_token {
-            let escaped = token.replace('\'', "'\\''");
-            format!("export GITHUB_TOKEN='{}' GH_TOKEN='{}'; {}", escaped, escaped, command)
-        } else {
-            command
-        };
+        let github_token = self.github_token.clone();
 
         if use_pty {
             let cmd = command.clone();
@@ -118,7 +111,13 @@ impl Tool for RunCommandTool {
                     chunk: chunk.to_string(),
                 });
             });
-            let result = tokio::task::spawn_blocking(move || run_command_pty(&cmd, &dir, timeout, Some(&chunk_cb)))
+            let env_pairs: Vec<(String, String)> = if let Some(ref t) = github_token {
+                vec![("GITHUB_TOKEN".into(), t.clone()), ("GH_TOKEN".into(), t.clone())]
+            } else { vec![] };
+            let result = tokio::task::spawn_blocking(move || {
+                let env_refs: Vec<(&str, &str)> = env_pairs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+                run_command_pty(&cmd, &dir, timeout, Some(&chunk_cb), &env_refs)
+            })
                 .await
                 .map_err(|e| ToolExecError(format!("task join error: {e}")))?
                 .map_err(|e| ToolExecError(e))?;
@@ -140,14 +139,14 @@ impl Tool for RunCommandTool {
                 }
             }
         } else {
+            let mut cmd = tokio::process::Command::new("sh");
+            cmd.arg("-c").arg(&command).current_dir(&work_dir).stdin(std::process::Stdio::null());
+            if let Some(ref token) = github_token {
+                cmd.env("GITHUB_TOKEN", token).env("GH_TOKEN", token);
+            }
             let output = tokio::time::timeout(
                 std::time::Duration::from_secs(timeout),
-                tokio::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(&command)
-                    .current_dir(&work_dir)
-                    .stdin(std::process::Stdio::null())
-                    .output(),
+                cmd.output(),
             )
             .await
             .map_err(|_| ToolExecError(format!("command timed out after {timeout}s: {command}")))?
@@ -234,7 +233,7 @@ fn looks_like_interactive_prompt(output: &str) -> bool {
 /// Execute a command inside a pseudo-terminal (PTY).
 /// If the command waits for interactive input, the PTY is parked as a session
 /// and the caller is told to use `interactive_session` to continue.
-fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64, on_chunk: Option<&dyn Fn(&str)>) -> Result<PtyRunResult, String> {
+fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64, on_chunk: Option<&dyn Fn(&str)>, env_vars: &[(&str, &str)]) -> Result<PtyRunResult, String> {
     use portable_pty::{CommandBuilder, PtySize, native_pty_system};
     use std::io::Read;
     use std::sync::mpsc;
@@ -258,6 +257,9 @@ fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64, on_chunk: 
     let mut cmd = CommandBuilder::new("sh");
     cmd.args(["-c", command]);
     cmd.cwd(work_dir);
+    for (k, v) in env_vars {
+        cmd.env(k, v);
+    }
 
     let mut child = pair
         .slave
@@ -313,7 +315,7 @@ fn run_command_pty(command: &str, work_dir: &Path, timeout_secs: u64, on_chunk: 
         if remaining.is_zero() {
             let _ = child.kill();
             return Err(format!(
-                "command timed out after {timeout_secs}s: {command}"
+                "command timed out after {timeout_secs}s"
             ));
         }
 
