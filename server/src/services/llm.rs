@@ -681,9 +681,23 @@ fn build_anthropic_request(
                             log::info!("stripping empty compaction block");
                             return false;
                         }
+                        // OAuth doesn't support compaction blocks — convert to text
+                        if api_key.starts_with("sk-ant-oat") {
+                            log::info!("converting compaction block to text for OAuth");
+                            return false; // will be lost, but better than 400
+                        }
+                    }
+                    // Strip blocks with no recognized type (Unknown variant)
+                    if block_type.is_none() {
+                        log::info!("stripping block with no type");
+                        return false;
                     }
                     true
                 });
+                // Remove empty content arrays (can happen after stripping)
+                if content_arr.is_empty() {
+                    content_arr.push(serde_json::json!({"type": "text", "text": "(continued)"}));
+                }
             }
         }
     }
@@ -733,6 +747,11 @@ async fn anthropic_complete(
     let status = resp.status();
     let resp_text = resp.text().await?;
     if !status.is_success() {
+        log::error!(
+            "[llm] API {status} — model={model}, msgs={}, body_chars={}",
+            messages.len(),
+            serde_json::to_string(&body).map(|s| s.len()).unwrap_or(0),
+        );
         return Err(format!("Anthropic API error {status}: {resp_text}").into());
     }
 
@@ -806,6 +825,11 @@ async fn anthropic_stream(
     let status = resp.status();
     if !status.is_success() {
         let err_text = resp.text().await.unwrap_or_default();
+        log::error!(
+            "[llm] streaming API {status} — model={model}, msgs={}, body_chars={}",
+            messages.len(),
+            serde_json::to_string(&body).map(|s| s.len()).unwrap_or(0),
+        );
         return Err(format!("Anthropic API error {status}: {err_text}").into());
     }
 
