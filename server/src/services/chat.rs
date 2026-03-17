@@ -1526,14 +1526,6 @@ respond ONLY with those three lines."#,
             }
             Err(e) => log::warn!("failed to save mood message: {e}"),
         }
-        // Append to rig_history so the LLM sees it on the next turn
-        let rig_path = rig_history_path(workspace_dir, instance_slug, chat_id);
-        if let Some(mut h) = load_rig_history(&rig_path) {
-            let ts = timestamp();
-            h.push(llm::HistoryEntry::new(llm::Message::user(&label), ts.clone(), next_id()));
-            h.push(llm::HistoryEntry::new(llm::Message::assistant("understood."), ts, next_id()));
-            save_rig_history(&rig_path, &h);
-        }
         let _ = events.send(ServerEvent::MoodUpdated {
             instance_slug: instance_slug.to_string(),
             mood: mood.companion_mood.clone(),

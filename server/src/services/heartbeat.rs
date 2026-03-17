@@ -130,17 +130,9 @@ async fn heartbeat_instance(
 
     // Save rhythm insights to rig_history so the LLM sees updated patterns
     if !rhythm_insights.trim().is_empty() {
-        let rig_path = chat::rig_history_path(workspace_dir, slug, "default");
-        if let Some(mut h) = chat::load_rig_history(&rig_path) {
-            let label = format!("[system] rhythm update\n{rhythm_insights}");
-            let ts = crate::services::tools::unix_millis().to_string();
-            h.push(crate::services::llm::HistoryEntry::new(
-                crate::services::llm::Message::user(&label), ts.clone(), format!("rhythm_{}", ts),
-            ));
-            h.push(crate::services::llm::HistoryEntry::new(
-                crate::services::llm::Message::assistant("noted."), ts.clone(), format!("rhythm_ack_{}", ts),
-            ));
-            chat::save_rig_history(&rig_path, &h);
+        let label = format!("[system] rhythm update\n{rhythm_insights}");
+        if let Err(e) = chat::save_system_message(workspace_dir, slug, "default", &label) {
+            log::warn!("failed to save rhythm message: {e}");
         }
     }
 
