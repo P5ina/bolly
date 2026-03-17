@@ -18,10 +18,11 @@ struct UpdateCheck {
 async fn check_update(State(state): State<AppState>) -> Json<UpdateCheck> {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let current_tag = format!("v{current}");
+    let current_commit = option_env!("GIT_HASH").unwrap_or("dev");
     let channel = get_channel_value(&state.workspace_dir);
 
-    let latest = match fetch_latest_tag(&channel).await {
-        Some(tag) => tag,
+    let release = match fetch_release_info(&channel).await {
+        Some(r) => r,
         None => {
             return Json(UpdateCheck {
                 current: current_tag.clone(),
@@ -31,11 +32,30 @@ async fn check_update(State(state): State<AppState>) -> Json<UpdateCheck> {
         }
     };
 
-    let update_available = latest != current_tag && latest != "nightly";
+    let update_available = if channel == "nightly" {
+        // For nightly: compare commit SHA from release body against embedded GIT_HASH
+        // Body format: "Auto-built from main (abc1234)"
+        let release_commit = release.body.as_deref()
+            .and_then(|b| b.split('(').nth(1))
+            .and_then(|s| s.strip_suffix(')'))
+            .unwrap_or("");
+        !release_commit.is_empty()
+            && current_commit != "dev"
+            && !current_commit.starts_with(release_commit)
+    } else {
+        // For stable: simple tag comparison
+        release.tag != current_tag
+    };
+
+    let display_latest = if channel == "nightly" {
+        release.name.unwrap_or(release.tag)
+    } else {
+        release.tag
+    };
 
     Json(UpdateCheck {
         current: current_tag,
-        latest,
+        latest: display_latest,
         update_available,
     })
 }
@@ -124,7 +144,13 @@ async fn set_channel(
     Json(serde_json::json!({ "ok": true, "channel": channel }))
 }
 
-async fn fetch_latest_tag(channel: &str) -> Option<String> {
+struct ReleaseInfo {
+    tag: String,
+    name: Option<String>,
+    body: Option<String>,
+}
+
+async fn fetch_release_info(channel: &str) -> Option<ReleaseInfo> {
     let repo = "triangle-int/bolly";
 
     let url = if channel == "nightly" {
@@ -141,6 +167,10 @@ async fn fetch_latest_tag(channel: &str) -> Option<String> {
         .await
         .ok()?;
 
-    let body: serde_json::Value = resp.json().await.ok()?;
-    body["tag_name"].as_str().map(|s| s.to_string())
+    let data: serde_json::Value = resp.json().await.ok()?;
+    Some(ReleaseInfo {
+        tag: data["tag_name"].as_str()?.to_string(),
+        name: data["name"].as_str().map(|s| s.to_string()),
+        body: data["body"].as_str().map(|s| s.to_string()),
+    })
 }
