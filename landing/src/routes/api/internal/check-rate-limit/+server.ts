@@ -6,11 +6,11 @@ import { rateLimits } from '$lib/server/db/schema.js';
 import { eq, sql } from 'drizzle-orm';
 
 // Derive sub-limits from monthly budget
-// 4h budget = monthly / 180 (6 windows/day × 30 days)
+// 4h budget = monthly / 60 (~50K for 3M plan, enough for 10-20 tool-heavy messages)
 // weekly budget = monthly / 4
 function deriveLimits(monthly: number) {
 	return {
-		budget4h: Math.floor(monthly / 180),
+		budget4h: Math.floor(monthly / 60),
 		budgetWeek: Math.floor(monthly / 4),
 	};
 }

@@ -18,7 +18,7 @@ export const GET: RequestHandler = async ({ request }) => {
 	}
 
 	const monthly = tenant.tokensPerMonth;
-	const budget4h = Math.floor(monthly / 180);
+	const budget4h = Math.floor(monthly / 60);
 	const budgetWeek = Math.floor(monthly / 4);
 
 	const [row] = await db()
