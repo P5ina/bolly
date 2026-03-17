@@ -7,6 +7,7 @@
 	import MessageBubble from "./MessageBubble.svelte";
 	import ChatInput from "./ChatInput.svelte";
 	import AsciiRenderer from "./AsciiRenderer.svelte";
+	import CreatureBubble from "./CreatureBubble.svelte";
 	import StreamActivity from "./StreamActivity.svelte";
 	import ContextStats from "./ContextStats.svelte";
 	import HeartbeatUpdateBanner from "./HeartbeatUpdateBanner.svelte";
@@ -599,14 +600,6 @@
 		<div class="chat-main">
 			<div class="chat-stream" bind:this={scrollContainer}>
 				<div class="stream-inner">
-					<HeartbeatUpdateBanner {slug} />
-					{#if needsGoogleReconnect}
-						<div class="reconnect-chat-banner">
-							Google Drive access updated — please reconnect your Google account in
-							<a href="/{slug}/settings">settings</a> to enable full Drive access.
-							<button class="reconnect-dismiss" onclick={() => needsGoogleReconnect = false}>dismiss</button>
-						</div>
-					{/if}
 					{#if loading}
 						<div class="chat-loading"><div class="loading-dot"></div></div>
 					{:else if stream.length === 0}
@@ -653,6 +646,13 @@
 		</div>
 
 		<aside class="chat-creature">
+			<HeartbeatUpdateBanner {slug} />
+			{#if needsGoogleReconnect}
+				<CreatureBubble ondismiss={() => needsGoogleReconnect = false}>
+					Google Drive access updated — please reconnect your account in
+					<a href="/{slug}/settings">settings</a>.
+				</CreatureBubble>
+			{/if}
 			<AsciiRenderer thinking={sending || agentRunning} {mood} />
 		</aside>
 	</div>
@@ -663,38 +663,6 @@
 {/if}
 
 <style>
-	.reconnect-chat-banner {
-		margin: 0.5rem 1rem;
-		padding: 0.5rem 0.75rem;
-		border-radius: 0.5rem;
-		background: oklch(0.78 0.12 75 / 6%);
-		border: 1px solid oklch(0.78 0.12 75 / 15%);
-		font-family: var(--font-body);
-		font-size: 0.7rem;
-		color: oklch(0.88 0.02 75 / 55%);
-		line-height: 1.5;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		flex-wrap: wrap;
-	}
-	.reconnect-chat-banner a {
-		color: oklch(0.78 0.12 75 / 70%);
-		text-decoration: underline;
-	}
-	.reconnect-dismiss {
-		margin-left: auto;
-		font-family: var(--font-mono);
-		font-size: 0.55rem;
-		color: oklch(0.78 0.12 75 / 30%);
-		background: none;
-		border: none;
-		cursor: pointer;
-	}
-	.reconnect-dismiss:hover {
-		color: oklch(0.78 0.12 75 / 60%);
-	}
-
 	.chat-space {
 		position: relative;
 		display: flex;
