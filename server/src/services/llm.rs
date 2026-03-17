@@ -825,11 +825,15 @@ async fn anthropic_stream(
     let status = resp.status();
     if !status.is_success() {
         let err_text = resp.text().await.unwrap_or_default();
+        let body_str = serde_json::to_string(&body).unwrap_or_default();
         log::error!(
             "[llm] streaming API {status} — model={model}, msgs={}, body_chars={}",
-            messages.len(),
-            serde_json::to_string(&body).map(|s| s.len()).unwrap_or(0),
+            messages.len(), body_str.len(),
         );
+        // Dump request body to /tmp for debugging
+        let dump_path = format!("/tmp/llm_error_{}.json", std::process::id());
+        let _ = std::fs::write(&dump_path, &body_str);
+        log::error!("[llm] request body dumped to {dump_path}");
         return Err(format!("Anthropic API error {status}: {err_text}").into());
     }
 
