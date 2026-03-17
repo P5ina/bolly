@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fmt, fs,
+    fmt,
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
@@ -307,12 +307,8 @@ impl ToolDyn for ObservableTool {
             mcp_app_html: None,
             mcp_app_input: None,
         };
-        append_message_to_chat(
-            &self.workspace_dir,
-            &self.instance_slug,
-            &self.chat_id,
-            &start_msg,
-        );
+        // Tool activity is already captured in rig_history via ToolUse/ToolResult blocks.
+        // Only broadcast via WebSocket for real-time UI updates.
         let _ = self.events.send(ServerEvent::ChatMessageCreated {
             instance_slug: self.instance_slug.clone(),
             chat_id: self.chat_id.clone(),
@@ -336,12 +332,6 @@ impl ToolDyn for ObservableTool {
                         mcp_app_html: Some(html),
                         mcp_app_input: Some(args.clone()),
                     };
-                    append_message_to_chat(
-                        &self.workspace_dir,
-                        &self.instance_slug,
-                        &self.chat_id,
-                        &app_msg,
-                    );
                     let _ = self.events.send(ServerEvent::ChatMessageCreated {
                         instance_slug: self.instance_slug.clone(),
                         chat_id: self.chat_id.clone(),
@@ -352,7 +342,7 @@ impl ToolDyn for ObservableTool {
         }
 
         let events = self.events.clone();
-        let workspace_dir = self.workspace_dir.clone();
+        let _workspace_dir = self.workspace_dir.clone();
         let instance_slug = self.instance_slug.clone();
         let chat_id = self.chat_id.clone();
         let fut = self.inner.call(args);
@@ -379,14 +369,7 @@ impl ToolDyn for ObservableTool {
                     Ok(s) => s.clone(),
                     Err(e) => format!("error: {e}"),
                 };
-                // Update the persisted message with the result
-                update_mcp_app_result(
-                    &workspace_dir,
-                    &instance_slug,
-                    &chat_id,
-                    &msg_id,
-                    &tool_output,
-                );
+                // MCP app results are delivered via WebSocket only (rig_history has the tool result)
                 let _ = events.send(ServerEvent::McpAppResult {
                     instance_slug: instance_slug.clone(),
                     chat_id: chat_id.clone(),
@@ -413,7 +396,6 @@ impl ToolDyn for ObservableTool {
                         mcp_app_html: None,
                         mcp_app_input: None,
                     };
-                    append_message_to_chat(&workspace_dir, &instance_slug, &chat_id, &output_msg);
                     let _ = events.send(ServerEvent::ChatMessageCreated {
                         instance_slug,
                         chat_id,
@@ -585,66 +567,7 @@ pub fn unix_millis() -> u128 {
 }
 
 /// Append a single message to a chat's messages.json with file locking.
-pub fn append_message_to_chat(
-    workspace_dir: &Path,
-    instance_slug: &str,
-    chat_id: &str,
-    message: &crate::domain::chat::ChatMessage,
-) {
-    let chat_dir = workspace_dir
-        .join("instances")
-        .join(instance_slug)
-        .join("chats")
-        .join(chat_id);
-    let _ = fs::create_dir_all(&chat_dir);
-    let path = chat_dir.join("messages.json");
-
-    let lock = chat_file_lock(&path);
-    let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
-
-    let mut messages: Vec<crate::domain::chat::ChatMessage> = fs::read_to_string(&path)
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default();
-
-    messages.push(message.clone());
-
-    if let Ok(json) = serde_json::to_string_pretty(&messages) {
-        let _ = fs::write(&path, json);
-    }
-}
-
-/// Update an MCP App message's content (tool result) after the tool call completes.
-fn update_mcp_app_result(
-    workspace_dir: &Path,
-    instance_slug: &str,
-    chat_id: &str,
-    message_id: &str,
-    tool_output: &str,
-) {
-    let chat_dir = workspace_dir
-        .join("instances")
-        .join(instance_slug)
-        .join("chats")
-        .join(chat_id);
-    let path = chat_dir.join("messages.json");
-
-    let lock = chat_file_lock(&path);
-    let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
-
-    let mut messages: Vec<crate::domain::chat::ChatMessage> = fs::read_to_string(&path)
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default();
-
-    if let Some(msg) = messages.iter_mut().find(|m| m.id == message_id) {
-        msg.content = tool_output.to_string();
-    }
-
-    if let Ok(json) = serde_json::to_string_pretty(&messages) {
-        let _ = fs::write(&path, json);
-    }
-}
+// append_message_to_chat and update_mcp_app_result removed — rig_history.json is the single source of truth
 
 /// Shared collector for file attachments produced by send_file during a turn.
 pub type SentFiles = std::sync::Arc<std::sync::Mutex<Vec<String>>>;

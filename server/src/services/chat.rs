@@ -18,7 +18,6 @@ use crate::{
         daily_stats,
         tools,
         skills,
-        rhythm,
         workspace,
     },
 };
@@ -38,18 +37,26 @@ pub fn save_user_message(
     ensure_chat_dir(workspace_dir, &instance_slug, &chat_id)?;
 
     let content = tools::redact_secrets(content);
+    let ts = timestamp();
+    let id = next_id();
+
+    let entry = llm::HistoryEntry::new(
+        llm::Message::user(&content),
+        ts.clone(),
+        id.clone(),
+    );
+
+    let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
+    append_to_rig_history(&rig_path, &entry);
+
     let user_message = ChatMessage {
-        id: next_id(),
+        id,
         role: ChatRole::User,
         content,
-        created_at: timestamp(),
+        created_at: ts,
         kind: Default::default(),
         tool_name: None, mcp_app_html: None, mcp_app_input: None,
     };
-
-    let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
-    messages.push(user_message.clone());
-    save_messages(workspace_dir, &instance_slug, &chat_id, &messages)?;
 
     // Update last_interaction timestamp
     let instance_dir = workspace_dir.join("instances").join(&instance_slug);
@@ -74,18 +81,26 @@ pub fn save_system_message(
     let chat_id = sanitize_slug(chat_id);
     ensure_chat_dir(workspace_dir, &instance_slug, &chat_id)?;
 
+    let ts = timestamp();
+    let id = next_id();
+
+    let entry = llm::HistoryEntry::new(
+        llm::Message::assistant(content),
+        ts.clone(),
+        id.clone(),
+    );
+
+    let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
+    append_to_rig_history(&rig_path, &entry);
+
     let msg = ChatMessage {
-        id: next_id(),
+        id,
         role: ChatRole::Assistant,
         content: content.to_string(),
-        created_at: timestamp(),
+        created_at: ts,
         kind: Default::default(),
         tool_name: None, mcp_app_html: None, mcp_app_input: None,
     };
-
-    let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
-    messages.push(msg.clone());
-    save_messages(workspace_dir, &instance_slug, &chat_id, &messages)?;
 
     Ok(msg)
 }
@@ -117,8 +132,11 @@ pub async fn run_single_turn(
 
     // Build system prompt with all context
     let base_prompt = llm::load_system_prompt(workspace_dir, &instance_slug);
-    let existing: Vec<ChatMessage> =
-        load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
+
+    // Load unified history from rig_history.json (single source of truth)
+    let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
+    let loaded_entries = load_rig_history(&rig_path).unwrap_or_default();
+    let existing: Vec<ChatMessage> = llm::history_to_chat_messages(&loaded_entries);
 
     // Find last real user message for context
     let last_user_content = existing
@@ -289,12 +307,7 @@ pub async fn run_single_turn(
         system_static.push_str(&format!("\n\n{memory_prompt}"));
     }
 
-    // Build Rig message history from rig_history.json (source of truth) or
-    // fall back to converting messages.json.
-    let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
-    let loaded_history = load_rig_history(&rig_path);
-
-    if existing.is_empty() {
+    if loaded_entries.is_empty() {
         return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
     }
 
@@ -307,13 +320,20 @@ pub async fn run_single_turn(
     let content_with_time = format!("[{now}]\n{}", last_user.content);
     let prompt_msg = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
 
-    let mut history_msgs = if let Some(mut h) = loaded_history {
+    // Extract Messages from entries, stripping [context] blocks and excluding the last user message
+    // (which becomes the prompt).
+    let mut history_msgs: Vec<llm::Message> = {
+        // All entries except the last user message → history
+        let history_entries = if loaded_entries.last().is_some_and(|e| matches!(e.message, llm::Message::User { .. })) {
+            &loaded_entries[..loaded_entries.len() - 1]
+        } else {
+            &loaded_entries[..]
+        };
+
+        let mut msgs = llm::HistoryEntry::to_messages(history_entries);
+
         // Strip [context] blocks from historical user messages.
-        // The memory catalog is appended to every user message before sending to the LLM,
-        // but it also gets saved into rig_history.json — meaning each turn re-sends all
-        // previous copies of the catalog. With 280+ files that's ~20k chars per message.
-        // We only need the catalog in the *current* message, not in history.
-        for msg in h.iter_mut() {
+        for msg in msgs.iter_mut() {
             if let llm::Message::User { content } = msg {
                 for block in content.iter_mut() {
                     if let llm::ContentBlock::Text { text } = block {
@@ -325,51 +345,8 @@ pub async fn run_single_turn(
             }
         }
 
-        // Check if history already has a compaction block — if so, the context
-        // was intentionally reset. Don't patch in old messages.json entries or
-        // we'll refill the context and trigger compaction in a loop.
-        let has_compaction = h.iter().any(|msg| {
-            if let llm::Message::Assistant { content } = msg {
-                content.iter().any(|b| matches!(b, llm::ContentBlock::Compaction { .. }))
-            } else {
-                false
-            }
-        });
-
-        if has_compaction {
-            log::info!("loaded {} rig history messages (post-compaction, skipping patch)", h.len());
-        } else {
-            // Count user messages in rig history to find where messages.json diverges
-            let rig_user_count = h.iter().filter(|m| matches!(m, llm::Message::User { .. })).count();
-            // +1 because the last user message becomes the prompt, not history
-            let msgs_user_count = existing.iter().filter(|m| m.role == ChatRole::User).count();
-            if msgs_user_count > rig_user_count + 1 {
-                // messages.json has entries from an interrupted turn — append them
-                let skip = rig_user_count;
-                let mut seen_users = 0;
-                for m in &existing {
-                    if m.role == ChatRole::User { seen_users += 1; }
-                    if seen_users > skip && m.id != last_user.id {
-                        h.push(match m.role {
-                            ChatRole::User => llm::Message::user(&m.content),
-                            ChatRole::Assistant => llm::Message::assistant(&m.content),
-                        });
-                    }
-                }
-                log::info!("loaded {} rig history messages + patched interrupted turn", h.len());
-            } else {
-                log::info!("loaded {} rig history messages from disk", h.len());
-            }
-        }
-        h
-    } else {
-        // No rig history — convert all messages.json (including tool activity)
-        if existing.len() > 1 {
-            log::info!("converting {} messages to rig history (no rig_history.json)", existing.len() - 1);
-            llm::to_rig_messages(&existing[..existing.len() - 1])
-        } else {
-            vec![]
-        }
+        log::info!("loaded {} rig history messages from disk", msgs.len());
+        msgs
     };
 
     log::info!(
@@ -509,11 +486,6 @@ pub async fn run_single_turn(
         });
     }
 
-    // Save all to disk
-    let mut messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
-    messages.extend(assistant_messages.clone());
-    save_messages(workspace_dir, &instance_slug, &chat_id, &messages)?;
-
     // Background memory + sentiment extraction (via Haiku for cost efficiency)
     if let Some(last_msg) = assistant_messages.last().cloned() {
         let fast = llm.fast_variant();
@@ -541,8 +513,8 @@ pub async fn run_single_turn(
 
     // Save rig history to disk if we got one from the LLM
     if let Some(ref h) = tool_result.rig_history {
-        let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
-        save_rig_history(&rig_path, h);
+        let merged = llm::merge_with_timestamps(&loaded_entries, h, timestamp, next_id);
+        save_rig_history(&rig_path, &merged);
 
         // If compaction fired, rebuild the memory catalog snapshot so the
         // fresh system prompt gets an up-to-date catalog.
@@ -579,7 +551,9 @@ pub async fn run_single_turn(
 pub fn load_messages(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> io::Result<ChatResponse> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
-    let messages = load_messages_vec(&messages_path(workspace_dir, &instance_slug, &chat_id))?;
+    let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
+    let entries = load_rig_history(&rig_path).unwrap_or_default();
+    let messages = llm::history_to_chat_messages(&entries);
 
     Ok(ChatResponse {
         instance_slug,
@@ -605,17 +579,16 @@ pub fn clear_context(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
         let _ = fs::remove_file(&compact);
         log::info!("cleared compact context for {instance_slug}/{chat_id}");
     }
-    // Delete rig history
+    // Delete rig history (single source of truth)
     let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
     if rig_path.exists() {
         let _ = fs::remove_file(&rig_path);
         log::info!("cleared rig history for {instance_slug}/{chat_id}");
     }
-    // Clear messages
+    // Also clean up legacy messages.json if it exists
     let msgs = messages_path(workspace_dir, &instance_slug, &chat_id);
     if msgs.exists() {
-        let _ = fs::write(&msgs, "[]");
-        log::info!("cleared chat history for {instance_slug}/{chat_id}");
+        let _ = fs::remove_file(&msgs);
     }
 }
 
@@ -648,8 +621,10 @@ pub fn list_chats(workspace_dir: &Path, instance_slug: &str) -> io::Result<Vec<c
             }
         };
 
-        // Load messages for count + last timestamp
-        let msgs = load_messages_vec(&entry.path().join("messages.json"))?;
+        // Load entries for count + last timestamp
+        let rig_path = entry.path().join("rig_history.json");
+        let entries = load_rig_history(&rig_path).unwrap_or_default();
+        let msgs = llm::history_to_chat_messages(&entries);
         let last_at = msgs.last().map(|m| m.created_at.clone());
 
         summaries.push(crate::domain::chat::ChatSummary {
@@ -832,36 +807,7 @@ fn ensure_chat_dir(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> 
     Ok(())
 }
 
-fn load_messages_vec(path: &Path) -> io::Result<Vec<ChatMessage>> {
-    match fs::read_to_string(path) {
-        Ok(raw) => serde_json::from_str(&raw)
-            .map_err(|error| io::Error::new(ErrorKind::InvalidData, error)),
-        Err(error) if error.kind() == ErrorKind::NotFound => Ok(Vec::new()),
-        Err(error) => Err(error),
-    }
-}
-
-fn save_messages(
-    workspace_dir: &Path,
-    instance_slug: &str,
-    chat_id: &str,
-    messages: &[ChatMessage],
-) -> io::Result<()> {
-    let path = messages_path(workspace_dir, instance_slug, chat_id);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    let lock = tools::chat_file_lock(&path);
-    let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
-
-    let body = serde_json::to_string_pretty(messages)
-        .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))?;
-    // Atomic write to prevent corruption on crash
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, &body)?;
-    fs::rename(&tmp, &path)
-}
+// load_messages_vec and save_messages removed — rig_history.json is the single source of truth
 
 /// Split a single LLM reply into multiple chat-like messages.
 /// Splits on double-newlines, merges very short fragments, and drops empty ones.
@@ -897,7 +843,8 @@ async fn count_tokens_api(
     // Build the same system prompt + messages we'd send to the LLM
     let system_prompt = llm::load_system_prompt(workspace_dir, instance_slug);
     let rig_path = rig_history_path(workspace_dir, instance_slug, chat_id);
-    let messages = load_rig_history(&rig_path).unwrap_or_default();
+    let entries = load_rig_history(&rig_path).unwrap_or_default();
+    let messages = llm::HistoryEntry::to_messages(&entries);
 
     let msgs_json = serde_json::to_value(&messages).unwrap_or_default();
 
@@ -1118,22 +1065,12 @@ fn compute_context_stats_local(
     let tool_names = tool_snapshot.names;
     let tools_tokens_estimate = estimate_tokens_from_chars(tool_snapshot.total_json_chars);
 
-    // History — count from rig_history.json (source of truth, includes context entries)
-    // with fallback to messages.json
+    // History — count from rig_history.json (single source of truth)
     let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
     let (history_count, history_tokens_estimate) = {
-        let rig = load_rig_history(&rig_path).unwrap_or_default();
-        if !rig.is_empty() {
-            let total_chars: usize = rig.iter().map(|m| extract_message_text_len(m)).sum();
-            (rig.len(), estimate_tokens_from_chars(total_chars))
-        } else {
-            // Fallback to messages.json
-            let existing: Vec<ChatMessage> = load_messages_vec(
-                &messages_path(workspace_dir, &instance_slug, &chat_id),
-            ).unwrap_or_default();
-            let tokens: usize = existing.iter().map(|m| estimate_tokens(&m.content)).sum();
-            (existing.len(), tokens)
-        }
+        let entries = load_rig_history(&rig_path).unwrap_or_default();
+        let total_chars: usize = entries.iter().map(|e| extract_message_text_len(&e.message)).sum();
+        (entries.len(), estimate_tokens_from_chars(total_chars))
     };
 
     let total_input_tokens_estimate = system_prompt_total_tokens + tools_tokens_estimate + history_tokens_estimate;
@@ -1158,9 +1095,9 @@ pub fn rig_history_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str
     chat_dir(workspace_dir, instance_slug, chat_id).join("rig_history.json")
 }
 
-pub fn load_rig_history(path: &Path) -> Option<Vec<llm::Message>> {
+pub fn load_rig_history(path: &Path) -> Option<Vec<llm::HistoryEntry>> {
     let raw = fs::read_to_string(path).ok()?;
-    let mut history: Vec<llm::Message> = match serde_json::from_str(&raw) {
+    let mut history: Vec<llm::HistoryEntry> = match serde_json::from_str(&raw) {
         Ok(h) => h,
         Err(e) => {
             log::warn!("failed to parse rig_history.json: {e}");
@@ -1169,8 +1106,8 @@ pub fn load_rig_history(path: &Path) -> Option<Vec<llm::Message>> {
     };
 
     // Sanitize: strip empty compaction blocks that cause API errors
-    for msg in &mut history {
-        if let llm::Message::Assistant { content } = msg {
+    for entry in &mut history {
+        if let llm::Message::Assistant { content } = &mut entry.message {
             content.retain(|block| {
                 if let llm::ContentBlock::Compaction { content: c } = block {
                     if c.is_empty() {
@@ -1185,8 +1122,8 @@ pub fn load_rig_history(path: &Path) -> Option<Vec<llm::Message>> {
 
     // If history has a compaction block, drop everything before the last one
     // to keep the payload small (API ignores pre-compaction messages anyway).
-    let last_compaction_idx = history.iter().rposition(|msg| {
-        if let llm::Message::Assistant { content } = msg {
+    let last_compaction_idx = history.iter().rposition(|entry| {
+        if let llm::Message::Assistant { content } = &entry.message {
             content.iter().any(|b| matches!(b, llm::ContentBlock::Compaction { .. }))
         } else {
             false
@@ -1202,7 +1139,7 @@ pub fn load_rig_history(path: &Path) -> Option<Vec<llm::Message>> {
     Some(history)
 }
 
-pub fn save_rig_history(path: &Path, history: &[llm::Message]) {
+pub fn save_rig_history(path: &Path, history: &[llm::HistoryEntry]) {
     match serde_json::to_string(history) {
         Ok(body) => {
             // Atomic write: write to temp file, then rename to prevent corruption
@@ -1218,6 +1155,13 @@ pub fn save_rig_history(path: &Path, history: &[llm::Message]) {
         }
         Err(e) => log::warn!("failed to serialize rig history: {e}"),
     }
+}
+
+/// Append a single HistoryEntry to the rig_history file on disk.
+pub fn append_to_rig_history(path: &Path, entry: &llm::HistoryEntry) {
+    let mut entries = load_rig_history(path).unwrap_or_default();
+    entries.push(entry.clone());
+    save_rig_history(path, &entries);
 }
 
 fn sanitize_slug(input: &str) -> String {
@@ -1585,8 +1529,9 @@ respond ONLY with those three lines."#,
         // Append to rig_history so the LLM sees it on the next turn
         let rig_path = rig_history_path(workspace_dir, instance_slug, chat_id);
         if let Some(mut h) = load_rig_history(&rig_path) {
-            h.push(llm::Message::user(&label));
-            h.push(llm::Message::assistant("understood."));
+            let ts = timestamp();
+            h.push(llm::HistoryEntry::new(llm::Message::user(&label), ts.clone(), next_id()));
+            h.push(llm::HistoryEntry::new(llm::Message::assistant("understood."), ts, next_id()));
             save_rig_history(&rig_path, &h);
         }
         let _ = events.send(ServerEvent::MoodUpdated {

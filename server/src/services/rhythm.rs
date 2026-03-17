@@ -9,7 +9,7 @@ use std::path::Path;
 use chrono::{DateTime, Datelike, TimeZone, Timelike, Utc};
 use chrono_tz;
 
-use crate::domain::chat::{ChatMessage, ChatRole};
+use crate::domain::chat::ChatRole;
 use crate::domain::rhythm::InteractionRhythm;
 
 /// Session gap threshold: 2 hours of silence = new session.
@@ -37,14 +37,17 @@ pub fn recompute_rhythm(workspace_dir: &Path, slug: &str) -> InteractionRhythm {
             if !entry.path().is_dir() {
                 continue;
             }
-            let messages_path = entry.path().join("messages.json");
-            if let Ok(raw) = fs::read_to_string(&messages_path) {
-                let messages: Vec<ChatMessage> =
-                    serde_json::from_str(&raw).unwrap_or_default();
-                for msg in &messages {
-                    if matches!(msg.role, ChatRole::User) {
-                        if let Ok(ts_millis) = msg.created_at.parse::<i64>() {
-                            all_user_msgs.push((ts_millis / 1000, msg.content.len()));
+            let rig_path = entry.path().join("rig_history.json");
+            let history_entries = super::chat::load_rig_history(&rig_path).unwrap_or_default();
+            for he in &history_entries {
+                if let crate::services::llm::Message::User { content } = &he.message {
+                    // Use entry timestamp if available
+                    if let Some(ref ts_str) = he.ts {
+                        if let Ok(ts_millis) = ts_str.parse::<i64>() {
+                            let content_len: usize = content.iter().map(|b| {
+                                if let crate::services::llm::ContentBlock::Text { text } = b { text.len() } else { 0 }
+                            }).sum();
+                            all_user_msgs.push((ts_millis / 1000, content_len));
                         }
                     }
                 }
@@ -117,23 +120,27 @@ pub fn snapshot_before_clear(workspace_dir: &Path, slug: &str) {
 
     if let Ok(entries) = fs::read_dir(&chats_dir) {
         for entry in entries.filter_map(Result::ok) {
-            let msgs_path = entry.path().join("messages.json");
-            if let Ok(raw) = fs::read_to_string(&msgs_path) {
-                let messages: Vec<ChatMessage> = serde_json::from_str(&raw).unwrap_or_default();
-                for msg in &messages {
-                    if !matches!(msg.role, ChatRole::User) { continue; }
-                    if let Ok(ts_ms) = msg.created_at.parse::<i64>() {
-                        let ts = ts_ms / 1000;
-                        timestamps.push(ts);
-                        msg_count += 1;
-                        total_chars += msg.content.len() as u64;
+            let rig_path = entry.path().join("rig_history.json");
+            let history_entries = super::chat::load_rig_history(&rig_path).unwrap_or_default();
+            for he in &history_entries {
+                if let crate::services::llm::Message::User { content } = &he.message {
+                    if let Some(ref ts_str) = he.ts {
+                        if let Ok(ts_ms) = ts_str.parse::<i64>() {
+                            let ts = ts_ms / 1000;
+                            let content_len: usize = content.iter().map(|b| {
+                                if let crate::services::llm::ContentBlock::Text { text } = b { text.len() } else { 0 }
+                            }).sum();
+                            timestamps.push(ts);
+                            msg_count += 1;
+                            total_chars += content_len as u64;
 
-                        if let Some(dt) = Utc.timestamp_opt(ts, 0).single() {
-                            let local = dt.with_timezone(&tz);
-                            rhythm.hourly_activity[local.hour() as usize] += 1;
-                            rhythm.daily_activity[local.weekday().num_days_from_monday() as usize] += 1;
-                            let date = local.format("%Y-%m-%d").to_string();
-                            *rhythm.daily_history.entry(date).or_insert(0) += 1;
+                            if let Some(dt) = Utc.timestamp_opt(ts, 0).single() {
+                                let local = dt.with_timezone(&tz);
+                                rhythm.hourly_activity[local.hour() as usize] += 1;
+                                rhythm.daily_activity[local.weekday().num_days_from_monday() as usize] += 1;
+                                let date = local.format("%Y-%m-%d").to_string();
+                                *rhythm.daily_history.entry(date).or_insert(0) += 1;
+                            }
                         }
                     }
                 }
@@ -266,15 +273,15 @@ struct CurrentSession {
 
 /// Analyze the current session from the default chat.
 fn analyze_current_session(workspace_dir: &Path, slug: &str) -> Option<CurrentSession> {
-    let messages_path = workspace_dir
+    let rig_path = workspace_dir
         .join("instances")
         .join(slug)
         .join("chats")
         .join("default")
-        .join("messages.json");
+        .join("rig_history.json");
 
-    let raw = fs::read_to_string(&messages_path).ok()?;
-    let messages: Vec<ChatMessage> = serde_json::from_str(&raw).ok()?;
+    let entries = super::chat::load_rig_history(&rig_path)?;
+    let messages = crate::services::llm::history_to_chat_messages(&entries);
 
     // Find user messages in the current session (walk backwards from end,
     // stop when gap > SESSION_GAP_SECS)
@@ -284,8 +291,6 @@ fn analyze_current_session(workspace_dir: &Path, slug: &str) -> Option<CurrentSe
     for msg in messages.iter().rev() {
         if let Ok(ts_millis) = msg.created_at.parse::<i64>() {
             let ts = ts_millis / 1000;
-            // If this message is more than SESSION_GAP from the most recent,
-            // or from now, we've left the current session
             let reference = session_msgs.last().map(|(t, _)| *t).unwrap_or(now_secs);
             if (reference - ts).abs() > SESSION_GAP_SECS {
                 break;

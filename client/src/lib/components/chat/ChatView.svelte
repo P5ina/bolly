@@ -174,7 +174,7 @@
 	}
 
 	function isToolActivity(msg: ChatMessage): boolean {
-		if (msg.kind === "tool_call" || msg.kind === "tool_output" || msg.kind === "mcp_app") return true;
+		if (msg.kind === "tool_call" || msg.kind === "tool_output" || msg.kind === "mcp_app" || msg.kind === "compaction") return true;
 		if (msg.content.startsWith("[restart]")) return true;
 		return msg.role === "assistant" && (
 			msg.content.startsWith("[tool activity]") ||
@@ -185,6 +185,15 @@
 
 	function toolActivityToStreamItem(msg: ChatMessage): StreamItem | null {
 		const ts = new Date(Number(msg.created_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+		if (msg.kind === "compaction") {
+			return {
+				type: "compaction" as const,
+				id: msg.id,
+				count: 0,
+				timestamp: ts,
+			};
+		}
 
 		if (msg.kind === "tool_call" || msg.kind === "tool_output") {
 			if (msg.tool_name === "set_mood") return null;

@@ -6,7 +6,7 @@ use futures::StreamExt;
 use tokio::sync::broadcast;
 
 use crate::config::{Config, LlmProvider};
-use crate::domain::chat::{ChatMessage, ChatRole};
+use crate::domain::chat::{ChatMessage, ChatRole, MessageKind};
 use crate::domain::events::ServerEvent;
 use crate::services::tool::{ToolDefinition, ToolDyn};
 
@@ -127,6 +127,184 @@ impl ContentBlock {
         }
     }
 
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HistoryEntry — wraps Message with timestamps/IDs for unified history
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct HistoryEntry {
+    #[serde(flatten)]
+    pub message: Message,
+    /// Timestamp in millis since epoch (as string).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ts: Option<String>,
+    /// Stable ID for client dedup.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// HTML content for MCP App rendering.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_app_html: Option<String>,
+    /// Tool input JSON for MCP App rendering.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_app_input: Option<String>,
+}
+
+impl HistoryEntry {
+    /// Wrap a Message with timestamp and ID.
+    pub fn new(message: Message, ts: String, id: String) -> Self {
+        Self { message, ts: Some(ts), id: Some(id), mcp_app_html: None, mcp_app_input: None }
+    }
+
+    /// Wrap a Message without metadata (e.g. from LLM result).
+    pub fn bare(message: Message) -> Self {
+        Self { message, ts: None, id: None, mcp_app_html: None, mcp_app_input: None }
+    }
+
+    /// Extract just the Messages from a slice of entries.
+    pub fn to_messages(entries: &[HistoryEntry]) -> Vec<Message> {
+        entries.iter().map(|e| e.message.clone()).collect()
+    }
+}
+
+/// Convert HistoryEntry slice to ChatMessage vec for UI display.
+pub fn history_to_chat_messages(entries: &[HistoryEntry]) -> Vec<ChatMessage> {
+
+    let mut out = Vec::new();
+    let mut counter = 0u64;
+
+    for entry in entries {
+        let ts = entry.ts.clone().unwrap_or_else(|| "0".to_string());
+        let base_id = entry.id.clone().unwrap_or_else(|| {
+            counter += 1;
+            format!("h_{counter}")
+        });
+
+        let (role, blocks) = match &entry.message {
+            Message::User { content } => (ChatRole::User, content),
+            Message::Assistant { content } => (ChatRole::Assistant, content),
+        };
+
+        let mut block_idx = 0u32;
+        for block in blocks {
+            let block_id = if block_idx == 0 {
+                base_id.clone()
+            } else {
+                format!("{base_id}_{block_idx}")
+            };
+            block_idx += 1;
+
+            match block {
+                ContentBlock::Text { text } => {
+                    if text.is_empty() { continue; }
+                    out.push(ChatMessage {
+                        id: block_id,
+                        role: role.clone(),
+                        content: text.clone(),
+                        created_at: ts.clone(),
+                        kind: MessageKind::Message,
+                        tool_name: None,
+                        mcp_app_html: None,
+                        mcp_app_input: None,
+                    });
+                }
+                ContentBlock::ToolUse { name, input, .. } => {
+                    let summary = tool_use_summary(name, input);
+                    out.push(ChatMessage {
+                        id: block_id,
+                        role: ChatRole::Assistant,
+                        content: summary,
+                        created_at: ts.clone(),
+                        kind: MessageKind::ToolCall,
+                        tool_name: Some(name.clone()),
+                        mcp_app_html: entry.mcp_app_html.clone(),
+                        mcp_app_input: entry.mcp_app_input.clone(),
+                    });
+                }
+                ContentBlock::ToolResult { content, .. } => {
+                    let text = match content {
+                        serde_json::Value::String(s) => truncate_tool_output(s, 200),
+                        other => truncate_tool_output(&other.to_string(), 200),
+                    };
+                    out.push(ChatMessage {
+                        id: block_id,
+                        role: ChatRole::Assistant,
+                        content: text,
+                        created_at: ts.clone(),
+                        kind: MessageKind::ToolOutput,
+                        tool_name: None,
+                        mcp_app_html: None,
+                        mcp_app_input: None,
+                    });
+                }
+                ContentBlock::Compaction { content } => {
+                    out.push(ChatMessage {
+                        id: block_id,
+                        role: ChatRole::Assistant,
+                        content: content.clone(),
+                        created_at: ts.clone(),
+                        kind: MessageKind::Compaction,
+                        tool_name: None,
+                        mcp_app_html: None,
+                        mcp_app_input: None,
+                    });
+                }
+                // Image, Document, Unknown — skip for UI
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+/// Short summary of a tool use for display.
+fn tool_use_summary(name: &str, input: &serde_json::Value) -> String {
+    // Extract first meaningful field value for a one-line summary
+    if let Some(obj) = input.as_object() {
+        for key in &["query", "command", "path", "content", "url", "name", "message"] {
+            if let Some(val) = obj.get(*key) {
+                let owned = val.to_string();
+                let s = val.as_str().unwrap_or(&owned);
+                let truncated = if s.len() > 80 { format!("{}…", &s[..80]) } else { s.to_string() };
+                return format!("{name}: {truncated}");
+            }
+        }
+    }
+    name.to_string()
+}
+
+fn truncate_tool_output(s: &str, max: usize) -> String {
+    if s.len() <= max { s.to_string() } else { format!("{}…", &s[..max]) }
+}
+
+/// Merge timestamps from old entries into a new message list from the LLM.
+/// Old entries that match by position keep their ts/id; new entries get fresh values.
+pub fn merge_with_timestamps(
+    old: &[HistoryEntry],
+    new_messages: &[Message],
+    ts_fn: impl Fn() -> String,
+    id_fn: impl Fn() -> String,
+) -> Vec<HistoryEntry> {
+    new_messages.iter().enumerate().map(|(i, msg)| {
+        if i < old.len() {
+            HistoryEntry {
+                message: msg.clone(),
+                ts: old[i].ts.clone(),
+                id: old[i].id.clone(),
+                mcp_app_html: old[i].mcp_app_html.clone(),
+                mcp_app_input: old[i].mcp_app_input.clone(),
+            }
+        } else {
+            HistoryEntry {
+                message: msg.clone(),
+                ts: Some(ts_fn()),
+                id: Some(id_fn()),
+                mcp_app_html: None,
+                mcp_app_input: None,
+            }
+        }
+    }).collect()
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -559,7 +737,7 @@ async fn streaming_agent_loop(
                 mcp_app_html: None,
                 mcp_app_input: None,
             };
-            super::tools::append_message_to_chat(workspace_dir, instance_slug, chat_id, &msg);
+            // Intermediate text is in rig_history via assistant blocks — only broadcast for UI
             let _ = events.send(ServerEvent::ChatMessageCreated {
                 instance_slug: instance_slug.to_string(),
                 chat_id: chat_id.to_string(),
@@ -577,7 +755,8 @@ async fn streaming_agent_loop(
 
         // Persist rig_history after each tool cycle so restarts don't lose context
         let rig_path = super::chat::rig_history_path(workspace_dir, instance_slug, chat_id);
-        super::chat::save_rig_history(&rig_path, messages);
+        let entries: Vec<HistoryEntry> = messages.iter().map(|m| HistoryEntry::bare(m.clone())).collect();
+        super::chat::save_rig_history(&rig_path, &entries);
     }
 
     Ok((all_text, total_tokens))
@@ -1721,12 +1900,4 @@ pub fn load_system_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
     }
 }
 
-pub fn to_rig_messages(messages: &[ChatMessage]) -> Vec<Message> {
-    messages
-        .iter()
-        .map(|m| match m.role {
-            ChatRole::User => Message::user(&m.content),
-            ChatRole::Assistant => Message::assistant(&m.content),
-        })
-        .collect()
-}
+// to_rig_messages removed — history_to_chat_messages replaces it

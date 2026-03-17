@@ -29,6 +29,7 @@ pub enum MessageKind {
     ToolCall,
     ToolOutput,
     McpApp,
+    Compaction,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

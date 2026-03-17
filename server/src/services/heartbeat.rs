@@ -115,13 +115,13 @@ async fn heartbeat_instance(
     };
 
     // Load last few messages for context
-    let messages_path = workspace_dir
+    let rig_path_tail = workspace_dir
         .join("instances")
         .join(slug)
         .join("chats")
         .join("default")
-        .join("messages.json");
-    let last_messages = load_tail_messages(&messages_path, 6);
+        .join("rig_history.json");
+    let last_messages = load_tail_messages(&rig_path_tail, 6);
 
     // Recompute and persist interaction rhythm
     let rhythm_data = rhythm::recompute_rhythm(workspace_dir, slug);
@@ -133,8 +133,13 @@ async fn heartbeat_instance(
         let rig_path = chat::rig_history_path(workspace_dir, slug, "default");
         if let Some(mut h) = chat::load_rig_history(&rig_path) {
             let label = format!("[system] rhythm update\n{rhythm_insights}");
-            h.push(crate::services::llm::Message::user(&label));
-            h.push(crate::services::llm::Message::assistant("noted."));
+            let ts = crate::services::tools::unix_millis().to_string();
+            h.push(crate::services::llm::HistoryEntry::new(
+                crate::services::llm::Message::user(&label), ts.clone(), format!("rhythm_{}", ts),
+            ));
+            h.push(crate::services::llm::HistoryEntry::new(
+                crate::services::llm::Message::assistant("noted."), ts.clone(), format!("rhythm_ack_{}", ts),
+            ));
             chat::save_rig_history(&rig_path, &h);
         }
     }
@@ -482,43 +487,30 @@ fn deliver_spontaneous_message(
     message: &str,
     events: &broadcast::Sender<ServerEvent>,
 ) {
+    let ts = unix_millis().to_string();
+    let id = format!(
+        "hb_{}_{}",
+        ts,
+        HEARTBEAT_COUNTER.fetch_add(1, Ordering::Relaxed)
+    );
+
+    // Append to rig_history (single source of truth)
+    let rig_path = chat::rig_history_path(workspace_dir, slug, "default");
+    let entry = crate::services::llm::HistoryEntry::new(
+        crate::services::llm::Message::assistant(message),
+        ts.clone(),
+        id.clone(),
+    );
+    chat::append_to_rig_history(&rig_path, &entry);
+
     let chat_message = ChatMessage {
-        id: format!(
-            "hb_{}_{}",
-            unix_millis(),
-            HEARTBEAT_COUNTER.fetch_add(1, Ordering::Relaxed)
-        ),
+        id,
         role: ChatRole::Assistant,
         content: message.to_string(),
-        created_at: unix_millis().to_string(),
+        created_at: ts,
         kind: Default::default(),
         tool_name: None, mcp_app_html: None, mcp_app_input: None,
     };
-
-    // Append to the default chat thread (same path the client reads from)
-    let chat_dir = workspace_dir
-        .join("instances")
-        .join(slug)
-        .join("chats")
-        .join("default");
-    let _ = fs::create_dir_all(&chat_dir);
-    let messages_path = chat_dir.join("messages.json");
-
-    {
-        let lock = crate::services::tools::chat_file_lock(&messages_path);
-        let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
-
-        let mut messages: Vec<ChatMessage> = fs::read_to_string(&messages_path)
-            .ok()
-            .and_then(|raw| serde_json::from_str(&raw).ok())
-            .unwrap_or_default();
-
-        messages.push(chat_message.clone());
-
-        if let Ok(json) = serde_json::to_string_pretty(&messages) {
-            let _ = fs::write(&messages_path, json);
-        }
-    }
 
     // Broadcast via WebSocket
     let _ = events.send(ServerEvent::ChatMessageCreated {
@@ -528,17 +520,14 @@ fn deliver_spontaneous_message(
     });
 }
 
-fn load_tail_messages(messages_path: &Path, count: usize) -> String {
-    let raw = match fs::read_to_string(messages_path) {
-        Ok(r) => r,
-        Err(_) => return String::new(),
-    };
-
-    let messages: Vec<ChatMessage> = serde_json::from_str(&raw).unwrap_or_default();
+fn load_tail_messages(rig_history_path: &Path, count: usize) -> String {
+    let entries = chat::load_rig_history(rig_history_path).unwrap_or_default();
+    let messages = crate::services::llm::history_to_chat_messages(&entries);
     let start = messages.len().saturating_sub(count);
 
     messages[start..]
         .iter()
+        .filter(|m| matches!(m.kind, crate::domain::chat::MessageKind::Message))
         .map(|m| {
             let role = match m.role {
                 ChatRole::User => "user",

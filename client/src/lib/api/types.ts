@@ -1,6 +1,6 @@
 export type ChatRole = "user" | "assistant";
 
-export type MessageKind = "message" | "tool_call" | "tool_output" | "mcp_app";
+export type MessageKind = "message" | "tool_call" | "tool_output" | "mcp_app" | "compaction";
 
 export interface ChatMessage {
 	id: string;
