@@ -62,7 +62,7 @@ export interface ServerMeta {
 }
 
 export interface UpdateLlmRequest {
-	provider: "anthropic" | "openai";
+	provider: "anthropic" | "openai" | "openrouter";
 	model?: string;
 	api_key: string;
 }
