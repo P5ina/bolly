@@ -128,8 +128,9 @@ pub async fn run_single_turn(
         .map(|m| m.content.as_str())
         .unwrap_or("");
 
-    // Build memory prompt from library — appended to user prompt, not system
-    let memory_prompt = memory::build_memory_prompt(workspace_dir, &instance_slug);
+    // Load static memory catalog snapshot — built once at context clear / compaction,
+    // not scanned on every request.
+    let memory_prompt = memory::load_catalog_snapshot(workspace_dir, &instance_slug);
 
     let chat_config = crate::config::load_config().ok();
     let auth_token = std::env::var("BOLLY_AUTH_TOKEN")
@@ -282,8 +283,11 @@ pub async fn run_single_turn(
 
     // System prompt is fully static (soul, skills, style, integrations).
     // Mood and rhythm changes are recorded as messages in rig_history.
-    // Memory catalog is lightweight context injected with the user prompt.
-    let system_static = system_prompt;
+    // Memory catalog is a static snapshot — rebuilt only on context clear / compaction.
+    let mut system_static = system_prompt;
+    if !memory_prompt.is_empty() {
+        system_static.push_str(&format!("\n\n{memory_prompt}"));
+    }
 
     // Build Rig message history from rig_history.json (source of truth) or
     // fall back to converting messages.json.
@@ -300,10 +304,7 @@ pub async fn run_single_turn(
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "no user message to process"))?;
     let instance_dir = workspace_dir.join("instances").join(&instance_slug);
     let now = crate::routes::instances::format_instance_now(&instance_dir);
-    let mut content_with_time = format!("[{now}]\n{}", last_user.content);
-    if !memory_prompt.is_empty() {
-        content_with_time.push_str(&format!("\n\n[context]\n{memory_prompt}"));
-    }
+    let content_with_time = format!("[{now}]\n{}", last_user.content);
     let prompt_msg = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
 
     let mut history_msgs = if let Some(mut h) = loaded_history {
@@ -542,6 +543,19 @@ pub async fn run_single_turn(
     if let Some(ref h) = tool_result.rig_history {
         let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
         save_rig_history(&rig_path, h);
+
+        // If compaction fired, rebuild the memory catalog snapshot so the
+        // fresh system prompt gets an up-to-date catalog.
+        let had_compaction = h.iter().any(|msg| {
+            if let llm::Message::Assistant { content } = msg {
+                content.iter().any(|b| matches!(b, llm::ContentBlock::Compaction { .. }))
+            } else {
+                false
+            }
+        });
+        if had_compaction {
+            memory::rebuild_catalog_snapshot(workspace_dir, &instance_slug);
+        }
     }
 
     // Use real token count from API if available, fall back to estimate
@@ -578,6 +592,10 @@ pub fn load_messages(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -
 pub fn clear_context(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
+
+    // Rebuild memory catalog snapshot — the static catalog in system prompt
+    // must be fresh after context is cleared.
+    memory::rebuild_catalog_snapshot(workspace_dir, &instance_slug);
 
     // No need to snapshot stats — daily_stats files are written incrementally
     // and never deleted by clear_context.
