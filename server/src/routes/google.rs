@@ -39,11 +39,11 @@ async fn list_google_accounts(
 
     match google.accounts(&slug).await {
         Ok(accounts) => {
-            let emails: Vec<serde_json::Value> = accounts
+            let items: Vec<serde_json::Value> = accounts
                 .iter()
-                .map(|a| serde_json::json!({ "email": a.email }))
+                .map(|a| serde_json::json!({ "email": a.email, "scopes": a.scopes }))
                 .collect();
-            Json(serde_json::json!({ "accounts": emails })).into_response()
+            Json(serde_json::json!({ "accounts": items })).into_response()
         }
         Err(e) => {
             log::warn!("failed to list Google accounts for {slug}: {e}");

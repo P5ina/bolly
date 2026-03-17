@@ -72,7 +72,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 			}
 		}
 
-		accounts.push({ access_token: accessToken, email: account.email });
+		accounts.push({ access_token: accessToken, email: account.email, scopes: account.scopes });
 	}
 
 	if (accounts.length === 0) {

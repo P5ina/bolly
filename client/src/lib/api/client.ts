@@ -479,8 +479,8 @@ export async function dismissHeartbeatUpdate(slug: string, updateId: string): Pr
 // Google Accounts
 // ---------------------------------------------------------------------------
 
-export async function fetchGoogleAccounts(slug: string): Promise<{ email: string }[]> {
-	const data = await json<{ accounts: { email: string }[] }>(
+export async function fetchGoogleAccounts(slug: string): Promise<{ email: string; scopes?: string }[]> {
+	const data = await json<{ accounts: { email: string; scopes?: string }[] }>(
 		`/api/instances/${encodeURIComponent(slug)}/google/accounts`,
 	);
 	return data.accounts;

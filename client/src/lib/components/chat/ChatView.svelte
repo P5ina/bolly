@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from "svelte";
 	import { goto } from "$app/navigation";
-	import { clearContext, fetchChats, fetchCompanionName, fetchMessages, fetchMood, sendMessage, stopAgent, uploadFile } from "$lib/api/client.js";
+	import { clearContext, fetchChats, fetchCompanionName, fetchGoogleAccounts, fetchMessages, fetchMood, sendMessage, stopAgent, uploadFile } from "$lib/api/client.js";
 	import type { ChatMessage, ChatSummary, ServerEvent } from "$lib/api/types.js";
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
 	import MessageBubble from "./MessageBubble.svelte";
@@ -40,6 +40,7 @@
 	let loading = $state(true);
 	let sending = $state(false);
 	let agentRunning = $state(false);
+	let needsGoogleReconnect = $state(false);
 	let mood = $state(
 		(typeof localStorage !== "undefined" && localStorage.getItem("mood:" + slug)) || "calm"
 	);
@@ -298,6 +299,16 @@
 			fetchCompanionName(currentSlug)
 				.then((res) => { if (res.name) companionName = res.name; })
 				.catch(() => {}); // name is non-critical
+
+			// Check if Google accounts need reconnection (missing drive scope)
+			fetchGoogleAccounts(currentSlug)
+				.then((accounts) => {
+					needsGoogleReconnect = accounts.some((a) =>
+						a.scopes && !a.scopes.includes("auth/drive ") && !a.scopes.endsWith("auth/drive")
+						&& a.scopes.includes("drive.file")
+					);
+				})
+				.catch(() => {});
 		});
 
 		const unsub = ws.subscribe((event: ServerEvent) => {
@@ -589,6 +600,13 @@
 			<div class="chat-stream" bind:this={scrollContainer}>
 				<div class="stream-inner">
 					<HeartbeatUpdateBanner {slug} />
+					{#if needsGoogleReconnect}
+						<div class="reconnect-chat-banner">
+							Google Drive access updated — please reconnect your Google account in
+							<a href="/{slug}/settings">settings</a> to enable full Drive access.
+							<button class="reconnect-dismiss" onclick={() => needsGoogleReconnect = false}>dismiss</button>
+						</div>
+					{/if}
 					{#if loading}
 						<div class="chat-loading"><div class="loading-dot"></div></div>
 					{:else if stream.length === 0}
@@ -645,6 +663,38 @@
 {/if}
 
 <style>
+	.reconnect-chat-banner {
+		margin: 0.5rem 1rem;
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.5rem;
+		background: oklch(0.78 0.12 75 / 6%);
+		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		font-family: var(--font-body);
+		font-size: 0.7rem;
+		color: oklch(0.88 0.02 75 / 55%);
+		line-height: 1.5;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+	.reconnect-chat-banner a {
+		color: oklch(0.78 0.12 75 / 70%);
+		text-decoration: underline;
+	}
+	.reconnect-dismiss {
+		margin-left: auto;
+		font-family: var(--font-mono);
+		font-size: 0.55rem;
+		color: oklch(0.78 0.12 75 / 30%);
+		background: none;
+		border: none;
+		cursor: pointer;
+	}
+	.reconnect-dismiss:hover {
+		color: oklch(0.78 0.12 75 / 60%);
+	}
+
 	.chat-space {
 		position: relative;
 		display: flex;

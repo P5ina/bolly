@@ -15,6 +15,7 @@ struct CachedToken {
 pub struct GoogleAccountInfo {
     pub access_token: String,
     pub email: String,
+    pub scopes: String,
 }
 
 /// Client for fetching Google OAuth tokens from the landing API.
@@ -73,6 +74,8 @@ impl GoogleClient {
         struct AccountEntry {
             access_token: String,
             email: String,
+            #[serde(default)]
+            scopes: String,
         }
 
         #[derive(serde::Deserialize)]
@@ -108,6 +111,7 @@ impl GoogleClient {
             .map(|a| GoogleAccountInfo {
                 access_token: a.access_token,
                 email: a.email,
+                scopes: a.scopes,
             })
             .collect())
     }
