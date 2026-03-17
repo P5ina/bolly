@@ -147,8 +147,12 @@ export interface UploadMeta {
 }
 
 export interface Usage {
+	tokens_last_4h: number;
+	tokens_4h_limit: number;
+	tokens_this_week: number;
+	tokens_week_limit: number;
 	tokens_this_month: number;
-	tokens_limit: number;
+	tokens_month_limit: number;
 }
 
 export interface ContextSection {

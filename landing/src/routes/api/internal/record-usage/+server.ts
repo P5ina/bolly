@@ -16,13 +16,15 @@ export const POST: RequestHandler = async ({ request }) => {
 		.insert(rateLimits)
 		.values({
 			instanceId: tenant.id,
-			messagesToday: 1,
+			tokensLast4h: tokens,
+			tokensThisWeek: tokens,
 			tokensThisMonth: tokens,
 		})
 		.onConflictDoUpdate({
 			target: rateLimits.instanceId,
 			set: {
-				messagesToday: sql`${rateLimits.messagesToday} + 1`,
+				tokensLast4h: sql`${rateLimits.tokensLast4h} + ${tokens}`,
+				tokensThisWeek: sql`${rateLimits.tokensThisWeek} + ${tokens}`,
 				tokensThisMonth: sql`${rateLimits.tokensThisMonth} + ${tokens}`,
 			},
 		});

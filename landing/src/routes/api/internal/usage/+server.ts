@@ -10,11 +10,17 @@ export const GET: RequestHandler = async ({ request }) => {
 
 	// BYOK — unlimited
 	if (tenant.byokApiKey) {
-		return json({ tokens_this_month: 0, tokens_limit: -1 });
+		return json({
+			tokens_last_4h: 0, tokens_4h_limit: -1,
+			tokens_this_week: 0, tokens_week_limit: -1,
+			tokens_this_month: 0, tokens_month_limit: -1,
+		});
 	}
 
 	const [row] = await db()
 		.select({
+			tokensLast4h: sql<number>`CASE WHEN ${rateLimits.lastReset4h} < now() - interval '4 hours' THEN 0 ELSE ${rateLimits.tokensLast4h} END`,
+			tokensThisWeek: sql<number>`CASE WHEN ${rateLimits.lastResetWeekly} < date_trunc('week', CURRENT_DATE) THEN 0 ELSE ${rateLimits.tokensThisWeek} END`,
 			tokensThisMonth: sql<number>`CASE WHEN ${rateLimits.lastResetMonthly} < date_trunc('month', CURRENT_DATE) THEN 0 ELSE ${rateLimits.tokensThisMonth} END`,
 		})
 		.from(rateLimits)
@@ -22,7 +28,11 @@ export const GET: RequestHandler = async ({ request }) => {
 		.limit(1);
 
 	return json({
+		tokens_last_4h: row?.tokensLast4h ?? 0,
+		tokens_4h_limit: tenant.tokensPer4h,
+		tokens_this_week: row?.tokensThisWeek ?? 0,
+		tokens_week_limit: tenant.tokensPerWeek,
 		tokens_this_month: row?.tokensThisMonth ?? 0,
-		tokens_limit: tenant.tokensPerMonth,
+		tokens_month_limit: tenant.tokensPerMonth,
 	});
 };

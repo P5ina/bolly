@@ -58,8 +58,9 @@ export const tenants = pgTable('tenants', {
 	// Limits
 	storageLimit: integer('storage_limit').notNull().default(10240), // MB (10 GB)
 	maxInstances: integer('max_instances').notNull().default(1),
-	messagesPerDay: integer('messages_per_day').notNull().default(150),
-	tokensPerMonth: integer('tokens_per_month').notNull().default(1000000),
+	tokensPer4h: integer('tokens_per_4h').notNull().default(200000),
+	tokensPerWeek: integer('tokens_per_week').notNull().default(2000000),
+	tokensPerMonth: integer('tokens_per_month').notNull().default(5000000),
 
 	// BYOK (Bring Your Own Key)
 	byokProvider: text('byok_provider'), // "anthropic" | "openai" | "openrouter" | null
@@ -90,9 +91,11 @@ export const googleAccounts = pgTable('google_accounts', {
 
 export const rateLimits = pgTable('rate_limits', {
 	instanceId: text('instance_id').primaryKey(),
-	messagesToday: integer('messages_today').notNull().default(0),
+	tokensLast4h: integer('tokens_last_4h').notNull().default(0),
+	tokensThisWeek: integer('tokens_this_week').notNull().default(0),
 	tokensThisMonth: integer('tokens_this_month').notNull().default(0),
-	lastResetDaily: timestamp('last_reset_daily', { withTimezone: true }).notNull().defaultNow(),
+	lastReset4h: timestamp('last_reset_4h', { withTimezone: true }).notNull().defaultNow(),
+	lastResetWeekly: timestamp('last_reset_weekly', { withTimezone: true }).notNull().defaultNow(),
 	lastResetMonthly: timestamp('last_reset_monthly', { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -59,13 +59,21 @@ pub async fn get_usage(http: &Client, landing_url: &str, auth_token: &str) -> Op
     let body: serde_json::Value = res.json().await.ok()?;
 
     Some(Usage {
+        tokens_last_4h: body["tokens_last_4h"].as_i64().unwrap_or(0) as i32,
+        tokens_4h_limit: body["tokens_4h_limit"].as_i64().unwrap_or(0) as i32,
+        tokens_this_week: body["tokens_this_week"].as_i64().unwrap_or(0) as i32,
+        tokens_week_limit: body["tokens_week_limit"].as_i64().unwrap_or(0) as i32,
         tokens_this_month: body["tokens_this_month"].as_i64().unwrap_or(0) as i32,
-        tokens_limit: body["tokens_limit"].as_i64().unwrap_or(0) as i32,
+        tokens_month_limit: body["tokens_month_limit"].as_i64().unwrap_or(0) as i32,
     })
 }
 
 #[derive(serde::Serialize)]
 pub struct Usage {
+    pub tokens_last_4h: i32,
+    pub tokens_4h_limit: i32,
+    pub tokens_this_week: i32,
+    pub tokens_week_limit: i32,
     pub tokens_this_month: i32,
-    pub tokens_limit: i32,
+    pub tokens_month_limit: i32,
 }

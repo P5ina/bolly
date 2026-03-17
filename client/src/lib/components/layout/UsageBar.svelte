@@ -14,7 +14,6 @@
 		}
 	}
 
-	// Refresh on mount, every 60s, and whenever tick changes
 	$effect(() => {
 		void tick;
 		load();
@@ -41,25 +40,35 @@
 		if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
 		return String(n);
 	}
+
+	// Find the tightest (most-used) window to display
+	let activeWindow = $derived.by(() => {
+		if (!usage) return null;
+		const windows = [
+			{ label: "4h", used: usage.tokens_last_4h, limit: usage.tokens_4h_limit },
+			{ label: "week", used: usage.tokens_this_week, limit: usage.tokens_week_limit },
+			{ label: "month", used: usage.tokens_this_month, limit: usage.tokens_month_limit },
+		].filter(w => w.limit > 0);
+
+		if (windows.length === 0) return null;
+
+		// Show the window with highest usage percentage
+		return windows.reduce((a, b) =>
+			pct(a.used, a.limit) >= pct(b.used, b.limit) ? a : b
+		);
+	});
 </script>
 
-{#if usage}
-	{@const tokPct = pct(usage.tokens_this_month, usage.tokens_limit)}
-	{@const tokUnlimited = usage.tokens_limit < 0}
-
-	{#if !tokUnlimited}
-		<div class="usage-bar">
-			<div class="usage-item" title="Tokens this month: {formatTokens(usage.tokens_this_month)} / {formatTokens(usage.tokens_limit)}">
-				<span class="usage-label">{formatTokens(usage.tokens_this_month)}/{formatTokens(usage.tokens_limit)} tokens</span>
-				<div class="usage-track">
-					<div
-						class="usage-fill"
-						style="width: {tokPct}%; background: {barColor(tokPct)}"
-					></div>
-				</div>
+{#if activeWindow}
+	{@const p = pct(activeWindow.used, activeWindow.limit)}
+	<div class="usage-bar">
+		<div class="usage-item" title="{formatTokens(activeWindow.used)} / {formatTokens(activeWindow.limit)} tokens ({activeWindow.label})">
+			<span class="usage-label">{formatTokens(activeWindow.used)}/{formatTokens(activeWindow.limit)} ({activeWindow.label})</span>
+			<div class="usage-track">
+				<div class="usage-fill" style="width: {p}%; background: {barColor(p)}"></div>
 			</div>
 		</div>
-	{/if}
+	</div>
 {/if}
 
 <style>
