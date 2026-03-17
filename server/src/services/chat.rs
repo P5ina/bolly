@@ -1121,18 +1121,19 @@ fn compute_context_stats_local(
     // History — count from rig_history.json (source of truth, includes context entries)
     // with fallback to messages.json
     let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
-    let (history_count, history_tokens_estimate) = if let Some(rig_history) = load_rig_history(&rig_path) {
-        // Extract only text content from messages (not JSON structure overhead)
-        let total_chars: usize = rig_history.iter()
-            .map(|m| extract_message_text_len(m))
-            .sum();
-        (rig_history.len(), estimate_tokens_from_chars(total_chars))
-    } else {
-        let existing: Vec<ChatMessage> = load_messages_vec(
-            &messages_path(workspace_dir, &instance_slug, &chat_id),
-        ).unwrap_or_default();
-        let tokens: usize = existing.iter().map(|m| estimate_tokens(&m.content)).sum();
-        (existing.len(), tokens)
+    let (history_count, history_tokens_estimate) = {
+        let rig = load_rig_history(&rig_path).unwrap_or_default();
+        if !rig.is_empty() {
+            let total_chars: usize = rig.iter().map(|m| extract_message_text_len(m)).sum();
+            (rig.len(), estimate_tokens_from_chars(total_chars))
+        } else {
+            // Fallback to messages.json
+            let existing: Vec<ChatMessage> = load_messages_vec(
+                &messages_path(workspace_dir, &instance_slug, &chat_id),
+            ).unwrap_or_default();
+            let tokens: usize = existing.iter().map(|m| estimate_tokens(&m.content)).sum();
+            (existing.len(), tokens)
+        }
     };
 
     let total_input_tokens_estimate = system_prompt_total_tokens + tools_tokens_estimate + history_tokens_estimate;
