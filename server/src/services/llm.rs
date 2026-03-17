@@ -702,6 +702,32 @@ fn build_anthropic_request(
         }
     }
 
+    // Merge consecutive same-role messages (API requires strict alternation)
+    if let Some(arr) = msgs.as_array_mut() {
+        let mut merged: Vec<serde_json::Value> = Vec::with_capacity(arr.len());
+        for msg in arr.drain(..) {
+            let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
+            let last_role = merged.last()
+                .and_then(|m| m.get("role"))
+                .and_then(|r| r.as_str())
+                .unwrap_or("");
+            if role == last_role && !role.is_empty() {
+                // Merge content arrays
+                if let Some(last) = merged.last_mut() {
+                    if let (Some(existing), Some(new_content)) = (
+                        last.get_mut("content").and_then(|c| c.as_array_mut()),
+                        msg.get("content").and_then(|c| c.as_array()),
+                    ) {
+                        existing.extend(new_content.iter().cloned());
+                    }
+                }
+            } else {
+                merged.push(msg);
+            }
+        }
+        *arr = merged;
+    }
+
     let mut req = serde_json::json!({
         "model": model,
         "max_tokens": max_tokens,
