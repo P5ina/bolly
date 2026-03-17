@@ -58,8 +58,6 @@ export const tenants = pgTable('tenants', {
 	// Limits
 	storageLimit: integer('storage_limit').notNull().default(10240), // MB (10 GB)
 	maxInstances: integer('max_instances').notNull().default(1),
-	tokensPer4h: integer('tokens_per_4h').notNull().default(200000),
-	tokensPerWeek: integer('tokens_per_week').notNull().default(2000000),
 	tokensPerMonth: integer('tokens_per_month').notNull().default(5000000),
 
 	// BYOK (Bring Your Own Key)
@@ -94,6 +92,7 @@ export const rateLimits = pgTable('rate_limits', {
 	tokensLast4h: integer('tokens_last_4h').notNull().default(0),
 	tokensThisWeek: integer('tokens_this_week').notNull().default(0),
 	tokensThisMonth: integer('tokens_this_month').notNull().default(0),
+	rollover4h: integer('rollover_4h').notNull().default(0), // unused tokens carried from previous 4h window
 	lastReset4h: timestamp('last_reset_4h', { withTimezone: true }).notNull().defaultNow(),
 	lastResetWeekly: timestamp('last_reset_weekly', { withTimezone: true }).notNull().defaultNow(),
 	lastResetMonthly: timestamp('last_reset_monthly', { withTimezone: true }).notNull().defaultNow(),
