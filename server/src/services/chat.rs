@@ -307,6 +307,23 @@ pub async fn run_single_turn(
     let prompt_msg = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
 
     let mut history_msgs = if let Some(mut h) = loaded_history {
+        // Strip [context] blocks from historical user messages.
+        // The memory catalog is appended to every user message before sending to the LLM,
+        // but it also gets saved into rig_history.json — meaning each turn re-sends all
+        // previous copies of the catalog. With 280+ files that's ~20k chars per message.
+        // We only need the catalog in the *current* message, not in history.
+        for msg in h.iter_mut() {
+            if let llm::Message::User { content } = msg {
+                for block in content.iter_mut() {
+                    if let llm::ContentBlock::Text { text } = block {
+                        if let Some(ctx_pos) = text.find("\n\n[context]\n") {
+                            text.truncate(ctx_pos);
+                        }
+                    }
+                }
+            }
+        }
+
         // Check if history already has a compaction block — if so, the context
         // was intentionally reset. Don't patch in old messages.json entries or
         // we'll refill the context and trigger compaction in a loop.
