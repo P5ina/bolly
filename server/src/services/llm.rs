@@ -286,15 +286,15 @@ pub fn merge_with_timestamps(
     ts_fn: impl Fn() -> String,
     id_fn: impl Fn() -> String,
 ) -> Vec<HistoryEntry> {
+    // If the LLM returned fewer messages (compaction happened), don't match old entries —
+    // the structure changed and positions no longer correspond.
+    let can_match = new_messages.len() >= old.len();
+
     new_messages.iter().enumerate().map(|(i, msg)| {
-        if i < old.len() {
-            HistoryEntry {
-                message: msg.clone(),
-                ts: old[i].ts.clone(),
-                id: old[i].id.clone(),
-                mcp_app_html: old[i].mcp_app_html.clone(),
-                mcp_app_input: old[i].mcp_app_input.clone(),
-            }
+        if can_match && i < old.len() {
+            // Keep the original entry as-is (preserves clean content without
+            // [timestamp] prefixes or [context] blocks that the LLM saw).
+            old[i].clone()
         } else {
             HistoryEntry {
                 message: msg.clone(),
