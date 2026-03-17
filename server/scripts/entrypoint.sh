@@ -4,39 +4,17 @@ set -e
 PERSIST_DIR="${BOLLY_HOME:-/data}"
 BIN_DIR="$PERSIST_DIR/bin"
 BINARY="$BIN_DIR/bolly"
-SCRIPTS_DIR="$PERSIST_DIR/scripts"
-REPO="triangle-int/bolly"
 
-mkdir -p "$PERSIST_DIR" "$BIN_DIR" "$SCRIPTS_DIR"
-
-# --- Self-update entrypoint and scripts from GitHub ---
-# This ensures new entrypoints take effect without image rebuild
-BRANCH="${BOLLY_CHANNEL:-stable}"
-if [ "$BRANCH" = "stable" ]; then BRANCH="main"; fi
-for SCRIPT in entrypoint.sh update-bolly.sh; do
-    curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/server/scripts/$SCRIPT" \
-        -o "$SCRIPTS_DIR/$SCRIPT.tmp" 2>/dev/null && \
-        chmod +x "$SCRIPTS_DIR/$SCRIPT.tmp" && \
-        mv "$SCRIPTS_DIR/$SCRIPT.tmp" "$SCRIPTS_DIR/$SCRIPT" || true
-done
-
-# If we downloaded a newer entrypoint, re-exec into it (once)
-if [ -f "$SCRIPTS_DIR/entrypoint.sh" ] && [ "$BOLLY_ENTRYPOINT_UPDATED" != "1" ]; then
-    export BOLLY_ENTRYPOINT_UPDATED=1
-    exec "$SCRIPTS_DIR/entrypoint.sh"
-fi
+mkdir -p "$PERSIST_DIR" "$BIN_DIR"
 
 # --- Download binary if not present ---
-UPDATE_SCRIPT="$SCRIPTS_DIR/update-bolly.sh"
-[ -x "$UPDATE_SCRIPT" ] || UPDATE_SCRIPT="/opt/bolly/scripts/update-bolly.sh"
-
 if [ ! -x "$BINARY" ]; then
     echo "[entrypoint] downloading bolly binary..."
-    "$UPDATE_SCRIPT"
+    /opt/bolly/scripts/update-bolly.sh
 fi
 
 # --- Background update check (non-blocking) ---
-"$UPDATE_SCRIPT" &
+/opt/bolly/scripts/update-bolly.sh &
 
 # --- Ensure Chromium is available ---
 CHROMIUM_BIN=$(command -v chromium-browser 2>/dev/null || command -v chromium 2>/dev/null || echo "")
