@@ -86,7 +86,7 @@ impl Tool for RunCommandTool {
             .map(PathBuf::from)
             .unwrap_or_else(|| self.instance_dir.clone());
 
-        let timeout = args.timeout_secs.unwrap_or(30).min(300);
+        let timeout = args.timeout_secs.unwrap_or(30).min(1800);
         let use_pty = args.pty.unwrap_or(true);
 
         log::info!(
