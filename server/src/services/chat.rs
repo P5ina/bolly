@@ -437,6 +437,10 @@ pub async fn run_single_turn(
         }
     }
 
+    log::info!(
+        "[chat] sending: system_prompt={} chars, tools={}, history_msgs={}",
+        system_static.len(), all_tools.len(), history_msgs.len()
+    );
     let system_blocks: Vec<&str> = vec![&system_static];
     let tool_result = llm
         .chat_with_tools_streaming(
