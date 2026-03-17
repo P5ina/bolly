@@ -1,5 +1,5 @@
 # Runtime-only image for Fly.io — binary downloaded from GitHub releases on startup
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 
 # Install all runtime dependencies
 RUN apt-get update -qq && \
