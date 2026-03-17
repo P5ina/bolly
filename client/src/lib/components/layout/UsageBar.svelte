@@ -5,6 +5,7 @@
 	let { tick = 0 }: { tick?: number } = $props();
 
 	let usage = $state<Usage | null>(null);
+	let now = $state(Date.now());
 
 	async function load() {
 		try {
@@ -20,7 +21,7 @@
 	});
 
 	$effect(() => {
-		const interval = setInterval(load, 60_000);
+		const interval = setInterval(() => { load(); now = Date.now(); }, 60_000);
 		return () => clearInterval(interval);
 	});
 
@@ -43,16 +44,31 @@
 
 	let limit4h = $derived(usage?.tokens_4h_limit ?? 0);
 	let used4h = $derived(usage?.tokens_last_4h ?? 0);
+
+	let resetLabel = $derived.by(() => {
+		if (!usage?.resets_at) return "";
+		const resetMs = new Date(usage.resets_at).getTime();
+		const diff = resetMs - now;
+		if (diff <= 0) return "resets soon";
+		const mins = Math.floor(diff / 60_000);
+		if (mins < 60) return `${mins}m`;
+		const h = Math.floor(mins / 60);
+		const m = mins % 60;
+		return m > 0 ? `${h}h${m}m` : `${h}h`;
+	});
 </script>
 
 {#if limit4h > 0}
 	{@const p = pct(used4h, limit4h)}
 	<div class="usage-bar">
-		<div class="usage-item" title="{formatTokens(used4h)} / {formatTokens(limit4h)} tokens (4h)">
+		<div class="usage-item" title="{formatTokens(used4h)} / {formatTokens(limit4h)} tokens (4h) — resets {resetLabel}">
 			<span class="usage-label">{formatTokens(used4h)}/{formatTokens(limit4h)}</span>
 			<div class="usage-track">
 				<div class="usage-fill" style="width: {p}%; background: {barColor(p)}"></div>
 			</div>
+			{#if resetLabel}
+				<span class="usage-reset">{resetLabel}</span>
+			{/if}
 		</div>
 	</div>
 {/if}
@@ -93,5 +109,12 @@
 		height: 100%;
 		border-radius: 1px;
 		transition: width 0.5s ease, background 0.5s ease;
+	}
+
+	.usage-reset {
+		font-family: var(--font-mono);
+		font-size: 0.48rem;
+		color: oklch(0.78 0.12 75 / 18%);
+		white-space: nowrap;
 	}
 </style>

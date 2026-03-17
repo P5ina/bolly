@@ -153,6 +153,7 @@ export interface Usage {
 	tokens_week_limit: number;
 	tokens_this_month: number;
 	tokens_month_limit: number;
+	resets_at: string | null;
 }
 
 export interface ContextSection {

@@ -22,10 +22,16 @@ export const GET: RequestHandler = async ({ request }) => {
 			tokensLast4h: sql<number>`CASE WHEN ${rateLimits.lastReset4h} < now() - interval '4 hours' THEN 0 ELSE ${rateLimits.tokensLast4h} END`,
 			tokensThisWeek: sql<number>`CASE WHEN ${rateLimits.lastResetWeekly} < date_trunc('week', CURRENT_DATE) THEN 0 ELSE ${rateLimits.tokensThisWeek} END`,
 			tokensThisMonth: sql<number>`CASE WHEN ${rateLimits.lastResetMonthly} < date_trunc('month', CURRENT_DATE) THEN 0 ELSE ${rateLimits.tokensThisMonth} END`,
+			lastReset4h: rateLimits.lastReset4h,
 		})
 		.from(rateLimits)
 		.where(eq(rateLimits.instanceId, tenant.id))
 		.limit(1);
+
+	// 4h window resets at lastReset4h + 4 hours
+	const resetAt = row?.lastReset4h
+		? new Date(row.lastReset4h.getTime() + 4 * 3600_000).toISOString()
+		: null;
 
 	return json({
 		tokens_last_4h: row?.tokensLast4h ?? 0,
@@ -34,5 +40,6 @@ export const GET: RequestHandler = async ({ request }) => {
 		tokens_week_limit: Math.floor(tenant.tokensPerMonth / 4),
 		tokens_this_month: row?.tokensThisMonth ?? 0,
 		tokens_month_limit: tenant.tokensPerMonth,
+		resets_at: resetAt,
 	});
 };

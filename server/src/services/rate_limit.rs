@@ -65,6 +65,7 @@ pub async fn get_usage(http: &Client, landing_url: &str, auth_token: &str) -> Op
         tokens_week_limit: body["tokens_week_limit"].as_i64().unwrap_or(0) as i32,
         tokens_this_month: body["tokens_this_month"].as_i64().unwrap_or(0) as i32,
         tokens_month_limit: body["tokens_month_limit"].as_i64().unwrap_or(0) as i32,
+        resets_at: body["resets_at"].as_str().map(|s| s.to_string()),
     })
 }
 
@@ -76,4 +77,5 @@ pub struct Usage {
     pub tokens_week_limit: i32,
     pub tokens_this_month: i32,
     pub tokens_month_limit: i32,
+    pub resets_at: Option<String>,
 }
