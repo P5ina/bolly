@@ -75,6 +75,13 @@ exit $STATUS
 WRAPPER
 chmod +x /usr/local/bin/persist-pip
 
-# --- Start ---
-echo "[entrypoint] starting bolly $(cat "$BIN_DIR/.version" 2>/dev/null || echo '')"
-exec "$BINARY"
+# --- Start (restart loop — keeps container alive on binary restart) ---
+while true; do
+    echo "[entrypoint] starting bolly $(cat "$BIN_DIR/.version" 2>/dev/null || echo '')"
+    "$BINARY"
+    EXIT_CODE=$?
+    echo "[entrypoint] bolly exited with code $EXIT_CODE, restarting in 2s..."
+    sleep 2
+    # Re-run update check before restart
+    /opt/bolly/scripts/update-bolly.sh 2>/dev/null || true
+done
