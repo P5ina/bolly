@@ -65,9 +65,50 @@ fn scan_dir_recursive(base: &Path, current: &Path, entries: &mut Vec<MemoryEntry
     }
 }
 
+/// Path to the static memory catalog snapshot file for an instance.
+fn catalog_snapshot_path(workspace_dir: &Path, instance_slug: &str) -> std::path::PathBuf {
+    workspace_dir
+        .join("instances")
+        .join(instance_slug)
+        .join("memory_catalog.txt")
+}
+
+/// Rebuild and persist the memory catalog snapshot to disk.
+/// Call this after context clear or compaction — not on every request.
+pub fn rebuild_catalog_snapshot(workspace_dir: &Path, instance_slug: &str) {
+    let entries = scan_library(workspace_dir, instance_slug);
+    if entries.is_empty() {
+        return;
+    }
+
+    let mut prompt = format!(
+        "## memory\nyou have a personal memory library. use `recall` to read memories when relevant.\ncatalog ({} files):\n",
+        entries.len()
+    );
+    for entry in &entries {
+        prompt.push_str(&format!("- {} — {}\n", entry.path, entry.summary));
+    }
+    prompt.push_str("\nuse these memories naturally — `recall` what you need. don't announce that you remember — just know.");
+
+    let path = catalog_snapshot_path(workspace_dir, instance_slug);
+    if let Err(e) = std::fs::write(&path, &prompt) {
+        log::warn!("[memory] failed to write catalog snapshot: {e}");
+    } else {
+        log::info!("[memory] catalog snapshot rebuilt: {} files", entries.len());
+    }
+}
+
+/// Load the static memory catalog snapshot from disk.
+/// Returns empty string if no snapshot exists yet (first boot / pre-compaction).
+pub fn load_catalog_snapshot(workspace_dir: &Path, instance_slug: &str) -> String {
+    let path = catalog_snapshot_path(workspace_dir, instance_slug);
+    std::fs::read_to_string(&path).unwrap_or_default()
+}
+
 /// Build the memory prompt for the system prompt.
 /// For small libraries (< 6000 chars total), inline all file contents.
 /// For larger ones, show a catalog with summaries + inline the smallest files.
+/// NOTE: this scans disk on every call — use load_catalog_snapshot() for the static version.
 pub fn build_memory_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
     let entries = scan_library(workspace_dir, instance_slug);
     if entries.is_empty() {
