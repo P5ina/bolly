@@ -145,6 +145,50 @@
 			</div>
 		{/if}
 
+		<!-- Create Machine -->
+		<div class="mb-6 p-4 rounded-xl" style="background: oklch(0.72 0.12 200 / 4%); border: 1px solid oklch(0.72 0.12 200 / 12%);">
+			<h3 class="text-sm font-mono mb-3" style="color: oklch(0.72 0.12 200 / 70%);">create machine</h3>
+			<form method="POST" action="?/createMachine" use:enhance={() => {
+				actionError = null;
+				actionSuccess = null;
+				return async ({ result, update }) => {
+					if (result.type === 'failure') {
+						actionError = (result.data as { error?: string })?.error ?? 'Failed';
+					} else if (result.type === 'success') {
+						actionSuccess = 'Machine created';
+					}
+					await update();
+				};
+			}}>
+				<div class="flex items-end gap-3 flex-wrap">
+					<div class="flex flex-col gap-1">
+						<label for="cm-user" class="text-xs font-mono" style="color: var(--color-text-ghost);">user</label>
+						<select id="cm-user" name="userId" required class="text-xs py-1.5 px-2 rounded-lg font-mono" style="background: oklch(1 0 0 / 4%); border: 1px solid oklch(1 0 0 / 8%); color: var(--color-text);">
+							{#each data.users as user}
+								<option value={user.id}>{user.email}</option>
+							{/each}
+						</select>
+					</div>
+					<div class="flex flex-col gap-1">
+						<label for="cm-slug" class="text-xs font-mono" style="color: var(--color-text-ghost);">slug</label>
+						<input id="cm-slug" name="slug" required placeholder="my-companion" class="text-xs py-1.5 px-2 rounded-lg font-mono w-40" style="background: oklch(1 0 0 / 4%); border: 1px solid oklch(1 0 0 / 8%); color: var(--color-text);" />
+					</div>
+					<div class="flex flex-col gap-1">
+						<label for="cm-plan" class="text-xs font-mono" style="color: var(--color-text-ghost);">plan</label>
+						<select id="cm-plan" name="plan" class="text-xs py-1.5 px-2 rounded-lg font-mono" style="background: oklch(1 0 0 / 4%); border: 1px solid oklch(1 0 0 / 8%); color: var(--color-text);">
+							<option value="starter">Starter</option>
+							<option value="companion" selected>Companion</option>
+							<option value="unlimited">Unlimited</option>
+						</select>
+					</div>
+					<button type="submit" class="inline-flex items-center gap-1.5 text-xs py-1.5 px-4 rounded-lg transition-all duration-300" style="color: oklch(0.72 0.12 200); background: oklch(0.72 0.12 200 / 10%); border: 1px solid oklch(0.72 0.12 200 / 25%);">
+						<Server size={12} />
+						create
+					</button>
+				</div>
+			</form>
+		</div>
+
 		<div class="flex items-center justify-between mb-6">
 			<h2 class="font-display italic text-xl text-text">instances</h2>
 			<div class="flex items-center gap-2">

@@ -63,7 +63,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 	);
 	const machineMap = Object.fromEntries(machineEnvs);
 
+	const allUsers = await db()
+		.select({ id: users.id, email: users.email, name: users.name })
+		.from(users)
+		.orderBy(users.email);
+
 	return {
+		users: allUsers,
 		tenants: allTenants.map((t) => ({
 			...t,
 			createdAt: t.createdAt.toISOString(),
@@ -393,6 +399,35 @@ export const actions: Actions = {
 		}
 
 		return { success: true, tenantId };
+	},
+
+	createMachine: async ({ request, locals }) => {
+		if (!locals.user || !isAdmin(locals.user.email)) error(403, 'Forbidden');
+
+		const form = await request.formData();
+		const userId = form.get('userId') as string;
+		const slug = form.get('slug') as string;
+		const plan = (form.get('plan') as string) || 'companion';
+
+		if (!userId || !slug) return fail(400, { error: 'userId and slug are required' });
+
+		// Validate slug format
+		if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug) || slug.length < 3 || slug.length > 30) {
+			return fail(400, { error: 'Invalid slug: 3-30 chars, lowercase alphanumeric + hyphens' });
+		}
+
+		try {
+			await provisionTenant({
+				userId,
+				slug,
+				plan: plan as PlanId,
+			});
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'Unknown error';
+			return fail(500, { error: `Provisioning failed: ${msg}` });
+		}
+
+		return { success: true };
 	},
 
 	patchEnv: async ({ locals }) => {
