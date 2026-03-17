@@ -888,18 +888,20 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		justify-content: flex-end;
+		justify-content: center;
 		padding: 1rem;
-		gap: 0.75rem;
+		gap: 1rem;
 		overflow: hidden;
+		position: relative;
 	}
 
 	.sidebar-banners {
 		width: 100%;
-		max-width: 240px;
+		max-width: 220px;
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+		z-index: 2;
 	}
 
 	.chat-creature {
@@ -909,6 +911,7 @@
 		transform: scale(2.2);
 		opacity: 0.5;
 		pointer-events: none;
+		margin-top: 2rem;
 	}
 
 	/* --- stream --- */
