@@ -25,6 +25,7 @@ pub mod memory_tools;
 pub mod project;
 pub mod skills;
 pub mod system;
+pub mod image;
 pub mod media;
 pub mod web;
 
@@ -45,6 +46,7 @@ pub use system::{
     ClearContextTool, CreateDropTool, DeepResearchTool, ExploreCodeTool, GetSettingsTool,
     InteractiveSessionTool, RequestSecretTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
 };
+pub use image::ViewImageTool;
 pub use media::{WatchVideoTool, ListenMusicTool};
 pub use web::{BrowseTool, WebFetchTool, WebSearchTool};
 
@@ -497,6 +499,7 @@ pub fn build_tools(
     // ── Web ──
     tools.push(wrap(Box::new(WebSearchTool::new(brave_api_key, config_path))));
     tools.push(wrap(Box::new(WebFetchTool)));
+    tools.push(wrap(Box::new(ViewImageTool)));
     {
         let cfg = crate::config::load_config().ok();
         let landing_url = cfg.as_ref().map(|c| c.landing_url.as_str()).unwrap_or("");

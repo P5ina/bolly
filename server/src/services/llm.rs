@@ -101,6 +101,26 @@ impl ContentBlock {
     }
 
     pub fn tool_result(tool_use_id: String, content: String) -> Self {
+        // Check for embedded image: __IMAGE__:mime_type:base64_data
+        if content.starts_with("__IMAGE__:") {
+            let rest = &content["__IMAGE__:".len()..];
+            if let Some((mime, data)) = rest.split_once(':') {
+                let blocks = serde_json::json!([
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime,
+                            "data": data,
+                        }
+                    }
+                ]);
+                return ContentBlock::ToolResult {
+                    tool_use_id,
+                    content: blocks,
+                };
+            }
+        }
         ContentBlock::ToolResult {
             tool_use_id,
             content: serde_json::Value::String(content),
