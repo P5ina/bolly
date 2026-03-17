@@ -21,8 +21,8 @@ RUN apt-get update -qq && \
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null && \
     echo "deb [arch=${DARCH} signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && \
     apt-get update -qq && apt-get install -y gh && \
-    # Playwright
-    npx playwright@1.52.0 install --with-deps chromium && \
+    # Chromium via apt (more stable than Playwright's bundled headless shell)
+    apt-get install -y chromium-browser || apt-get install -y chromium || true && \
     # Cleanup
     rm -rf /var/lib/apt/lists/* /root/.cache/ms-playwright/.links /tmp/*
 
@@ -33,7 +33,6 @@ RUN cd /opt/bolly/scripts && npm install --omit=dev 2>/dev/null || true
 ENV BOLLY_HOME=/data
 ENV RUST_LOG=info,rig=warn
 ENV BOLLY_SCRIPTS_DIR=/opt/bolly/scripts
-ENV PLAYWRIGHT_BROWSERS_PATH=/data/.playwright
 
 EXPOSE 8080
 VOLUME /data

@@ -416,9 +416,12 @@ impl Tool for BrowseTool {
 
         log::info!("[browse] {} actions, timeout={}s", actions_json.len(), timeout);
 
+        let pw_path = std::env::var("PLAYWRIGHT_BROWSERS_PATH")
+            .unwrap_or_else(|_| "/data/.playwright".to_string());
         let mut child = tokio::process::Command::new("node")
             .arg("--max-old-space-size=384")
             .arg(&script)
+            .env("PLAYWRIGHT_BROWSERS_PATH", &pw_path)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())

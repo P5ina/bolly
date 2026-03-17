@@ -85,10 +85,11 @@ if ! command -v gh &>/dev/null; then
     apt-get update -qq && apt-get install -y gh > /dev/null 2>&1
 fi
 
-# --- Playwright ---
-if [ ! -d "$DATA_DIR/.playwright" ]; then
-    log "installing Playwright Chromium..."
-    PLAYWRIGHT_BROWSERS_PATH="$DATA_DIR/.playwright" npx playwright@1.52.0 install --with-deps chromium > /dev/null 2>&1 || true
+# --- Chromium ---
+if ! command -v chromium-browser &>/dev/null && ! command -v chromium &>/dev/null; then
+    log "installing Chromium..."
+    apt-get install -y chromium-browser > /dev/null 2>&1 || \
+    apt-get install -y chromium > /dev/null 2>&1 || true
 fi
 
 # --- Create dirs ---
@@ -128,7 +129,7 @@ User=$USER
 WorkingDirectory=$DATA_DIR
 Environment=BOLLY_HOME=$DATA_DIR
 Environment=RUST_LOG=info,rig=warn
-Environment=PLAYWRIGHT_BROWSERS_PATH=$DATA_DIR/.playwright
+Environment=CHROMIUM_PATH=/usr/bin/chromium-browser
 Environment=BOLLY_CHANNEL=$CHANNEL
 ExecStart=$BIN
 Restart=always

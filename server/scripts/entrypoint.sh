@@ -16,12 +16,17 @@ fi
 # --- Background update check (non-blocking) ---
 /opt/bolly/scripts/update-bolly.sh &
 
-# --- Ensure Playwright on persistent volume ---
-if [ ! -d "$PERSIST_DIR/.playwright" ]; then
-    echo "[entrypoint] installing Playwright Chromium..."
-    PLAYWRIGHT_BROWSERS_PATH="$PERSIST_DIR/.playwright" npx playwright@1.52.0 install --with-deps chromium 2>/dev/null || true
+# --- Ensure Chromium is available ---
+CHROMIUM_BIN=$(command -v chromium-browser 2>/dev/null || command -v chromium 2>/dev/null || echo "")
+if [ -z "$CHROMIUM_BIN" ]; then
+    echo "[entrypoint] installing Chromium..."
+    apt-get update -qq 2>/dev/null
+    apt-get install -y --no-install-recommends chromium-browser 2>/dev/null || \
+    apt-get install -y --no-install-recommends chromium 2>/dev/null || true
+    rm -rf /var/lib/apt/lists/*
+    CHROMIUM_BIN=$(command -v chromium-browser 2>/dev/null || command -v chromium 2>/dev/null || echo "")
 fi
-export PLAYWRIGHT_BROWSERS_PATH="$PERSIST_DIR/.playwright"
+export CHROMIUM_PATH="$CHROMIUM_BIN"
 
 # --- Restore user-installed packages ---
 if [ -f "$PERSIST_DIR/.apt-packages" ] && [ -s "$PERSIST_DIR/.apt-packages" ]; then
