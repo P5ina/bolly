@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { page } from "$app/state";
 	import {
+		checkUpdate,
+		applyUpdate,
+		type UpdateCheck,
 		fetchGoogleAccounts,
 		getGoogleConnectUrl,
 		disconnectGoogleAccount,
@@ -104,6 +107,11 @@
 			ghSaving = false;
 		}
 	}
+
+	// Update state
+	let updateInfo = $state<UpdateCheck | null>(null);
+	let updating = $state(false);
+	$effect(() => { checkUpdate().then(u => updateInfo = u).catch(() => {}); });
 
 	// Usage state
 	let usage = $state<Usage | null>(null);
@@ -352,6 +360,25 @@
 
 <div class="settings-page">
 	<h2 class="settings-title">settings</h2>
+
+	{#if updateInfo?.update_available}
+		<div class="update-banner">
+			<div class="update-info">
+				<span class="update-label">update available</span>
+				<span class="update-version">{updateInfo.current} → {updateInfo.latest}</span>
+			</div>
+			<button
+				class="update-btn"
+				disabled={updating}
+				onclick={async () => {
+					updating = true;
+					try { await applyUpdate(); } catch { updating = false; }
+				}}
+			>
+				{updating ? "updating..." : "update now"}
+			</button>
+		</div>
+	{/if}
 
 	<!-- Usage -->
 	{#if usage && (usage.tokens_4h_limit > 0 || usage.tokens_week_limit > 0 || usage.tokens_month_limit > 0)}
@@ -854,6 +881,53 @@
 		font-weight: 400;
 		color: oklch(0.88 0.02 75 / 80%);
 		margin-bottom: 2rem;
+	}
+
+	.update-banner {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 0.625rem 0.75rem;
+		margin-bottom: 1.5rem;
+		border-radius: 0.5rem;
+		background: oklch(0.72 0.15 155 / 6%);
+		border: 1px solid oklch(0.72 0.15 155 / 18%);
+	}
+	.update-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+	}
+	.update-label {
+		font-family: var(--font-mono);
+		font-size: 0.62rem;
+		letter-spacing: 0.05em;
+		color: oklch(0.72 0.15 155 / 75%);
+	}
+	.update-version {
+		font-family: var(--font-mono);
+		font-size: 0.55rem;
+		color: oklch(0.72 0.15 155 / 40%);
+	}
+	.update-btn {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		padding: 0.3rem 0.75rem;
+		border-radius: 0.375rem;
+		background: oklch(0.72 0.15 155 / 12%);
+		border: 1px solid oklch(0.72 0.15 155 / 25%);
+		color: oklch(0.72 0.15 155 / 85%);
+		cursor: pointer;
+		transition: all 0.2s ease;
+		white-space: nowrap;
+	}
+	.update-btn:hover:not(:disabled) {
+		background: oklch(0.72 0.15 155 / 20%);
+	}
+	.update-btn:disabled {
+		opacity: 0.5;
+		cursor: default;
 	}
 
 	.settings-section {

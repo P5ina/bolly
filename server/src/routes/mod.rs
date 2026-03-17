@@ -13,4 +13,5 @@ pub mod soul;
 pub mod thoughts;
 pub mod uploads;
 pub mod usage;
+pub mod update;
 pub mod ws;

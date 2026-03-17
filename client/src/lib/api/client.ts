@@ -506,6 +506,28 @@ export async function disconnectGoogleAccount(slug: string, email: string): Prom
 // WebSocket
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Updates
+// ---------------------------------------------------------------------------
+
+export interface UpdateCheck {
+	current: string;
+	latest: string;
+	update_available: boolean;
+}
+
+export function checkUpdate(): Promise<UpdateCheck> {
+	return json("/api/update/check");
+}
+
+export async function applyUpdate(): Promise<{ ok: boolean; message?: string }> {
+	return json("/api/update/apply", { method: "POST" });
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket
+// ---------------------------------------------------------------------------
+
 export function createWebSocket(): WebSocket {
 	const proto = location.protocol === "https:" ? "wss:" : "ws:";
 	const token = getAuthToken();
