@@ -85,6 +85,13 @@
       "when": 1773736666264,
       "tag": "0011_wandering_vengeance",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1773737796555,
+      "tag": "0012_optimal_blindfold",
+      "breakpoints": true
     }
   ]
 }
