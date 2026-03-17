@@ -88,7 +88,12 @@ pub fn rebuild_catalog_snapshot(workspace_dir: &Path, instance_slug: &str) {
     for entry in &entries {
         prompt.push_str(&format!("- {} — {}\n", entry.path, entry.summary));
     }
-    prompt.push_str("\nuse these memories naturally — `recall` what you need. don't announce that you remember — just know.");
+    prompt.push_str(
+        "\nNOTE: this catalog is a static snapshot — it may be outdated. \
+         if you write, delete, or rename memory files, the list above won't update until the next session. \
+         use memory_list or memory_search for the current state.\n\
+         use these memories naturally — `recall` what you need. don't announce that you remember — just know."
+    );
 
     let path = catalog_snapshot_path(workspace_dir, instance_slug);
     if let Err(e) = std::fs::write(&path, &prompt) {
