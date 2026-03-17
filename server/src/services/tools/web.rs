@@ -1,5 +1,6 @@
 use std::{fs, path::{Path, PathBuf}};
 
+use base64::Engine;
 use crate::services::tool::{ToolDefinition, Tool};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -54,6 +55,13 @@ pub(super) fn format_browse_result(result: &serde_json::Value) -> String {
                 }
                 "screenshot" => {
                     let path = r["path"].as_str().unwrap_or("");
+                    // Read screenshot and return as image so the LLM can see it
+                    if !path.is_empty() {
+                        if let Ok(bytes) = std::fs::read(path) {
+                            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                            return format!("__IMAGE__:image/png:{b64}");
+                        }
+                    }
                     out.push_str(&format!("[screenshot] saved to {path}\n"));
                 }
                 "evaluate" => {
