@@ -605,12 +605,6 @@
 			</div>
 		{:else}
 			{#if accounts.length > 0}
-				<div class="reconnect-banner">
-					<span class="reconnect-icon">!</span>
-					<span class="reconnect-text">
-						Google Drive access updated. Please disconnect and reconnect your account to enable full Drive access.
-					</span>
-				</div>
 				<div class="accounts-list">
 					{#each accounts as account}
 						<div class="account-row">
