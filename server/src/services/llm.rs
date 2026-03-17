@@ -157,11 +157,6 @@ impl HistoryEntry {
         Self { message, ts: Some(ts), id: Some(id), mcp_app_html: None, mcp_app_input: None }
     }
 
-    /// Wrap a Message without metadata (e.g. from LLM result).
-    pub fn bare(message: Message) -> Self {
-        Self { message, ts: None, id: None, mcp_app_html: None, mcp_app_input: None }
-    }
-
     /// Extract just the Messages from a slice of entries.
     pub fn to_messages(entries: &[HistoryEntry]) -> Vec<Message> {
         entries.iter().map(|e| e.message.clone()).collect()
@@ -753,9 +748,13 @@ async fn streaming_agent_loop(
         }
         messages.push(Message::User { content: results });
 
-        // Persist rig_history after each tool cycle so restarts don't lose context
+        // Persist rig_history after each tool cycle so restarts don't lose context.
+        // Load existing entries to preserve timestamps from earlier saves.
         let rig_path = super::chat::rig_history_path(workspace_dir, instance_slug, chat_id);
-        let entries: Vec<HistoryEntry> = messages.iter().map(|m| HistoryEntry::bare(m.clone())).collect();
+        let old_entries = super::chat::load_rig_history(&rig_path).unwrap_or_default();
+        let ts_fn = || super::tools::unix_millis().to_string();
+        let id_fn = || format!("tool_{}", super::tools::unix_millis());
+        let entries = merge_with_timestamps(&old_entries, messages, ts_fn, id_fn);
         super::chat::save_rig_history(&rig_path, &entries);
     }
 
