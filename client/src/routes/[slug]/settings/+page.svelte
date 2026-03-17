@@ -113,11 +113,44 @@
 	// Update state
 	let updateInfo = $state<UpdateCheck | null>(null);
 	let updating = $state(false);
+	let updateDone = $state(false);
 	let channel = $state("stable");
 	$effect(() => {
 		checkUpdate().then(u => updateInfo = u).catch(() => {});
 		getUpdateChannel().then(r => channel = r.channel).catch(() => {});
 	});
+
+	async function doUpdate() {
+		const versionBefore = updateInfo?.current;
+		updating = true;
+		try {
+			await applyUpdate();
+			// Server restarts — poll until it comes back with a new version
+			await waitForNewVersion(versionBefore ?? "");
+		} catch {
+			updating = false;
+		}
+	}
+
+	async function waitForNewVersion(oldVersion: string) {
+		for (let i = 0; i < 60; i++) {
+			await new Promise(r => setTimeout(r, 2000));
+			try {
+				const u = await checkUpdate();
+				if (u.current !== oldVersion) {
+					updateInfo = u;
+					updating = false;
+					updateDone = true;
+					setTimeout(() => { updateDone = false; }, 5000);
+					return;
+				}
+			} catch {
+				// Server still down, keep polling
+			}
+		}
+		// Timeout — just reset
+		updating = false;
+	}
 
 	// Usage state
 	let usage = $state<Usage | null>(null);
@@ -384,7 +417,17 @@
 				<option value="nightly">nightly</option>
 			</select>
 		</div>
-		{#if updateInfo?.update_available}
+		{#if updateDone}
+			<div class="update-banner update-done">
+				<span class="update-label">updated!</span>
+				<span class="update-version">now on {updateInfo?.current}</span>
+			</div>
+		{:else if updating}
+			<div class="update-banner">
+				<span class="update-label">updating…</span>
+				<span class="update-version">server restarting</span>
+			</div>
+		{:else if updateInfo?.update_available}
 			<div class="update-banner">
 				<div class="update-info">
 					<span class="update-label">update available</span>
@@ -392,13 +435,9 @@
 				</div>
 				<button
 					class="update-btn"
-					disabled={updating}
-					onclick={async () => {
-						updating = true;
-						try { await applyUpdate(); } catch { updating = false; }
-					}}
+					onclick={doUpdate}
 				>
-					{updating ? "updating..." : "update now"}
+					update now
 				</button>
 			</div>
 		{/if}
@@ -941,6 +980,13 @@
 		border-radius: 0.5rem;
 		background: oklch(0.72 0.15 155 / 6%);
 		border: 1px solid oklch(0.72 0.15 155 / 18%);
+	}
+	.update-done {
+		background: oklch(0.72 0.15 155 / 10%);
+		border-color: oklch(0.72 0.15 155 / 30%);
+	}
+	.update-done .update-label {
+		color: oklch(0.72 0.15 155);
 	}
 	.update-info {
 		display: flex;
