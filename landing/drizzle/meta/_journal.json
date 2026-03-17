@@ -78,6 +78,13 @@
       "when": 1773725769177,
       "tag": "0010_powerful_sandman",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1773736666264,
+      "tag": "0011_wandering_vengeance",
+      "breakpoints": true
     }
   ]
 }
