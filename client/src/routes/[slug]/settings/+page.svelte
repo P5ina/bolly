@@ -14,8 +14,10 @@
 		fetchEmailAccounts,
 		saveEmailAccounts,
 		deleteAllEmailAccounts,
+		fetchUsage,
 	} from "$lib/api/client.js";
 	import type { McpServerInfo, EmailConfig } from "$lib/api/client.js";
+	import type { Usage } from "$lib/api/types.js";
 
 	const slug = $derived(page.params.slug!);
 
@@ -101,6 +103,21 @@
 		} finally {
 			ghSaving = false;
 		}
+	}
+
+	// Usage state
+	let usage = $state<Usage | null>(null);
+	$effect(() => { fetchUsage().then(u => usage = u).catch(() => {}); });
+
+	function formatTokens(n: number): string {
+		if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+		if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+		return String(n);
+	}
+
+	function usagePct(used: number, limit: number): number {
+		if (limit <= 0) return 0;
+		return Math.min(100, Math.round((used / limit) * 100));
 	}
 
 	// Timezone state
@@ -335,6 +352,61 @@
 
 <div class="settings-page">
 	<h2 class="settings-title">settings</h2>
+
+	<!-- Usage -->
+	{#if usage && (usage.tokens_4h_limit > 0 || usage.tokens_week_limit > 0 || usage.tokens_month_limit > 0)}
+		<section class="settings-section">
+			<div class="section-header">
+				<div class="section-icon">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/>
+					</svg>
+				</div>
+				<div>
+					<h3 class="section-label">usage</h3>
+					<p class="section-desc">Token usage across time windows.</p>
+				</div>
+			</div>
+			<div class="usage-windows">
+				{#if usage.tokens_4h_limit > 0}
+					{@const p = usagePct(usage.tokens_last_4h, usage.tokens_4h_limit)}
+					<div class="usage-window">
+						<div class="usage-window-header">
+							<span class="usage-window-label">4 hours</span>
+							<span class="usage-window-value">{formatTokens(usage.tokens_last_4h)} / {formatTokens(usage.tokens_4h_limit)}</span>
+						</div>
+						<div class="usage-window-track">
+							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.78 0.12 75 / 50%)'}"></div>
+						</div>
+					</div>
+				{/if}
+				{#if usage.tokens_week_limit > 0}
+					{@const p = usagePct(usage.tokens_this_week, usage.tokens_week_limit)}
+					<div class="usage-window">
+						<div class="usage-window-header">
+							<span class="usage-window-label">this week</span>
+							<span class="usage-window-value">{formatTokens(usage.tokens_this_week)} / {formatTokens(usage.tokens_week_limit)}</span>
+						</div>
+						<div class="usage-window-track">
+							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.78 0.12 75 / 50%)'}"></div>
+						</div>
+					</div>
+				{/if}
+				{#if usage.tokens_month_limit > 0}
+					{@const p = usagePct(usage.tokens_this_month, usage.tokens_month_limit)}
+					<div class="usage-window">
+						<div class="usage-window-header">
+							<span class="usage-window-label">this month</span>
+							<span class="usage-window-value">{formatTokens(usage.tokens_this_month)} / {formatTokens(usage.tokens_month_limit)}</span>
+						</div>
+						<div class="usage-window-track">
+							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.78 0.12 75 / 50%)'}"></div>
+						</div>
+					</div>
+				{/if}
+			</div>
+		</section>
+	{/if}
 
 	<!-- Timezone -->
 	<section class="settings-section">
@@ -732,6 +804,40 @@
 </div>
 
 <style>
+	/* Usage */
+	.usage-windows {
+		display: flex;
+		flex-direction: column;
+		gap: 0.625rem;
+	}
+	.usage-window-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		margin-bottom: 0.25rem;
+	}
+	.usage-window-label {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: oklch(0.88 0.02 75 / 50%);
+	}
+	.usage-window-value {
+		font-family: var(--font-mono);
+		font-size: 0.55rem;
+		color: oklch(0.78 0.12 75 / 30%);
+	}
+	.usage-window-track {
+		height: 4px;
+		border-radius: 2px;
+		background: oklch(1 0 0 / 5%);
+		overflow: hidden;
+	}
+	.usage-window-fill {
+		height: 100%;
+		border-radius: 2px;
+		transition: width 0.5s ease;
+	}
+
 	.settings-page {
 		padding: 2rem 1.5rem;
 		padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
