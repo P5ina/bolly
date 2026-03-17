@@ -3,19 +3,22 @@ set -e
 
 PERSIST_DIR="${BOLLY_HOME:-/data}"
 BIN_DIR="$PERSIST_DIR/bin"
-PERSISTENT_BINARY="$BIN_DIR/bolly"
-BUNDLED_BINARY="/opt/bolly/bin/bolly"
+BINARY="$BIN_DIR/bolly"
 
-mkdir -p "$PERSIST_DIR"
+mkdir -p "$PERSIST_DIR" "$BIN_DIR"
 
-# --- Self-update: download latest binary in background ---
-if [ -f /opt/bolly/scripts/update-bolly.sh ]; then
-    /opt/bolly/scripts/update-bolly.sh &
+# --- Download binary if not present ---
+if [ ! -x "$BINARY" ]; then
+    echo "[entrypoint] downloading bolly binary..."
+    /opt/bolly/scripts/update-bolly.sh
 fi
 
-# --- Ensure Playwright Chromium is on persistent volume ---
+# --- Background update check (non-blocking) ---
+/opt/bolly/scripts/update-bolly.sh &
+
+# --- Ensure Playwright on persistent volume ---
 if [ ! -d "$PERSIST_DIR/.playwright" ]; then
-    echo "[entrypoint] installing Playwright Chromium to persistent storage..."
+    echo "[entrypoint] installing Playwright Chromium..."
     PLAYWRIGHT_BROWSERS_PATH="$PERSIST_DIR/.playwright" npx playwright@1.52.0 install --with-deps chromium 2>/dev/null || true
 fi
 export PLAYWRIGHT_BROWSERS_PATH="$PERSIST_DIR/.playwright"
@@ -38,7 +41,7 @@ if [ -f "$PERSIST_DIR/.npm-packages" ] && [ -s "$PERSIST_DIR/.npm-packages" ]; t
     xargs -a "$PERSIST_DIR/.npm-packages" npm install -g --silent 2>/dev/null || true
 fi
 
-# --- Install persist-apt / persist-pip wrappers ---
+# --- persist-apt / persist-pip wrappers ---
 cat > /usr/local/bin/persist-apt <<'WRAPPER'
 #!/bin/sh
 /usr/bin/apt-get "$@"
@@ -67,11 +70,6 @@ exit $STATUS
 WRAPPER
 chmod +x /usr/local/bin/persist-pip
 
-# --- Choose binary: persistent (self-updated) or bundled ---
-if [ -x "$PERSISTENT_BINARY" ]; then
-    echo "[entrypoint] using self-updated binary: $(cat "$BIN_DIR/.version" 2>/dev/null || echo 'unknown')"
-    exec "$PERSISTENT_BINARY"
-else
-    echo "[entrypoint] using bundled binary"
-    exec "$BUNDLED_BINARY"
-fi
+# --- Start ---
+echo "[entrypoint] starting bolly $(cat "$BIN_DIR/.version" 2>/dev/null || echo '')"
+exec "$BINARY"

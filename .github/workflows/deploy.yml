@@ -30,72 +30,59 @@ env:
   DOCKERHUB_IMAGE: p5ina/bolly
 
 jobs:
-  build:
+  # Build binary with embedded client
+  build-binary:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: docker/setup-buildx-action@v3
-
-      # Always auth with Fly registry
-      - name: Auth with Fly registry
-        uses: docker/login-action@v3
+      # Build client
+      - uses: actions/setup-node@v4
         with:
-          registry: registry.fly.io
-          username: x
-          password: ${{ secrets.FLY_API_TOKEN }}
-
-      # Auth with Docker Hub on tags only
-      - name: Auth with Docker Hub
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: docker/login-action@v3
+          node-version: 20
+      - uses: pnpm/action-setup@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          version: 9
+      - name: Build client
+        run: cd client && pnpm install --frozen-lockfile && pnpm build
 
-      # Docker Hub tags (only on release)
-      - name: Docker Hub meta
-        if: startsWith(github.ref, 'refs/tags/v')
-        id: meta
-        uses: docker/metadata-action@v5
+      # Build server (with embedded client)
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build server
+        run: GIT_HASH=${{ github.sha }} cargo build --release -p server
+
+      - name: Prepare binary
+        run: |
+          cp target/release/server bolly-x86_64-unknown-linux-gnu
+          chmod +x bolly-x86_64-unknown-linux-gnu
+
+      - uses: actions/upload-artifact@v4
         with:
-          images: docker.io/${{ env.DOCKERHUB_IMAGE }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest
+          name: binary
+          path: bolly-x86_64-unknown-linux-gnu
 
-      # Build and push — always Fly, + Docker Hub on tags
-      - name: Build and push
-        uses: docker/build-push-action@v6
+  # Publish binary to GitHub releases
+  publish:
+    needs: build-binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
         with:
-          context: .
-          push: true
-          build-args: |
-            GIT_HASH=${{ github.sha }}
-          tags: |
-            ${{ startsWith(github.ref, 'refs/tags/v') && env.FLY_IMAGE || '' }}
-            ${{ !startsWith(github.ref, 'refs/tags/v') && env.FLY_NIGHTLY || '' }}
-            ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: ${{ startsWith(github.ref, 'refs/tags/v') && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          fetch-depth: 0
 
-      # Extract nightly binary and publish to GitHub nightly release
-      - name: Publish nightly binary
+      - uses: actions/download-artifact@v4
+        with:
+          name: binary
+
+      - name: Publish nightly release
         if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          docker create --name extract-nightly "${{ env.FLY_NIGHTLY }}"
-          docker cp extract-nightly:/usr/local/bin/bolly ./bolly-x86_64-unknown-linux-gnu
-          docker rm extract-nightly
-          chmod +x ./bolly-x86_64-unknown-linux-gnu
-          # Delete existing nightly release if it exists, then recreate
+          chmod +x bolly-x86_64-unknown-linux-gnu
           gh release delete nightly --yes 2>/dev/null || true
           git tag -f nightly
           git push origin nightly --force
@@ -105,21 +92,6 @@ jobs:
             --prerelease \
             bolly-x86_64-unknown-linux-gnu
 
-      # Update nightly machines on every push to main
-      - name: Update nightly machines
-        if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: ./scripts/update-machines.sh "$FLY_NIGHTLY"
-
-      # Update stable machines on release or manual
-      - name: Update stable machines
-        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.update_machines)
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: ./scripts/update-machines.sh "$FLY_IMAGE"
-
-      # GitHub Release — only on tags
       - name: Generate changelog
         if: startsWith(github.ref, 'refs/tags/v')
         id: changelog
@@ -136,35 +108,78 @@ jobs:
             echo ""
             echo "$log" | sed 's/^/- /'
             echo ""
-            echo "## Docker"
+            echo "## Install"
             echo ""
             echo '```bash'
-            echo "docker pull docker.io/${{ env.DOCKERHUB_IMAGE }}:${{ github.ref_name }}"
-            echo '```'
-            echo ""
-            echo '```bash'
-            echo "docker run -d \\"
-            echo "  -p 8080:8080 \\"
-            echo "  -v bolly-data:/data \\"
-            echo "  docker.io/${{ env.DOCKERHUB_IMAGE }}:${{ github.ref_name }}"
+            echo "curl -fsSL https://raw.githubusercontent.com/triangle-int/bolly/main/scripts/install.sh | sudo bash"
             echo '```'
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      # Extract binary from built image for release assets
-      - name: Extract binary from image
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          docker create --name extract "${{ env.FLY_IMAGE }}"
-          docker cp extract:/usr/local/bin/bolly ./bolly-x86_64-unknown-linux-gnu
-          docker rm extract
-          chmod +x ./bolly-x86_64-unknown-linux-gnu
-
-      - name: Create GitHub release
+      - name: Create stable release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           body: ${{ steps.changelog.outputs.body }}
           generate_release_notes: false
-          files: |
-            bolly-x86_64-unknown-linux-gnu
+          files: bolly-x86_64-unknown-linux-gnu
+
+  # Build and push runtime-only Docker image (no binary — downloaded on startup)
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Auth with Fly registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.fly.io
+          username: x
+          password: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Auth with Docker Hub
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker Hub meta
+        if: startsWith(github.ref, 'refs/tags/v')
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: docker.io/${{ env.DOCKERHUB_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ startsWith(github.ref, 'refs/tags/v') && env.FLY_IMAGE || '' }}
+            ${{ !startsWith(github.ref, 'refs/tags/v') && env.FLY_NIGHTLY || '' }}
+            ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Restart machines to pick up new binary
+  deploy:
+    needs: [build-binary, publish]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.update_machines)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restart machines
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          IMAGE="${{ startsWith(github.ref, 'refs/tags/v') && env.FLY_IMAGE || env.FLY_NIGHTLY }}"
+          ./scripts/update-machines.sh "$IMAGE"
