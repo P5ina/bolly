@@ -645,15 +645,19 @@
 			<ChatInput onSend={handleSend} onStop={handleStop} disabled={sending || agentRunning} {agentRunning} {uploadProgress} />
 		</div>
 
-		<aside class="chat-creature">
-			<HeartbeatUpdateBanner {slug} />
-			{#if needsGoogleReconnect}
-				<CreatureBubble ondismiss={() => needsGoogleReconnect = false}>
-					Google Drive access updated — please reconnect your account in
-					<a href="/{slug}/settings">settings</a>.
-				</CreatureBubble>
-			{/if}
-			<AsciiRenderer thinking={sending || agentRunning} {mood} />
+		<aside class="chat-sidebar">
+			<div class="sidebar-banners">
+				<HeartbeatUpdateBanner {slug} />
+				{#if needsGoogleReconnect}
+					<CreatureBubble ondismiss={() => needsGoogleReconnect = false}>
+						Google Drive access updated — please reconnect your account in
+						<a href="/{slug}/settings">settings</a>.
+					</CreatureBubble>
+				{/if}
+			</div>
+			<div class="chat-creature">
+				<AsciiRenderer thinking={sending || agentRunning} {mood} />
+			</div>
 		</aside>
 	</div>
 </div>
@@ -880,6 +884,24 @@
 		border-right: 1px solid oklch(0.78 0.12 75 / 5%);
 	}
 
+	.chat-sidebar {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: flex-end;
+		padding: 1rem;
+		gap: 0.75rem;
+		overflow: hidden;
+	}
+
+	.sidebar-banners {
+		width: 100%;
+		max-width: 240px;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
 	.chat-creature {
 		display: flex;
 		align-items: center;
@@ -1011,7 +1033,7 @@
 		.chat-columns {
 			grid-template-columns: 1fr;
 		}
-		.chat-creature {
+		.chat-sidebar {
 			display: none;
 		}
 		.chat-main {
