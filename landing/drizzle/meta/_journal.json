@@ -71,6 +71,13 @@
       "when": 1773607339237,
       "tag": "0009_youthful_cerebro",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1773725769177,
+      "tag": "0010_powerful_sandman",
+      "breakpoints": true
     }
   ]
 }
