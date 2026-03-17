@@ -3,6 +3,8 @@
 	import {
 		checkUpdate,
 		applyUpdate,
+		getUpdateChannel,
+		setUpdateChannel,
 		type UpdateCheck,
 		fetchGoogleAccounts,
 		getGoogleConnectUrl,
@@ -111,7 +113,11 @@
 	// Update state
 	let updateInfo = $state<UpdateCheck | null>(null);
 	let updating = $state(false);
-	$effect(() => { checkUpdate().then(u => updateInfo = u).catch(() => {}); });
+	let channel = $state("stable");
+	$effect(() => {
+		checkUpdate().then(u => updateInfo = u).catch(() => {});
+		getUpdateChannel().then(r => channel = r.channel).catch(() => {});
+	});
 
 	// Usage state
 	let usage = $state<Usage | null>(null);
@@ -361,24 +367,42 @@
 <div class="settings-page">
 	<h2 class="settings-title">settings</h2>
 
-	{#if updateInfo?.update_available}
-		<div class="update-banner">
-			<div class="update-info">
-				<span class="update-label">update available</span>
-				<span class="update-version">{updateInfo.current} → {updateInfo.latest}</span>
-			</div>
-			<button
-				class="update-btn"
-				disabled={updating}
-				onclick={async () => {
-					updating = true;
-					try { await applyUpdate(); } catch { updating = false; }
+	<div class="update-section">
+		<div class="update-row">
+			<span class="update-current">v{updateInfo?.current?.replace('v','') ?? '...'}</span>
+			<select
+				class="channel-select"
+				value={channel}
+				onchange={async (e) => {
+					const val = (e.target as HTMLSelectElement).value;
+					channel = val;
+					await setUpdateChannel(val);
+					updateInfo = await checkUpdate();
 				}}
 			>
-				{updating ? "updating..." : "update now"}
-			</button>
+				<option value="stable">stable</option>
+				<option value="nightly">nightly</option>
+			</select>
 		</div>
-	{/if}
+		{#if updateInfo?.update_available}
+			<div class="update-banner">
+				<div class="update-info">
+					<span class="update-label">update available</span>
+					<span class="update-version">{updateInfo.current} → {updateInfo.latest}</span>
+				</div>
+				<button
+					class="update-btn"
+					disabled={updating}
+					onclick={async () => {
+						updating = true;
+						try { await applyUpdate(); } catch { updating = false; }
+					}}
+				>
+					{updating ? "updating..." : "update now"}
+				</button>
+			</div>
+		{/if}
+	</div>
 
 	<!-- Usage -->
 	{#if usage && (usage.tokens_4h_limit > 0 || usage.tokens_week_limit > 0 || usage.tokens_month_limit > 0)}
@@ -883,6 +907,30 @@
 		margin-bottom: 2rem;
 	}
 
+	.update-section {
+		margin-bottom: 1.5rem;
+	}
+	.update-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+	}
+	.update-current {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: oklch(0.78 0.12 75 / 30%);
+	}
+	.channel-select {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		padding: 0.2rem 0.4rem;
+		border-radius: 0.25rem;
+		background: oklch(1 0 0 / 4%);
+		border: 1px solid oklch(1 0 0 / 8%);
+		color: oklch(0.88 0.02 75 / 60%);
+		cursor: pointer;
+	}
 	.update-banner {
 		display: flex;
 		align-items: center;

@@ -10,7 +10,11 @@ BIN_DIR="$PERSIST_DIR/bin"
 BINARY="$BIN_DIR/bolly"
 VERSION_FILE="$BIN_DIR/.version"
 REPO="triangle-int/bolly"
-CHANNEL="${BOLLY_CHANNEL:-stable}"
+# Read channel from persistent file, default to stable
+if [ -f "$PERSIST_DIR/.update-channel" ]; then
+    CHANNEL=$(cat "$PERSIST_DIR/.update-channel" | tr -d '[:space:]')
+fi
+CHANNEL="${CHANNEL:-stable}"
 
 # Determine target architecture
 ARCH=$(uname -m)

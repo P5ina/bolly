@@ -524,6 +524,18 @@ export async function applyUpdate(): Promise<{ ok: boolean; message?: string }> 
 	return json("/api/update/apply", { method: "POST" });
 }
 
+export function getUpdateChannel(): Promise<{ channel: string }> {
+	return json("/api/update/channel");
+}
+
+export function setUpdateChannel(channel: string): Promise<{ ok: boolean; channel: string }> {
+	return json("/api/update/channel", {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ channel }),
+	});
+}
+
 // ---------------------------------------------------------------------------
 // WebSocket
 // ---------------------------------------------------------------------------

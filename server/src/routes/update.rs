@@ -5,6 +5,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/update/check", get(check_update))
         .route("/api/update/apply", post(apply_update))
+        .route("/api/update/channel", get(get_channel).put(set_channel))
 }
 
 #[derive(serde::Serialize)]
@@ -14,11 +15,12 @@ struct UpdateCheck {
     update_available: bool,
 }
 
-async fn check_update(State(_state): State<AppState>) -> Json<UpdateCheck> {
+async fn check_update(State(state): State<AppState>) -> Json<UpdateCheck> {
     let current = env!("CARGO_PKG_VERSION").to_string();
     let current_tag = format!("v{current}");
+    let channel = get_channel_value(&state.workspace_dir);
 
-    let latest = match fetch_latest_tag().await {
+    let latest = match fetch_latest_tag(&channel).await {
         Some(tag) => tag,
         None => {
             return Json(UpdateCheck {
@@ -90,8 +92,39 @@ async fn apply_update(State(_state): State<AppState>) -> Json<serde_json::Value>
     Json(serde_json::json!({ "ok": true, "message": "updating... server will restart" }))
 }
 
-async fn fetch_latest_tag() -> Option<String> {
-    let channel = std::env::var("BOLLY_CHANNEL").unwrap_or_else(|_| "stable".to_string());
+fn get_channel_value(workspace_dir: &std::path::Path) -> String {
+    let path = workspace_dir.join(".update-channel");
+    if let Ok(ch) = std::fs::read_to_string(&path) {
+        let ch = ch.trim().to_string();
+        if !ch.is_empty() { return ch; }
+    }
+    "stable".to_string()
+}
+
+async fn get_channel(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let channel = get_channel_value(&state.workspace_dir);
+    Json(serde_json::json!({ "channel": channel }))
+}
+
+#[derive(serde::Deserialize)]
+struct SetChannelRequest {
+    channel: String,
+}
+
+async fn set_channel(
+    State(state): State<AppState>,
+    Json(req): Json<SetChannelRequest>,
+) -> Json<serde_json::Value> {
+    let channel = req.channel.trim().to_lowercase();
+    if channel != "stable" && channel != "nightly" {
+        return Json(serde_json::json!({ "ok": false, "error": "channel must be 'stable' or 'nightly'" }));
+    }
+    let path = state.workspace_dir.join(".update-channel");
+    let _ = std::fs::write(&path, &channel);
+    Json(serde_json::json!({ "ok": true, "channel": channel }))
+}
+
+async fn fetch_latest_tag(channel: &str) -> Option<String> {
     let repo = "triangle-int/bolly";
 
     let url = if channel == "nightly" {
