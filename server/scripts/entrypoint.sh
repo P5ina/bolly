@@ -36,6 +36,13 @@ if [ -f "$NPM_LIST" ] && [ -s "$NPM_LIST" ]; then
     xargs -a "$NPM_LIST" npm install -g --silent 2>/dev/null || true
 fi
 
+# --- Ensure Playwright Chromium is installed ---
+if ! command -v chromium >/dev/null 2>&1 && [ ! -d "$PERSIST_DIR/.playwright" ]; then
+    echo "[entrypoint] installing Playwright Chromium..."
+    PLAYWRIGHT_BROWSERS_PATH="$PERSIST_DIR/.playwright" npx playwright@1.52.0 install --with-deps chromium 2>/dev/null || true
+fi
+export PLAYWRIGHT_BROWSERS_PATH="$PERSIST_DIR/.playwright"
+
 # --- Setup config ---
 mkdir -p "$PERSIST_DIR"
 
