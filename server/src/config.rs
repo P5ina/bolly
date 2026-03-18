@@ -215,6 +215,9 @@ pub struct LlmConfig {
     pub provider: Option<LlmProvider>,
     #[serde(default)]
     pub model: Option<String>,
+    /// Fast/cheap model override. Falls back to provider default (e.g. Haiku) if empty.
+    #[serde(default)]
+    pub fast_model: Option<String>,
     #[serde(default)]
     pub tokens: LlmTokens,
     #[serde(default)]
@@ -274,6 +277,14 @@ impl LlmConfig {
         self.provider.as_ref().map_or("claude-sonnet-4-6", |p| p.default_model())
     }
 
+    /// The fast/cheap model name, falling back to the provider's default fast model.
+    pub fn fast_model_name(&self) -> &str {
+        if let Some(ref m) = self.fast_model {
+            if !m.is_empty() { return m; }
+        }
+        self.provider.as_ref().map_or("claude-haiku-4-5-20251001", |p| p.fast_model())
+    }
+
     /// The API key for the active provider, or None if not configured.
     pub fn api_key(&self) -> Option<&str> {
         let key = match self.provider? {
@@ -313,6 +324,7 @@ impl Default for LlmConfig {
         Self {
             provider: None,
             model: None,
+            fast_model: None,
             tokens: LlmTokens::default(),
             model_mode: ModelMode::default(),
             heavy_multiplier: default_heavy_multiplier(),
@@ -440,6 +452,11 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     if let Ok(model) = env::var("BOLLY_LLM_MODEL") {
         if !model.is_empty() {
             config.llm.model = Some(model);
+        }
+    }
+    if let Ok(fast) = env::var("BOLLY_LLM_FAST_MODEL") {
+        if !fast.is_empty() {
+            config.llm.fast_model = Some(fast);
         }
     }
     if let Ok(mode) = env::var("BOLLY_MODEL_MODE") {

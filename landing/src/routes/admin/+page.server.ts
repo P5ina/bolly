@@ -55,6 +55,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 						state: machine.state,
 						provider: machine.config?.env?.BOLLY_LLM_PROVIDER ?? null,
 						model: machine.config?.env?.BOLLY_LLM_MODEL ?? null,
+						fastModel: machine.config?.env?.BOLLY_LLM_FAST_MODEL ?? null,
 					}] as const;
 				} catch {
 					return [t.id, null] as const;
@@ -88,6 +89,7 @@ export const actions: Actions = {
 		const tenantId = form.get('tenantId') as string;
 		const provider = form.get('provider') as string;
 		const model = form.get('model') as string;
+		const fastModel = (form.get('fastModel') as string) ?? '';
 
 		if (!tenantId || !provider || !model) return fail(400, { error: 'Missing fields' });
 
@@ -105,6 +107,7 @@ export const actions: Actions = {
 			await fly.updateMachineEnv(tenant.flyAppId, tenant.flyMachineId, {
 				BOLLY_LLM_PROVIDER: provider,
 				BOLLY_LLM_MODEL: model,
+				...(fastModel ? { BOLLY_LLM_FAST_MODEL: fastModel } : {}),
 			});
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'Unknown error';
@@ -470,6 +473,7 @@ export const actions: Actions = {
 				GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID ?? '',
 				GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET ?? '',
 				LANDING_URL: env.ORIGIN ?? '',
+				BOLLY_RELEASE_TOKEN: env.BOLLY_RELEASE_TOKEN ?? '',
 			};
 
 			// BYOK: set only the user's own key for their chosen provider

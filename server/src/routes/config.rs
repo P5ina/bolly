@@ -31,6 +31,7 @@ async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
         "llm_configured": config.llm.is_configured(),
         "provider": config.llm.provider.map(|p| format!("{p:?}").to_lowercase()),
         "model": config.llm.model_name(),
+        "fast_model": config.llm.fast_model_name(),
         "model_mode": mode,
     }))
 }

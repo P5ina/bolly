@@ -21,12 +21,18 @@ async fn check_update(State(state): State<AppState>) -> Json<UpdateCheck> {
     let current_commit = option_env!("GIT_HASH").unwrap_or("dev");
     let channel = get_channel_value(&state.workspace_dir);
 
+    let display_current_fallback = if channel == "nightly" && current_commit != "dev" {
+        format!("{current_tag} ({current_commit})")
+    } else {
+        current_tag.clone()
+    };
+
     let release = match fetch_release_info(&channel).await {
         Some(r) => r,
         None => {
             return Json(UpdateCheck {
-                current: current_tag.clone(),
-                latest: current_tag,
+                current: display_current_fallback,
+                latest: "unknown".to_string(),
                 update_available: false,
             });
         }

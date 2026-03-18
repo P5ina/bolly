@@ -138,10 +138,10 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         iteration += 1;
 
         let config_path = config::config_path();
-        let (brave_key, plan, auth_token, model_mode, heavy_multiplier) = {
+        let (brave_key, plan, auth_token, model_mode, heavy_multiplier, fast_model_name) = {
             let cfg = state.config.read().await;
             (cfg.llm.tokens.brave_search.clone(), cfg.plan.clone(), cfg.auth_token.clone(),
-             cfg.llm.model_mode, cfg.llm.heavy_multiplier)
+             cfg.llm.model_mode, cfg.llm.heavy_multiplier, cfg.llm.fast_model_name().to_string())
         };
 
         let llm_guard = state.llm.read().await;
@@ -162,7 +162,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             use config::ModelMode;
             match model_mode {
                 ModelMode::Heavy => (llm_ref.clone(), true),
-                ModelMode::Fast => (llm_ref.fast_variant(), false),
+                ModelMode::Fast => (llm_ref.fast_variant_with(Some(&fast_model_name)), false),
                 ModelMode::Auto => {
                     // Get last user message for classification
                     let last_msg = chat::last_user_content(
@@ -170,7 +170,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                     );
                     if let Some(msg) = last_msg {
                         let heavy = llm_ref.classify_needs_heavy(&msg).await;
-                        if heavy { (llm_ref.clone(), true) } else { (llm_ref.fast_variant(), false) }
+                        if heavy { (llm_ref.clone(), true) } else { (llm_ref.fast_variant_with(Some(&fast_model_name)), false) }
                     } else {
                         (llm_ref.clone(), true)
                     }

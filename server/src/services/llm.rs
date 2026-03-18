@@ -433,12 +433,15 @@ impl LlmBackend {
         }
     }
 
-    pub fn fast_variant(&self) -> Self {
+    /// Create a variant using the fast/cheap model.
+    /// If `override_model` is provided and non-empty, use that; otherwise fall back to provider default.
+    pub fn fast_variant_with(&self, override_model: Option<&str>) -> Self {
         match self {
             LlmBackend::Anthropic { http, api_key, .. } => LlmBackend::Anthropic {
                 http: http.clone(),
                 api_key: api_key.clone(),
-                model: LlmProvider::Anthropic.fast_model().to_string(),
+                model: override_model.filter(|s| !s.is_empty())
+                    .unwrap_or(LlmProvider::Anthropic.fast_model()).to_string(),
             },
             LlmBackend::OpenAI { http, api_key, base_url, .. } => {
                 let provider = if base_url.contains("openrouter") {
@@ -449,11 +452,17 @@ impl LlmBackend {
                 LlmBackend::OpenAI {
                     http: http.clone(),
                     api_key: api_key.clone(),
-                    model: provider.fast_model().to_string(),
+                    model: override_model.filter(|s| !s.is_empty())
+                        .unwrap_or(provider.fast_model()).to_string(),
                     base_url: base_url.clone(),
                 }
             }
         }
+    }
+
+    /// Create a variant using the fast/cheap model with provider defaults.
+    pub fn fast_variant(&self) -> Self {
+        self.fast_variant_with(None)
     }
 
     pub fn pdf_strategy(&self, public_url: Option<&str>, auth_token: &str) -> PdfStrategy {

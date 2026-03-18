@@ -58,7 +58,12 @@
 
 	function currentProvider(tenant: (typeof data.tenants)[number]) {
 		if (tenant.machine?.provider) return tenant.machine.provider;
-		return 'openrouter';
+		return 'anthropic';
+	}
+
+	function currentFastModel(tenant: (typeof data.tenants)[number]) {
+		if (tenant.machine?.fastModel) return tenant.machine.fastModel;
+		return '';
 	}
 
 	function formatTokens(n: number) {
@@ -544,6 +549,10 @@
 										<span class="text-xs font-mono text-text-dim">{currentProvider(tenant)}</span>
 										<span class="text-xs text-text-ghost">/</span>
 										<span class="text-xs font-mono text-text-dim">{currentModel(tenant)}</span>
+										{#if currentFastModel(tenant)}
+											<span class="text-xs text-text-ghost">fast:</span>
+											<span class="text-xs font-mono text-text-dim">{currentFastModel(tenant)}</span>
+										{/if}
 									</div>
 									<form
 										method="POST"
@@ -593,6 +602,14 @@
 												<option value={m.id} selected={currentModel(tenant) === m.id}>{m.label}</option>
 											{/each}
 										</select>
+										<input
+											name="fastModel"
+											type="text"
+											placeholder="fast model (optional)"
+											value={currentFastModel(tenant)}
+											class="py-2 px-3 rounded-lg text-xs text-text outline-none font-mono"
+											style="background: var(--color-bg-raised); border: 1px solid var(--color-border); min-width: 10rem;"
+										/>
 										<button
 											type="submit"
 											disabled={updating === tenant.id}

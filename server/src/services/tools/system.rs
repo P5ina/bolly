@@ -865,6 +865,7 @@ impl Tool for GetSettingsTool {
                     crate::config::ModelMode::Heavy => "heavy",
                 };
                 lines.push(format!("llm: {provider} / {} (mode: {mode})", config.llm.model_name()));
+                lines.push(format!("fast model: {}", config.llm.fast_model_name()));
 
                 let keys = config.llm.configured_providers();
                 if keys.is_empty() {
@@ -957,6 +958,8 @@ pub struct UpdateConfigArgs {
     pub provider: Option<String>,
     /// Model name to use (e.g. "gpt-4o", "gpt-5.4", "claude-sonnet-4-20250514"). Leave null to keep current.
     pub model: Option<String>,
+    /// Fast/cheap model name (e.g. "claude-haiku-4-5-20251001", "gpt-5-mini-2025-08-07"). Used for auto mode and background tasks. Leave null to keep current. Pass empty string to reset to provider default.
+    pub fast_model: Option<String>,
     /// OpenAI API key. Leave null to keep current.
     pub openai_key: Option<String>,
     /// Anthropic API key. Leave null to keep current.
@@ -1054,6 +1057,17 @@ impl Tool for UpdateConfigTool {
             }
             config.llm.model = Some(m.clone());
             changes.push(format!("model → {m}"));
+        }
+
+        if let Some(fm) = &args.fast_model {
+            let m = fm.trim().to_string();
+            if m.is_empty() {
+                config.llm.fast_model = None; // reset to provider default
+                changes.push("fast_model → provider default".into());
+            } else {
+                config.llm.fast_model = Some(m.clone());
+                changes.push(format!("fast_model → {m}"));
+            }
         }
 
         if let Some(mode) = &args.model_mode {
@@ -1203,8 +1217,8 @@ impl Tool for UpdateConfigTool {
         }
 
         // Save global config if anything changed there
-        if args.provider.is_some() || args.model.is_some() || args.model_mode.is_some()
-            || args.openai_key.is_some()
+        if args.provider.is_some() || args.model.is_some() || args.fast_model.is_some()
+            || args.model_mode.is_some() || args.openai_key.is_some()
             || args.anthropic_key.is_some() || args.brave_search_key.is_some()
             || args.add_mcp_server.is_some() || args.remove_mcp_server.is_some()
         {
