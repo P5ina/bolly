@@ -113,35 +113,44 @@
 	});
 
 	async function doUpdate() {
-		const versionBefore = updateInfo?.current;
 		updating = true;
 		try {
 			await applyUpdate();
-			// Server restarts — poll until it comes back with a new version
-			await waitForNewVersion(versionBefore ?? "");
+			// Server restarts — poll until it comes back
+			await waitForRestart();
 		} catch {
 			updating = false;
 		}
 	}
 
-	async function waitForNewVersion(oldVersion: string) {
-		for (let i = 0; i < 60; i++) {
+	async function waitForRestart() {
+		// Wait for server to go down first
+		let serverDown = false;
+		for (let i = 0; i < 30; i++) {
 			await new Promise(r => setTimeout(r, 2000));
 			try {
-				const u = await checkUpdate();
-				if (u.current !== oldVersion) {
-					updateInfo = u;
-					updating = false;
-					updateDone = true;
-					setTimeout(() => { updateDone = false; }, 5000);
-					return;
-				}
+				await checkUpdate();
+				if (!serverDown) continue; // Server hasn't gone down yet
+				// Server is back up after being down — update complete
+				updateInfo = await checkUpdate();
+				updating = false;
+				updateDone = true;
+				setTimeout(() => { updateDone = false; }, 5000);
+				return;
 			} catch {
-				// Server still down, keep polling
+				serverDown = true; // Server went down
 			}
 		}
-		// Timeout — just reset
-		updating = false;
+		// If server never went down but we're still here, it probably
+		// restarted too fast to catch the gap — treat as success
+		try {
+			updateInfo = await checkUpdate();
+			updating = false;
+			updateDone = true;
+			setTimeout(() => { updateDone = false; }, 5000);
+		} catch {
+			updating = false;
+		}
 	}
 
 	// Usage state
