@@ -658,6 +658,7 @@
 		color: oklch(0.78 0.12 75 / 15%);
 		cursor: pointer;
 		user-select: all;
+		z-index: 100;
 		animation: hero-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 		animation-delay: 1.2s;
 	}
