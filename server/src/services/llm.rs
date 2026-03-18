@@ -261,7 +261,12 @@ fn tool_use_summary(name: &str, input: &serde_json::Value) -> String {
             if let Some(val) = obj.get(*key) {
                 let owned = val.to_string();
                 let s = val.as_str().unwrap_or(&owned);
-                let truncated = if s.len() > 80 { format!("{}…", &s[..80]) } else { s.to_string() };
+                let truncated = if s.len() > 80 {
+                    let end = s.floor_char_boundary(80);
+                    format!("{}…", &s[..end])
+                } else {
+                    s.to_string()
+                };
                 return format!("{name}: {truncated}");
             }
         }
@@ -270,7 +275,12 @@ fn tool_use_summary(name: &str, input: &serde_json::Value) -> String {
 }
 
 fn truncate_tool_output(s: &str, max: usize) -> String {
-    if s.len() <= max { s.to_string() } else { format!("{}…", &s[..max]) }
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        let end = s.floor_char_boundary(max);
+        format!("{}…", &s[..end])
+    }
 }
 
 /// Merge timestamps from old entries into a new message list from the LLM.
