@@ -137,6 +137,8 @@ export interface CreateMachineOpts {
 	region?: string;
 	cpus?: number;
 	memoryMb?: number;
+	/** If true, do NOT push platform API keys — user provides their own. */
+	byok?: boolean;
 }
 
 export async function createMachine(opts: CreateMachineOpts): Promise<{
@@ -158,14 +160,16 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 					BOLLY_AUTH_TOKEN: opts.authToken,
 					BOLLY_INSTANCE_ID: opts.instanceId,
 					BOLLY_PUBLIC_URL: opts.publicUrl,
-					// DATABASE_URL intentionally not passed — instances use landing API instead
-					OPENROUTER_API_KEY: env.OPENROUTER_API_KEY ?? '',
-					ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
-					OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
-					BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY ?? '',
+					LANDING_URL: env.ORIGIN ?? '',
 					GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID ?? '',
 					GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET ?? '',
-					LANDING_URL: env.ORIGIN ?? '',
+					// Platform API keys — only for non-BYOK machines
+					...(opts.byok ? {} : {
+						OPENROUTER_API_KEY: env.OPENROUTER_API_KEY ?? '',
+						ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
+						OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
+						BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY ?? '',
+					}),
 				},
 				guest: {
 					cpus: opts.cpus ?? 1,

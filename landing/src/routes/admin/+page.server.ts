@@ -181,18 +181,22 @@ export const actions: Actions = {
 				flyMachineId: tenants.flyMachineId,
 				imageChannel: tenants.imageChannel,
 				status: tenants.status,
+				byokProvider: tenants.byokProvider,
 			})
 			.from(tenants)
 			.where(eq(tenants.status, 'running'));
 
-		// Collect current API keys from landing env to push to all machines
-		const envPatch: Record<string, string> = {};
-		if (env.ANTHROPIC_API_KEY) envPatch.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
-		if (env.OPENAI_API_KEY) envPatch.OPENAI_API_KEY = env.OPENAI_API_KEY;
-		if (env.OPENROUTER_API_KEY) envPatch.OPENROUTER_API_KEY = env.OPENROUTER_API_KEY;
-		if (env.BRAVE_SEARCH_API_KEY) envPatch.BRAVE_SEARCH_API_KEY = env.BRAVE_SEARCH_API_KEY;
-		if (env.GOOGLE_CLIENT_ID) envPatch.GOOGLE_CLIENT_ID = env.GOOGLE_CLIENT_ID;
-		if (env.GOOGLE_CLIENT_SECRET) envPatch.GOOGLE_CLIENT_SECRET = env.GOOGLE_CLIENT_SECRET;
+		// Platform API keys — only for non-BYOK machines
+		const platformEnv: Record<string, string> = {};
+		if (env.ANTHROPIC_API_KEY) platformEnv.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
+		if (env.OPENAI_API_KEY) platformEnv.OPENAI_API_KEY = env.OPENAI_API_KEY;
+		if (env.OPENROUTER_API_KEY) platformEnv.OPENROUTER_API_KEY = env.OPENROUTER_API_KEY;
+		if (env.BRAVE_SEARCH_API_KEY) platformEnv.BRAVE_SEARCH_API_KEY = env.BRAVE_SEARCH_API_KEY;
+
+		// Non-secret env vars — safe for all machines
+		const sharedEnv: Record<string, string> = {};
+		if (env.GOOGLE_CLIENT_ID) sharedEnv.GOOGLE_CLIENT_ID = env.GOOGLE_CLIENT_ID;
+		if (env.GOOGLE_CLIENT_SECRET) sharedEnv.GOOGLE_CLIENT_SECRET = env.GOOGLE_CLIENT_SECRET;
 
 		let updated = 0;
 		const errors: string[] = [];
@@ -200,7 +204,10 @@ export const actions: Actions = {
 		for (const t of allTenants) {
 			if (!t.flyAppId || !t.flyMachineId) continue;
 			try {
-				// Sync env vars first (adds missing keys to old machines)
+				// BYOK machines get only shared env vars, not platform API keys
+				const envPatch = t.byokProvider
+					? { ...sharedEnv }
+					: { ...platformEnv, ...sharedEnv };
 				if (Object.keys(envPatch).length > 0) {
 					await fly.updateMachineEnv(t.flyAppId, t.flyMachineId, envPatch);
 				}
@@ -502,6 +509,7 @@ export const actions: Actions = {
 				flyMachineId: tenants.flyMachineId,
 				imageChannel: tenants.imageChannel,
 				status: tenants.status,
+				byokProvider: tenants.byokProvider,
 			})
 			.from(tenants)
 			.where(eq(tenants.id, tenantId));
@@ -510,12 +518,14 @@ export const actions: Actions = {
 		if (!tenant.flyAppId || !tenant.flyMachineId) return fail(400, { error: 'No Fly machine' });
 
 		try {
-			// Sync env vars
+			// Sync env vars — skip platform API keys for BYOK machines
 			const envPatch: Record<string, string> = {};
-			if (env.ANTHROPIC_API_KEY) envPatch.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
-			if (env.OPENAI_API_KEY) envPatch.OPENAI_API_KEY = env.OPENAI_API_KEY;
-			if (env.OPENROUTER_API_KEY) envPatch.OPENROUTER_API_KEY = env.OPENROUTER_API_KEY;
-			if (env.BRAVE_SEARCH_API_KEY) envPatch.BRAVE_SEARCH_API_KEY = env.BRAVE_SEARCH_API_KEY;
+			if (!tenant.byokProvider) {
+				if (env.ANTHROPIC_API_KEY) envPatch.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
+				if (env.OPENAI_API_KEY) envPatch.OPENAI_API_KEY = env.OPENAI_API_KEY;
+				if (env.OPENROUTER_API_KEY) envPatch.OPENROUTER_API_KEY = env.OPENROUTER_API_KEY;
+				if (env.BRAVE_SEARCH_API_KEY) envPatch.BRAVE_SEARCH_API_KEY = env.BRAVE_SEARCH_API_KEY;
+			}
 			if (env.GOOGLE_CLIENT_ID) envPatch.GOOGLE_CLIENT_ID = env.GOOGLE_CLIENT_ID;
 			if (env.GOOGLE_CLIENT_SECRET) envPatch.GOOGLE_CLIENT_SECRET = env.GOOGLE_CLIENT_SECRET;
 

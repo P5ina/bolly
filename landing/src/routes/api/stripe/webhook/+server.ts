@@ -24,7 +24,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	switch (event.type) {
 		case 'checkout.session.completed': {
 			const session = event.data.object;
-			const { user_id, slug, plan } = session.metadata ?? {};
+			const { user_id, slug, plan, byok } = session.metadata ?? {};
 
 			if (!user_id || !slug || !plan) {
 				console.error('checkout.session.completed missing metadata:', session.metadata);
@@ -37,6 +37,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					slug,
 					plan: plan as PlanId,
 					stripeSubscriptionId: session.subscription as string,
+					byok: byok === 'true',
 				});
 				console.log(`Provisioned tenant ${slug} for user ${user_id}`);
 			} catch (err) {

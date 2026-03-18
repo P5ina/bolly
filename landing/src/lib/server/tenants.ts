@@ -15,6 +15,7 @@ export async function provisionTenant(opts: {
 	slug: string;
 	plan: PlanId;
 	stripeSubscriptionId?: string;
+	byok?: boolean;
 }): Promise<Tenant> {
 	const planConfig = PLANS[opts.plan];
 	const flyApp = appName(opts.slug);
@@ -88,6 +89,7 @@ export async function provisionTenant(opts: {
 			channel: (tenant.imageChannel as fly.ImageChannel) ?? 'stable',
 			cpus: planConfig.cpus,
 			memoryMb: planConfig.memoryMb,
+			byok: opts.byok,
 		});
 
 		// 6. Update tenant
