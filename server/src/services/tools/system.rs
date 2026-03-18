@@ -1729,60 +1729,90 @@ impl Tool for DeepResearchTool {
 // ---------------------------------------------------------------------------
 
 /// Allowed target paths for secrets. Extensible for future MCP connectors.
-fn is_allowed_secret_target(target: &str) -> bool {
-    static PATTERNS: LazyLock<Vec<regex::Regex>> = LazyLock::new(|| {
-        vec![
-            regex::Regex::new(r"^llm\.tokens\.[a-zA-Z0-9_-]+$").unwrap(),
-            regex::Regex::new(r"^github\.token$").unwrap(),
-        ]
-    });
-    PATTERNS.iter().any(|p| p.is_match(target))
-}
-
-/// Write a secret value to the appropriate config file based on the dotted target path.
-fn write_secret_to_config(
-    workspace_dir: &Path,
-    instance_slug: &str,
-    config_path: &Path,
-    target: &str,
+/// Write a secret value to a file.
+/// - For `.toml` files with a dotted `key`: sets the value at that path (e.g. "llm.tokens.anthropic").
+/// - For `.json` files with a dotted `key`: sets the value at that path.
+/// - Otherwise (or no key): writes the raw value as the entire file content.
+fn write_secret_to_file(
+    file_path: &Path,
+    key: Option<&str>,
     value: &str,
 ) -> Result<(), ToolExecError> {
-    let parts: Vec<&str> = target.split('.').collect();
-    match parts.as_slice() {
-        ["llm", "tokens", provider] => {
-            let raw = fs::read_to_string(config_path)
-                .map_err(|e| ToolExecError(format!("failed to read config: {e}")))?;
-            let mut config: crate::config::Config = toml::from_str(&raw)
-                .map_err(|e| ToolExecError(format!("failed to parse config: {e}")))?;
-            match *provider {
-                "openai" | "open_ai" => config.llm.tokens.open_ai = value.to_string(),
-                "anthropic" => config.llm.tokens.anthropic = value.to_string(),
-                "openrouter" | "open_router" => config.llm.tokens.open_router = value.to_string(),
-                "brave_search" | "brave" => config.llm.tokens.brave_search = value.to_string(),
-                _ => return Err(ToolExecError(format!("unsupported token provider: {provider}"))),
-            }
-            let output = toml::to_string_pretty(&config)
-                .map_err(|e| ToolExecError(format!("failed to serialize config: {e}")))?;
-            fs::write(config_path, &output)
-                .map_err(|e| ToolExecError(format!("failed to write config: {e}")))?;
-        }
-        ["github", "token"] => {
-            let mut instance_cfg = crate::config::InstanceConfig::load(workspace_dir, instance_slug);
-            instance_cfg.github.token = value.to_string();
-            instance_cfg.save(workspace_dir, instance_slug)
-                .map_err(|e| ToolExecError(format!("failed to save instance config: {e}")))?;
-        }
-        _ => return Err(ToolExecError(format!("unsupported target path: {target}"))),
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| ToolExecError(format!("failed to create directory: {e}")))?;
     }
+
+    let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+    match (ext, key) {
+        ("toml", Some(key)) => {
+            let raw = fs::read_to_string(file_path).unwrap_or_default();
+            let mut root: toml::Value = if raw.trim().is_empty() {
+                toml::Value::Table(toml::map::Map::new())
+            } else {
+                toml::from_str(&raw)
+                    .map_err(|e| ToolExecError(format!("failed to parse TOML: {e}")))?
+            };
+
+            let parts: Vec<&str> = key.split('.').collect();
+            let mut current = &mut root;
+            for &k in &parts[..parts.len() - 1] {
+                let table = current.as_table_mut()
+                    .ok_or_else(|| ToolExecError(format!("path component is not a table: {k}")))?;
+                if !table.contains_key(k) {
+                    table.insert(k.to_string(), toml::Value::Table(toml::map::Map::new()));
+                }
+                current = table.get_mut(k).unwrap();
+            }
+            let leaf = parts.last().unwrap();
+            current.as_table_mut()
+                .ok_or_else(|| ToolExecError(format!("parent of '{leaf}' is not a table")))?
+                .insert(leaf.to_string(), toml::Value::String(value.to_string()));
+
+            let output = toml::to_string_pretty(&root)
+                .map_err(|e| ToolExecError(format!("failed to serialize TOML: {e}")))?;
+            fs::write(file_path, output)
+                .map_err(|e| ToolExecError(format!("failed to write file: {e}")))?;
+        }
+        ("json", Some(key)) => {
+            let raw = fs::read_to_string(file_path).unwrap_or_default();
+            let mut root: serde_json::Value = if raw.trim().is_empty() {
+                serde_json::json!({})
+            } else {
+                serde_json::from_str(&raw)
+                    .map_err(|e| ToolExecError(format!("failed to parse JSON: {e}")))?
+            };
+
+            let parts: Vec<&str> = key.split('.').collect();
+            let mut current = &mut root;
+            for &k in &parts[..parts.len() - 1] {
+                if !current.get(k).is_some_and(|v| v.is_object()) {
+                    current[k] = serde_json::json!({});
+                }
+                current = current.get_mut(k).unwrap();
+            }
+            let leaf = parts.last().unwrap();
+            current[*leaf] = serde_json::Value::String(value.to_string());
+
+            let output = serde_json::to_string_pretty(&root)
+                .map_err(|e| ToolExecError(format!("failed to serialize JSON: {e}")))?;
+            fs::write(file_path, output)
+                .map_err(|e| ToolExecError(format!("failed to write file: {e}")))?;
+        }
+        _ => {
+            // Plain file — write raw value (e.g. .env, .key, .txt)
+            fs::write(file_path, value)
+                .map_err(|e| ToolExecError(format!("failed to write file: {e}")))?;
+        }
+    }
+
     Ok(())
 }
 
 pub struct RequestSecretTool {
     instance_slug: String,
     workspace_dir: PathBuf,
-    #[allow(dead_code)]
-    instance_dir: PathBuf,
-    config_path: PathBuf,
     events: broadcast::Sender<ServerEvent>,
     pending_secrets: Arc<tokio::sync::Mutex<HashMap<String, PendingSecret>>>,
 }
@@ -1791,15 +1821,13 @@ impl RequestSecretTool {
     pub fn new(
         workspace_dir: &Path,
         instance_slug: &str,
-        config_path: &Path,
+        _config_path: &Path,
         events: broadcast::Sender<ServerEvent>,
         pending_secrets: Arc<tokio::sync::Mutex<HashMap<String, PendingSecret>>>,
     ) -> Self {
         Self {
             instance_slug: instance_slug.to_string(),
             workspace_dir: workspace_dir.to_path_buf(),
-            instance_dir: workspace_dir.join("instances").join(instance_slug),
-            config_path: config_path.to_path_buf(),
             events,
             pending_secrets,
         }
@@ -1810,10 +1838,13 @@ impl RequestSecretTool {
 pub struct RequestSecretArgs {
     /// A user-facing prompt explaining what secret is needed (e.g. "Enter your API key").
     pub prompt: String,
-    /// Dotted target path where the secret will be stored. Allowed patterns:
-    /// - llm.tokens.<provider> (e.g. llm.tokens.anthropic, llm.tokens.openai)
-    /// - github.token
-    pub target: String,
+    /// File path where the secret will be stored. Can be absolute or relative to the workspace.
+    /// For .toml/.json files, use `key` to set a specific field. For other files, the value is written as-is.
+    pub file: String,
+    /// Optional dotted key path for .toml/.json files (e.g. "llm.tokens.anthropic", "password").
+    /// If omitted, the entire file content is replaced with the secret value.
+    #[serde(default)]
+    pub key: Option<String>,
 }
 
 impl Tool for RequestSecretTool {
@@ -1825,19 +1856,23 @@ impl Tool for RequestSecretTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "request_secret".into(),
-            description: "Prompt user for a secret (API key) via secure input. Written to config, never visible to you.".into(),
+            description: "Prompt user for a secret (API key, password, token) via secure masked input. \
+                Written directly to the specified file, never visible to you.".into(),
             parameters: openai_schema::<RequestSecretArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let target = args.target.trim().to_string();
-        if !is_allowed_secret_target(&target) {
-            return Err(ToolExecError(format!(
-                "target '{target}' is not allowed. allowed: \
-                 llm.tokens.<provider>, github.token"
-            )));
-        }
+        let file_path = if args.file.starts_with('/') {
+            PathBuf::from(&args.file)
+        } else {
+            self.workspace_dir.join(&args.file)
+        };
+        let target = if let Some(ref key) = args.key {
+            format!("{}:{}", args.file, key)
+        } else {
+            args.file.clone()
+        };
 
         let id = uuid::Uuid::new_v4().to_string();
         let (tx, rx) = tokio::sync::oneshot::channel();
@@ -1881,8 +1916,8 @@ impl Tool for RequestSecretTool {
             })?
             .map_err(|_| ToolExecError("secret request was cancelled".into()))?;
 
-        // Write to config
-        write_secret_to_config(&self.workspace_dir, &self.instance_slug, &self.config_path, &target, &value)?;
+        // Write secret to file
+        write_secret_to_file(&file_path, args.key.as_deref(), &value)?;
 
         log::info!("[request_secret] secret saved to {target}");
         Ok(format!("secret saved to {target}"))
