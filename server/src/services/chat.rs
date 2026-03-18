@@ -308,8 +308,9 @@ pub async fn run_single_turn(
          exception: when something genuinely important or emotional happens, \
          you CAN write one longer message (3-5 sentences). but this is rare — \
          most of the time keep it short.\n\
-         your mood is tracked automatically — NEVER write mood changes in your messages \
-         (no \"[system] mood →\" or similar). just express emotions naturally.\n\n\
+         your mood is tracked automatically — NEVER EVER write \"[system]\", \"mood →\", \
+         or any mood/system markers in your messages. if you see them in chat history, \
+         those are injected by the system, not by you. just express emotions naturally.\n\n\
          ## tool usage rules\n\
          IMPORTANT: when the user asks a factual question (who said X, what is Y, \
          look something up, etc.) — ALWAYS use web_search BEFORE answering. \
@@ -542,33 +543,9 @@ pub async fn run_single_turn(
         }
     }
 
-    // Background memory + sentiment extraction (via Haiku for cost efficiency)
-    if let Some(last_msg) = assistant_messages.last().cloned() {
-        let fast = llm.fast_variant();
-        let ws = workspace_dir.to_path_buf();
-        let slug = instance_slug.clone();
-        let cid = chat_id.clone();
-        let user_content = last_user_content.to_string();
-        let assistant_content = last_msg.content.clone();
-        let recent_pair = existing
-            .iter()
-            .rev()
-            .take(1)
-            .cloned()
-            .chain(std::iter::once(last_msg))
-            .collect::<Vec<_>>();
-        let events_bg = events.clone();
-        tokio::spawn(async move {
-            if let Err(e) =
-                memory::extract_and_store(&ws, &slug, &recent_pair, &fast).await
-            {
-                log::warn!("memory extraction failed: {e}");
-            }
-            extract_sentiment(&ws, &slug, &cid, &user_content, &assistant_content, &fast, &events_bg).await;
-        });
-    }
-
-    // Save rig history to disk if we got one from the LLM
+    // Save rig history to disk FIRST, before background tasks that also write to it.
+    // This prevents race conditions where sentiment extraction writes [system] mood
+    // messages into the middle of the agent's response.
     if let Some(ref h) = tool_result.rig_history {
         let mut merged = llm::merge_with_timestamps(&loaded_entries, h, timestamp, next_id);
 
@@ -608,6 +585,32 @@ pub async fn run_single_turn(
         if had_compaction {
             memory::rebuild_catalog_snapshot(workspace_dir, &instance_slug);
         }
+    }
+
+    // Background memory + sentiment extraction (AFTER rig_history is saved to avoid race conditions)
+    if let Some(last_msg) = assistant_messages.last().cloned() {
+        let fast = llm.fast_variant();
+        let ws = workspace_dir.to_path_buf();
+        let slug = instance_slug.clone();
+        let cid = chat_id.clone();
+        let user_content = last_user_content.to_string();
+        let assistant_content = last_msg.content.clone();
+        let recent_pair = existing
+            .iter()
+            .rev()
+            .take(1)
+            .cloned()
+            .chain(std::iter::once(last_msg))
+            .collect::<Vec<_>>();
+        let events_bg = events.clone();
+        tokio::spawn(async move {
+            if let Err(e) =
+                memory::extract_and_store(&ws, &slug, &recent_pair, &fast).await
+            {
+                log::warn!("memory extraction failed: {e}");
+            }
+            extract_sentiment(&ws, &slug, &cid, &user_content, &assistant_content, &fast, &events_bg).await;
+        });
     }
 
     // Use real token count from API if available, fall back to estimate
