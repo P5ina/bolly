@@ -189,8 +189,8 @@ impl LlmProvider {
     pub fn fast_model(&self) -> &'static str {
         match self {
             LlmProvider::Anthropic => "claude-haiku-4-5-20251001",
-            LlmProvider::OpenAI => "gpt-5-mini-2025-08-07",
-            LlmProvider::OpenRouter => "anthropic/claude-sonnet-4-6",
+            LlmProvider::OpenAI => "gpt-5.4-nano",
+            LlmProvider::OpenRouter => "google/gemini-3.1-flash-lite-preview",
         }
     }
 }

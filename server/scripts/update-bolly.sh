@@ -61,9 +61,35 @@ if [ -f "$VERSION_FILE" ] && [ "$(cat "$VERSION_FILE")" = "$VERSION" ] && [ -f "
 fi
 
 echo "[update] downloading bolly $VERSION ($CHANNEL) for $TARGET..."
-ASSET_URL="https://github.com/$REPO/releases/download/$TAG/bolly-$TARGET"
 
-if curl -fsSL -L ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$ASSET_URL" -o "$BINARY.tmp"; then
+# For private repos, browser_download_url returns 404.
+# Use GitHub API asset endpoint with Accept: application/octet-stream instead.
+# See: https://docs.github.com/en/rest/releases/assets#get-a-release-asset
+ASSET_NAME="bolly-$TARGET"
+ASSET_API_URL=""
+if [ -n "$RELEASE_TOKEN" ] && command -v jq >/dev/null 2>&1; then
+    ASSET_API_URL=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url" 2>/dev/null)
+fi
+
+DOWNLOAD_OK=false
+if [ -n "$ASSET_API_URL" ] && [ "$ASSET_API_URL" != "null" ] && [ -n "$RELEASE_TOKEN" ]; then
+    # Private repo: download via API with octet-stream accept header
+    echo "[update] downloading via GitHub API (private repo)"
+    if curl -fsSL -L \
+        -H "$AUTH_HEADER" \
+        -H "Accept: application/octet-stream" \
+        "$ASSET_API_URL" -o "$BINARY.tmp"; then
+        DOWNLOAD_OK=true
+    fi
+else
+    # Public repo fallback: direct download URL
+    ASSET_URL="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME"
+    if curl -fsSL -L ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$ASSET_URL" -o "$BINARY.tmp"; then
+        DOWNLOAD_OK=true
+    fi
+fi
+
+if [ "$DOWNLOAD_OK" = "true" ]; then
     chmod +x "$BINARY.tmp"
     mv "$BINARY.tmp" "$BINARY"
     echo "$VERSION" > "$VERSION_FILE"

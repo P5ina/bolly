@@ -109,8 +109,16 @@ if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
     fail "could not find release"
 fi
 
-ASSET_URL="https://github.com/$REPO/releases/download/$TAG/bolly-$TARGET"
-curl -fsSL -L ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$ASSET_URL" -o "$BIN"
+ASSET_NAME="bolly-$TARGET"
+ASSET_API_URL=""
+if [ -n "$RELEASE_TOKEN" ]; then
+    ASSET_API_URL=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url" 2>/dev/null)
+fi
+if [ -n "$ASSET_API_URL" ] && [ "$ASSET_API_URL" != "null" ] && [ -n "$RELEASE_TOKEN" ]; then
+    curl -fsSL -L -H "$AUTH_HEADER" -H "Accept: application/octet-stream" "$ASSET_API_URL" -o "$BIN"
+else
+    curl -fsSL -L ${AUTH_HEADER:+-H "$AUTH_HEADER"} "https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME" -o "$BIN"
+fi
 chmod +x "$BIN"
 echo "$TAG" > "$INSTALL_DIR/bin/.version"
 log "downloaded $TAG"
@@ -170,14 +178,24 @@ if [ "$CHANNEL" = "nightly" ]; then
 else
     API_URL="https://api.github.com/repos/$REPO/releases/latest"
 fi
-TAG=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$API_URL" | jq -r '.tag_name')
+RELEASE_JSON=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$API_URL")
+TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
 CURRENT=$(cat /opt/bolly/bin/.version 2>/dev/null || echo "none")
 if [ "$TAG" = "$CURRENT" ]; then
     echo "already at $TAG"
     exit 0
 fi
 echo "updating to $TAG..."
-curl -fsSL -L ${AUTH_HEADER:+-H "$AUTH_HEADER"} "https://github.com/$REPO/releases/download/$TAG/bolly-$TARGET" -o "$BIN.tmp"
+ASSET_NAME="bolly-$TARGET"
+ASSET_API_URL=""
+if [ -n "$RELEASE_TOKEN" ]; then
+    ASSET_API_URL=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url" 2>/dev/null)
+fi
+if [ -n "$ASSET_API_URL" ] && [ "$ASSET_API_URL" != "null" ] && [ -n "$RELEASE_TOKEN" ]; then
+    curl -fsSL -L -H "$AUTH_HEADER" -H "Accept: application/octet-stream" "$ASSET_API_URL" -o "$BIN.tmp"
+else
+    curl -fsSL -L ${AUTH_HEADER:+-H "$AUTH_HEADER"} "https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME" -o "$BIN.tmp"
+fi
 chmod +x "$BIN.tmp"
 mv "$BIN.tmp" "$BIN"
 echo "$TAG" > /opt/bolly/bin/.version

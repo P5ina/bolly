@@ -20,17 +20,38 @@
 	const MODELS: Record<string, { id: string; label: string }[]> = {
 		anthropic: [
 			{ id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+			{ id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
 			{ id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
 		],
 		openrouter: [
-			{ id: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-			{ id: 'anthropic/claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
-			{ id: 'moonshotai/kimi-k2.5', label: 'Kimi K2.5' },
+			{ id: 'anthropic/claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
+			{ id: 'anthropic/claude-opus-4.6', label: 'Claude Opus 4.6' },
+			{ id: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' },
+			{ id: 'google/gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite' },
+			{ id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
 			{ id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+			{ id: 'deepseek/deepseek-r1', label: 'DeepSeek R1' },
 		],
 		openai: [
-			{ id: 'gpt-4o', label: 'GPT-4o' },
-			{ id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+			{ id: 'gpt-5.4', label: 'GPT-5.4' },
+			{ id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+			{ id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
+		],
+	};
+
+	const FAST_MODELS: Record<string, { id: string; label: string }[]> = {
+		anthropic: [
+			{ id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+			{ id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+		],
+		openrouter: [
+			{ id: 'google/gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite' },
+			{ id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+			{ id: 'anthropic/claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
+		],
+		openai: [
+			{ id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
+			{ id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
 		],
 	};
 
@@ -581,10 +602,15 @@
 											value={currentProvider(tenant)}
 											onchange={(e) => {
 												const form = (e.target as HTMLElement).closest('form')!;
-												const modelSelect = form.querySelector('select[name="model"]') as HTMLSelectElement;
 												const provider = (e.target as HTMLSelectElement).value;
+												const modelSelect = form.querySelector('select[name="model"]') as HTMLSelectElement;
 												const models = MODELS[provider] ?? [];
 												modelSelect.innerHTML = models.map(m =>
+													`<option value="${m.id}">${m.label}</option>`
+												).join('');
+												const fastSelect = form.querySelector('select[name="fastModel"]') as HTMLSelectElement;
+												const fastModels = FAST_MODELS[provider] ?? [];
+												fastSelect.innerHTML = '<option value="">fast: default</option>' + fastModels.map(m =>
 													`<option value="${m.id}">${m.label}</option>`
 												).join('');
 											}}
@@ -602,14 +628,16 @@
 												<option value={m.id} selected={currentModel(tenant) === m.id}>{m.label}</option>
 											{/each}
 										</select>
-										<input
+										<select
 											name="fastModel"
-											type="text"
-											placeholder="fast model (optional)"
-											value={currentFastModel(tenant)}
 											class="py-2 px-3 rounded-lg text-xs text-text outline-none font-mono"
-											style="background: var(--color-bg-raised); border: 1px solid var(--color-border); min-width: 10rem;"
-										/>
+											style="background: var(--color-bg-raised); border: 1px solid var(--color-border); min-width: 9rem;"
+										>
+											<option value="" selected={!currentFastModel(tenant)}>fast: default</option>
+											{#each (FAST_MODELS[currentProvider(tenant)] ?? []) as m}
+												<option value={m.id} selected={currentFastModel(tenant) === m.id}>{m.label}</option>
+											{/each}
+										</select>
 										<button
 											type="submit"
 											disabled={updating === tenant.id}
