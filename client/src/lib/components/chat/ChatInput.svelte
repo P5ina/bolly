@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { play } from "$lib/sounds.js";
 	import { hapticLight, hapticMedium } from "$lib/haptics.js";
+	import { fetchConfigStatus, updateModelMode } from "$lib/api/client.js";
 	import UsageBar from "$lib/components/layout/UsageBar.svelte";
 
 	let {
@@ -18,6 +19,18 @@
 		mood?: string;
 		uploadProgress?: { fileIndex: number; fileCount: number; loaded: number; total: number } | null;
 	} = $props();
+
+	// Model mode
+	let modelMode = $state("auto");
+	$effect(() => {
+		fetchConfigStatus().then(s => { if (s.model_mode) modelMode = s.model_mode; }).catch(() => {});
+	});
+	async function cycleMode() {
+		const next = modelMode === "auto" ? "fast" : modelMode === "fast" ? "heavy" : "auto";
+		modelMode = next;
+		hapticLight();
+		await updateModelMode(next).catch(() => {});
+	}
 
 	let value = $state("");
 	let focused = $state(false);
@@ -200,6 +213,16 @@
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-4 h-4">
 					<path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-linecap="round" stroke-linejoin="round"/>
 				</svg>
+			</button>
+			<button
+				class="mode-toggle"
+				class:mode-toggle-fast={modelMode === "fast"}
+				class:mode-toggle-heavy={modelMode === "heavy"}
+				onclick={cycleMode}
+				onmousedown={(e) => e.preventDefault()}
+				title="Model: {modelMode} (click to cycle)"
+			>
+				{modelMode === "auto" ? "A" : modelMode === "fast" ? "F" : "H"}
 			</button>
 			<textarea
 				bind:this={textareaEl}
@@ -385,6 +408,48 @@
 	.whisper-attach:disabled {
 		opacity: 0.2;
 		pointer-events: none;
+	}
+
+	.mode-toggle {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.5rem;
+		height: 1.5rem;
+		flex-shrink: 0;
+		border-radius: 4px;
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+		color: oklch(0.78 0.12 75 / 35%);
+		background: oklch(0.78 0.12 75 / 6%);
+		border: 1px solid oklch(0.78 0.12 75 / 10%);
+		cursor: pointer;
+		transition: all 0.2s;
+		margin-bottom: 0.75rem;
+	}
+	.mode-toggle:hover {
+		color: oklch(0.78 0.12 75 / 60%);
+		background: oklch(0.78 0.12 75 / 10%);
+	}
+	.mode-toggle-fast {
+		color: oklch(0.72 0.15 155 / 55%);
+		background: oklch(0.72 0.15 155 / 8%);
+		border-color: oklch(0.72 0.15 155 / 18%);
+	}
+	.mode-toggle-fast:hover {
+		color: oklch(0.72 0.15 155 / 80%);
+		background: oklch(0.72 0.15 155 / 14%);
+	}
+	.mode-toggle-heavy {
+		color: oklch(0.65 0.12 250 / 55%);
+		background: oklch(0.65 0.12 250 / 8%);
+		border-color: oklch(0.65 0.12 250 / 18%);
+	}
+	.mode-toggle-heavy:hover {
+		color: oklch(0.65 0.12 250 / 80%);
+		background: oklch(0.65 0.12 250 / 14%);
 	}
 
 	.whisper-input {
