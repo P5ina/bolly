@@ -43,9 +43,9 @@ pub use memory_tools::{MemoryForgetTool, MemoryListTool, MemoryReadTool, MemoryS
 pub use project::{TaskItem, TaskStatus};
 pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
 pub use system::{
-    ClearContextTool, CreateDropTool, DeepResearchTool, ExploreCodeTool, GetSettingsTool,
-    InteractiveSessionTool, RequestSecretTool, RestartMachineTool, RunCommandTool, SearchCodeTool,
-    UpdateConfigTool,
+    ClearContextTool, CreateDropTool, DeepResearchTool, ExploreCodeTool, ExportProfileTool,
+    GetSettingsTool, ImportProfileTool, InteractiveSessionTool, RequestSecretTool,
+    RestartMachineTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
 };
 pub use image::ViewImageTool;
 pub use media::{WatchVideoTool, ListenMusicTool};
@@ -520,6 +520,10 @@ pub fn build_tools(
     // ── Creative ──
     tools.push(wrap(Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone()))));
     tools.push(wrap(Box::new(ScheduleMessageTool::new(workspace_dir, instance_slug))));
+
+    // ── Data ──
+    tools.push(wrap(Box::new(ExportProfileTool::new(workspace_dir, instance_slug, events.clone()))));
+    tools.push(wrap(Box::new(ImportProfileTool::new(workspace_dir, instance_slug))));
 
     // ── Email (unified: Gmail + SMTP/IMAP) ──
     let has_email = google.is_some() || !email_accounts.is_empty();

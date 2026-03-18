@@ -1980,3 +1980,163 @@ impl Tool for RestartMachineTool {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// export_profile — create a tar.gz of the instance for the user to download
+// ---------------------------------------------------------------------------
+
+pub struct ExportProfileTool {
+    workspace_dir: PathBuf,
+    instance_slug: String,
+    events: broadcast::Sender<ServerEvent>,
+}
+
+impl ExportProfileTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str, events: broadcast::Sender<ServerEvent>) -> Self {
+        Self {
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
+            events,
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ExportProfileArgs {
+    /// Reason for export (e.g. "backup", "migrating to new instance").
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+impl Tool for ExportProfileTool {
+    const NAME: &'static str = "export_profile";
+    type Error = ToolExecError;
+    type Args = ExportProfileArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "export_profile".into(),
+            description: "Export this instance as a downloadable .tar.gz archive. \
+                Includes soul, memory, drops, chat history, and all data. \
+                Returns a download link the user can click.".into(),
+            parameters: openai_schema::<ExportProfileArgs>(),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let instance_dir = self.workspace_dir.join("instances").join(&self.instance_slug);
+        if !instance_dir.is_dir() {
+            return Err(ToolExecError("instance directory not found".into()));
+        }
+
+        // Create tar.gz
+        let output = tokio::process::Command::new("tar")
+            .arg("czf")
+            .arg("-")
+            .arg("-C")
+            .arg(self.workspace_dir.join("instances"))
+            .arg(&self.instance_slug)
+            .output()
+            .await
+            .map_err(|e| ToolExecError(format!("failed to create archive: {e}")))?;
+
+        if !output.status.success() {
+            return Err(ToolExecError("tar failed".into()));
+        }
+
+        // Save to uploads so user can download
+        let filename = format!("{}.tar.gz", self.instance_slug);
+        let meta = crate::services::uploads::save_upload(
+            &self.workspace_dir,
+            &self.instance_slug,
+            &filename,
+            &output.stdout,
+        )
+        .map_err(|e| ToolExecError(format!("failed to save archive: {e}")))?;
+
+        let marker = format!("[attached: {} ({})]", filename, meta.id);
+        let _ = self.events.send(ServerEvent::ChatStreamDelta {
+            instance_slug: self.instance_slug.clone(),
+            chat_id: "default".to_string(),
+            delta: String::new(),
+        });
+
+        Ok(format!("exported profile as {filename} ({} bytes). {marker}", output.stdout.len()))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// import_profile — import a tar.gz into this instance
+// ---------------------------------------------------------------------------
+
+pub struct ImportProfileTool {
+    workspace_dir: PathBuf,
+    instance_slug: String,
+}
+
+impl ImportProfileTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ImportProfileArgs {
+    /// Path to the .tar.gz file to import (relative to instance workspace or absolute).
+    pub path: String,
+}
+
+impl Tool for ImportProfileTool {
+    const NAME: &'static str = "import_profile";
+    type Error = ToolExecError;
+    type Args = ImportProfileArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "import_profile".into(),
+            description: "Import a .tar.gz profile archive into this instance. \
+                Merges data (soul, memory, drops, chat history) from the archive. \
+                The file must already exist on disk (e.g. uploaded by the user).".into(),
+            parameters: openai_schema::<ImportProfileArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let instance_dir = self.workspace_dir.join("instances").join(&self.instance_slug);
+
+        let archive_path = if args.path.starts_with('/') {
+            std::path::PathBuf::from(&args.path)
+        } else {
+            instance_dir.join(&args.path)
+        };
+
+        if !archive_path.is_file() {
+            return Err(ToolExecError(format!("file not found: {}", archive_path.display())));
+        }
+
+        let output = tokio::process::Command::new("tar")
+            .arg("xzf")
+            .arg(&archive_path)
+            .arg("--strip-components=1")
+            .arg("-C")
+            .arg(&instance_dir)
+            .output()
+            .await
+            .map_err(|e| ToolExecError(format!("failed to extract archive: {e}")))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(ToolExecError(format!("tar extract failed: {stderr}")));
+        }
+
+        // Rebuild memory catalog after import
+        crate::services::memory::rebuild_catalog_snapshot(&self.workspace_dir, &self.instance_slug);
+
+        Ok(format!("imported profile from {}. memory catalog rebuilt.", args.path))
+    }
+}
