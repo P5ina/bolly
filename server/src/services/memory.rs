@@ -402,7 +402,7 @@ rules:
 respond ONLY with the JSON object, no other text."#
     );
 
-    let response = llm
+    let (response, _) = llm
         .chat(
             "you are a memory librarian. you organize memories into a clean file-based library. \
              you understand the difference between facts (knowing something) and moments (shared experiences). \

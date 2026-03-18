@@ -469,13 +469,13 @@ impl LlmBackend {
         }
     }
 
-    /// Simple chat without tools.
+    /// Simple chat without tools. Returns (text, tokens_used).
     pub async fn chat(
         &self,
         system_prompt: &str,
         prompt: &str,
         history: Vec<Message>,
-    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(String, u64), Box<dyn std::error::Error + Send + Sync>> {
         let backend = self.clone();
         let system = system_prompt.to_string();
         let prompt = prompt.to_string();
@@ -494,7 +494,7 @@ impl LlmBackend {
                         model,
                     } => anthropic_complete(http, api_key, model, &[&system], &[], &messages, 16384)
                         .await
-                        .map(|(text, _, _)| text),
+                        .map(|(text, _, _, tokens)| (text, tokens)),
                     LlmBackend::OpenAI {
                         http,
                         api_key,
@@ -503,7 +503,7 @@ impl LlmBackend {
                     } => {
                         openai_complete(http, api_key, base_url, model, &system, &[], &messages, 16384)
                             .await
-                            .map(|(text, _, _)| text)
+                            .map(|(text, _, _, tokens)| (text, tokens))
                     }
                 }
             }
@@ -564,7 +564,7 @@ impl LlmBackend {
         history: Vec<Message>,
         tools: Vec<Box<dyn ToolDyn>>,
         max_turns: usize,
-    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(String, u64), Box<dyn std::error::Error + Send + Sync>> {
         if tools.is_empty() {
             return self.chat(system_prompt, prompt, history).await;
         }
@@ -590,7 +590,7 @@ async fn collect_tool_defs(tools: &[Box<dyn ToolDyn>]) -> Vec<ToolDefinition> {
     defs
 }
 
-/// Non-streaming agent loop. Returns final text.
+/// Non-streaming agent loop. Returns (final text, total tokens used).
 async fn agent_loop(
     backend: &LlmBackend,
     system: &[&str],
@@ -598,9 +598,11 @@ async fn agent_loop(
     tools: &[Box<dyn ToolDyn>],
     messages: &mut Vec<Message>,
     max_turns: usize,
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, u64), Box<dyn std::error::Error + Send + Sync>> {
+    let mut total_tokens: u64 = 0;
     for _turn in 0..max_turns {
-        let (text, tool_uses, stop_reason) = complete_once(backend, system, tool_defs, messages).await?;
+        let (text, tool_uses, stop_reason, tokens) = complete_once(backend, system, tool_defs, messages).await?;
+        total_tokens += tokens;
 
         // Build assistant message
         let mut assistant_content = Vec::new();
@@ -629,7 +631,7 @@ async fn agent_loop(
         }
 
         if stop_reason != "tool_use" || tool_uses.is_empty() {
-            return Ok(text);
+            return Ok((text, total_tokens));
         }
 
         // Execute tools
@@ -642,7 +644,7 @@ async fn agent_loop(
     }
 
     // Turn limit reached — extract last text
-    Ok(extract_last_assistant_text(messages))
+    Ok((extract_last_assistant_text(messages), total_tokens))
 }
 
 /// Streaming agent loop. Returns final accumulated text.
@@ -799,7 +801,7 @@ async fn complete_once(
     system: &[&str],
     tool_defs: &[ToolDefinition],
     messages: &[Message],
-) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, Vec<ToolUseBlock>, String, u64), Box<dyn std::error::Error + Send + Sync>> {
     match backend {
         LlmBackend::Anthropic {
             http,
@@ -968,7 +970,7 @@ async fn anthropic_complete(
     tool_defs: &[ToolDefinition],
     messages: &[Message],
     max_tokens: u64,
-) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, Vec<ToolUseBlock>, String, u64), Box<dyn std::error::Error + Send + Sync>> {
     let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, false, api_key);
 
     let resp = http
@@ -995,15 +997,23 @@ async fn anthropic_complete(
         .unwrap_or("end_turn")
         .to_string();
 
-    if let Some(usage) = resp_json.get("usage") {
+    let tokens_used = if let Some(usage) = resp_json.get("usage") {
+        let input = usage["input_tokens"].as_u64().unwrap_or(0);
+        let cache_create = usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
+        let output = usage["output_tokens"].as_u64().unwrap_or(0);
         log::info!(
             "anthropic usage: input={} cache_read={} cache_write={} output={}",
-            usage["input_tokens"].as_u64().unwrap_or(0),
+            input,
             usage["cache_read_input_tokens"].as_u64().unwrap_or(0),
-            usage["cache_creation_input_tokens"].as_u64().unwrap_or(0),
-            usage["output_tokens"].as_u64().unwrap_or(0),
+            cache_create,
+            output,
         );
-    }
+        // Cache creation tokens are billed at 25% more than base input tokens
+        // by Anthropic, so count them for accurate tracking.
+        input + cache_create + output
+    } else {
+        0
+    };
 
     let mut text = String::new();
     let mut tool_uses = Vec::new();
@@ -1030,7 +1040,7 @@ async fn anthropic_complete(
         }
     }
 
-    Ok((text, tool_uses, stop_reason))
+    Ok((text, tool_uses, stop_reason, tokens_used))
 }
 
 /// Streaming Anthropic call. Broadcasts text deltas, returns (text, tool_uses, stop_reason).
@@ -1505,7 +1515,7 @@ async fn openai_complete(
     tool_defs: &[ToolDefinition],
     messages: &[Message],
     max_tokens: u64,
-) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, Vec<ToolUseBlock>, String, u64), Box<dyn std::error::Error + Send + Sync>> {
     let body = build_openai_request(model, system, tool_defs, messages, max_tokens, false);
 
     let resp = http
@@ -1522,6 +1532,15 @@ async fn openai_complete(
     }
 
     let resp_json: serde_json::Value = serde_json::from_str(&resp_text)?;
+
+    let tokens_used = if let Some(usage) = resp_json.get("usage") {
+        let prompt = usage["prompt_tokens"].as_u64().unwrap_or(0);
+        let completion = usage["completion_tokens"].as_u64().unwrap_or(0);
+        prompt + completion
+    } else {
+        0
+    };
+
     let choice = &resp_json["choices"][0];
     let text = choice["message"]["content"]
         .as_str()
@@ -1557,7 +1576,7 @@ async fn openai_complete(
         _ => "end_turn".to_string(),
     };
 
-    Ok((text, tool_uses, stop_reason))
+    Ok((text, tool_uses, stop_reason, tokens_used))
 }
 
 /// Streaming OpenAI call. Returns (text, tool_uses, stop_reason).

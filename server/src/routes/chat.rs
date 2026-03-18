@@ -286,7 +286,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                     "Generate a very short title (3-6 words, no quotes) for this conversation:\n\n{snippet}"
                 );
 
-                if let Ok(title) = llm.chat("You generate short chat titles. Respond with only the title, nothing else.", &prompt, vec![]).await {
+                if let Ok((title, _)) = llm.chat("You generate short chat titles. Respond with only the title, nothing else.", &prompt, vec![]).await {
                     let title = title.trim().trim_matches('"').to_string();
                     let _ = chat::update_chat_title(&state.workspace_dir, &instance_slug, &chat_id, &title);
                 }

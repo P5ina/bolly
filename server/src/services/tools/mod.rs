@@ -59,6 +59,8 @@ pub use web::{BrowseTool, WebFetchTool, WebSearchTool};
 pub struct ToolDefsSnapshot {
     pub names: Vec<String>,
     pub total_json_chars: usize,
+    /// Full tool definition JSON values for use in count_tokens API.
+    pub defs_json: Vec<serde_json::Value>,
 }
 
 static TOOL_DEFS_CACHE: OnceLock<Mutex<ToolDefsSnapshot>> = OnceLock::new();
@@ -80,15 +82,22 @@ pub fn cached_tool_defs() -> ToolDefsSnapshot {
 pub async fn cache_tool_defs(tools: &[Box<dyn ToolDyn>]) {
     let mut names = Vec::with_capacity(tools.len());
     let mut total_json_chars = 0usize;
+    let mut defs_json = Vec::with_capacity(tools.len());
     for tool in tools {
         let def = tool.definition(String::new()).await;
         names.push(def.name.clone());
-        total_json_chars += serde_json::to_string(&def).map(|s| s.len()).unwrap_or(0);
+        if let Ok(json_str) = serde_json::to_string(&def) {
+            total_json_chars += json_str.len();
+        }
+        if let Ok(val) = serde_json::to_value(&def) {
+            defs_json.push(val);
+        }
     }
     let mut cache = tool_defs_cache().lock().unwrap_or_else(|e| e.into_inner());
     *cache = ToolDefsSnapshot {
         names,
         total_json_chars,
+        defs_json,
     };
 }
 

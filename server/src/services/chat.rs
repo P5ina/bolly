@@ -848,15 +848,9 @@ async fn count_tokens_api(
 
     let msgs_json = serde_json::to_value(&messages).unwrap_or_default();
 
-    // Build tool definitions from cache
+    // Build tool definitions from cache (real schemas, not stubs)
     let tool_snapshot = tools::cached_tool_defs();
-    let tool_defs: Vec<serde_json::Value> = tool_snapshot.names.iter()
-        .map(|name| serde_json::json!({
-            "name": name,
-            "description": "",
-            "input_schema": { "type": "object", "properties": {} }
-        }))
-        .collect();
+    let tool_defs = tool_snapshot.defs_json;
 
     let mut body = serde_json::json!({
         "model": model,
@@ -962,7 +956,8 @@ pub async fn compute_context_stats_async(
     let chat_id = sanitize_slug(&chat_id);
     let mut stats = compute_context_stats_local(&workspace_dir, &instance_slug, &chat_id);
 
-    // Try to get accurate total via Anthropic count_tokens API
+    // Try to get accurate total via Anthropic count_tokens API.
+    // Uses the real system prompt, messages, and full tool definitions.
     let api_info: Option<(String, String)> = crate::config::load_config().ok().and_then(|config| {
         let (key, model) = config.llm.anthropic_credentials()?;
         Some((key.to_string(), model.to_string()))
@@ -971,10 +966,14 @@ pub async fn compute_context_stats_async(
         if let Some(real_total) = count_tokens_api(
             &api_key, &model, &workspace_dir, &instance_slug, &chat_id,
         ).await {
-            let api_history = real_total.saturating_sub(
-                stats.system_prompt_total_tokens + stats.tools_tokens_estimate
-            );
-            stats.history_tokens_estimate = api_history;
+            // Use the API total as ground truth.
+            // Back-calculate history: total - system - tools.
+            // If the API total is less than our local system+tools estimate
+            // (shouldn't happen with real tool defs), keep local history estimate.
+            let local_overhead = stats.system_prompt_total_tokens + stats.tools_tokens_estimate;
+            if real_total > local_overhead {
+                stats.history_tokens_estimate = real_total - local_overhead;
+            }
             stats.total_input_tokens_estimate = real_total;
         }
     }
@@ -1422,7 +1421,7 @@ async fn manual_compact(
     }
 
     let fast = llm.fast_variant();
-    let summary = fast.chat(
+    let (summary, _tokens) = fast.chat(
         "you are a conversation summarizer. produce a dense, factual summary that preserves \
          all important context: what was discussed, decisions made, key facts shared, \
          emotional tone, and any pending topics. the summary replaces the original messages \
@@ -1478,7 +1477,7 @@ respond ONLY with those three lines."#,
         )
         .await
     {
-        Ok(r) => r,
+        Ok((r, _)) => r,
         Err(e) => {
             log::warn!("sentiment extraction failed: {e}");
             return;

@@ -1593,7 +1593,7 @@ impl Tool for ExploreCodeTool {
         log::info!("[explore_code] starting sub-agent for: {}", &args.question);
         let start = std::time::Instant::now();
 
-        let result = self.llm
+        let (result, _tokens) = self.llm
             .chat_with_tools_only(
                 &system_prompt,
                 &args.question,
@@ -1710,7 +1710,7 @@ impl Tool for DeepResearchTool {
         log::info!("[deep_research] starting sub-agent for: {task}");
         let start = std::time::Instant::now();
 
-        let result = self
+        let (result, _tokens) = self
             .llm
             .chat_with_tools_only(system_prompt, task, vec![], tools, 12)
             .await

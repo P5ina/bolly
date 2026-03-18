@@ -174,7 +174,7 @@ async fn heartbeat_instance(
          - respond with ONLY the action line. no parentheses, no explanations, no extra text."
     );
 
-    let triage_response = triage_llm
+    let (triage_response, mut heartbeat_tokens) = triage_llm
         .chat(&triage_system, &reflection, vec![])
         .await?;
 
@@ -299,7 +299,8 @@ async fn heartbeat_instance(
                 .chat_with_tools_only(&system, &wake_prompt, vec![], heartbeat_tools, max_turns)
                 .await
             {
-                Ok(response) => {
+                Ok((response, wake_tokens)) => {
+                    heartbeat_tokens += wake_tokens;
                     let cleaned = strip_tool_artifacts(&response);
                     let preview: String = cleaned.chars().take(100).collect();
                     log::info!("[heartbeat] {slug} agent done: {preview}");
@@ -345,6 +346,22 @@ async fn heartbeat_instance(
         instance_slug: slug.to_string(),
         thought,
     });
+
+    // Record heartbeat token usage against rate limits
+    if heartbeat_tokens > 0 {
+        let cfg = config::load_config().ok();
+        if let Some(cfg) = cfg {
+            let http = reqwest::Client::new();
+            crate::services::rate_limit::record_usage(
+                &http,
+                &cfg.landing_url,
+                &cfg.auth_token,
+                heartbeat_tokens as i32,
+            )
+            .await;
+            log::info!("[heartbeat] {slug} recorded {heartbeat_tokens} tokens");
+        }
+    }
 
     Ok(())
 }
