@@ -1071,29 +1071,20 @@ impl Tool for UpdateConfigTool {
 
         if let Some(key) = &args.openai_key {
             let k = key.trim().to_string();
-            if k.is_empty() {
-                return Err(ToolExecError("openai_key cannot be empty".into()));
-            }
-            config.llm.tokens.open_ai = k;
-            changes.push("openai key updated".into());
+            config.llm.tokens.open_ai = k.clone();
+            changes.push(if k.is_empty() { "openai key cleared".into() } else { "openai key updated".into() });
         }
 
         if let Some(key) = &args.anthropic_key {
             let k = key.trim().to_string();
-            if k.is_empty() {
-                return Err(ToolExecError("anthropic_key cannot be empty".into()));
-            }
-            config.llm.tokens.anthropic = k;
-            changes.push("anthropic key updated".into());
+            config.llm.tokens.anthropic = k.clone();
+            changes.push(if k.is_empty() { "anthropic key cleared".into() } else { "anthropic key updated".into() });
         }
 
         if let Some(key) = &args.brave_search_key {
             let k = key.trim().to_string();
-            if k.is_empty() {
-                return Err(ToolExecError("brave_search_key cannot be empty".into()));
-            }
-            config.llm.tokens.brave_search = k;
-            changes.push("brave search key updated".into());
+            config.llm.tokens.brave_search = k.clone();
+            changes.push(if k.is_empty() { "brave search key cleared".into() } else { "brave search key updated".into() });
         }
 
         if let Some(server) = &args.add_mcp_server {
