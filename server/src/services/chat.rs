@@ -500,20 +500,18 @@ pub async fn run_single_turn(
         full_reply.push_str(&file_markers.join("\n"));
     }
 
-    // Split reply into separate messages by blank lines (like texting)
+    // Split reply into separate messages by blank lines (like texting),
+    // but don't split inside code fences (``` blocks).
     let mut assistant_messages = Vec::new();
     if !full_reply.is_empty() {
         let model_name = Some(llm.model_name().to_string());
-        let parts: Vec<&str> = full_reply.split("\n\n")
-            .map(|p| p.trim())
-            .filter(|p| !p.is_empty())
-            .collect();
+        let parts = split_preserving_code_blocks(&full_reply);
         if parts.len() > 1 {
             for part in parts {
                 assistant_messages.push(ChatMessage {
                     id: next_id(),
                     role: ChatRole::Assistant,
-                    content: part.to_string(),
+                    content: part,
                     created_at: timestamp(),
                     kind: Default::default(),
                     tool_name: None, mcp_app_html: None, mcp_app_input: None,
@@ -902,6 +900,40 @@ fn is_tool_activity(msg: &ChatMessage) -> bool {
 
 /// Strip tool-call JSON that the model may have leaked into its text response
 /// instead of using the tool_use API properly.
+/// Split text by `\n\n` but preserve code blocks (``` fences) intact.
+fn split_preserving_code_blocks(text: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut in_code_block = false;
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("```") {
+            in_code_block = !in_code_block;
+            current.push_str(line);
+            current.push('\n');
+            continue;
+        }
+        if in_code_block {
+            current.push_str(line);
+            current.push('\n');
+            continue;
+        }
+        if trimmed.is_empty() && !current.trim().is_empty() {
+            parts.push(current.trim().to_string());
+            current.clear();
+        } else {
+            current.push_str(line);
+            current.push('\n');
+        }
+    }
+    let remainder = current.trim().to_string();
+    if !remainder.is_empty() {
+        parts.push(remainder);
+    }
+    parts
+}
+
 fn strip_leaked_tool_calls(reply: &str) -> String {
     let re = regex::Regex::new(
         r#"\{["\s]*"?name"?\s*:\s*"[a-z_]+".*?"parameters"\s*:\s*\{[^}]*\}\s*\}"#

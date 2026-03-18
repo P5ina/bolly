@@ -58,12 +58,26 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 	preload("message_receive", "message_send", "error");
 
+	/** Split text by \n\n but keep code blocks (``` fences) intact */
+	function splitPreservingCode(text: string): { completed: string[]; pending: string } {
+		const parts: string[] = [];
+		let current = "";
+		let inCode = false;
+		for (const line of text.split("\n")) {
+			if (line.trim().startsWith("```")) inCode = !inCode;
+			if (!inCode && line.trim() === "" && current.trim()) {
+				parts.push(current.trim());
+				current = "";
+			} else {
+				current += line + "\n";
+			}
+		}
+		return { completed: parts, pending: current };
+	}
+
 	function handleStreamDelta(delta: string) {
 		streamingContent += delta;
-		// Split by \n\n into bubbles in real-time
-		const parts = streamingContent.split("\n\n");
-		const completedParts = parts.slice(0, -1).map(p => p.trim()).filter(p => p.length > 0);
-		const pending = parts[parts.length - 1];
+		const { completed: completedParts, pending } = splitPreservingCode(streamingContent);
 
 		// Promote completed parts to real bubbles
 		while (completedParts.length > streamingBubbles.length) {
