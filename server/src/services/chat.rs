@@ -1617,8 +1617,14 @@ respond ONLY with those three lines."#,
         // Persist mood change in chat history so it survives page reloads.
         // [system] prefix is required — client converts these to activity items.
         let label = format!("[system] mood → {}", mood.companion_mood);
-        let _ = save_system_message(workspace_dir, instance_slug, chat_id, &label);
-        // Broadcast via WebSocket for real-time UI update.
+        if let Ok(msg) = save_system_message(workspace_dir, instance_slug, chat_id, &label) {
+            let _ = events.send(ServerEvent::ChatMessageCreated {
+                instance_slug: instance_slug.to_string(),
+                chat_id: chat_id.to_string(),
+                message: msg,
+            });
+        }
+        // Broadcast mood update for UI state (blob color, header, etc.)
         let _ = events.send(ServerEvent::MoodUpdated {
             instance_slug: instance_slug.to_string(),
             mood: mood.companion_mood.clone(),
