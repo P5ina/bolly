@@ -32,29 +32,39 @@ async fn check_update(State(state): State<AppState>) -> Json<UpdateCheck> {
         }
     };
 
+    // Parse commit SHA from nightly release body: "Auto-built from main (abc1234)"
+    let release_commit = release.body.as_deref()
+        .and_then(|b| b.split('(').nth(1))
+        .and_then(|s| s.strip_suffix(')'))
+        .unwrap_or("");
+
     let update_available = if channel == "nightly" {
-        // For nightly: compare commit SHA from release body against embedded GIT_HASH
-        // Body format: "Auto-built from main (abc1234)"
-        let release_commit = release.body.as_deref()
-            .and_then(|b| b.split('(').nth(1))
-            .and_then(|s| s.strip_suffix(')'))
-            .unwrap_or("");
         !release_commit.is_empty()
             && current_commit != "dev"
             && !current_commit.starts_with(release_commit)
     } else {
-        // For stable: simple tag comparison
         release.tag != current_tag
     };
 
+    let display_current = if channel == "nightly" && current_commit != "dev" {
+        format!("{current_tag} ({current_commit})")
+    } else {
+        current_tag.clone()
+    };
+
     let display_latest = if channel == "nightly" {
-        release.name.unwrap_or(release.tag)
+        let name = release.name.as_deref().unwrap_or(&release.tag);
+        if !release_commit.is_empty() {
+            format!("{name} ({release_commit})")
+        } else {
+            name.to_string()
+        }
     } else {
         release.tag
     };
 
     Json(UpdateCheck {
-        current: current_tag,
+        current: display_current,
         latest: display_latest,
         update_available,
     })
