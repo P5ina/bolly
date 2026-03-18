@@ -499,6 +499,7 @@ pub async fn run_single_turn(
         let slug = instance_slug.clone();
         let cid = chat_id.clone();
         let user_content = last_user_content.to_string();
+        let assistant_content = last_msg.content.clone();
         let recent_pair = existing
             .iter()
             .rev()
@@ -513,7 +514,7 @@ pub async fn run_single_turn(
             {
                 log::warn!("memory extraction failed: {e}");
             }
-            extract_sentiment(&ws, &slug, &cid, &user_content, &fast, &events_bg).await;
+            extract_sentiment(&ws, &slug, &cid, &user_content, &assistant_content, &fast, &events_bg).await;
         });
     }
 
@@ -1493,6 +1494,7 @@ async fn extract_sentiment(
     instance_slug: &str,
     chat_id: &str,
     user_message: &str,
+    assistant_response: &str,
     llm: &LlmBackend,
     events: &broadcast::Sender<ServerEvent>,
 ) {
@@ -1500,18 +1502,22 @@ async fn extract_sentiment(
     let instance_dir = workspace_dir.join("instances").join(instance_slug);
     let current_mood = tools::load_mood_state(&instance_dir);
 
+    // Truncate assistant response for the prompt (avoid huge tool-heavy replies)
+    let assistant_preview: String = assistant_response.chars().take(500).collect();
+
     let prompt = format!(
-        r#"analyze this user message and decide the companion's emotional response.
+        r#"analyze this exchange and decide the companion's emotional response.
 
 current companion mood: {}
 
-user message:
-"{user_message}"
+user: "{user_message}"
+
+companion: "{assistant_preview}"
 
 respond with exactly three lines:
 SENTIMENT: <user's emotional state in 1-2 words, e.g. "excited", "frustrated", "neutral">
 CONTEXT: <one short sentence about the emotional context>
-MOOD: <companion's mood — one of: {allowed}. write SAME to keep current. prefer SAME unless the conversation tone has clearly and strongly shifted. small talk, casual messages, and normal exchanges should NOT change the mood.>
+MOOD: <companion's mood — one of: {allowed}. write SAME to keep current, or pick a new mood that fits the emotional tone of the exchange. update when the conversation feels different from the current mood.>
 
 respond ONLY with those three lines."#,
         current_mood.companion_mood
