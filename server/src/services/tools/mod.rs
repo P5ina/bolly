@@ -44,7 +44,8 @@ pub use project::{TaskItem, TaskStatus};
 pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
 pub use system::{
     ClearContextTool, CreateDropTool, DeepResearchTool, ExploreCodeTool, GetSettingsTool,
-    InteractiveSessionTool, RequestSecretTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
+    InteractiveSessionTool, RequestSecretTool, RestartMachineTool, RunCommandTool, SearchCodeTool,
+    UpdateConfigTool,
 };
 pub use image::ViewImageTool;
 pub use media::{WatchVideoTool, ListenMusicTool};
@@ -480,6 +481,11 @@ pub fn build_tools(
         tools.push(wrap(Box::new(RequestSecretTool::new(
             workspace_dir, instance_slug, config_path, events.clone(), ps,
         ))));
+    }
+
+    // ── Machine management ──
+    if std::env::var("FLY_MACHINE_ID").is_ok() {
+        tools.push(wrap(Box::new(RestartMachineTool)));
     }
 
     // ── Skills ──

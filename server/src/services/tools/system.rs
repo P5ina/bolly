@@ -1923,3 +1923,60 @@ impl Tool for RequestSecretTool {
         Ok(format!("secret saved to {target}"))
     }
 }
+
+// ---------------------------------------------------------------------------
+// restart_machine — restart the Fly.io machine via internal API
+// ---------------------------------------------------------------------------
+
+pub struct RestartMachineTool;
+
+#[derive(Deserialize, JsonSchema)]
+pub struct RestartMachineArgs {
+    /// Reason for the restart (logged for audit).
+    pub reason: String,
+}
+
+impl Tool for RestartMachineTool {
+    const NAME: &'static str = "restart_machine";
+    type Error = ToolExecError;
+    type Args = RestartMachineArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "restart_machine".into(),
+            description: "Restart the Fly.io machine (full container restart). \
+                Use when the environment is broken (I/O errors, Bus errors on system commands) \
+                or after an update that needs a clean restart.".into(),
+            parameters: openai_schema::<RestartMachineArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let app = std::env::var("FLY_APP_NAME")
+            .map_err(|_| ToolExecError("not running on Fly.io (FLY_APP_NAME not set)".into()))?;
+        let machine_id = std::env::var("FLY_MACHINE_ID")
+            .map_err(|_| ToolExecError("FLY_MACHINE_ID not set".into()))?;
+
+        log::info!("[restart_machine] restarting {app}/{machine_id}: {}", args.reason);
+
+        let client = reqwest::Client::new();
+        let url = format!(
+            "http://_api.internal:4280/v1/apps/{app}/machines/{machine_id}/restart"
+        );
+
+        let resp = client
+            .post(&url)
+            .send()
+            .await
+            .map_err(|e| ToolExecError(format!("restart API call failed: {e}")))?;
+
+        if resp.status().is_success() {
+            Ok("machine restart initiated — server will be back in ~10 seconds".into())
+        } else {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            Err(ToolExecError(format!("restart failed ({status}): {body}")))
+        }
+    }
+}
