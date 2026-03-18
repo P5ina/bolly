@@ -1784,6 +1784,7 @@ fn write_secret_to_config(
 pub struct RequestSecretTool {
     instance_slug: String,
     workspace_dir: PathBuf,
+    #[allow(dead_code)]
     instance_dir: PathBuf,
     config_path: PathBuf,
     events: broadcast::Sender<ServerEvent>,

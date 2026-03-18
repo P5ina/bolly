@@ -100,6 +100,7 @@ pub fn recompute_rhythm(workspace_dir: &Path, slug: &str) -> InteractionRhythm {
 
 /// Snapshot message data into rhythm.json before clearing messages.
 /// Merges current messages into the accumulated stats so nothing is lost.
+#[allow(dead_code)]
 pub fn snapshot_before_clear(workspace_dir: &Path, slug: &str) {
     let instance_dir = workspace_dir.join("instances").join(slug);
     let tz: chrono_tz::Tz = crate::routes::instances::read_timezone(&instance_dir)

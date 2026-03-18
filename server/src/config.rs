@@ -95,6 +95,7 @@ impl InstanceConfig {
     }
 
     /// Return the effective GitHub token: instance-level if set, otherwise fall back to global.
+    #[allow(dead_code)]
     pub fn effective_github_token<'a>(&'a self, global: &'a Config) -> Option<&'a str> {
         if !self.github.token.is_empty() {
             return Some(&self.github.token);
