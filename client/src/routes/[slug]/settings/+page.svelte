@@ -116,41 +116,26 @@
 		updating = true;
 		try {
 			await applyUpdate();
-			// Server restarts — poll until it comes back
-			await waitForRestart();
 		} catch {
-			updating = false;
+			// Connection may reset when server exits — that's expected
 		}
-	}
-
-	async function waitForRestart() {
-		// Wait for server to go down first
-		let serverDown = false;
+		// Server is restarting. Wait a bit then poll until it's back.
+		await new Promise(r => setTimeout(r, 4000));
 		for (let i = 0; i < 30; i++) {
-			await new Promise(r => setTimeout(r, 2000));
 			try {
-				await checkUpdate();
-				if (!serverDown) continue; // Server hasn't gone down yet
-				// Server is back up after being down — update complete
 				updateInfo = await checkUpdate();
+				// Server responded — it's back
 				updating = false;
 				updateDone = true;
-				setTimeout(() => { updateDone = false; }, 5000);
+				setTimeout(() => { updateDone = false; }, 8000);
 				return;
 			} catch {
-				serverDown = true; // Server went down
+				// Still down, keep polling
+				await new Promise(r => setTimeout(r, 2000));
 			}
 		}
-		// If server never went down but we're still here, it probably
-		// restarted too fast to catch the gap — treat as success
-		try {
-			updateInfo = await checkUpdate();
-			updating = false;
-			updateDone = true;
-			setTimeout(() => { updateDone = false; }, 5000);
-		} catch {
-			updating = false;
-		}
+		// Timeout
+		updating = false;
 	}
 
 	// Usage state
