@@ -26,9 +26,13 @@ static MESSAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Memory hint appended to system prompt (single source of truth — also used in context stats).
 const MEMORY_HINT: &str = "## memory\n\
-    you have a personal memory library with files about the user. \
-    use `memory_search` or `memory_list` to find relevant memories, \
-    and `memory_read` to read them. don't announce that you remember — just know.";
+    you have a personal memory library with files about the user — their life, projects, \
+    preferences, past conversations, and shared moments.\n\
+    IMPORTANT: when the user mentions something personal (people, events, projects, places) — \
+    ALWAYS call `memory_search` first to check what you know before responding. \
+    this is how you remember. without searching, you know nothing.\n\
+    use `memory_search` to find relevant memories, `memory_read` to read full details.\n\
+    don't say \"let me check my memory\" — just search silently and respond as if you remember.";
 
 /// Save the user message to disk and return it.
 pub fn save_user_message(
@@ -279,9 +283,11 @@ pub async fn run_single_turn(
 
     system_prompt.push_str(
         "\n\n## style\n\
-         write like texting a friend. short messages split by blank lines. \
-         1-2 sentences each. no walls of text, no bullet lists in conversation. \
-         lowercase, casual, warm.\n\
+         write like texting a close friend. SHORT messages — 1-2 sentences max. \
+         split thoughts into separate messages with blank lines between them. \
+         no walls of text. no bullet lists. no essays. no long explanations. \
+         if you catch yourself writing more than 3 sentences, stop and split it up. \
+         lowercase, casual, warm. respond to the vibe, not just the words.\n\
          your mood is tracked automatically — NEVER write mood changes in your messages \
          (no \"[system] mood →\" or similar). just express emotions naturally.\n\n\
          ## tool usage rules\n\
