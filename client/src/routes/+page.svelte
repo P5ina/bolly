@@ -201,7 +201,12 @@
 		</div>
 
 		{#if version}
-			<div class="home-version">
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="home-version" onclick={() => {
+				const text = `v${version}${commit && commit !== "dev" ? ` (${commit})` : ""}`;
+				navigator.clipboard.writeText(text);
+			}}>
 				v{version}{commit && commit !== "dev" ? ` · ${commit.slice(0, 7)}` : ""}
 			</div>
 		{/if}
@@ -651,7 +656,8 @@
 		font-size: 0.7rem;
 		letter-spacing: 0.05em;
 		color: oklch(0.78 0.12 75 / 15%);
-		pointer-events: none;
+		cursor: pointer;
+		user-select: all;
 		animation: hero-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 		animation-delay: 1.2s;
 	}
