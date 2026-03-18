@@ -132,10 +132,14 @@ fn secret_values() -> &'static Vec<String> {
         let env_keys = [
             "ANTHROPIC_API_KEY",
             "OPENAI_API_KEY",
+            "OPENROUTER_API_KEY",
+            "BRAVE_SEARCH_API_KEY",
             "DATABASE_URL",
             "BOLLY_AUTH_TOKEN",
+            "BOLLY_RELEASE_TOKEN",
             "STRIPE_SECRET_KEY",
             "GITHUB_TOKEN",
+            "GOOGLE_CLIENT_SECRET",
         ];
         env_keys
             .iter()

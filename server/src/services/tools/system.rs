@@ -105,10 +105,11 @@ impl Tool for RunCommandTool {
             let instance_slug = self.instance_slug.clone();
             let chat_id = self.chat_id.clone();
             let chunk_cb: Box<dyn Fn(&str) + Send> = Box::new(move |chunk: &str| {
+                let redacted = super::redact_secrets(chunk);
                 let _ = events.send(ServerEvent::ToolOutputChunk {
                     instance_slug: instance_slug.clone(),
                     chat_id: chat_id.clone(),
-                    chunk: chunk.to_string(),
+                    chunk: redacted,
                 });
             });
             let env_pairs: Vec<(String, String)> = if let Some(ref t) = github_token {
