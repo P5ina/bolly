@@ -168,6 +168,7 @@ pub fn history_to_chat_messages(entries: &[HistoryEntry]) -> Vec<ChatMessage> {
 
     let mut out = Vec::new();
     let mut counter = 0u64;
+    let mut seen_ids = std::collections::HashSet::new();
 
     for entry in entries {
         let ts = entry.ts.clone().unwrap_or_else(|| "0".to_string());
@@ -183,12 +184,25 @@ pub fn history_to_chat_messages(entries: &[HistoryEntry]) -> Vec<ChatMessage> {
 
         let mut block_idx = 0u32;
         for block in blocks {
-            let block_id = if block_idx == 0 {
+            let mut block_id = if block_idx == 0 {
                 base_id.clone()
             } else {
                 format!("{base_id}_{block_idx}")
             };
             block_idx += 1;
+
+            // Ensure uniqueness — append suffix if ID was already emitted
+            if !seen_ids.insert(block_id.clone()) {
+                let mut dedup = 2u32;
+                loop {
+                    let candidate = format!("{block_id}_d{dedup}");
+                    if seen_ids.insert(candidate.clone()) {
+                        block_id = candidate;
+                        break;
+                    }
+                    dedup += 1;
+                }
+            }
 
             match block {
                 ContentBlock::Text { text } => {
