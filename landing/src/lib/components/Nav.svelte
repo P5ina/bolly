@@ -167,7 +167,7 @@
 	}
 	.mobile-cta:hover {
 		background: oklch(0.78 0.12 75 / 14%);
-		border-color: oklch(0.78 0.12 75 / 25%);
+		border-color: oklch(0.78 0.12 75 / 40%);
 	}
 
 	@keyframes fade-in {

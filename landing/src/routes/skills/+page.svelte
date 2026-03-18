@@ -212,7 +212,7 @@
 
 <style>
 	.section-label {
-		font-size: 0.6875rem;
+		font-size: 0.8rem;
 		letter-spacing: 0.15em;
 		text-transform: uppercase;
 		color: var(--color-warm-dim);
@@ -259,7 +259,7 @@
 	.search-input {
 		width: 100%;
 		font-family: var(--font-mono);
-		font-size: 0.8125rem;
+		font-size: 0.9rem;
 		color: var(--color-text);
 		background: var(--color-bg-raised);
 		border: 1px solid var(--color-border);
@@ -314,7 +314,7 @@
 
 	.loading-text {
 		font-family: var(--font-mono);
-		font-size: 0.75rem;
+		font-size: 0.85rem;
 		color: var(--color-text-ghost);
 	}
 
@@ -335,13 +335,13 @@
 	}
 
 	.empty-hint {
-		font-size: 0.8125rem;
+		font-size: 0.9rem;
 		color: var(--color-text-ghost);
 	}
 
 	.btn-retry {
 		font-family: var(--font-mono);
-		font-size: 0.75rem;
+		font-size: 0.85rem;
 		color: var(--color-warm-dim);
 		background: var(--color-warm-ghost);
 		border: 1px solid var(--color-border-warm);
@@ -360,7 +360,7 @@
 	/* Results */
 	.results-count {
 		font-family: var(--font-mono);
-		font-size: 0.6875rem;
+		font-size: 0.8rem;
 		color: var(--color-text-ghost);
 		letter-spacing: 0.04em;
 		margin-bottom: 1rem;
@@ -443,7 +443,7 @@
 
 	.skill-card:hover .skill-icon {
 		background: oklch(0.78 0.12 75 / 8%);
-		border-color: oklch(0.78 0.12 75 / 20%);
+		border-color: oklch(0.78 0.12 75 / 35%);
 		color: var(--color-warm);
 		box-shadow: 0 0 20px oklch(0.78 0.12 75 / 6%);
 	}
@@ -458,7 +458,7 @@
 	}
 
 	.skill-desc {
-		font-size: 0.8125rem;
+		font-size: 0.9rem;
 		color: var(--color-text-dim);
 		line-height: 1.55;
 	}
@@ -472,14 +472,14 @@
 
 	.skill-author {
 		font-family: var(--font-mono);
-		font-size: 0.6875rem;
+		font-size: 0.8rem;
 		color: var(--color-text-ghost);
 	}
 
 	.skill-repo {
 		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		color: oklch(0.78 0.12 75 / 20%);
+		font-size: 0.8rem;
+		color: oklch(0.78 0.12 75 / 35%);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -497,7 +497,7 @@
 	}
 
 	.skill-install-hint {
-		font-size: 0.78rem;
+		font-size: 0.875rem;
 		color: var(--color-text-dim);
 		line-height: 1.5;
 	}
@@ -508,7 +508,7 @@
 
 	.skill-github-link {
 		font-family: var(--font-mono);
-		font-size: 0.75rem;
+		font-size: 0.85rem;
 		color: var(--color-text-ghost);
 		text-decoration: none;
 		transition: color 0.2s;
@@ -550,7 +550,7 @@
 
 	.publish-desc code {
 		font-family: var(--font-mono);
-		font-size: 0.8125rem;
+		font-size: 0.9rem;
 		color: var(--color-warm-dim);
 		background: var(--color-warm-ghost);
 		padding: 0.1rem 0.35rem;

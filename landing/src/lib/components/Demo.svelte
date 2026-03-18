@@ -82,7 +82,7 @@
 
 <style>
 	.section-label {
-		font-size: 0.6875rem;
+		font-size: 0.8rem;
 		letter-spacing: 0.15em;
 		text-transform: uppercase;
 		color: var(--color-warm-dim);
@@ -123,14 +123,14 @@
 		justify-content: center;
 		font-family: var(--font-display);
 		font-style: italic;
-		font-size: 0.75rem;
+		font-size: 0.85rem;
 		color: oklch(0.78 0.12 75 / 60%);
 	}
 
 	.demo-mood {
 		display: block;
-		font-size: 0.625rem;
-		color: oklch(0.78 0.12 75 / 30%);
+		font-size: 0.85rem;
+		color: oklch(0.78 0.12 75 / 45%);
 		font-style: italic;
 	}
 
@@ -146,7 +146,7 @@
 		max-width: 85%;
 		padding: 0.625rem 0.875rem;
 		border-radius: 0.875rem;
-		font-size: 0.8125rem;
+		font-size: 0.9rem;
 		line-height: 1.55;
 	}
 
@@ -197,7 +197,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		font-size: 0.75rem;
+		font-size: 0.85rem;
 		color: var(--color-text-ghost);
 	}
 

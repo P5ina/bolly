@@ -127,7 +127,7 @@
 
 <style>
 	.section-label {
-		font-size: 0.6875rem;
+		font-size: 0.8rem;
 		letter-spacing: 0.15em;
 		text-transform: uppercase;
 		color: var(--color-warm-dim);
@@ -206,7 +206,7 @@
 	}
 
 	.byok-label {
-		font-size: 0.8125rem;
+		font-size: 0.9rem;
 		color: var(--color-text-dim);
 		letter-spacing: 0.01em;
 	}
@@ -216,7 +216,7 @@
 	}
 
 	.byok-hint {
-		font-size: 0.6875rem;
+		font-size: 0.8rem;
 		color: oklch(0.65 0.08 145 / 60%);
 		letter-spacing: 0.02em;
 		animation: hint-in 0.3s ease both;
@@ -251,7 +251,7 @@
 	}
 
 	.price-card.featured:hover {
-		border-color: oklch(0.78 0.12 75 / 25%);
+		border-color: oklch(0.78 0.12 75 / 40%);
 		box-shadow: 0 0 60px oklch(0.78 0.12 75 / 5%);
 	}
 
@@ -260,7 +260,7 @@
 		top: -0.6rem;
 		left: 50%;
 		transform: translateX(-50%);
-		font-size: 0.625rem;
+		font-size: 0.85rem;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
 		padding: 0.25rem 0.875rem;
@@ -287,7 +287,7 @@
 	}
 
 	.price-was {
-		font-size: 0.6875rem;
+		font-size: 0.8rem;
 		color: oklch(0.55 0.02 280 / 40%);
 		text-decoration: line-through;
 		animation: hint-in 0.3s ease both;

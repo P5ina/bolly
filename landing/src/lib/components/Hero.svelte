@@ -207,7 +207,7 @@
 		border-radius: 2rem;
 		background: var(--color-warm-ghost);
 		border: 1px solid var(--color-border-warm);
-		font-size: 0.75rem;
+		font-size: 0.85rem;
 		color: var(--color-warm-dim);
 		letter-spacing: 0.05em;
 		margin-bottom: 2rem;
@@ -234,13 +234,13 @@
 		display: flex;
 		align-items: center;
 		gap: 0.375rem;
-		font-size: 0.6875rem;
+		font-size: 0.8rem;
 		letter-spacing: 0.04em;
 		color: var(--color-text-ghost);
 	}
 
 	.hero-trust-item svg {
-		color: oklch(0.78 0.12 75 / 25%);
+		color: oklch(0.78 0.12 75 / 40%);
 	}
 
 	.hero-trust-sep {

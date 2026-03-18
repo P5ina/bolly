@@ -69,7 +69,7 @@
 
 <style>
 	.section-label {
-		font-size: 0.6875rem;
+		font-size: 0.8rem;
 		letter-spacing: 0.15em;
 		text-transform: uppercase;
 		color: var(--color-warm-dim);
@@ -134,7 +134,7 @@
 
 	.feature-card:hover .feature-icon {
 		background: oklch(0.78 0.12 75 / 8%);
-		border-color: oklch(0.78 0.12 75 / 20%);
+		border-color: oklch(0.78 0.12 75 / 35%);
 		color: var(--color-warm);
 		box-shadow: 0 0 20px oklch(0.78 0.12 75 / 6%);
 	}

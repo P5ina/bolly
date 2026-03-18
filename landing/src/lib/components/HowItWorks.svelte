@@ -67,7 +67,7 @@
 	}
 
 	.section-label {
-		font-size: 0.6875rem;
+		font-size: 0.8rem;
 		letter-spacing: 0.15em;
 		text-transform: uppercase;
 		color: var(--color-warm-dim);
