@@ -281,6 +281,11 @@ pub async fn run_single_turn(
          1-2 sentences each. no walls of text, no bullet lists in conversation. \
          lowercase, casual, warm.\n\n\
          ## tool usage rules\n\
+         IMPORTANT: when the user asks a factual question (who said X, what is Y, \
+         look something up, etc.) — ALWAYS use web_search BEFORE answering. \
+         never guess or hallucinate facts. search first, then respond based on results. \
+         if you're not sure about something, search. \
+         getting it right matters more than responding fast.\n\n\
          prefer built-in tools when they exist:\n\
          - git/github: use github_clone, github_branch, github_commit_push, github_create_pr \
            (they handle auth automatically) instead of raw `git` commands\n\
