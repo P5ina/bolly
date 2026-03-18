@@ -277,6 +277,15 @@ pub async fn run_single_turn(
     let autonomy_prompt = load_autonomy_prompt(workspace_dir, &instance_slug);
     system_prompt = format!("{system_prompt}\n\n{autonomy_prompt}");
 
+    // Current time context
+    let instance_dir = workspace_dir.join("instances").join(&instance_slug);
+    let now = crate::routes::instances::format_instance_now(&instance_dir);
+    system_prompt.push_str(&format!(
+        "\n\n## time\n\
+         current time: {now}\n\
+         if you need the exact time later in the conversation, use the `get_time` tool."
+    ));
+
     system_prompt.push_str(
         "\n\n## style\n\
          talk like a friend, not an assistant. casual, warm, real.\n\
