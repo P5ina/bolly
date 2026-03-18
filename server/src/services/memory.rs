@@ -330,6 +330,7 @@ pub async fn extract_and_store(
 
     // Build existing library context
     let entries = scan_library(workspace_dir, instance_slug);
+    let file_count = entries.len();
     let existing_summary = if entries.is_empty() {
         String::from("(empty library — no memories yet)")
     } else {
@@ -386,12 +387,13 @@ rules:
 - each file should cover one coherent topic or moment
 - file names should be descriptive kebab-case (e.g. "about/work.md", "moments/late-night-debugging.md")
 - use "write" to create new files or replace outdated ones
-- use "append" to add new info to an existing file
+- use "append" to add new info to an EXISTING file (prefer this over creating new files)
 - use "delete" to remove files with outdated/wrong info
 - DON'T duplicate info that's already in the library
 - DON'T force it — most conversations produce 0-1 ops
-- for moments/episodes, write vividly — capture the feeling, not just the facts
+- DON'T create a new file if you can append to an existing one on the same topic
 - keep files concise — a few lines each, not essays
+- there are currently {file_count} files. aim for quality over quantity — merge related topics
 
 respond ONLY with the JSON object, no other text."#
     );

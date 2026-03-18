@@ -510,9 +510,20 @@ fn build_reflection_prompt(
     }
 
     // Memory catalog — use memory_read for full content
-    prompt.push_str("memory library catalog (use memory_read for details):\n");
+    let file_count = library_catalog.lines().filter(|l| l.starts_with("- ")).count();
+    prompt.push_str(&format!("memory library ({file_count} files — use memory_read for details):\n"));
     prompt.push_str(library_catalog);
     prompt.push('\n');
+    if file_count > 50 {
+        prompt.push_str(&format!(
+            "\n⚠ your memory has {file_count} files — this is too many. \
+             PRIORITIZE cleanup this heartbeat:\n\
+             - merge files about the same topic into one\n\
+             - delete trivial/duplicate/outdated memories\n\
+             - aim for ~30-50 high-quality files, not hundreds of fragments\n\
+             - do 5-10 cleanup ops this cycle\n\n"
+        ));
+    }
 
     // Recent drops — so we don't repeat ourselves
     if !recent_drops.is_empty() {
