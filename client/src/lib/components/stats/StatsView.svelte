@@ -51,7 +51,7 @@
 	let daysSinceFirst = $derived.by(() => {
 		if (!stats?.first_message_at) return 0;
 		const first = parseInt(stats.first_message_at);
-		return Math.floor((Date.now() - first) / 86400000);
+		return Math.floor((Date.now() - first) / 86400000) + 1;
 	});
 
 	// Heatmap: 7 rows (days) x 24 cols (hours) — need to derive from daily_history
@@ -69,6 +69,16 @@
 		return last60.map(([date, count]) => ({ date, count, pct: count / max }));
 	});
 
+	const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+	/** Format a Date as YYYY-MM-DD in local time (matching server-side dates). */
+	function localDateStr(d: Date): string {
+		const y = d.getFullYear();
+		const m = String(d.getMonth() + 1).padStart(2, "0");
+		const day = String(d.getDate()).padStart(2, "0");
+		return `${y}-${m}-${day}`;
+	}
+
 	// Contribution heatmap (GitHub-style) — last 52 weeks
 	let contributionWeeks = $derived.by(() => {
 		if (!stats) return [];
@@ -78,11 +88,12 @@
 		const today = new Date();
 		// Start from 52 weeks ago, aligned to Monday
 		const start = new Date(today);
-		start.setDate(start.getDate() - 363 - start.getDay() + 1);
+		const daysSinceMonday = (start.getDay() + 6) % 7; // Mon=0, Sun=6
+		start.setDate(start.getDate() - 52 * 7 - daysSinceMonday);
 
 		let currentWeek: { date: string; count: number; level: number }[] = [];
 		for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
-			const ds = d.toISOString().slice(0, 10);
+			const ds = localDateStr(d);
 			const count = map.get(ds) ?? 0;
 			const level = count === 0 ? 0 : Math.min(4, Math.ceil((count / maxCount) * 4));
 			currentWeek.push({ date: ds, count, level });
@@ -93,6 +104,23 @@
 		}
 		if (currentWeek.length > 0) weeks.push(currentWeek);
 		return weeks;
+	});
+
+	// Month labels for heatmap columns
+	let monthLabels = $derived.by(() => {
+		if (contributionWeeks.length === 0) return [];
+		const labels: { label: string; col: number }[] = [];
+		let lastMonth = -1;
+		for (let i = 0; i < contributionWeeks.length; i++) {
+			const firstDay = contributionWeeks[i][0];
+			if (!firstDay) continue;
+			const month = new Date(firstDay.date + "T00:00:00").getMonth();
+			if (month !== lastMonth) {
+				labels.push({ label: MONTH_LABELS[month], col: i });
+				lastMonth = month;
+			}
+		}
+		return labels;
 	});
 
 	const moodColors: Record<string, string> = {
@@ -140,22 +168,44 @@
 			<div class="stats-section">
 				<h3 class="section-title">activity</h3>
 				<div class="heatmap-container">
-					<div class="heatmap-grid">
-						{#each contributionWeeks as week}
-							<div class="heatmap-col">
-								{#each week as day}
-									<div
-										class="heatmap-cell"
-										class:heatmap-0={day.level === 0}
-										class:heatmap-1={day.level === 1}
-										class:heatmap-2={day.level === 2}
-										class:heatmap-3={day.level === 3}
-										class:heatmap-4={day.level === 4}
-										title="{day.date}: {day.count} messages"
-									></div>
-								{/each}
-							</div>
+					<!-- Month labels -->
+					<div class="heatmap-months">
+						{#each monthLabels as { label, col }, i}
+							{@const nextCol = i + 1 < monthLabels.length ? monthLabels[i + 1].col : contributionWeeks.length}
+							<span
+								class="heatmap-month-label"
+								style="width: {(nextCol - col) * 11}px"
+							>{label}</span>
 						{/each}
+					</div>
+					<div class="heatmap-with-days">
+						<!-- Day labels (Mon, Wed, Fri) -->
+						<div class="heatmap-day-labels">
+							<span class="heatmap-day-label"></span>
+							<span class="heatmap-day-label">Mon</span>
+							<span class="heatmap-day-label"></span>
+							<span class="heatmap-day-label">Wed</span>
+							<span class="heatmap-day-label"></span>
+							<span class="heatmap-day-label">Fri</span>
+							<span class="heatmap-day-label"></span>
+						</div>
+						<div class="heatmap-grid">
+							{#each contributionWeeks as week}
+								<div class="heatmap-col">
+									{#each week as day}
+										<div
+											class="heatmap-cell"
+											class:heatmap-0={day.level === 0}
+											class:heatmap-1={day.level === 1}
+											class:heatmap-2={day.level === 2}
+											class:heatmap-3={day.level === 3}
+											class:heatmap-4={day.level === 4}
+											title="{day.date}: {day.count} messages"
+										></div>
+									{/each}
+								</div>
+							{/each}
+						</div>
 					</div>
 					<div class="heatmap-legend">
 						<span class="heatmap-legend-label">less</span>
@@ -364,6 +414,41 @@
 	}
 
 	.heatmap-grid::-webkit-scrollbar { display: none; }
+
+	.heatmap-months {
+		display: flex;
+		padding-left: 28px;
+		overflow: hidden;
+	}
+
+	.heatmap-month-label {
+		font-family: var(--font-mono);
+		font-size: 0.45rem;
+		color: oklch(0.78 0.12 75 / 22%);
+		flex-shrink: 0;
+	}
+
+	.heatmap-with-days {
+		display: flex;
+		gap: 3px;
+	}
+
+	.heatmap-day-labels {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		flex-shrink: 0;
+		width: 24px;
+	}
+
+	.heatmap-day-label {
+		font-family: var(--font-mono);
+		font-size: 0.42rem;
+		color: oklch(0.78 0.12 75 / 18%);
+		height: 9px;
+		line-height: 9px;
+		text-align: right;
+	}
 
 	.heatmap-col {
 		display: flex;
