@@ -1,4 +1,5 @@
-use axum::{Json, Router, extract::{Path, State}, http::StatusCode, routing::{delete, get, post, put}};
+use axum::{Json, Router, body::Body, extract::{Path, State, Multipart}, http::StatusCode, routing::{delete, get, post, put}};
+use axum::response::IntoResponse;
 use serde::{Deserialize, Serialize};
 use std::fs;
 
@@ -24,6 +25,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/email", get(get_email_config))
         .route("/api/instances/{instance_slug}/email", put(set_email_config))
         .route("/api/instances/{instance_slug}/email", delete(delete_email_config))
+        .route("/api/instances/{instance_slug}/export", get(export_instance))
+        .route("/api/instances/{instance_slug}/import", post(import_instance))
 }
 
 async fn list_instances(State(state): State<AppState>) -> Json<Vec<InstanceSummary>> {
@@ -503,5 +506,124 @@ async fn delete_email_config(
         }
     } else {
         StatusCode::NO_CONTENT
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Export / Import
+// ---------------------------------------------------------------------------
+
+/// GET /api/instances/{slug}/export → tar.gz download of the entire instance directory.
+async fn export_instance(
+    Path(instance_slug): Path<String>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let instance_dir = state.workspace_dir.join("instances").join(&instance_slug);
+    if !instance_dir.is_dir() {
+        return (StatusCode::NOT_FOUND, "instance not found").into_response();
+    }
+
+    // Create tar.gz in memory via the `tar` command
+    let result = tokio::process::Command::new("tar")
+        .arg("czf")
+        .arg("-") // stdout
+        .arg("-C")
+        .arg(state.workspace_dir.join("instances"))
+        .arg(&instance_slug)
+        .output()
+        .await;
+
+    match result {
+        Ok(output) if output.status.success() => {
+            let headers = [
+                (axum::http::header::CONTENT_TYPE, "application/gzip"),
+                (
+                    axum::http::header::CONTENT_DISPOSITION,
+                    &format!("attachment; filename=\"{instance_slug}.tar.gz\""),
+                ),
+            ];
+            (headers, Body::from(output.stdout)).into_response()
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            log::error!("[export] tar failed: {stderr}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "export failed").into_response()
+        }
+        Err(e) => {
+            log::error!("[export] failed to run tar: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "export failed").into_response()
+        }
+    }
+}
+
+/// POST /api/instances/{slug}/import — upload a tar.gz to replace instance data.
+/// Existing files are overwritten; files not in the archive are kept.
+async fn import_instance(
+    Path(instance_slug): Path<String>,
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> impl IntoResponse {
+    let instance_dir = state.workspace_dir.join("instances").join(&instance_slug);
+    if !instance_dir.is_dir() {
+        fs::create_dir_all(&instance_dir).ok();
+    }
+
+    // Read the uploaded file
+    let field = match multipart.next_field().await {
+        Ok(Some(f)) => f,
+        _ => return (StatusCode::BAD_REQUEST, "no file uploaded").into_response(),
+    };
+
+    let data = match field.bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            log::error!("[import] failed to read upload: {e}");
+            return (StatusCode::BAD_REQUEST, "failed to read upload").into_response();
+        }
+    };
+
+    // Extract tar.gz into the instance directory
+    // Use --strip-components=1 to handle archives that contain the slug as root dir
+    let mut child = match tokio::process::Command::new("tar")
+        .arg("xzf")
+        .arg("-") // stdin
+        .arg("--strip-components=1")
+        .arg("-C")
+        .arg(&instance_dir)
+        .stdin(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("[import] failed to spawn tar: {e}");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "import failed").into_response();
+        }
+    };
+
+    // Write data to stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        use tokio::io::AsyncWriteExt;
+        if let Err(e) = stdin.write_all(&data).await {
+            log::error!("[import] failed to write to tar stdin: {e}");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "import failed").into_response();
+        }
+        drop(stdin);
+    }
+
+    match child.wait().await {
+        Ok(status) if status.success() => {
+            log::info!("[import] imported {} bytes into {instance_slug}", data.len());
+            // Rebuild memory catalog after import
+            memory::rebuild_catalog_snapshot(&state.workspace_dir, &instance_slug);
+            Json(serde_json::json!({ "ok": true })).into_response()
+        }
+        Ok(_) => {
+            (StatusCode::BAD_REQUEST, "invalid archive — make sure it's a .tar.gz file").into_response()
+        }
+        Err(e) => {
+            log::error!("[import] tar failed: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "import failed").into_response()
+        }
     }
 }

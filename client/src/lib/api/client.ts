@@ -537,6 +537,28 @@ export function setUpdateChannel(channel: string): Promise<{ ok: boolean; channe
 }
 
 // ---------------------------------------------------------------------------
+// Export / Import
+// ---------------------------------------------------------------------------
+
+export function exportInstanceUrl(slug: string): string {
+	return `${BASE}/api/instances/${encodeURIComponent(slug)}/export`;
+}
+
+export async function importInstance(slug: string, file: File): Promise<{ ok: boolean }> {
+	const form = new FormData();
+	form.append("file", file);
+	const res = await fetch(
+		`${BASE}/api/instances/${encodeURIComponent(slug)}/import`,
+		{ method: "POST", body: form, headers: authHeaders() },
+	);
+	if (!res.ok) {
+		const text = await res.text();
+		throw new Error(text || "import failed");
+	}
+	return res.json();
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket
 // ---------------------------------------------------------------------------
 

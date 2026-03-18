@@ -50,8 +50,8 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	let showContextStats = $state(false);
 	let showToolActivity = $state(
 		typeof localStorage !== "undefined"
-			? (localStorage.getItem("bolly:showToolActivity") ?? "true") === "true"
-			: true,
+			? (localStorage.getItem("bolly:showToolActivity") ?? "false") === "true"
+			: false,
 	);
 	let streamingContent = $state("");
 	let displayedLength = $state(0);

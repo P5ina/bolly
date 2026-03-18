@@ -20,6 +20,8 @@
 		saveEmailAccounts,
 		deleteAllEmailAccounts,
 		fetchUsage,
+		exportInstanceUrl,
+		importInstance,
 	} from "$lib/api/client.js";
 	import type { McpServerInfo, EmailConfig } from "$lib/api/client.js";
 	import type { Usage } from "$lib/api/types.js";
@@ -36,6 +38,34 @@
 	}
 
 	const catalog: ExtensionEntry[] = [];
+
+	// Export / Import
+	let importing = $state(false);
+	let importError = $state("");
+	let importDone = $state(false);
+	let importFileInput: HTMLInputElement | undefined = $state();
+
+	function handleExport() {
+		window.location.href = exportInstanceUrl(slug);
+	}
+
+	async function handleImport() {
+		const file = importFileInput?.files?.[0];
+		if (!file) return;
+		importing = true;
+		importError = "";
+		importDone = false;
+		try {
+			await importInstance(slug, file);
+			importDone = true;
+			setTimeout(() => { importDone = false; }, 4000);
+		} catch (e) {
+			importError = e instanceof Error ? e.message : "import failed";
+		} finally {
+			importing = false;
+			if (importFileInput) importFileInput.value = "";
+		}
+	}
 
 	// Google state
 	let accounts = $state<{ email: string }[]>([]);
@@ -877,6 +907,37 @@
 			<p class="error-msg">{ghError}</p>
 		{/if}
 	</section>
+
+	<!-- Export / Import -->
+	<section class="settings-section">
+		<div class="section-label">data</div>
+		<div class="data-actions">
+			<button class="data-btn" onclick={handleExport}>
+				export
+			</button>
+			<label class="data-btn data-btn-import">
+				{#if importing}
+					importing...
+				{:else if importDone}
+					imported!
+				{:else}
+					import
+				{/if}
+				<input
+					type="file"
+					accept=".tar.gz,.tgz"
+					bind:this={importFileInput}
+					onchange={handleImport}
+					hidden
+					disabled={importing}
+				/>
+			</label>
+		</div>
+		<p class="data-hint">export downloads a .tar.gz of all instance data (soul, memory, drops, chat history). import merges into the current instance.</p>
+		{#if importError}
+			<p class="error-msg">{importError}</p>
+		{/if}
+	</section>
 </div>
 
 <style>
@@ -1546,5 +1607,33 @@
 	.email-form-row {
 		display: flex;
 		gap: 0.4rem;
+	}
+
+	/* Data export/import */
+	.data-actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+	.data-btn {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		padding: 0.4rem 0.9rem;
+		border-radius: 0.375rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		color: oklch(0.78 0.12 75 / 70%);
+		background: oklch(0.78 0.12 75 / 8%);
+		border: 1px solid oklch(0.78 0.12 75 / 15%);
+	}
+	.data-btn:hover {
+		background: oklch(0.78 0.12 75 / 14%);
+		border-color: oklch(0.78 0.12 75 / 25%);
+	}
+	.data-hint {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: oklch(0.88 0.02 75 / 30%);
+		margin-top: 0.5rem;
+		line-height: 1.5;
 	}
 </style>
