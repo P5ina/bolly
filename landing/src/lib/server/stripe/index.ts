@@ -35,7 +35,7 @@ export const PLANS = {
 		tokensPerMonth: 3_000_000,
 	},
 	unlimited: {
-		name: 'Unlimited',
+		name: 'Real Friend',
 		priceMonthly: 5900,
 		storageLimit: 51200, // MB (50 GB)
 		cpus: 4,

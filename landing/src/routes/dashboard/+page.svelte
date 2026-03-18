@@ -158,7 +158,7 @@
 							{#each [
 								{ id: 'starter', name: 'Starter', price: 12, byokPrice: 5, tokens: '1M', desc: 'for exploring' },
 								{ id: 'companion', name: 'Companion', price: 29, byokPrice: 10, tokens: '3M', desc: 'for daily use', featured: true },
-								{ id: 'unlimited', name: 'Unlimited', price: 59, byokPrice: 19, tokens: '10M', desc: 'no limits' },
+								{ id: 'unlimited', name: 'Real Friend', price: 59, byokPrice: 19, tokens: '10M', desc: 'no limits' },
 							] as plan}
 								<button
 									class="create-plan-card"

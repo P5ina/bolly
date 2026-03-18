@@ -22,7 +22,7 @@
 			badge: 'popular',
 		},
 		{
-			name: 'unlimited',
+			name: 'real friend',
 			desc: 'No limits',
 			price: 59,
 			byokPrice: 19,

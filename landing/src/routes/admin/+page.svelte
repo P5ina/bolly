@@ -179,7 +179,7 @@
 						<select id="cm-plan" name="plan" class="text-xs py-1.5 px-2 rounded-lg font-mono" style="background: oklch(1 0 0 / 4%); border: 1px solid oklch(1 0 0 / 8%); color: var(--color-text);">
 							<option value="starter">Starter</option>
 							<option value="companion" selected>Companion</option>
-							<option value="unlimited">Unlimited</option>
+							<option value="unlimited">Real Friend</option>
 						</select>
 					</div>
 					<button type="submit" class="inline-flex items-center gap-1.5 text-xs py-1.5 px-4 rounded-lg transition-all duration-300" style="color: oklch(0.72 0.12 200); background: oklch(0.72 0.12 200 / 10%); border: 1px solid oklch(0.72 0.12 200 / 25%);">
