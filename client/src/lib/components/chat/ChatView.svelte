@@ -86,7 +86,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 						lastTypeSoundChar = newLen;
 					}
 					updateStreamingBubble();
-					scrollToBottom();
+					scrollToBottomIfNear();
 				}
 				lastTypewriterTime = now;
 			}
@@ -136,18 +136,31 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					stream = messagesToStream(res.messages);
 					agentRunning = res.agent_running;
 					if (agentRunning) pushActivity("state", "thinking...");
-					scrollToBottom();
+					scrollToBottomIfNear();
 				})
 				.catch(() => {});
 		});
 	});
 
+	/** True if the user is within 150px of the bottom (i.e. "reading latest"). */
+	function isNearBottom(): boolean {
+		if (!scrollContainer) return true;
+		const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+		return scrollHeight - scrollTop - clientHeight < 150;
+	}
+
+	/** Always scroll to bottom (used after sending a message). */
 	function scrollToBottom() {
 		requestAnimationFrame(() => {
 			if (scrollContainer) {
 				scrollContainer.scrollTop = scrollContainer.scrollHeight;
 			}
 		});
+	}
+
+	/** Scroll to bottom only if the user is already near the bottom. */
+	function scrollToBottomIfNear() {
+		if (isNearBottom()) scrollToBottom();
 	}
 
 	function now() {
@@ -165,7 +178,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			label,
 			timestamp: now(),
 		}];
-		scrollToBottom();
+		scrollToBottomIfNear();
 	}
 
 	function addMessage(msg: ChatMessage) {
@@ -191,7 +204,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			}
 			messages = [...messages, msg];
 			stream = [...stream, { type: "message", data: msg }];
-			scrollToBottom();
+			scrollToBottomIfNear();
 		}
 	}
 
@@ -314,7 +327,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					stream = messagesToStream(res.messages);
 					agentRunning = res.agent_running;
 					if (agentRunning) pushActivity("state", "thinking...");
-					scrollToBottom();
+					scrollToBottom(); // always scroll on initial load
 				})
 				.catch((e) => {
 					messages = [];
@@ -363,7 +376,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 						toolOutput: msg.content,
 						html: msg.mcp_app_html,
 					}];
-					scrollToBottom();
+					scrollToBottomIfNear();
 				} else if (isToolActivity(msg)) {
 					// Promote streaming bubble to a real message so it doesn't vanish
 					if (streamingContent) {
@@ -397,7 +410,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 							stream = [...stream, item];
 						}
 					}
-					scrollToBottom();
+					scrollToBottomIfNear();
 				} else {
 					if (msg.role === "assistant") { play("message_receive"); hapticMedium(); }
 					addMessage(msg);
@@ -442,7 +455,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				} else {
 					pushActivity("output", event.chunk, "__live_");
 				}
-				scrollToBottom();
+				scrollToBottomIfNear();
 			} else if (event.type === "chat_stream_delta") {
 				if (!streamingContent) lastTypeSoundChar = 0;
 				streamingContent += event.delta;
@@ -457,7 +470,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					toolOutput: "",
 					html: event.html,
 				}];
-				scrollToBottom();
+				scrollToBottomIfNear();
 			} else if (event.type === "mcp_app_input_delta") {
 				// Append JSON delta to the live MCP App stream item
 				const liveIdx = stream.findLastIndex((s) => s.type === "mcp_app" && s.id.startsWith("mcp_live_"));
@@ -484,7 +497,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					count: event.messages_compacted,
 					timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
 				}];
-				scrollToBottom();
+				scrollToBottomIfNear();
 			}
 		});
 		return unsub;
