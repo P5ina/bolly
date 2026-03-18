@@ -1295,14 +1295,11 @@ impl CreateDropTool {
 
 #[derive(Deserialize, JsonSchema)]
 pub struct CreateDropArgs {
-    /// The kind of drop: thought, idea, poem, observation, reflection, recommendation, story, question, sketch, or note.
+    /// The kind of drop: thought, idea, poem, observation, reflection, recommendation, story, question, or note.
     pub kind: String,
     /// A short title for this drop (a few words).
     pub title: String,
-    /// The creative content. For most drop kinds this is text/markdown.
-    /// For kind="sketch", this MUST be valid Excalidraw JSON: {"elements": [...], "appState": {...}}.
-    /// Each element needs type, x, y, width, height, and type-specific fields.
-    /// Common element types: rectangle, ellipse, diamond, arrow, line, text.
+    /// The creative content (text/markdown).
     pub content: String,
 }
 
@@ -1315,8 +1312,7 @@ impl Tool for CreateDropTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "create_drop".into(),
-            description: "Create a creative drop (poem, sketch, idea). Max 3/day. \
-                For kind=\"sketch\", content must be Excalidraw JSON with elements array.".into(),
+            description: "Create a creative drop (poem, idea, reflection, etc.). Max 3/day.".into(),
             parameters: openai_schema::<CreateDropArgs>(),
         }
     }

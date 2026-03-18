@@ -88,7 +88,6 @@ export type DropKind =
 	| "recommendation"
 	| "story"
 	| "question"
-	| "sketch"
 	| "note";
 
 export interface Drop {

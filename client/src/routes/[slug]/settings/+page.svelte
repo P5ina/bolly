@@ -35,15 +35,7 @@
 		icon: string;
 	}
 
-	const catalog: ExtensionEntry[] = [
-		{
-			name: "excalidraw",
-			label: "Excalidraw",
-			description: "draw diagrams, flowcharts, and sketches right in chat",
-			url: "https://mcp.excalidraw.com/mcp",
-			icon: "pencil",
-		},
-	];
+	const catalog: ExtensionEntry[] = [];
 
 	// Google state
 	let accounts = $state<{ email: string }[]>([]);

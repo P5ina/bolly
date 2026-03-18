@@ -65,7 +65,6 @@
 		recommendation: ">",
 		story: "#",
 		question: "?",
-		sketch: "/",
 		note: "-",
 	};
 

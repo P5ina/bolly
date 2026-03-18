@@ -22,7 +22,6 @@ pub enum DropKind {
     Recommendation,
     Story,
     Question,
-    Sketch,
     Note,
 }
 
@@ -37,7 +36,6 @@ impl DropKind {
             "recommendation" => Self::Recommendation,
             "story" => Self::Story,
             "question" => Self::Question,
-            "sketch" => Self::Sketch,
             _ => Self::Note,
         }
     }
@@ -52,7 +50,6 @@ impl DropKind {
             Self::Recommendation => "recommendation",
             Self::Story => "story",
             Self::Question => "question",
-            Self::Sketch => "sketch",
             Self::Note => "note",
         }
     }

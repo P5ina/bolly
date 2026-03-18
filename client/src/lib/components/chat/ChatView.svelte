@@ -11,8 +11,7 @@
 	import StreamActivity from "./StreamActivity.svelte";
 	import ContextStats from "./ContextStats.svelte";
 	import HeartbeatUpdateBanner from "./HeartbeatUpdateBanner.svelte";
-	import ExcalidrawViewer from "$lib/components/ExcalidrawViewer.svelte";
-	import McpAppViewer from "./McpAppViewer.svelte";
+import McpAppViewer from "./McpAppViewer.svelte";
 	import { play, playImmediate, preload } from "$lib/sounds.js";
 	import { hapticMedium, hapticDouble, hapticError } from "$lib/haptics.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
@@ -29,8 +28,7 @@
 	type StreamItem =
 		| { type: "message"; data: ChatMessage }
 		| { type: "activity"; id: string; kind: "tool" | "mood" | "state" | "output"; label: string; timestamp: string }
-		| { type: "sketch"; id: string; title: string; scene: string; timestamp: string }
-		| { type: "mcp_app"; id: string; toolName: string; toolInput: string; toolOutput: string; html: string }
+| { type: "mcp_app"; id: string; toolName: string; toolInput: string; toolOutput: string; html: string }
 		| { type: "compaction"; id: string; count: number; timestamp: string };
 
 	let activeChatId = $derived(chatId);
@@ -429,13 +427,7 @@
 				const isOutput = event.tool_name.endsWith("_output");
 				pushActivity(isOutput ? "output" : "tool", event.summary);
 			} else if (event.type === "drop_created") {
-				if (event.drop.kind === "sketch" && event.drop.content.trimStart().startsWith("{")) {
-					const now = Date.now().toString();
-					stream = [...stream, { type: "sketch", id: `sketch_${event.drop.id}`, title: event.drop.title, scene: event.drop.content, timestamp: now }];
-					scrollToBottom();
-				} else {
-					pushActivity("tool", `dropped: ${event.drop.title}`);
-				}
+				pushActivity("tool", `dropped: ${event.drop.title}`);
 				play("drop_received");
 				hapticDouble();
 			} else if (event.type === "tool_output_chunk") {
@@ -641,11 +633,6 @@
 						{#each stream as item, i (streamKey(item))}
 							{#if item.type === "message"}
 								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} streaming={item.data.id === "__streaming__"} />
-							{:else if item.type === "sketch"}
-								<div class="chat-sketch">
-									<div class="chat-sketch-label">{item.title}</div>
-									<ExcalidrawViewer scene={item.scene} height="320px" />
-								</div>
 							{:else if item.type === "mcp_app"}
 								<McpAppViewer
 									html={item.html}
@@ -1151,19 +1138,5 @@
 
 	:global(.clear-dialog-confirm:hover) {
 		background: oklch(0.65 0.12 25 / 25%);
-	}
-	.chat-sketch {
-		max-width: 90%;
-		margin: 0.5rem 0;
-		animation: msg-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
-	}
-
-	.chat-sketch-label {
-		font-family: var(--font-mono);
-		font-size: 0.6rem;
-		color: oklch(0.78 0.12 75 / 40%);
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		margin-bottom: 0.35rem;
 	}
 </style>
