@@ -24,6 +24,12 @@ use crate::{
 
 static MESSAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// Memory hint appended to system prompt (single source of truth — also used in context stats).
+const MEMORY_HINT: &str = "## memory\n\
+    you have a personal memory library with files about the user. \
+    use `memory_search` or `memory_list` to find relevant memories, \
+    and `memory_read` to read them. don't announce that you remember — just know.";
+
 /// Save the user message to disk and return it.
 pub fn save_user_message(
     workspace_dir: &Path,
@@ -305,12 +311,8 @@ pub async fn run_single_turn(
     // Memory catalog removed from system prompt to save tokens — agent uses
     // memory_search / memory_list / memory_read tools instead.
     let mut system_static = system_prompt;
-    system_static.push_str(
-        "\n\n## memory\n\
-         you have a personal memory library with files about the user. \
-         use `memory_search` or `memory_list` to find relevant memories, \
-         and `memory_read` to read them. don't announce that you remember — just know."
-    );
+    system_static.push_str("\n\n");
+    system_static.push_str(MEMORY_HINT);
 
     if loaded_entries.is_empty() {
         return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
@@ -1087,15 +1089,12 @@ fn compute_context_stats_local(
         tokens: estimate_tokens(style),
     });
 
-    // 7. Memory
-    let memory_prompt = memory::build_memory_prompt(workspace_dir, &instance_slug);
-    if !memory_prompt.is_empty() {
-        sections.push(ContextSection {
-            name: "memory".into(),
-            chars: memory_prompt.len(),
-            tokens: estimate_tokens(&memory_prompt),
-        });
-    }
+    // 7. Memory (short hint — catalog no longer inlined in system prompt)
+    sections.push(ContextSection {
+        name: "memory".into(),
+        chars: MEMORY_HINT.len(),
+        tokens: estimate_tokens(MEMORY_HINT),
+    });
 
     // Mood + rhythm are now persistent entries in rig_history.json,
     // counted as part of the rig history token estimate below.
