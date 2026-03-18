@@ -25,14 +25,10 @@ use crate::{
 static MESSAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Memory hint appended to system prompt (single source of truth — also used in context stats).
-const MEMORY_HINT: &str = "## memory\n\
-    you have a personal memory library with files about the user — their life, projects, \
-    preferences, past conversations, and shared moments.\n\
-    IMPORTANT: when the user mentions something personal (people, events, projects, places) — \
-    ALWAYS call `memory_search` first to check what you know before responding. \
-    this is how you remember. without searching, you know nothing.\n\
-    use `memory_search` to find relevant memories, `memory_read` to read full details.\n\
-    don't say \"let me check my memory\" — just search silently and respond as if you remember.";
+const MEMORY_FOOTER: &str = "\n\
+    use `memory_read` to recall full details of any file above.\n\
+    when the user mentions something personal, check your memory first.\n\
+    don't say \"let me check\" — just read and respond as if you remember.";
 
 /// Save the user message to disk and return it.
 pub fn save_user_message(
@@ -319,12 +315,17 @@ pub async fn run_single_turn(
     );
 
     // System prompt is fully static (soul, skills, style, integrations).
+    // System prompt is fully static (soul, skills, style, integrations).
     // Mood and rhythm changes are recorded as messages in rig_history.
-    // Memory catalog removed from system prompt to save tokens — agent uses
-    // memory_search / memory_list / memory_read tools instead.
     let mut system_static = system_prompt;
-    system_static.push_str("\n\n");
-    system_static.push_str(MEMORY_HINT);
+
+    // Memory catalog — compact list of file paths so the agent knows what it remembers.
+    let memory_catalog = memory::load_catalog_snapshot(workspace_dir, &instance_slug);
+    if !memory_catalog.is_empty() {
+        system_static.push_str(&format!("\n\n{memory_catalog}{MEMORY_FOOTER}"));
+    } else {
+        system_static.push_str(&format!("\n\n## memory\nyour memory library is empty.{MEMORY_FOOTER}"));
+    }
 
     if loaded_entries.is_empty() {
         return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
@@ -1120,11 +1121,17 @@ fn compute_context_stats_local(
         tokens: estimate_tokens(style),
     });
 
-    // 7. Memory (short hint — catalog no longer inlined in system prompt)
+    // 7. Memory catalog
+    let memory_catalog = memory::load_catalog_snapshot(workspace_dir, &instance_slug);
+    let memory_section = if !memory_catalog.is_empty() {
+        format!("{memory_catalog}{MEMORY_FOOTER}")
+    } else {
+        format!("## memory\nyour memory library is empty.{MEMORY_FOOTER}")
+    };
     sections.push(ContextSection {
         name: "memory".into(),
-        chars: MEMORY_HINT.len(),
-        tokens: estimate_tokens(MEMORY_HINT),
+        chars: memory_section.len(),
+        tokens: estimate_tokens(&memory_section),
     });
 
     // Mood + rhythm are now persistent entries in rig_history.json,
