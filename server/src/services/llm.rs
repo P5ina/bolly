@@ -149,12 +149,15 @@ pub struct HistoryEntry {
     /// Tool input JSON for MCP App rendering.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_app_input: Option<String>,
+    /// Model name used to generate this message (assistant only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 impl HistoryEntry {
     /// Wrap a Message with timestamp and ID.
     pub fn new(message: Message, ts: String, id: String) -> Self {
-        Self { message, ts: Some(ts), id: Some(id), mcp_app_html: None, mcp_app_input: None }
+        Self { message, ts: Some(ts), id: Some(id), mcp_app_html: None, mcp_app_input: None, model: None }
     }
 
     /// Extract just the Messages from a slice of entries.
@@ -215,7 +218,8 @@ pub fn history_to_chat_messages(entries: &[HistoryEntry]) -> Vec<ChatMessage> {
                         kind: MessageKind::Message,
                         tool_name: None,
                         mcp_app_html: None,
-                        mcp_app_input: None, model: None,
+                        mcp_app_input: None,
+                        model: if role == ChatRole::Assistant { entry.model.clone() } else { None },
                     });
                 }
                 ContentBlock::ToolUse { name, input, .. } => {
@@ -322,6 +326,7 @@ pub fn merge_with_timestamps(
                 id: Some(id_fn()),
                 mcp_app_html: None,
                 mcp_app_input: None,
+                model: None,
             }
         }
     }).collect()

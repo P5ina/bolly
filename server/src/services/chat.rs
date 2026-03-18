@@ -538,6 +538,11 @@ pub async fn run_single_turn(
             }
         }
 
+        // Stamp the model name on the last assistant entry so it persists across reloads.
+        if let Some(last) = merged.iter_mut().rev().find(|e| matches!(e.message, llm::Message::Assistant { .. })) {
+            last.model = Some(llm.model_name().to_string());
+        }
+
         save_rig_history(&rig_path, &merged);
 
         // If compaction fired, rebuild the memory catalog snapshot so the
