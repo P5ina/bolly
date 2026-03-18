@@ -146,10 +146,6 @@ pub async fn run_single_turn(
         .map(|m| m.content.as_str())
         .unwrap_or("");
 
-    // Load static memory catalog snapshot — built once at context clear / compaction,
-    // not scanned on every request.
-    let memory_prompt = memory::load_catalog_snapshot(workspace_dir, &instance_slug);
-
     let chat_config = crate::config::load_config().ok();
     let auth_token = std::env::var("BOLLY_AUTH_TOKEN")
         .ok()
@@ -306,11 +302,15 @@ pub async fn run_single_turn(
 
     // System prompt is fully static (soul, skills, style, integrations).
     // Mood and rhythm changes are recorded as messages in rig_history.
-    // Memory catalog is a static snapshot — rebuilt only on context clear / compaction.
+    // Memory catalog removed from system prompt to save tokens — agent uses
+    // memory_search / memory_list / memory_read tools instead.
     let mut system_static = system_prompt;
-    if !memory_prompt.is_empty() {
-        system_static.push_str(&format!("\n\n{memory_prompt}"));
-    }
+    system_static.push_str(
+        "\n\n## memory\n\
+         you have a personal memory library with files about the user. \
+         use `memory_search` or `memory_list` to find relevant memories, \
+         and `memory_read` to read them. don't announce that you remember — just know."
+    );
 
     if loaded_entries.is_empty() {
         return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
