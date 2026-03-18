@@ -129,7 +129,6 @@
 			{#if !isConsecutive()}
 				<div class="msg-presence-line">
 					<span class="msg-presence-dot"></span>
-					<span class="msg-presence-label">{mood}</span>
 				</div>
 			{/if}
 			{#if textContent || streaming}
