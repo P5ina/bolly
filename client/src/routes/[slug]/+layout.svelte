@@ -198,12 +198,12 @@
 
 	.instance-tab {
 		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		letter-spacing: 0.05em;
-		color: oklch(0.78 0.12 75 / 30%);
+		font-size: 0.8rem;
+		letter-spacing: 0.04em;
+		color: oklch(0.78 0.12 75 / 45%);
 		background: none;
 		border: none;
-		padding: 0.5rem 1rem 0.625rem;
+		padding: 0.6rem 1rem 0.7rem;
 		cursor: pointer;
 		position: relative;
 		transition: color 0.3s ease;
@@ -213,11 +213,11 @@
 	}
 
 	.instance-tab:hover {
-		color: oklch(0.78 0.12 75 / 55%);
+		color: oklch(0.78 0.12 75 / 70%);
 	}
 
 	.instance-tab-active {
-		color: oklch(0.78 0.12 75 / 75%);
+		color: oklch(0.78 0.12 75 / 90%);
 	}
 
 	.instance-tab-active::after {
@@ -226,19 +226,19 @@
 		bottom: -1px;
 		left: 1rem;
 		right: 1rem;
-		height: 1px;
-		background: oklch(0.78 0.12 75 / 30%);
+		height: 1.5px;
+		background: oklch(0.78 0.12 75 / 50%);
 	}
 
 	.instance-tab-home {
 		display: flex;
 		align-items: center;
-		padding: 0.5rem 0.75rem 0.625rem;
+		padding: 0.6rem 0.75rem 0.7rem;
 	}
 
 	.instance-tab-icon {
-		width: 0.8rem;
-		height: 0.8rem;
+		width: 1rem;
+		height: 1rem;
 	}
 
 	.instance-content {

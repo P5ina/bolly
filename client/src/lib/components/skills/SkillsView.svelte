@@ -233,8 +233,8 @@
 
 	.skills-tab {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
-		color: oklch(0.78 0.12 75 / 25%);
+		font-size: 0.75rem;
+		color: oklch(0.78 0.12 75 / 35%);
 		background: none;
 		border: none;
 		padding: 0.3rem 0.65rem;
@@ -257,13 +257,13 @@
 	}
 
 	.skills-tab-count {
-		font-size: 0.55rem;
+		font-size: 0.75rem;
 		color: oklch(0.78 0.12 75 / 30%);
 	}
 
 	.skills-add {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		color: oklch(0.78 0.12 75 / 40%);
 		background: oklch(0.78 0.12 75 / 5%);
 		border: 1px solid oklch(0.78 0.12 75 / 10%);
@@ -277,7 +277,7 @@
 	.skills-add:hover {
 		color: oklch(0.78 0.12 75 / 65%);
 		background: oklch(0.78 0.12 75 / 10%);
-		border-color: oklch(0.78 0.12 75 / 20%);
+		border-color: oklch(0.78 0.12 75 / 28%);
 	}
 
 	.skills-empty {
@@ -293,7 +293,7 @@
 	.skills-empty-icon {
 		font-family: var(--font-mono);
 		font-size: 1.5rem;
-		color: oklch(0.78 0.12 75 / 20%);
+		color: oklch(0.78 0.12 75 / 28%);
 		animation: pulse-alive 3s ease-in-out infinite;
 	}
 
@@ -305,7 +305,7 @@
 
 	.skills-empty-hint {
 		font-size: 0.75rem;
-		color: oklch(0.78 0.12 75 / 25%);
+		color: oklch(0.78 0.12 75 / 35%);
 		max-width: 30ch;
 		line-height: 1.5;
 	}

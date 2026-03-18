@@ -65,7 +65,7 @@
 	.auth-icon {
 		font-family: var(--font-mono);
 		font-size: 1.5rem;
-		color: oklch(0.78 0.12 75 / 25%);
+		color: oklch(0.78 0.12 75 / 35%);
 	}
 
 	.auth-label {
@@ -88,7 +88,7 @@
 	}
 
 	.auth-input:focus {
-		border-color: oklch(0.78 0.12 75 / 25%);
+		border-color: oklch(0.78 0.12 75 / 35%);
 	}
 
 	.auth-error {

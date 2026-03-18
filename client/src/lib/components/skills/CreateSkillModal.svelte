@@ -230,7 +230,7 @@
 
 	.field-label {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: oklch(0.78 0.12 75 / 35%);
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
@@ -239,7 +239,7 @@
 	.field-hint {
 		text-transform: none;
 		letter-spacing: normal;
-		color: oklch(0.78 0.12 75 / 20%);
+		color: oklch(0.78 0.12 75 / 28%);
 		margin-left: 0.5rem;
 	}
 
@@ -256,11 +256,11 @@
 	}
 
 	.field-input:focus {
-		border-color: oklch(0.78 0.12 75 / 25%);
+		border-color: oklch(0.78 0.12 75 / 35%);
 	}
 
 	.field-input::placeholder {
-		color: oklch(0.78 0.12 75 / 18%);
+		color: oklch(0.78 0.12 75 / 35%);
 	}
 
 	.field-textarea {
@@ -278,11 +278,11 @@
 	}
 
 	.field-textarea:focus {
-		border-color: oklch(0.78 0.12 75 / 25%);
+		border-color: oklch(0.78 0.12 75 / 35%);
 	}
 
 	.field-textarea::placeholder {
-		color: oklch(0.78 0.12 75 / 18%);
+		color: oklch(0.78 0.12 75 / 35%);
 	}
 
 	.modal-error {
@@ -320,7 +320,7 @@
 		font-size: 0.7rem;
 		color: oklch(0.88 0.02 75);
 		background: oklch(0.78 0.12 75 / 15%);
-		border: 1px solid oklch(0.78 0.12 75 / 20%);
+		border: 1px solid oklch(0.78 0.12 75 / 28%);
 		padding: 0.4rem 0.75rem;
 		border-radius: 0.5rem;
 		cursor: pointer;
@@ -328,7 +328,7 @@
 	}
 
 	.btn-create:hover:not(:disabled) {
-		background: oklch(0.78 0.12 75 / 25%);
+		background: oklch(0.78 0.12 75 / 35%);
 	}
 
 	.btn-create:disabled {

@@ -327,7 +327,7 @@
 	.stats-empty {
 		display: flex; align-items: center; justify-content: center; height: 100%;
 		font-family: var(--font-mono); font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 25%);
+		color: oklch(0.78 0.12 75 / 35%);
 	}
 
 	.stats-scroll {
@@ -367,8 +367,8 @@
 
 	.hero-label {
 		font-family: var(--font-mono);
-		font-size: 0.55rem;
-		color: oklch(0.78 0.12 75 / 25%);
+		font-size: 0.75rem;
+		color: oklch(0.78 0.12 75 / 35%);
 		letter-spacing: 0.06em;
 	}
 
@@ -382,7 +382,7 @@
 
 	.section-title {
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: 0.72rem;
 		font-weight: 400;
 		color: oklch(0.78 0.12 75 / 35%);
 		letter-spacing: 0.06em;
@@ -393,8 +393,8 @@
 
 	.section-hint {
 		font-family: var(--font-body);
-		font-size: 0.58rem;
-		color: oklch(0.78 0.12 75 / 18%);
+		font-size: 0.68rem;
+		color: oklch(0.78 0.12 75 / 35%);
 		font-style: italic;
 	}
 
@@ -423,8 +423,8 @@
 
 	.heatmap-month-label {
 		font-family: var(--font-mono);
-		font-size: 0.45rem;
-		color: oklch(0.78 0.12 75 / 22%);
+		font-size: 0.75rem;
+		color: oklch(0.78 0.12 75 / 30%);
 		flex-shrink: 0;
 	}
 
@@ -443,8 +443,8 @@
 
 	.heatmap-day-label {
 		font-family: var(--font-mono);
-		font-size: 0.42rem;
-		color: oklch(0.78 0.12 75 / 18%);
+		font-size: 0.7rem;
+		color: oklch(0.78 0.12 75 / 35%);
 		height: 9px;
 		line-height: 9px;
 		text-align: right;
@@ -464,7 +464,7 @@
 
 	.heatmap-0 { background: oklch(1 0 0 / 4%); }
 	.heatmap-1 { background: oklch(0.78 0.12 75 / 12%); }
-	.heatmap-2 { background: oklch(0.78 0.12 75 / 25%); }
+	.heatmap-2 { background: oklch(0.78 0.12 75 / 35%); }
 	.heatmap-3 { background: oklch(0.78 0.12 75 / 45%); }
 	.heatmap-4 { background: oklch(0.78 0.12 75 / 70%); }
 
@@ -477,8 +477,8 @@
 
 	.heatmap-legend-label {
 		font-family: var(--font-mono);
-		font-size: 0.48rem;
-		color: oklch(0.78 0.12 75 / 18%);
+		font-size: 0.68rem;
+		color: oklch(0.78 0.12 75 / 35%);
 		margin: 0 2px;
 	}
 
@@ -518,8 +518,8 @@
 		position: absolute;
 		bottom: -14px;
 		font-family: var(--font-mono);
-		font-size: 0.42rem;
-		color: oklch(0.78 0.12 75 / 18%);
+		font-size: 0.7rem;
+		color: oklch(0.78 0.12 75 / 35%);
 	}
 
 	/* ═══ Day bars ═══ */
@@ -538,7 +538,7 @@
 
 	.day-label {
 		font-family: var(--font-mono);
-		font-size: 0.55rem;
+		font-size: 0.75rem;
 		color: oklch(0.78 0.12 75 / 30%);
 		width: 28px;
 		text-align: right;
@@ -561,8 +561,8 @@
 
 	.day-count {
 		font-family: var(--font-mono);
-		font-size: 0.5rem;
-		color: oklch(0.78 0.12 75 / 20%);
+		font-size: 0.7rem;
+		color: oklch(0.78 0.12 75 / 28%);
 		width: 28px;
 	}
 
@@ -589,7 +589,7 @@
 
 	.mood-name {
 		font-family: var(--font-mono);
-		font-size: 0.58rem;
+		font-size: 0.68rem;
 		color: oklch(0.88 0.02 75 / 50%);
 		width: 72px;
 	}
@@ -611,8 +611,8 @@
 
 	.mood-pct {
 		font-family: var(--font-mono);
-		font-size: 0.5rem;
-		color: oklch(0.78 0.12 75 / 22%);
+		font-size: 0.7rem;
+		color: oklch(0.78 0.12 75 / 30%);
 		width: 28px;
 		text-align: right;
 	}
@@ -644,8 +644,8 @@
 
 	.detail-label {
 		font-family: var(--font-mono);
-		font-size: 0.5rem;
-		color: oklch(0.78 0.12 75 / 20%);
+		font-size: 0.7rem;
+		color: oklch(0.78 0.12 75 / 28%);
 		letter-spacing: 0.04em;
 	}
 

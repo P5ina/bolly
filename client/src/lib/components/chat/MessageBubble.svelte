@@ -157,7 +157,7 @@
 	.msg {
 		padding: 0.375rem 0;
 		animation: msg-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
-		--msg-accent: oklch(0.78 0.12 75 / 18%);
+		--msg-accent: oklch(0.78 0.12 75 / 35%);
 	}
 
 	.msg[data-mood="focused"] { --msg-accent: oklch(0.76 0.12 170 / 18%); }
@@ -213,7 +213,7 @@
 		align-items: center;
 		gap: 0.38rem;
 		font-family: var(--font-mono);
-		font-size: 0.58rem;
+		font-size: 0.68rem;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: oklch(0.76 0.03 75 / 45%);
@@ -311,7 +311,7 @@
 		color: oklch(0.78 0.12 75 / 35%);
 	}
 	.prose :global(blockquote) {
-		border-left: 2px solid oklch(0.78 0.12 75 / 25%);
+		border-left: 2px solid oklch(0.78 0.12 75 / 35%);
 		padding-left: 0.75em;
 		margin: 0.4em 0;
 		color: oklch(0.80 0.03 75 / 70%);
@@ -380,7 +380,7 @@
 		transition: color 0.3s ease;
 	}
 	.msg:hover .msg-time {
-		color: oklch(0.78 0.12 75 / 25%);
+		color: oklch(0.78 0.12 75 / 35%);
 	}
 	.msg-time-right {
 		text-align: right;
@@ -426,7 +426,7 @@
 		border: 1px solid oklch(0.78 0.12 75 / 10%);
 		color: oklch(0.78 0.12 75 / 60%);
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		text-decoration: none;
 		transition: all 0.2s ease;
 	}

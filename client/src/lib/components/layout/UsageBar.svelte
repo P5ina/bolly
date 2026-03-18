@@ -91,9 +91,9 @@
 
 	.usage-label {
 		font-family: var(--font-mono);
-		font-size: 0.55rem;
+		font-size: 0.75rem;
 		letter-spacing: 0.03em;
-		color: oklch(0.78 0.12 75 / 25%);
+		color: oklch(0.78 0.12 75 / 35%);
 		white-space: nowrap;
 	}
 
@@ -113,8 +113,8 @@
 
 	.usage-reset {
 		font-family: var(--font-mono);
-		font-size: 0.48rem;
-		color: oklch(0.78 0.12 75 / 18%);
+		font-size: 0.68rem;
+		color: oklch(0.78 0.12 75 / 35%);
 		white-space: nowrap;
 	}
 </style>

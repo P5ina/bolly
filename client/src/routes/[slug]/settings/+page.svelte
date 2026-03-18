@@ -909,12 +909,12 @@
 	}
 	.usage-window-label {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: oklch(0.88 0.02 75 / 50%);
 	}
 	.usage-window-value {
 		font-family: var(--font-mono);
-		font-size: 0.55rem;
+		font-size: 0.75rem;
 		color: oklch(0.78 0.12 75 / 30%);
 	}
 	.usage-window-track {
@@ -958,12 +958,12 @@
 	}
 	.update-current {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: oklch(0.78 0.12 75 / 30%);
 	}
 	.channel-select {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		padding: 0.2rem 0.4rem;
 		border-radius: 0.25rem;
 		background: oklch(1 0 0 / 4%);
@@ -991,7 +991,7 @@
 	}
 	.update-reload-btn {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		padding: 0.25rem 0.6rem;
 		border-radius: 0.3rem;
 		background: oklch(0.72 0.15 155 / 15%);
@@ -1010,18 +1010,18 @@
 	}
 	.update-label {
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: 0.72rem;
 		letter-spacing: 0.05em;
 		color: oklch(0.72 0.15 155 / 75%);
 	}
 	.update-version {
 		font-family: var(--font-mono);
-		font-size: 0.55rem;
+		font-size: 0.75rem;
 		color: oklch(0.72 0.15 155 / 40%);
 	}
 	.update-btn {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		padding: 0.3rem 0.75rem;
 		border-radius: 0.375rem;
 		background: oklch(0.72 0.15 155 / 12%);
@@ -1103,7 +1103,7 @@
 
 	.tz-current {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: oklch(0.75 0.10 200 / 50%);
 		white-space: nowrap;
 	}
@@ -1188,14 +1188,14 @@
 
 	.ext-card-desc {
 		font-family: var(--font-body);
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		color: oklch(0.88 0.02 75 / 35%);
 		line-height: 1.4;
 	}
 
 	.ext-toggle {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		letter-spacing: 0.03em;
 		padding: 0.375rem 0.75rem;
 		border-radius: 0.375rem;
@@ -1209,7 +1209,7 @@
 
 	.ext-toggle:hover:not(:disabled) {
 		background: oklch(0.78 0.12 75 / 14%);
-		border-color: oklch(0.78 0.12 75 / 25%);
+		border-color: oklch(0.78 0.12 75 / 35%);
 	}
 
 	.ext-toggle-active {
@@ -1233,7 +1233,7 @@
 		display: inline-block;
 		width: 10px;
 		height: 10px;
-		border: 1.5px solid oklch(0.78 0.12 75 / 25%);
+		border: 1.5px solid oklch(0.78 0.12 75 / 35%);
 		border-top-color: oklch(0.78 0.12 75 / 70%);
 		border-radius: 50%;
 		animation: spin 0.6s linear infinite;
@@ -1276,7 +1276,7 @@
 
 	.ext-custom-status {
 		font-family: var(--font-mono);
-		font-size: 0.58rem;
+		font-size: 0.68rem;
 		color: oklch(0.55 0.02 280 / 40%);
 	}
 
@@ -1286,7 +1286,7 @@
 
 	.ext-remove-btn {
 		font-family: var(--font-body);
-		font-size: 0.62rem;
+		font-size: 0.72rem;
 		color: oklch(0.65 0.12 25 / 50%);
 		background: none;
 		border: none;
@@ -1312,7 +1312,7 @@
 
 	.ext-advanced-toggle {
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: 0.72rem;
 		color: oklch(0.55 0.02 280 / 35%);
 		background: none;
 		border: none;
@@ -1337,7 +1337,7 @@
 
 	.ext-custom-form-title {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		color: oklch(0.55 0.02 280 / 45%);
 		letter-spacing: 0.04em;
 		margin-bottom: 0.15rem;
@@ -1383,7 +1383,7 @@
 	}
 	.ext-form-add:hover:not(:disabled) {
 		background: oklch(0.78 0.12 75 / 14%);
-		border-color: oklch(0.78 0.12 75 / 25%);
+		border-color: oklch(0.78 0.12 75 / 35%);
 	}
 	.ext-form-add:disabled {
 		opacity: 0.4;
@@ -1414,7 +1414,7 @@
 	}
 	.reconnect-icon {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		font-weight: 700;
 		color: oklch(0.78 0.12 75 / 70%);
 		background: oklch(0.78 0.12 75 / 15%);
@@ -1552,7 +1552,7 @@
 
 	.email-form-label {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: oklch(0.55 0.02 280 / 45%);
 		letter-spacing: 0.04em;
 		text-transform: uppercase;

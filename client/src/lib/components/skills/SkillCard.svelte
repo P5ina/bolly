@@ -137,7 +137,7 @@
 	.skill-card-badge {
 		margin-left: auto;
 		font-family: var(--font-mono);
-		font-size: 0.55rem;
+		font-size: 0.75rem;
 		color: oklch(0.78 0.12 75 / 35%);
 		background: oklch(0.78 0.12 75 / 6%);
 		padding: 0.15rem 0.45rem;
@@ -162,8 +162,8 @@
 
 	.skill-card-instructions-label {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
-		color: oklch(0.78 0.12 75 / 25%);
+		font-size: 0.7rem;
+		color: oklch(0.78 0.12 75 / 35%);
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
 	}
@@ -186,7 +186,7 @@
 
 	.skill-card-resource {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		color: oklch(0.78 0.12 75 / 35%);
 	}
 
@@ -198,7 +198,7 @@
 	.skill-card-delete {
 		align-self: flex-end;
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: oklch(0.65 0.15 20 / 50%);
 		background: none;
 		border: none;

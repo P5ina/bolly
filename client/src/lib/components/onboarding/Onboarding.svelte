@@ -646,7 +646,7 @@
 		transition: background 2s ease;
 	}
 	.onboard-particles-active .onboard-particle {
-		background: oklch(0.78 0.12 75 / 20%);
+		background: oklch(0.78 0.12 75 / 28%);
 		animation: particle-drift 14s ease-in-out infinite;
 		animation-delay: calc(var(--i) * -1.8s);
 	}
@@ -743,7 +743,7 @@
 		cursor: pointer;
 	}
 	.onboard-pill:hover {
-		border-color: oklch(0.78 0.12 75 / 25%);
+		border-color: oklch(0.78 0.12 75 / 35%);
 		background: oklch(0.78 0.12 75 / 8%);
 		color: oklch(0.88 0.03 75 / 85%);
 		box-shadow: 0 0 25px oklch(0.78 0.12 75 / 6%);
@@ -790,7 +790,7 @@
 		font-style: italic;
 	}
 	.onboard-text-input:focus {
-		border-color: oklch(0.78 0.12 75 / 25%);
+		border-color: oklch(0.78 0.12 75 / 35%);
 		box-shadow: 0 0 40px oklch(0.78 0.12 75 / 6%);
 	}
 
@@ -835,7 +835,7 @@
 		font-style: italic;
 	}
 	.onboard-textarea:focus {
-		border-color: oklch(0.78 0.12 75 / 25%);
+		border-color: oklch(0.78 0.12 75 / 35%);
 		box-shadow: 0 0 40px oklch(0.78 0.12 75 / 6%);
 	}
 

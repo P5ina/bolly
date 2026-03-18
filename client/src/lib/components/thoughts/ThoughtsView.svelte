@@ -251,7 +251,7 @@
 
 	.thoughts-empty-hint {
 		font-size: 0.72rem;
-		color: oklch(0.78 0.12 75 / 22%);
+		color: oklch(0.78 0.12 75 / 30%);
 		max-width: 26ch;
 		line-height: 1.5;
 	}
@@ -262,8 +262,8 @@
 
 	.thoughts-count {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
-		color: oklch(0.78 0.12 75 / 25%);
+		font-size: 0.75rem;
+		color: oklch(0.78 0.12 75 / 35%);
 		letter-spacing: 0.06em;
 	}
 
@@ -307,15 +307,15 @@
 
 	.quiet-label {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
-		color: oklch(0.78 0.12 75 / 18%);
+		font-size: 0.7rem;
+		color: oklch(0.78 0.12 75 / 35%);
 		letter-spacing: 0.04em;
 	}
 
 	.quiet-time {
 		margin-left: auto;
 		font-family: var(--font-mono);
-		font-size: 0.55rem;
+		font-size: 0.75rem;
 		color: oklch(0.78 0.12 75 / 12%);
 	}
 
@@ -378,7 +378,7 @@
 
 	.thought-mood-badge {
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: 0.72rem;
 		letter-spacing: 0.04em;
 		opacity: 0.7;
 	}
@@ -386,8 +386,8 @@
 	.thought-time {
 		margin-left: auto;
 		font-family: var(--font-mono);
-		font-size: 0.55rem;
-		color: oklch(0.78 0.12 75 / 18%);
+		font-size: 0.75rem;
+		color: oklch(0.78 0.12 75 / 35%);
 	}
 
 	/* ── actions ── */
@@ -445,7 +445,7 @@
 
 	.thought-action-verb {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: oklch(0.78 0.12 75 / 35%);
 		letter-spacing: 0.03em;
 		margin-right: 0.25rem;

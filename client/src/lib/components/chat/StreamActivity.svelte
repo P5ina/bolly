@@ -120,7 +120,7 @@
 
 	.act-output-text {
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: 0.72rem;
 		line-height: 1.5;
 		color: oklch(0.60 0.03 200 / 55%);
 		white-space: pre-wrap;
@@ -178,7 +178,7 @@
 
 	.act-time {
 		font-family: var(--font-mono);
-		font-size: 0.58rem;
+		font-size: 0.68rem;
 		color: oklch(0.50 0.01 280 / 35%);
 		white-space: nowrap;
 		flex-shrink: 0;

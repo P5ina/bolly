@@ -707,7 +707,7 @@
 	.empty-orb-3 { width: 18px; height: 18px; right: 4px; top: 34px; animation: breathe-slow 3.5s ease-in-out infinite 1s; }
 	@keyframes breathe-slow { 0%, 100% { opacity: 0.4; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.08); } }
 	.memory-empty-text { font-family: var(--font-display); font-size: 0.95rem; font-style: italic; color: oklch(0.78 0.12 75 / 40%); }
-	.memory-empty-hint { font-size: 0.7rem; color: oklch(0.78 0.12 75 / 18%); max-width: 26ch; line-height: 1.5; }
+	.memory-empty-hint { font-size: 0.7rem; color: oklch(0.78 0.12 75 / 35%); max-width: 26ch; line-height: 1.5; }
 
 	/* ═══════ Header ═══════ */
 
@@ -723,11 +723,11 @@
 	}
 	.memory-back:hover {
 		color: oklch(0.78 0.12 75 / 70%);
-		border-color: oklch(0.78 0.12 75 / 20%);
+		border-color: oklch(0.78 0.12 75 / 28%);
 		background: oklch(0.78 0.12 75 / 6%);
 	}
 	.memory-breadcrumb { font-family: var(--font-mono); font-size: 0.68rem; color: oklch(0.78 0.12 75 / 50%); }
-	.memory-count { font-family: var(--font-mono); font-size: 0.6rem; color: oklch(0.78 0.12 75 / 20%); letter-spacing: 0.04em; margin-left: auto; }
+	.memory-count { font-family: var(--font-mono); font-size: 0.7rem; color: oklch(0.78 0.12 75 / 28%); letter-spacing: 0.04em; margin-left: auto; }
 
 	/* ═══════ Search ═══════ */
 
@@ -740,7 +740,7 @@
 	}
 	.search-toggle:hover, .search-toggle-active {
 		color: oklch(0.78 0.12 75 / 65%);
-		border-color: oklch(0.78 0.12 75 / 20%);
+		border-color: oklch(0.78 0.12 75 / 28%);
 		background: oklch(0.78 0.12 75 / 6%);
 	}
 
@@ -755,11 +755,11 @@
 		color: oklch(0.90 0.02 75 / 80%); outline: none;
 		transition: border-color 0.2s ease;
 	}
-	.search-input:focus { border-color: oklch(0.78 0.12 75 / 25%); }
-	.search-input::placeholder { color: oklch(0.78 0.12 75 / 18%); }
+	.search-input:focus { border-color: oklch(0.78 0.12 75 / 35%); }
+	.search-input::placeholder { color: oklch(0.78 0.12 75 / 35%); }
 	.search-count {
-		font-family: var(--font-mono); font-size: 0.55rem;
-		color: oklch(0.78 0.12 75 / 22%); white-space: nowrap;
+		font-family: var(--font-mono); font-size: 0.75rem;
+		color: oklch(0.78 0.12 75 / 30%); white-space: nowrap;
 	}
 
 	.search-results {
@@ -777,24 +777,24 @@
 		background: color-mix(in srgb, var(--c) 4%, transparent);
 	}
 	.search-result-path {
-		font-family: var(--font-mono); font-size: 0.65rem;
+		font-family: var(--font-mono); font-size: 0.75rem;
 		color: oklch(0.90 0.02 75 / 65%);
 	}
 	.search-result-folder {
-		font-size: 0.6rem; opacity: 0.7;
+		font-size: 0.7rem; opacity: 0.7;
 	}
 	.search-result-summary {
-		font-family: var(--font-body); font-size: 0.64rem;
+		font-family: var(--font-body); font-size: 0.72rem;
 		color: oklch(0.88 0.02 75 / 38%); line-height: 1.4;
 		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 	}
 	.search-result-meta {
-		font-family: var(--font-mono); font-size: 0.5rem;
+		font-family: var(--font-mono); font-size: 0.7rem;
 		color: oklch(0.78 0.12 75 / 15%);
 	}
 	.search-empty {
-		font-family: var(--font-mono); font-size: 0.65rem;
-		color: oklch(0.78 0.12 75 / 20%); text-align: center;
+		font-family: var(--font-mono); font-size: 0.75rem;
+		color: oklch(0.78 0.12 75 / 28%); text-align: center;
 		padding: 2rem; z-index: 2;
 	}
 
@@ -810,8 +810,8 @@
 
 	.doc-loading {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
-		color: oklch(0.78 0.12 75 / 25%);
+		font-size: 0.75rem;
+		color: oklch(0.78 0.12 75 / 35%);
 		padding: 2rem;
 		text-align: center;
 	}
@@ -934,7 +934,7 @@
 	}
 
 	.bubble-label {
-		font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.05em;
+		font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.05em;
 		color: color-mix(in srgb, var(--c) 85%, white);
 		text-shadow: 0 1px 8px color-mix(in srgb, var(--c) 30%, transparent);
 		pointer-events: none; user-select: none; z-index: 2;
@@ -943,7 +943,7 @@
 	}
 
 	.bubble-sub {
-		font-family: var(--font-mono); font-size: 0.5rem;
+		font-family: var(--font-mono); font-size: 0.7rem;
 		color: color-mix(in srgb, var(--c) 45%, transparent);
 		pointer-events: none; user-select: none; z-index: 2;
 	}
@@ -970,14 +970,14 @@
 	.memory-tooltip-body { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
 	.memory-tooltip-name { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500; letter-spacing: 0.03em; color: oklch(0.92 0.02 75 / 85%); }
 	.memory-tooltip-summary { font-family: var(--font-body); font-size: 0.66rem; color: oklch(0.88 0.02 75 / 45%); line-height: 1.4; }
-	.memory-tooltip-meta { font-family: var(--font-mono); font-size: 0.55rem; color: oklch(0.78 0.12 75 / 20%); }
+	.memory-tooltip-meta { font-family: var(--font-mono); font-size: 0.75rem; color: oklch(0.78 0.12 75 / 28%); }
 	.memory-tooltip-files { margin-top: 0.2rem; display: flex; flex-wrap: wrap; gap: 0.25rem; }
 	.memory-tooltip-file {
-		font-family: var(--font-mono); font-size: 0.52rem; color: oklch(0.88 0.02 75 / 30%);
+		font-family: var(--font-mono); font-size: 0.7rem; color: oklch(0.88 0.02 75 / 30%);
 		background: oklch(1 0 0 / 3%); padding: 0.1rem 0.35rem; border-radius: 0.25rem;
 		border: 1px solid oklch(1 0 0 / 4%);
 	}
-	.memory-tooltip-more { color: oklch(0.78 0.12 75 / 18%); font-style: italic; border: none; background: none; padding: 0.1rem 0; }
+	.memory-tooltip-more { color: oklch(0.78 0.12 75 / 35%); font-style: italic; border: none; background: none; padding: 0.1rem 0; }
 
 	@media (max-width: 640px) {
 		.memory-header { padding: 0.5rem 0.75rem 0; }

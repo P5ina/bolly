@@ -274,7 +274,7 @@
 		transition: all 0.2s ease;
 	}
 	.soul-template-card:hover {
-		border-color: oklch(0.78 0.12 75 / 25%);
+		border-color: oklch(0.78 0.12 75 / 35%);
 		background: oklch(0.78 0.12 75 / 7%);
 		box-shadow: 0 0 20px -5px oklch(0.78 0.12 75 / 8%);
 	}

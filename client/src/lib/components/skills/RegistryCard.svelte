@@ -103,7 +103,7 @@
 	.registry-card-badge {
 		margin-left: auto;
 		font-family: var(--font-mono);
-		font-size: 0.55rem;
+		font-size: 0.75rem;
 		color: oklch(0.7 0.08 150 / 50%);
 		background: oklch(0.7 0.08 150 / 8%);
 		padding: 0.15rem 0.45rem;
@@ -128,14 +128,14 @@
 
 	.registry-card-author {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: oklch(0.78 0.12 75 / 30%);
 	}
 
 	.registry-card-repo {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
-		color: oklch(0.78 0.12 75 / 20%);
+		font-size: 0.7rem;
+		color: oklch(0.78 0.12 75 / 28%);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -144,7 +144,7 @@
 	.registry-card-install {
 		margin-left: auto;
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: oklch(0.78 0.12 75 / 60%);
 		background: oklch(0.78 0.12 75 / 8%);
 		border: 1px solid oklch(0.78 0.12 75 / 15%);
@@ -158,7 +158,7 @@
 
 	.registry-card-install:hover:not(:disabled) {
 		color: oklch(0.88 0.02 75);
-		background: oklch(0.78 0.12 75 / 18%);
+		background: oklch(0.78 0.12 75 / 35%);
 		border-color: oklch(0.78 0.12 75 / 30%);
 	}
 

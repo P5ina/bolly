@@ -161,17 +161,17 @@
 		padding: 0.2rem 0.625rem;
 		border-radius: 1rem;
 		background: oklch(0.78 0.12 75 / 12%);
-		border: 1px solid oklch(0.78 0.12 75 / 20%);
+		border: 1px solid oklch(0.78 0.12 75 / 28%);
 		color: oklch(0.78 0.12 75 / 90%);
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: 0.72rem;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
 		transition: all 0.2s ease;
 		cursor: pointer;
 	}
 	.update-banner-btn:hover {
-		background: oklch(0.78 0.12 75 / 20%);
+		background: oklch(0.78 0.12 75 / 28%);
 		border-color: oklch(0.78 0.12 75 / 35%);
 	}
 

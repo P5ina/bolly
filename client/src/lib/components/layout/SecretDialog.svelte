@@ -204,11 +204,11 @@
 
 	.btn-submit {
 		background: oklch(0.78 0.12 75 / 15%);
-		border: 1px solid oklch(0.78 0.12 75 / 25%);
+		border: 1px solid oklch(0.78 0.12 75 / 35%);
 		color: oklch(0.78 0.12 75 / 90%);
 	}
 	.btn-submit:hover:not(:disabled) {
-		background: oklch(0.78 0.12 75 / 25%);
+		background: oklch(0.78 0.12 75 / 35%);
 		border-color: oklch(0.78 0.12 75 / 40%);
 	}
 	.btn-submit:disabled {

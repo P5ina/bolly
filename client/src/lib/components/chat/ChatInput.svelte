@@ -329,7 +329,7 @@
 
 	.attachment-name {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: oklch(0.85 0.03 75 / 70%);
 		max-width: 100px;
 		overflow: hidden;
@@ -339,7 +339,7 @@
 
 	.attachment-size {
 		font-family: var(--font-mono);
-		font-size: 0.55rem;
+		font-size: 0.75rem;
 		color: oklch(0.55 0.02 280 / 40%);
 	}
 
@@ -516,7 +516,7 @@
 		justify-content: center;
 		height: 100%;
 		font-family: var(--font-mono);
-		font-size: 0.55rem;
+		font-size: 0.75rem;
 		color: oklch(0.78 0.12 75 / 45%);
 		letter-spacing: 0.04em;
 	}

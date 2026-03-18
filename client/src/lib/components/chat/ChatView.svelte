@@ -776,7 +776,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		align-items: center;
 		gap: 0.35rem;
 		font-family: var(--font-mono);
-		font-size: 0.58rem;
+		font-size: 0.68rem;
 		letter-spacing: 0.06em;
 		color: oklch(0.68 0.08 75 / 50%);
 		animation: fade-up 0.3s ease both;
@@ -847,7 +847,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		padding: 0.4rem 0.6rem;
 		border-radius: 5px;
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		color: oklch(0.75 0.03 75 / 60%);
 		transition: all 0.15s ease;
 		text-align: left;
@@ -871,7 +871,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	}
 
 	.chat-list-count {
-		font-size: 0.55rem;
+		font-size: 0.75rem;
 		color: oklch(0.55 0.02 280 / 35%);
 		flex-shrink: 0;
 	}
@@ -879,7 +879,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	.chat-list-empty {
 		padding: 0.6rem;
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: oklch(0.50 0.02 280 / 35%);
 		text-align: center;
 	}
@@ -966,7 +966,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		width: 5px;
 		height: 5px;
 		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 25%);
+		background: oklch(0.78 0.12 75 / 35%);
 		animation: pulse 2s ease-in-out infinite;
 	}
 
@@ -1037,7 +1037,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 	.compaction-text {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		letter-spacing: 0.03em;
 		color: oklch(0.60 0.06 280 / 55%);
 		flex: 1;
@@ -1045,7 +1045,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 	.compaction-time {
 		font-family: var(--font-mono);
-		font-size: 0.58rem;
+		font-size: 0.68rem;
 		color: oklch(0.50 0.01 280 / 35%);
 		white-space: nowrap;
 	}

@@ -135,7 +135,7 @@
 
 	.drop-card-kind {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		color: oklch(0.78 0.12 75 / 35%);
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
@@ -144,8 +144,8 @@
 	.drop-card-time {
 		margin-left: auto;
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
-		color: oklch(0.78 0.12 75 / 20%);
+		font-size: 0.7rem;
+		color: oklch(0.78 0.12 75 / 28%);
 	}
 
 	.drop-card-title {
@@ -177,8 +177,8 @@
 		align-items: center;
 		gap: 0.35rem;
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
-		color: oklch(0.78 0.12 75 / 25%);
+		font-size: 0.7rem;
+		color: oklch(0.78 0.12 75 / 35%);
 		margin-top: 0.25rem;
 	}
 
@@ -192,7 +192,7 @@
 	.drop-card-delete {
 		align-self: flex-end;
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: oklch(0.65 0.15 20 / 50%);
 		background: none;
 		border: none;

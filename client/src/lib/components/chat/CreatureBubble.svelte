@@ -47,7 +47,7 @@
 	.creature-bubble-dismiss {
 		flex-shrink: 0;
 		font-family: var(--font-mono);
-		font-size: 0.55rem;
+		font-size: 0.75rem;
 		color: oklch(0.78 0.12 75 / 30%);
 		background: none;
 		border: 1px solid oklch(0.78 0.12 75 / 15%);

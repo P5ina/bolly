@@ -225,7 +225,7 @@
 		margin-top: 1rem;
 		margin-bottom: 0.5rem;
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
 		color: oklch(0.55 0.02 280);
@@ -248,7 +248,7 @@
 	}
 	.bar-label {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		color: oklch(0.6 0.02 280);
 		text-align: right;
 		overflow: hidden;
@@ -269,7 +269,7 @@
 	}
 	.bar-value {
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: 0.72rem;
 		color: oklch(0.5 0.02 280);
 		text-align: right;
 	}
@@ -286,7 +286,7 @@
 	}
 	.comp-label {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
 		color: oklch(0.45 0.02 280);
@@ -318,7 +318,7 @@
 		align-items: center;
 		gap: 0.3rem;
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: oklch(0.5 0.02 280);
 	}
 	.dot {
@@ -338,7 +338,7 @@
 	}
 	.tool-tag {
 		font-family: var(--font-mono);
-		font-size: 0.58rem;
+		font-size: 0.68rem;
 		letter-spacing: 0.03em;
 		padding: 0.15rem 0.4rem;
 		border-radius: 0.25rem;

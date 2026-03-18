@@ -55,7 +55,7 @@
   --secondary: oklch(0.14 0.02 278);
   --secondary-foreground: oklch(0.90 0.02 75);
   --muted: oklch(0.14 0.02 278);
-  --muted-foreground: oklch(0.62 0.03 75);
+  --muted-foreground: oklch(0.68 0.04 75);
   --accent: oklch(0.14 0.02 278);
   --accent-foreground: oklch(0.90 0.02 75);
   --destructive: oklch(0.704 0.191 22.216);
@@ -78,7 +78,7 @@
 
   --warm: oklch(0.78 0.12 75);
   --warm-foreground: oklch(0.065 0.015 280);
-  --warm-muted: oklch(0.78 0.12 75 / 12%);
+  --warm-muted: oklch(0.78 0.12 75 / 18%);
 }
 
 @theme inline {
@@ -259,11 +259,11 @@ body::after {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: oklch(0.78 0.12 75 / 8%);
+  background: oklch(0.78 0.12 75 / 12%);
   border-radius: 2px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.78 0.12 75 / 15%);
+  background: oklch(0.78 0.12 75 / 22%);
 }
 
 /* selection color */

@@ -627,7 +627,7 @@
 		width: 2px;
 		height: 2px;
 		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 20%);
+		background: oklch(0.78 0.12 75 / 28%);
 		left: calc(var(--x) * 1%);
 		top: calc(var(--y) * 1%);
 		animation: particle-drift 14s ease-in-out infinite;
@@ -669,7 +669,7 @@
 		animation: ring-expand 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 	}
 	.instance-ring-1 { animation-delay: 0ms; }
-	.instance-ring-2 { animation-delay: 150ms; border-color: oklch(0.78 0.12 75 / 20%); }
+	.instance-ring-2 { animation-delay: 150ms; border-color: oklch(0.78 0.12 75 / 28%); }
 	.instance-ring-3 { animation-delay: 300ms; border-color: oklch(0.78 0.12 75 / 10%); }
 
 	@keyframes ring-expand {
@@ -749,7 +749,7 @@
 		cursor: pointer;
 	}
 	.instance-pill:hover {
-		border-color: oklch(0.78 0.12 75 / 25%);
+		border-color: oklch(0.78 0.12 75 / 35%);
 		background: oklch(0.78 0.12 75 / 8%);
 		color: oklch(0.88 0.03 75 / 85%);
 		box-shadow: 0 0 20px oklch(0.78 0.12 75 / 6%);
@@ -799,7 +799,7 @@
 		font-style: italic;
 	}
 	.instance-name-input:focus {
-		border-color: oklch(0.78 0.12 75 / 25%);
+		border-color: oklch(0.78 0.12 75 / 35%);
 		box-shadow: 0 0 40px oklch(0.78 0.12 75 / 6%);
 	}
 
@@ -824,7 +824,7 @@
 		font-style: italic;
 	}
 	.instance-textarea:focus {
-		border-color: oklch(0.78 0.12 75 / 25%);
+		border-color: oklch(0.78 0.12 75 / 35%);
 		box-shadow: 0 0 40px oklch(0.78 0.12 75 / 6%);
 	}
 

@@ -49,7 +49,7 @@
 
 	.activity-label {
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: 0.72rem;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: oklch(0.78 0.02 280 / 46%);
@@ -63,7 +63,7 @@
 
 	.activity-time {
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: 0.72rem;
 		color: oklch(0.78 0.02 280 / 38%);
 		white-space: nowrap;
 	}

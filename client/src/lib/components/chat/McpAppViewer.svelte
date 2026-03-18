@@ -226,7 +226,7 @@
 
 	.mcp-app-label {
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		color: oklch(0.78 0.12 75 / 40%);
 		letter-spacing: 0.06em;
 		text-transform: lowercase;

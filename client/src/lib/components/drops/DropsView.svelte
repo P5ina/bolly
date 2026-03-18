@@ -154,7 +154,7 @@
 	.drops-empty-icon {
 		font-family: var(--font-mono);
 		font-size: 1.5rem;
-		color: oklch(0.78 0.12 75 / 20%);
+		color: oklch(0.78 0.12 75 / 28%);
 		animation: pulse-alive 3s ease-in-out infinite;
 	}
 
@@ -166,7 +166,7 @@
 
 	.drops-empty-hint {
 		font-size: 0.75rem;
-		color: oklch(0.78 0.12 75 / 25%);
+		color: oklch(0.78 0.12 75 / 35%);
 		max-width: 28ch;
 		line-height: 1.5;
 	}

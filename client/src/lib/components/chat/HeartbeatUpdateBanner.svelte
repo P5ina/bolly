@@ -65,7 +65,7 @@
 
 	.hb-label {
 		font-family: var(--font-mono);
-		font-size: 0.55rem;
+		font-size: 0.75rem;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
 		color: oklch(0.78 0.12 75 / 45%);
@@ -87,7 +87,7 @@
 		padding: 0.15rem 0.5rem;
 		border-radius: 0.25rem;
 		font-family: var(--font-mono);
-		font-size: 0.55rem;
+		font-size: 0.75rem;
 		letter-spacing: 0.04em;
 		cursor: pointer;
 		transition: all 0.2s ease;
@@ -105,11 +105,11 @@
 
 	.hb-apply {
 		background: oklch(0.78 0.12 75 / 10%);
-		border: 1px solid oklch(0.78 0.12 75 / 22%);
+		border: 1px solid oklch(0.78 0.12 75 / 30%);
 		color: oklch(0.78 0.12 75 / 80%);
 	}
 	.hb-apply:hover:not(:disabled) {
-		background: oklch(0.78 0.12 75 / 18%);
+		background: oklch(0.78 0.12 75 / 35%);
 	}
 	.hb-apply:disabled {
 		opacity: 0.4;
@@ -122,7 +122,7 @@
 		border-radius: 0.375rem;
 		background: oklch(0.05 0.01 280 / 50%);
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: 0.72rem;
 		line-height: 1.5;
 		color: oklch(0.75 0.02 280 / 65%);
 		white-space: pre-wrap;

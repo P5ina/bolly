@@ -57,7 +57,7 @@
 
 	.mind-card-title {
 		font-family: var(--font-mono);
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: oklch(0.78 0.02 280 / 45%);

@@ -287,7 +287,7 @@
 		width: 2px;
 		height: 2px;
 		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 18%);
+		background: oklch(0.78 0.12 75 / 35%);
 		left: calc(var(--x) * 1%);
 		top: calc(var(--y) * 1%);
 		animation: drift 18s ease-in-out infinite;
@@ -459,7 +459,7 @@
 	.home-orb-new:hover .home-orb-core-new {
 		background: oklch(0.78 0.12 75 / 6%);
 		border-style: solid;
-		border-color: oklch(0.78 0.12 75 / 20%);
+		border-color: oklch(0.78 0.12 75 / 28%);
 		color: oklch(0.78 0.12 75 / 60%);
 	}
 
@@ -546,7 +546,7 @@
 		transition: all 0.4s ease;
 	}
 	.home-create-input::placeholder {
-		color: oklch(0.78 0.12 75 / 20%);
+		color: oklch(0.78 0.12 75 / 28%);
 		font-style: italic;
 	}
 	.home-create-input:focus {
@@ -588,7 +588,7 @@
 		align-items: center;
 		gap: 0.375rem;
 		font-family: var(--font-body);
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		letter-spacing: 0.04em;
 		color: oklch(0.88 0.02 75 / 22%);
 		animation: hero-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -596,7 +596,7 @@
 
 	.home-hint-icon {
 		display: flex;
-		color: oklch(0.78 0.12 75 / 25%);
+		color: oklch(0.78 0.12 75 / 35%);
 	}
 
 	.home-hint-dot {
@@ -648,7 +648,7 @@
 		right: 0;
 		text-align: center;
 		font-family: var(--font-body);
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		letter-spacing: 0.05em;
 		color: oklch(0.78 0.12 75 / 15%);
 		pointer-events: none;
