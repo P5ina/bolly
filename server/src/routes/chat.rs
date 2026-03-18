@@ -138,9 +138,10 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         iteration += 1;
 
         let config_path = config::config_path();
-        let (brave_key, plan, auth_token) = {
+        let (brave_key, plan, auth_token, model_mode, heavy_multiplier) = {
             let cfg = state.config.read().await;
-            (cfg.llm.tokens.brave_search.clone(), cfg.plan.clone(), cfg.auth_token.clone())
+            (cfg.llm.tokens.brave_search.clone(), cfg.plan.clone(), cfg.auth_token.clone(),
+             cfg.llm.model_mode, cfg.llm.heavy_multiplier)
         };
 
         let llm_guard = state.llm.read().await;
@@ -156,15 +157,36 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         // Timeout must exceed stream item timeout (480s) to allow long tools to complete.
         const TURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
 
+        // Route model based on model_mode setting
+        let (effective_llm, used_heavy) = {
+            use config::ModelMode;
+            match model_mode {
+                ModelMode::Heavy => (llm_ref.clone(), true),
+                ModelMode::Fast => (llm_ref.fast_variant(), false),
+                ModelMode::Auto => {
+                    // Get last user message for classification
+                    let last_msg = chat::last_user_content(
+                        &state.workspace_dir, &instance_slug, &chat_id,
+                    );
+                    if let Some(msg) = last_msg {
+                        let heavy = llm_ref.classify_needs_heavy(&msg).await;
+                        if heavy { (llm_ref.clone(), true) } else { (llm_ref.fast_variant(), false) }
+                    } else {
+                        (llm_ref.clone(), true)
+                    }
+                }
+            }
+        };
+
         let public_url = std::env::var("BOLLY_PUBLIC_URL").ok();
-        let pdf_strategy = llm_ref.pdf_strategy(public_url.as_deref(), &auth_token);
+        let pdf_strategy = effective_llm.pdf_strategy(public_url.as_deref(), &auth_token);
 
         let turn_fut = chat::run_single_turn(
             &state.workspace_dir,
             &config_path,
             &instance_slug,
             &chat_id,
-            &llm_ref,
+            &effective_llm,
             if brave_key.is_empty() { None } else { Some(brave_key.as_str()) },
             state.events.clone(),
             state.pending_secrets.clone(),
@@ -202,9 +224,14 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                     });
                 }
 
-                // Record usage for rate limiting (input + output tokens)
+                // Record usage for rate limiting — heavy model costs ~10x more
                 if !state.landing_url.is_empty() {
-                    rate_limit::record_usage(&state.http_client, &state.landing_url, &state.landing_auth_token, turn.estimated_tokens).await;
+                    let recorded = if used_heavy {
+                        (turn.estimated_tokens as f32 * heavy_multiplier) as i32
+                    } else {
+                        turn.estimated_tokens
+                    };
+                    rate_limit::record_usage(&state.http_client, &state.landing_url, &state.landing_auth_token, recorded).await;
                 }
 
                 // Check if the agent wants to continue or if a new user message arrived

@@ -195,6 +195,20 @@ impl LlmProvider {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelMode {
+    Auto,
+    Fast,
+    Heavy,
+}
+
+impl Default for ModelMode {
+    fn default() -> Self { ModelMode::Auto }
+}
+
+fn default_heavy_multiplier() -> f32 { 10.0 }
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LlmConfig {
     #[serde(default)]
@@ -203,6 +217,10 @@ pub struct LlmConfig {
     pub model: Option<String>,
     #[serde(default)]
     pub tokens: LlmTokens,
+    #[serde(default)]
+    pub model_mode: ModelMode,
+    #[serde(default = "default_heavy_multiplier")]
+    pub heavy_multiplier: f32,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -296,6 +314,8 @@ impl Default for LlmConfig {
             provider: None,
             model: None,
             tokens: LlmTokens::default(),
+            model_mode: ModelMode::default(),
+            heavy_multiplier: default_heavy_multiplier(),
         }
     }
 }
@@ -420,6 +440,14 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     if let Ok(model) = env::var("BOLLY_LLM_MODEL") {
         if !model.is_empty() {
             config.llm.model = Some(model);
+        }
+    }
+    if let Ok(mode) = env::var("BOLLY_MODEL_MODE") {
+        match mode.to_lowercase().as_str() {
+            "auto" => config.llm.model_mode = ModelMode::Auto,
+            "fast" => config.llm.model_mode = ModelMode::Fast,
+            "heavy" => config.llm.model_mode = ModelMode::Heavy,
+            _ => {}
         }
     }
 

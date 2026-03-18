@@ -11,6 +11,7 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/config/llm", put(update_llm))
+        .route("/api/config/model-mode", put(update_model_mode))
         .route("/api/config/status", get(get_status))
         .route("/api/config/mcp", get(list_mcp_servers))
         .route("/api/config/mcp", post(add_mcp_server))
@@ -21,10 +22,16 @@ pub fn router() -> Router<AppState> {
 
 async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
     let config = state.config.read().await;
+    let mode = match config.llm.model_mode {
+        config::ModelMode::Auto => "auto",
+        config::ModelMode::Fast => "fast",
+        config::ModelMode::Heavy => "heavy",
+    };
     Json(json!({
         "llm_configured": config.llm.is_configured(),
         "provider": config.llm.provider.map(|p| format!("{p:?}").to_lowercase()),
         "model": config.llm.model_name(),
+        "model_mode": mode,
     }))
 }
 
@@ -127,6 +134,35 @@ async fn update_llm(
         "provider": provider_str,
         "model": model,
     })))
+}
+
+// ---------------------------------------------------------------------------
+// Model mode
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct UpdateModelModeRequest {
+    mode: String,
+}
+
+async fn update_model_mode(
+    State(state): State<AppState>,
+    Json(request): Json<UpdateModelModeRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let mode = match request.mode.to_lowercase().as_str() {
+        "auto" => config::ModelMode::Auto,
+        "fast" => config::ModelMode::Fast,
+        "heavy" => config::ModelMode::Heavy,
+        other => return Err((StatusCode::BAD_REQUEST, format!("unknown mode: {other}"))),
+    };
+
+    {
+        let mut cfg = state.config.write().await;
+        cfg.llm.model_mode = mode;
+        save_config(&cfg)?;
+    }
+
+    Ok(Json(json!({ "status": "ok", "model_mode": request.mode.to_lowercase() })))
 }
 
 // ---------------------------------------------------------------------------

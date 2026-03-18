@@ -153,8 +153,16 @@ export function updateLlmConfig(req: UpdateLlmRequest): Promise<void> {
 	});
 }
 
-export function fetchConfigStatus(): Promise<{ llm_configured: boolean; provider?: string; model?: string }> {
+export function fetchConfigStatus(): Promise<{ llm_configured: boolean; provider?: string; model?: string; model_mode?: string }> {
 	return json("/api/config/status");
+}
+
+export function updateModelMode(mode: string): Promise<{ status: string; model_mode: string }> {
+	return json("/api/config/model-mode", {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ mode }),
+	});
 }
 
 export interface McpServerInfo {

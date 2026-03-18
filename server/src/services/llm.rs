@@ -483,6 +483,30 @@ impl LlmBackend {
         }
     }
 
+    /// Classify whether a user message needs the heavy model.
+    /// Uses the fast model with a minimal prompt. Falls back to heavy on error.
+    pub async fn classify_needs_heavy(&self, user_message: &str) -> bool {
+        let classifier = self.fast_variant();
+        let system = "Classify this message. Respond with exactly one word.\n\
+            Say \"heavy\" if it needs: complex reasoning, code, analysis, creative writing, research, multi-step tasks, tool use.\n\
+            Say \"fast\" if it's: casual chat, greeting, short reply, simple question, emotional support, acknowledgment.";
+
+        match classifier.chat(system, user_message, vec![]).await {
+            Ok((response, _)) => {
+                let word = response.trim().to_lowercase();
+                let heavy = word.contains("heavy");
+                log::info!("model router: classified as {} for: {}",
+                    if heavy { "heavy" } else { "fast" },
+                    &user_message.chars().take(80).collect::<String>());
+                heavy
+            }
+            Err(e) => {
+                log::warn!("model router: classifier failed, defaulting to heavy: {e}");
+                true
+            }
+        }
+    }
+
     /// Simple chat without tools. Returns (text, tokens_used).
     pub async fn chat(
         &self,

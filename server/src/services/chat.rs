@@ -586,6 +586,14 @@ pub fn load_messages(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -
     })
 }
 
+/// Get the content of the last user message in a chat (for model routing).
+pub fn last_user_content(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> Option<String> {
+    let resp = load_messages(workspace_dir, instance_slug, chat_id).ok()?;
+    resp.messages.iter().rev()
+        .find(|m| m.role == crate::domain::chat::ChatRole::User)
+        .map(|m| m.content.clone())
+}
+
 pub fn clear_context(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);

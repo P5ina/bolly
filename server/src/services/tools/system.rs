@@ -859,7 +859,12 @@ impl Tool for GetSettingsTool {
                 let provider = config.llm.provider
                     .map(|p| format!("{p:?}").to_lowercase())
                     .unwrap_or_else(|| "(not set)".into());
-                lines.push(format!("llm: {provider} / {}", config.llm.model_name()));
+                let mode = match config.llm.model_mode {
+                    crate::config::ModelMode::Auto => "auto",
+                    crate::config::ModelMode::Fast => "fast",
+                    crate::config::ModelMode::Heavy => "heavy",
+                };
+                lines.push(format!("llm: {provider} / {} (mode: {mode})", config.llm.model_name()));
 
                 let keys = config.llm.configured_providers();
                 if keys.is_empty() {
@@ -972,6 +977,8 @@ pub struct UpdateConfigArgs {
     pub add_email_account: Option<EmailAccountArg>,
     /// Remove an email account by address (matches smtp_from or smtp_user).
     pub remove_email_account: Option<String>,
+    /// Model routing mode: "auto" (classifier picks fast/heavy per message), "fast" (always cheap model), "heavy" (always powerful model). Leave null to keep current.
+    pub model_mode: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -1047,6 +1054,19 @@ impl Tool for UpdateConfigTool {
             }
             config.llm.model = Some(m.clone());
             changes.push(format!("model → {m}"));
+        }
+
+        if let Some(mode) = &args.model_mode {
+            let m = mode.trim().to_lowercase();
+            match m.as_str() {
+                "auto" => config.llm.model_mode = crate::config::ModelMode::Auto,
+                "fast" => config.llm.model_mode = crate::config::ModelMode::Fast,
+                "heavy" => config.llm.model_mode = crate::config::ModelMode::Heavy,
+                other => return Err(ToolExecError(format!(
+                    "unknown model_mode \"{other}\". supported: auto, fast, heavy"
+                ))),
+            }
+            changes.push(format!("model_mode → {m}"));
         }
 
         if let Some(key) = &args.openai_key {
@@ -1192,7 +1212,8 @@ impl Tool for UpdateConfigTool {
         }
 
         // Save global config if anything changed there
-        if args.provider.is_some() || args.model.is_some() || args.openai_key.is_some()
+        if args.provider.is_some() || args.model.is_some() || args.model_mode.is_some()
+            || args.openai_key.is_some()
             || args.anthropic_key.is_some() || args.brave_search_key.is_some()
             || args.add_mcp_server.is_some() || args.remove_mcp_server.is_some()
         {

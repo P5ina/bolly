@@ -20,6 +20,8 @@
 		saveEmailAccounts,
 		deleteAllEmailAccounts,
 		fetchUsage,
+		fetchConfigStatus,
+		updateModelMode,
 		exportInstanceUrl,
 		importInstance,
 	} from "$lib/api/client.js";
@@ -171,6 +173,27 @@
 	// Usage state
 	let usage = $state<Usage | null>(null);
 	$effect(() => { fetchUsage().then(u => usage = u).catch(() => {}); });
+
+	// Model mode state
+	let modelMode = $state("auto");
+	let modelModeSaving = $state(false);
+	$effect(() => {
+		fetchConfigStatus().then(s => {
+			if (s.model_mode) modelMode = s.model_mode;
+		}).catch(() => {});
+	});
+
+	async function setModelMode(mode: string) {
+		modelModeSaving = true;
+		try {
+			await updateModelMode(mode);
+			modelMode = mode;
+		} catch {
+			// revert on failure
+		} finally {
+			modelModeSaving = false;
+		}
+	}
 
 	function formatTokens(n: number): string {
 		if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -513,6 +536,50 @@
 			</div>
 		</section>
 	{/if}
+
+	<!-- Model Mode -->
+	<section class="settings-section">
+		<div class="section-header">
+			<div class="section-icon">
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
+				</svg>
+			</div>
+			<div>
+				<h3 class="section-label">model mode</h3>
+				<p class="section-desc">Choose how your companion picks the AI model for each message.</p>
+			</div>
+		</div>
+		<div class="model-mode-options" class:disabled={modelModeSaving}>
+			<button
+				class="mode-option"
+				class:mode-active={modelMode === "auto"}
+				onclick={() => setModelMode("auto")}
+				disabled={modelModeSaving}
+			>
+				<span class="mode-name">auto</span>
+				<span class="mode-desc">smart routing — cheap for casual, powerful when needed</span>
+			</button>
+			<button
+				class="mode-option"
+				class:mode-active={modelMode === "fast"}
+				onclick={() => setModelMode("fast")}
+				disabled={modelModeSaving}
+			>
+				<span class="mode-name">fast</span>
+				<span class="mode-desc">always use the lightweight model — saves budget</span>
+			</button>
+			<button
+				class="mode-option"
+				class:mode-active={modelMode === "heavy"}
+				onclick={() => setModelMode("heavy")}
+				disabled={modelModeSaving}
+			>
+				<span class="mode-name">heavy</span>
+				<span class="mode-desc">always use the powerful model — uses 10x more budget</span>
+			</button>
+		</div>
+	</section>
 
 	<!-- Timezone -->
 	<section class="settings-section">
@@ -1635,5 +1702,53 @@
 		color: oklch(0.88 0.02 75 / 30%);
 		margin-top: 0.5rem;
 		line-height: 1.5;
+	}
+
+	/* --- model mode --- */
+	.model-mode-options {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+	.model-mode-options.disabled {
+		opacity: 0.5;
+		pointer-events: none;
+	}
+	.mode-option {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.5rem;
+		background: oklch(1 0 0 / 3%);
+		border: 1px solid oklch(1 0 0 / 6%);
+		cursor: pointer;
+		text-align: left;
+		transition: all 0.15s;
+	}
+	.mode-option:hover:not(:disabled) {
+		background: oklch(1 0 0 / 5%);
+		border-color: oklch(1 0 0 / 10%);
+	}
+	.mode-active {
+		background: oklch(0.78 0.12 75 / 8%);
+		border-color: oklch(0.78 0.12 75 / 25%);
+	}
+	.mode-active:hover:not(:disabled) {
+		background: oklch(0.78 0.12 75 / 12%);
+	}
+	.mode-name {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: oklch(0.88 0.02 75 / 80%);
+	}
+	.mode-active .mode-name {
+		color: oklch(0.78 0.12 75);
+	}
+	.mode-desc {
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		color: oklch(0.88 0.02 75 / 35%);
 	}
 </style>
