@@ -875,9 +875,12 @@ async fn count_tokens_api(
     let tool_snapshot = tools::cached_tool_defs();
     let tool_defs = tool_snapshot.defs_json;
 
+    // System must be an array of content blocks, same as the real chat request
+    let system_blocks = vec![serde_json::json!({"type": "text", "text": system_prompt})];
+
     let mut body = serde_json::json!({
         "model": model,
-        "system": system_prompt,
+        "system": system_blocks,
         "messages": msgs_json,
     });
     if !tool_defs.is_empty() {
@@ -896,7 +899,9 @@ async fn count_tokens_api(
         .ok()?;
 
     if !res.status().is_success() {
-        log::warn!("count_tokens API failed: {}", res.status());
+        let status = res.status();
+        let body_text = res.text().await.unwrap_or_default();
+        log::warn!("count_tokens API failed: {} — {}", status, body_text);
         return None;
     }
 
