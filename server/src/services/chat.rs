@@ -281,7 +281,9 @@ pub async fn run_single_turn(
         "\n\n## style\n\
          write like texting a friend. short messages split by blank lines. \
          1-2 sentences each. no walls of text, no bullet lists in conversation. \
-         lowercase, casual, warm.\n\n\
+         lowercase, casual, warm.\n\
+         your mood is tracked automatically — NEVER write mood changes in your messages \
+         (no \"[system] mood →\" or similar). just express emotions naturally.\n\n\
          ## tool usage rules\n\
          IMPORTANT: when the user asks a factual question (who said X, what is Y, \
          look something up, etc.) — ALWAYS use web_search BEFORE answering. \
@@ -1516,7 +1518,7 @@ companion: "{assistant_preview}"
 respond with exactly three lines:
 SENTIMENT: <user's emotional state in 1-2 words, e.g. "excited", "frustrated", "neutral">
 CONTEXT: <one short sentence about the emotional context>
-MOOD: <companion's mood — one of: {allowed}. write SAME to keep current, or pick a new mood that fits the emotional tone of the exchange. update when the conversation feels different from the current mood.>
+MOOD: <the mood that best matches the companion's emotional tone in this response — one of: {allowed}. write SAME only if the current mood already fits. judge by the actual emotions expressed, ignoring any meta-commentary about mood or system messages.>
 
 respond ONLY with those three lines."#,
         current_mood.companion_mood
@@ -1566,18 +1568,10 @@ respond ONLY with those three lines."#,
     tools::save_mood_state(&instance_dir, &mood);
 
     if mood_changed {
-        // Save mood change to chat history and rig_history
-        let label = format!("[system] mood → {}", mood.companion_mood);
-        match save_system_message(workspace_dir, instance_slug, chat_id, &label) {
-            Ok(msg) => {
-                let _ = events.send(ServerEvent::ChatMessageCreated {
-                    instance_slug: instance_slug.to_string(),
-                    chat_id: chat_id.to_string(),
-                    message: msg,
-                });
-            }
-            Err(e) => log::warn!("failed to save mood message: {e}"),
-        }
+        // Persist mood change in chat history so it survives page reloads.
+        let label = format!("mood → {}", mood.companion_mood);
+        let _ = save_system_message(workspace_dir, instance_slug, chat_id, &label);
+        // Broadcast via WebSocket for real-time UI update.
         let _ = events.send(ServerEvent::MoodUpdated {
             instance_slug: instance_slug.to_string(),
             mood: mood.companion_mood.clone(),
