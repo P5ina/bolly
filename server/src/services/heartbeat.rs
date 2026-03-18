@@ -553,7 +553,7 @@ fn deliver_spontaneous_message(
         content: message.to_string(),
         created_at: ts,
         kind: Default::default(),
-        tool_name: None, mcp_app_html: None, mcp_app_input: None,
+        tool_name: None, mcp_app_html: None, mcp_app_input: None, model: None,
     };
 
     // Broadcast via WebSocket

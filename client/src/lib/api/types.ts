@@ -11,6 +11,7 @@ export interface ChatMessage {
 	tool_name?: string;
 	mcp_app_html?: string;
 	mcp_app_input?: string;
+	model?: string;
 }
 
 export interface ChatRequest {

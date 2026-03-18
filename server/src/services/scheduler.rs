@@ -85,7 +85,7 @@ fn check_and_deliver(workspace_dir: &Path, events: &broadcast::Sender<ServerEven
                 content: scheduled.message.clone(),
                 created_at: unix_millis().to_string(),
                 kind: Default::default(),
-                tool_name: None, mcp_app_html: None, mcp_app_input: None,
+                tool_name: None, mcp_app_html: None, mcp_app_input: None, model: None,
             };
 
             // Append to chat history

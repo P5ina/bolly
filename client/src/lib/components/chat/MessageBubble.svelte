@@ -76,6 +76,18 @@
 	const html = $derived(
 		isUser ? textContent : (marked.parse(textContent) as string)
 	);
+
+	const modelLabel = $derived.by(() => {
+		if (!message.model) return "";
+		const m = message.model.toLowerCase();
+		if (m.includes("haiku")) return "fast";
+		if (m.includes("sonnet")) return "heavy";
+		if (m.includes("opus")) return "heavy";
+		if (m.includes("mini")) return "fast";
+		if (m.includes("gpt-5.2")) return "fast";
+		if (m.includes("flash")) return "fast";
+		return "";
+	});
 </script>
 
 <div
@@ -149,6 +161,9 @@
 	{#if !isConsecutive()}
 		<span class="msg-time" class:msg-time-right={isUser}>
 			{time()}
+			{#if modelLabel && !isUser}
+				<span class="msg-model" class:msg-model-fast={modelLabel === "fast"}>{modelLabel}</span>
+			{/if}
 		</span>
 	{/if}
 </div>
@@ -433,5 +448,28 @@
 	.msg-file-link:hover {
 		background: oklch(0.78 0.12 75 / 10%);
 		color: oklch(0.78 0.12 75 / 85%);
+	}
+
+	.msg-model {
+		display: inline-block;
+		margin-left: 0.3rem;
+		padding: 0 0.25rem;
+		border-radius: 3px;
+		font-size: 0.5rem;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		background: oklch(0.65 0.12 250 / 12%);
+		color: oklch(0.65 0.12 250 / 50%);
+		vertical-align: middle;
+	}
+	.msg-model-fast {
+		background: oklch(0.72 0.15 155 / 12%);
+		color: oklch(0.72 0.15 155 / 50%);
+	}
+	.msg:hover .msg-model {
+		color: oklch(0.65 0.12 250 / 70%);
+	}
+	.msg:hover .msg-model-fast {
+		color: oklch(0.72 0.15 155 / 70%);
 	}
 </style>

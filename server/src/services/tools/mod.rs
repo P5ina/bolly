@@ -315,7 +315,7 @@ impl ToolDyn for ObservableTool {
             kind: crate::domain::chat::MessageKind::ToolCall,
             tool_name: Some(tool_name.clone()),
             mcp_app_html: None,
-            mcp_app_input: None,
+            mcp_app_input: None, model: None,
         };
         // Tool activity is already captured in rig_history via ToolUse/ToolResult blocks.
         // Only broadcast via WebSocket for real-time UI updates.
@@ -341,6 +341,7 @@ impl ToolDyn for ObservableTool {
                         tool_name: Some(tool_name.clone()),
                         mcp_app_html: Some(html),
                         mcp_app_input: Some(args.clone()),
+                        model: None,
                     };
                     let _ = self.events.send(ServerEvent::ChatMessageCreated {
                         instance_slug: self.instance_slug.clone(),
@@ -404,7 +405,7 @@ impl ToolDyn for ObservableTool {
                         kind: crate::domain::chat::MessageKind::ToolOutput,
                         tool_name: Some(tool_name.clone()),
                         mcp_app_html: None,
-                        mcp_app_input: None,
+                        mcp_app_input: None, model: None,
                     };
                     let _ = events.send(ServerEvent::ChatMessageCreated {
                         instance_slug,

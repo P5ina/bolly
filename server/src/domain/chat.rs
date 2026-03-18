@@ -19,6 +19,9 @@ pub struct ChatMessage {
     /// Tool input JSON for MCP App rendering (kind = mcp_app only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_app_input: Option<String>,
+    /// Model name used to generate this message (assistant only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

@@ -174,7 +174,7 @@ impl Tool for ReachOutTool {
             content: message.clone(),
             created_at: now.to_string(),
             kind: Default::default(),
-            tool_name: None, mcp_app_html: None, mcp_app_input: None,
+            tool_name: None, mcp_app_html: None, mcp_app_input: None, model: None,
         };
 
         let chat_dir = self.workspace_dir

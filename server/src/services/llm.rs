@@ -215,7 +215,7 @@ pub fn history_to_chat_messages(entries: &[HistoryEntry]) -> Vec<ChatMessage> {
                         kind: MessageKind::Message,
                         tool_name: None,
                         mcp_app_html: None,
-                        mcp_app_input: None,
+                        mcp_app_input: None, model: None,
                     });
                 }
                 ContentBlock::ToolUse { name, input, .. } => {
@@ -229,6 +229,7 @@ pub fn history_to_chat_messages(entries: &[HistoryEntry]) -> Vec<ChatMessage> {
                         tool_name: Some(name.clone()),
                         mcp_app_html: entry.mcp_app_html.clone(),
                         mcp_app_input: entry.mcp_app_input.clone(),
+                        model: None,
                     });
                 }
                 ContentBlock::ToolResult { content, .. } => {
@@ -244,7 +245,7 @@ pub fn history_to_chat_messages(entries: &[HistoryEntry]) -> Vec<ChatMessage> {
                         kind: MessageKind::ToolOutput,
                         tool_name: None,
                         mcp_app_html: None,
-                        mcp_app_input: None,
+                        mcp_app_input: None, model: None,
                     });
                 }
                 ContentBlock::Compaction { content } => {
@@ -256,7 +257,7 @@ pub fn history_to_chat_messages(entries: &[HistoryEntry]) -> Vec<ChatMessage> {
                         kind: MessageKind::Compaction,
                         tool_name: None,
                         mcp_app_html: None,
-                        mcp_app_input: None,
+                        mcp_app_input: None, model: None,
                     });
                 }
                 // Image, Document, Unknown — skip for UI
@@ -780,7 +781,7 @@ async fn streaming_agent_loop(
                 kind: Default::default(),
                 tool_name: None,
                 mcp_app_html: None,
-                mcp_app_input: None,
+                mcp_app_input: None, model: None,
             };
             // Intermediate text is in rig_history via assistant blocks — only broadcast for UI
             let _ = events.send(ServerEvent::ChatMessageCreated {

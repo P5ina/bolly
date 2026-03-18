@@ -55,7 +55,7 @@ pub fn save_user_message(
         content,
         created_at: ts,
         kind: Default::default(),
-        tool_name: None, mcp_app_html: None, mcp_app_input: None,
+        tool_name: None, mcp_app_html: None, mcp_app_input: None, model: None,
     };
 
     // Update last_interaction timestamp
@@ -99,7 +99,7 @@ pub fn save_system_message(
         content: content.to_string(),
         created_at: ts,
         kind: Default::default(),
-        tool_name: None, mcp_app_html: None, mcp_app_input: None,
+        tool_name: None, mcp_app_html: None, mcp_app_input: None, model: None,
     };
 
     Ok(msg)
@@ -488,6 +488,7 @@ pub async fn run_single_turn(
             created_at: timestamp(),
             kind: Default::default(),
             tool_name: None, mcp_app_html: None, mcp_app_input: None,
+            model: Some(llm.model_name().to_string()),
         });
     }
 
