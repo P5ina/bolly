@@ -8,17 +8,17 @@
 		slug = "",
 		index = 0,
 		prevMessage,
+		nextMessage,
 		mood = "calm",
 		active = false,
-		streaming = false,
 	}: {
 		message: ChatMessage;
 		slug?: string;
 		index?: number;
 		prevMessage?: ChatMessage;
+		nextMessage?: ChatMessage;
 		mood?: string;
 		active?: boolean;
-		streaming?: boolean;
 	} = $props();
 
 	const isUser = $derived(message.role === "user");
@@ -34,7 +34,14 @@
 		if (prevMessage.role !== message.role) return false;
 		if (isUser) return false;
 		const gap = Math.abs(Number(message.created_at) - Number(prevMessage.created_at));
-		return gap < 30_000;
+		return gap < 60_000;
+	});
+
+	const isLastInGroup = $derived(() => {
+		if (!nextMessage) return true;
+		if (nextMessage.role !== message.role) return true;
+		const gap = Math.abs(Number(nextMessage.created_at) - Number(message.created_at));
+		return gap >= 60_000;
 	});
 
 	const marked = new Marked({
@@ -131,8 +138,8 @@
 					<span class="msg-presence-dot"></span>
 				</div>
 			{/if}
-			{#if textContent || streaming}
-				<div class="msg-content msg-content-companion prose" class:msg-streaming={streaming}>
+			{#if textContent}
+				<div class="msg-content msg-content-companion prose">
 					{@html html}
 				</div>
 			{/if}
@@ -157,12 +164,14 @@
 			{/if}
 		</div>
 	{/if}
-	<span class="msg-time" class:msg-time-right={isUser}>
-		{time()}
-		{#if modelLabel && !isUser}
-			<span class="msg-model" class:msg-model-fast={modelLabel === "fast"}>{modelLabel}</span>
-		{/if}
-	</span>
+	{#if isLastInGroup()}
+		<span class="msg-time" class:msg-time-right={isUser}>
+			{time()}
+			{#if modelLabel && !isUser}
+				<span class="msg-model" class:msg-model-fast={modelLabel === "fast"}>{modelLabel}</span>
+			{/if}
+		</span>
+	{/if}
 </div>
 
 <style>

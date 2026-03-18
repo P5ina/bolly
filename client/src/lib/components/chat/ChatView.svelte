@@ -191,13 +191,15 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			if (msg.role === "assistant" && streamingContent) {
 				clearStreaming();
 			}
-			// Replace promoted placeholder with the real message if content matches
+			// Replace streaming/promoted placeholder with the real message if content matches
 			if (msg.role === "assistant") {
-				const promotedIdx = stream.findIndex((s) =>
-					s.type === "message" && s.data.id.startsWith("__promoted_") && s.data.content === msg.content
+				const placeholderIdx = stream.findIndex((s) =>
+					s.type === "message" &&
+					(s.data.id.startsWith("__promoted_") || s.data.id.startsWith("__stream_")) &&
+					s.data.content === msg.content
 				);
-				if (promotedIdx >= 0) {
-					stream[promotedIdx] = { type: "message", data: msg };
+				if (placeholderIdx >= 0) {
+					stream[placeholderIdx] = { type: "message", data: msg };
 					stream = stream;
 					messages = [...messages, msg];
 					return;
@@ -564,6 +566,14 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		return undefined;
 	}
 
+	function getNext(item: StreamItem, index: number): ChatMessage | undefined {
+		if (item.type !== "message") return undefined;
+		for (let i = index + 1; i < stream.length; i++) {
+			if (stream[i].type === "message") return (stream[i] as { type: "message"; data: ChatMessage }).data;
+		}
+		return undefined;
+	}
+
 	function chatLabel(chat: ChatSummary): string {
 		if (chat.title && chat.title !== "untitled") return chat.title;
 		if (chat.id === "default") return "default";
@@ -643,7 +653,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					{:else}
 						{#each stream as item, i (streamKey(item))}
 							{#if item.type === "message"}
-								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} />
+								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} nextMessage={getNext(item, i)} />
 							{:else if item.type === "mcp_app"}
 								<McpAppViewer
 									html={item.html}
