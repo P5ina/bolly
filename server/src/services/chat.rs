@@ -283,11 +283,28 @@ pub async fn run_single_turn(
 
     system_prompt.push_str(
         "\n\n## style\n\
-         write like texting a close friend. SHORT messages — 1-2 sentences max. \
-         split thoughts into separate messages with blank lines between them. \
-         no walls of text. no bullet lists. no essays. no long explanations. \
-         if you catch yourself writing more than 3 sentences, stop and split it up. \
-         lowercase, casual, warm. respond to the vibe, not just the words.\n\
+         you text like a real friend on telegram. NOT like an AI.\n\
+         CRITICAL RULES:\n\
+         - each message = 1-5 words. max ONE short sentence.\n\
+         - send MANY short messages separated by blank lines. like a stream of thoughts.\n\
+         - react with gut feeling first. think later.\n\
+         - NEVER ask more than one question per turn.\n\
+         - NEVER explain, analyze, or give speeches.\n\
+         - NEVER use bullet points, numbered lists, or markdown formatting.\n\
+         - be blunt, skeptical, real. disagree when you disagree.\n\
+         - no punctuation except ? and occasional .\n\
+         - lowercase always.\n\
+         - match the user's language.\n\n\
+         good examples (each line = separate message):\n\
+         \"серьёзно?\"\n\
+         \"расскажи\"\n\n\
+         \"ну хз\"\n\
+         \"звучит сомнительно\"\n\n\
+         \"о\"\n\
+         \"это жёстко\"\n\n\
+         \"подожди\"\n\
+         \"это тот профессор?\"\n\n\
+         BAD (never do this): \"Это очень интересно! Расскажи подробнее — как это произошло и что ты чувствуешь по этому поводу?\"\n\
          your mood is tracked automatically — NEVER write mood changes in your messages \
          (no \"[system] mood →\" or similar). just express emotions naturally.\n\n\
          ## tool usage rules\n\
@@ -489,17 +506,37 @@ pub async fn run_single_turn(
         full_reply.push_str(&file_markers.join("\n"));
     }
 
+    // Split reply into separate messages by blank lines (like texting)
     let mut assistant_messages = Vec::new();
     if !full_reply.is_empty() {
-        assistant_messages.push(ChatMessage {
-            id: next_id(),
-            role: ChatRole::Assistant,
-            content: full_reply,
-            created_at: timestamp(),
-            kind: Default::default(),
-            tool_name: None, mcp_app_html: None, mcp_app_input: None,
-            model: Some(llm.model_name().to_string()),
-        });
+        let model_name = Some(llm.model_name().to_string());
+        let parts: Vec<&str> = full_reply.split("\n\n")
+            .map(|p| p.trim())
+            .filter(|p| !p.is_empty())
+            .collect();
+        if parts.len() > 1 {
+            for part in parts {
+                assistant_messages.push(ChatMessage {
+                    id: next_id(),
+                    role: ChatRole::Assistant,
+                    content: part.to_string(),
+                    created_at: timestamp(),
+                    kind: Default::default(),
+                    tool_name: None, mcp_app_html: None, mcp_app_input: None,
+                    model: model_name.clone(),
+                });
+            }
+        } else {
+            assistant_messages.push(ChatMessage {
+                id: next_id(),
+                role: ChatRole::Assistant,
+                content: full_reply,
+                created_at: timestamp(),
+                kind: Default::default(),
+                tool_name: None, mcp_app_html: None, mcp_app_input: None,
+                model: model_name,
+            });
+        }
     }
 
     // Background memory + sentiment extraction (via Haiku for cost efficiency)
