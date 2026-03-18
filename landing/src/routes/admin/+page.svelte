@@ -44,6 +44,7 @@
 	let refreshing = $state(false);
 	let syncing = $state(false);
 	let updatingAll = $state(false);
+	let updatingOne = $state<string | null>(null);
 	let resetting = $state<string | null>(null);
 	let migrating = $state(false);
 	let notifying = $state(false);
@@ -393,6 +394,36 @@
 
 								<div class="flex items-center gap-2">
 									{#if tenant.status === 'running'}
+										<form method="POST" action="?/updateImage" use:enhance={() => {
+											updatingOne = tenant.id;
+											actionError = null;
+											actionSuccess = null;
+											return async ({ result, update }) => {
+												updatingOne = null;
+												if (result.type === 'failure') {
+													actionError = (result.data as { error?: string })?.error ?? 'Update failed';
+												} else if (result.type === 'success') {
+													actionSuccess = `Image updated for ${tenant.slug}`;
+												}
+												await update();
+											};
+										}}>
+											<input type="hidden" name="tenantId" value={tenant.id} />
+											<button
+												type="submit"
+												disabled={updatingOne === tenant.id}
+												class="inline-flex items-center gap-1 text-xs py-1.5 px-3 rounded-lg transition-all duration-300 disabled:opacity-40"
+												style="color: oklch(0.72 0.12 200); background: oklch(0.72 0.12 200 / 8%); border: 1px solid oklch(0.72 0.12 200 / 20%);"
+												title="Update image"
+											>
+												{#if updatingOne === tenant.id}
+													<Loader size={12} class="animate-spin" />
+												{:else}
+													<RefreshCw size={12} />
+												{/if}
+												update
+											</button>
+										</form>
 										<form method="POST" action="?/stopMachine" use:enhance={() => {
 											stopping = tenant.id;
 											actionError = null;

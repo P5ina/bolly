@@ -487,4 +487,49 @@ export const actions: Actions = {
 
 		return { success: true, patched };
 	},
+
+	updateImage: async ({ request, locals }) => {
+		if (!locals.user || !isAdmin(locals.user.email)) error(403, 'Forbidden');
+
+		const form = await request.formData();
+		const tenantId = form.get('tenantId') as string;
+		if (!tenantId) return fail(400, { error: 'Missing tenantId' });
+
+		const [tenant] = await db()
+			.select({
+				slug: tenants.slug,
+				flyAppId: tenants.flyAppId,
+				flyMachineId: tenants.flyMachineId,
+				imageChannel: tenants.imageChannel,
+				status: tenants.status,
+			})
+			.from(tenants)
+			.where(eq(tenants.id, tenantId));
+
+		if (!tenant) return fail(404, { error: 'Tenant not found' });
+		if (!tenant.flyAppId || !tenant.flyMachineId) return fail(400, { error: 'No Fly machine' });
+
+		try {
+			// Sync env vars
+			const envPatch: Record<string, string> = {};
+			if (env.ANTHROPIC_API_KEY) envPatch.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
+			if (env.OPENAI_API_KEY) envPatch.OPENAI_API_KEY = env.OPENAI_API_KEY;
+			if (env.OPENROUTER_API_KEY) envPatch.OPENROUTER_API_KEY = env.OPENROUTER_API_KEY;
+			if (env.BRAVE_SEARCH_API_KEY) envPatch.BRAVE_SEARCH_API_KEY = env.BRAVE_SEARCH_API_KEY;
+			if (env.GOOGLE_CLIENT_ID) envPatch.GOOGLE_CLIENT_ID = env.GOOGLE_CLIENT_ID;
+			if (env.GOOGLE_CLIENT_SECRET) envPatch.GOOGLE_CLIENT_SECRET = env.GOOGLE_CLIENT_SECRET;
+
+			if (Object.keys(envPatch).length > 0) {
+				await fly.updateMachineEnv(tenant.flyAppId, tenant.flyMachineId, envPatch);
+			}
+
+			const image = fly.imageForChannel((tenant.imageChannel as fly.ImageChannel) ?? 'stable');
+			await fly.updateMachineImage(tenant.flyAppId, tenant.flyMachineId, image);
+
+			return { success: true, slug: tenant.slug };
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'Unknown error';
+			return fail(500, { error: `Failed to update ${tenant.slug}: ${msg}` });
+		}
+	},
 };
