@@ -451,7 +451,9 @@ export const actions: Actions = {
 		for (const t of allTenants) {
 			if (!t.flyAppId || !t.flyMachineId) continue;
 
-			// Build canonical env — same as createMachine but with BYOK overrides
+			const isByok = !!(t.byokApiKey && t.byokProvider);
+
+			// Build canonical env — BYOK machines get NO platform API keys
 			const canonicalEnv: Record<string, string> = {
 				BOLLY_HOME: '/data',
 				RUST_LOG: 'info,rig=warn',
@@ -460,22 +462,23 @@ export const actions: Actions = {
 				BOLLY_INSTANCE_ID: t.id,
 				BOLLY_PUBLIC_URL: `https://${t.slug}.bollyai.dev`,
 				DATABASE_URL: '', // explicitly blank out
-				OPENROUTER_API_KEY: env.OPENROUTER_API_KEY ?? '',
-				ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
-				OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
-				BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY ?? '',
+				// Platform API keys — blank for BYOK, real for normal
+				OPENROUTER_API_KEY: isByok ? '' : (env.OPENROUTER_API_KEY ?? ''),
+				ANTHROPIC_API_KEY: isByok ? '' : (env.ANTHROPIC_API_KEY ?? ''),
+				OPENAI_API_KEY: isByok ? '' : (env.OPENAI_API_KEY ?? ''),
+				BRAVE_SEARCH_API_KEY: isByok ? '' : (env.BRAVE_SEARCH_API_KEY ?? ''),
 				GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID ?? '',
 				GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET ?? '',
 				LANDING_URL: env.ORIGIN ?? '',
 			};
 
-			// BYOK overrides
-			if (t.byokApiKey && t.byokProvider) {
+			// BYOK: set only the user's own key for their chosen provider
+			if (isByok) {
 				canonicalEnv.BOLLY_BYOK = 'true';
-				canonicalEnv.BOLLY_LLM_PROVIDER = t.byokProvider;
-				if (t.byokProvider === 'anthropic') canonicalEnv.ANTHROPIC_API_KEY = t.byokApiKey;
-				else if (t.byokProvider === 'openai') canonicalEnv.OPENAI_API_KEY = t.byokApiKey;
-				else if (t.byokProvider === 'openrouter') canonicalEnv.OPENROUTER_API_KEY = t.byokApiKey;
+				canonicalEnv.BOLLY_LLM_PROVIDER = t.byokProvider!;
+				if (t.byokProvider === 'anthropic') canonicalEnv.ANTHROPIC_API_KEY = t.byokApiKey!;
+				else if (t.byokProvider === 'openai') canonicalEnv.OPENAI_API_KEY = t.byokApiKey!;
+				else if (t.byokProvider === 'openrouter') canonicalEnv.OPENROUTER_API_KEY = t.byokApiKey!;
 				if (t.byokModel) canonicalEnv.BOLLY_LLM_MODEL = t.byokModel;
 			}
 
