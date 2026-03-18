@@ -238,8 +238,8 @@ pub fn history_to_chat_messages(entries: &[HistoryEntry]) -> Vec<ChatMessage> {
                 }
                 ContentBlock::ToolResult { content, .. } => {
                     let text = match content {
-                        serde_json::Value::String(s) => truncate_tool_output(s, 200),
-                        other => truncate_tool_output(&other.to_string(), 200),
+                        serde_json::Value::String(s) => s.clone(),
+                        other => other.to_string(),
                     };
                     out.push(ChatMessage {
                         id: block_id,
