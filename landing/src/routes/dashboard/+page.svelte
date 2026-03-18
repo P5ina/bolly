@@ -124,54 +124,91 @@
 			</button>
 		</div>
 
-		<!-- create form -->
+		<!-- create ritual overlay -->
 		{#if showCreate}
-			<div class="mb-8 p-6 rounded-xl border border-border-warm" style="background: var(--color-bg-raised);">
-				<div class="grid gap-4 md:grid-cols-[1fr_auto_auto] items-end">
-					<div>
-						<label for="slug" class="block text-xs text-text-ghost mb-1.5 tracking-wide">Subdomain</label>
-						<div class="flex items-center gap-0">
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="create-overlay" onkeydown={(e) => e.key === 'Escape' && (showCreate = false)}>
+				<div class="create-ritual">
+					<!-- ambient glow -->
+					<div class="create-glow"></div>
+
+					<!-- close -->
+					<button class="create-close" onclick={() => showCreate = false}>
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-5 h-5"><path d="M6 18L18 6M6 6l12 12" stroke-linecap="round"/></svg>
+					</button>
+
+					<!-- step 1: name -->
+					<div class="create-step create-step-name">
+						<p class="create-hint">give it a name</p>
+						<div class="create-name-row">
 							<input
-								id="slug"
 								bind:value={slugInput}
 								placeholder="my-companion"
-								class="flex-1 py-2.5 px-4 rounded-l-lg text-sm text-text outline-none"
-								style="background: var(--color-bg); border: 1px solid var(--color-border); border-right: none;"
+								class="create-name-input"
+								oninput={(e) => { slugInput = (e.target as HTMLInputElement).value.toLowerCase().replace(/[^a-z0-9-]/g, ''); }}
 							/>
-							<span class="py-2.5 px-3 text-xs text-text-ghost rounded-r-lg" style="background: var(--color-bg); border: 1px solid var(--color-border);">
-								.bollyai.dev
-							</span>
+							<span class="create-name-suffix">.bollyai.dev</span>
 						</div>
 					</div>
-					<div>
-						<label for="plan" class="block text-xs text-text-ghost mb-1.5 tracking-wide">Plan</label>
-						<select
-							id="plan"
-							bind:value={selectedPlan}
-							class="py-2.5 px-4 rounded-lg text-sm text-text outline-none"
-							style="background: var(--color-bg); border: 1px solid var(--color-border);"
-						>
-							<option value="starter">Starter ({createByok ? '$5' : '$12'}/mo) — 1M tokens</option>
-							<option value="companion">Companion ({createByok ? '$10' : '$29'}/mo) — 3M tokens</option>
-							<option value="unlimited">Unlimited ({createByok ? '$19' : '$59'}/mo) — 10M tokens</option>
-						</select>
+
+					<!-- step 2: plan -->
+					<div class="create-step create-step-plan">
+						<p class="create-hint">choose your plan</p>
+						<div class="create-plan-grid">
+							{#each [
+								{ id: 'starter', name: 'Starter', price: 12, byokPrice: 5, tokens: '1M', desc: 'for exploring' },
+								{ id: 'companion', name: 'Companion', price: 29, byokPrice: 10, tokens: '3M', desc: 'for daily use', featured: true },
+								{ id: 'unlimited', name: 'Unlimited', price: 59, byokPrice: 19, tokens: '10M', desc: 'no limits' },
+							] as plan}
+								<button
+									class="create-plan-card"
+									class:create-plan-selected={selectedPlan === plan.id}
+									class:create-plan-featured={plan.featured}
+									onclick={() => selectedPlan = plan.id as typeof selectedPlan}
+								>
+									{#if plan.featured}
+										<span class="create-plan-badge">popular</span>
+									{/if}
+									<span class="create-plan-name">{plan.name}</span>
+									<span class="create-plan-price">
+										${createByok ? plan.byokPrice : plan.price}<span class="create-plan-period">/mo</span>
+									</span>
+									<span class="create-plan-tokens">{plan.tokens} tokens</span>
+									<span class="create-plan-desc">{plan.desc}</span>
+								</button>
+							{/each}
+						</div>
+						<label class="create-byok-toggle">
+							<input type="checkbox" bind:checked={createByok} />
+							<span>bring your own API key</span>
+							{#if createByok}
+								<span class="create-byok-note">hosting-only pricing</span>
+							{/if}
+						</label>
 					</div>
-					<button
-						onclick={createTenant}
-						disabled={creating || !slugInput.trim()}
-						class="py-2.5 px-6 rounded-lg text-sm font-medium text-warm transition-all duration-300 disabled:opacity-40"
-						style="background: oklch(0.78 0.12 75 / 12%); border: 1px solid oklch(0.78 0.12 75 / 20%);"
-					>
-						{creating ? 'Creating...' : 'Create'}
-					</button>
+
+					<!-- action -->
+					<div class="create-step create-step-action">
+						{#if errorMsg}
+							<p class="create-error">{errorMsg}</p>
+						{/if}
+						<button
+							onclick={createTenant}
+							disabled={creating || !slugInput.trim()}
+							class="create-submit"
+							class:create-submit-loading={creating}
+						>
+							{#if creating}
+								<div class="create-submit-spinner"></div>
+								creating...
+							{:else}
+								begin — ${createByok
+									? (selectedPlan === 'starter' ? 5 : selectedPlan === 'companion' ? 10 : 19)
+									: (selectedPlan === 'starter' ? 12 : selectedPlan === 'companion' ? 29 : 59)}/mo
+							{/if}
+						</button>
+					</div>
 				</div>
-				<label class="mt-3 flex items-center gap-2 cursor-pointer">
-					<input type="checkbox" bind:checked={createByok} class="accent-[oklch(0.78_0.12_75)]" />
-					<span class="text-xs text-text-ghost">I'll use my own API key <span class="text-text-ghost/50">(hosting-only pricing, no rate limits)</span></span>
-				</label>
-				{#if errorMsg}
-					<p class="mt-3 text-xs text-red-400/70 italic">{errorMsg}</p>
-				{/if}
 			</div>
 		{/if}
 
@@ -481,3 +518,298 @@
 		{/if}
 	</div>
 </div>
+
+<style>
+	/* ═══ Creation Ritual ═══ */
+
+	.create-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 200;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: oklch(0.03 0.015 280 / 92%);
+		backdrop-filter: blur(40px) saturate(1.2);
+		animation: ritual-fade 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	@keyframes ritual-fade {
+		from { opacity: 0; }
+	}
+
+	.create-ritual {
+		position: relative;
+		width: min(480px, calc(100vw - 3rem));
+		display: flex;
+		flex-direction: column;
+		gap: 2.5rem;
+		padding: 3rem 0;
+		animation: ritual-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	@keyframes ritual-rise {
+		from {
+			opacity: 0;
+			transform: translateY(20px) scale(0.97);
+			filter: blur(4px);
+		}
+	}
+
+	.create-glow {
+		position: absolute;
+		top: -60px;
+		left: 50%;
+		width: 300px;
+		height: 300px;
+		transform: translateX(-50%);
+		background: radial-gradient(circle, oklch(0.78 0.12 75 / 10%) 0%, transparent 70%);
+		pointer-events: none;
+		animation: glow-breathe 4s ease-in-out infinite;
+	}
+
+	@keyframes glow-breathe {
+		0%, 100% { opacity: 0.6; transform: translateX(-50%) scale(1); }
+		50% { opacity: 1; transform: translateX(-50%) scale(1.1); }
+	}
+
+	.create-close {
+		position: absolute;
+		top: 0;
+		right: -3rem;
+		color: oklch(0.88 0.02 75 / 25%);
+		cursor: pointer;
+		transition: color 0.2s;
+		background: none;
+		border: none;
+	}
+	.create-close:hover { color: oklch(0.88 0.02 75 / 60%); }
+
+	/* ═══ Steps ═══ */
+
+	.create-step {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.create-hint {
+		font-family: 'Instrument Serif', Georgia, serif;
+		font-style: italic;
+		font-size: 1rem;
+		color: oklch(0.88 0.02 75 / 40%);
+		letter-spacing: 0.01em;
+	}
+
+	/* ═══ Name Input ═══ */
+
+	.create-name-row {
+		display: flex;
+		align-items: stretch;
+		border-radius: 0.75rem;
+		overflow: hidden;
+		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		transition: border-color 0.3s;
+	}
+	.create-name-row:focus-within {
+		border-color: oklch(0.78 0.12 75 / 35%);
+	}
+
+	.create-name-input {
+		flex: 1;
+		padding: 1rem 1.25rem;
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 1.1rem;
+		color: oklch(0.92 0.04 75);
+		background: oklch(0.08 0.015 280);
+		border: none;
+		outline: none;
+		letter-spacing: 0.02em;
+	}
+	.create-name-input::placeholder {
+		color: oklch(0.88 0.02 75 / 18%);
+	}
+
+	.create-name-suffix {
+		display: flex;
+		align-items: center;
+		padding: 0 1rem;
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 0.85rem;
+		color: oklch(0.78 0.12 75 / 30%);
+		background: oklch(0.06 0.015 280);
+		border-left: 1px solid oklch(1 0 0 / 6%);
+		white-space: nowrap;
+	}
+
+	/* ═══ Plan Cards ═══ */
+
+	.create-plan-grid {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 0.75rem;
+	}
+
+	.create-plan-card {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 1.5rem 1rem;
+		border-radius: 0.875rem;
+		border: 1px solid oklch(1 0 0 / 6%);
+		background: oklch(0.07 0.015 280);
+		cursor: pointer;
+		transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+		text-align: center;
+	}
+	.create-plan-card:hover {
+		border-color: oklch(0.78 0.12 75 / 20%);
+		transform: translateY(-2px);
+	}
+
+	.create-plan-selected {
+		border-color: oklch(0.78 0.12 75 / 40%);
+		background: oklch(0.09 0.02 75);
+		box-shadow: 0 0 30px oklch(0.78 0.12 75 / 8%), inset 0 1px 0 oklch(0.78 0.12 75 / 10%);
+	}
+
+	.create-plan-badge {
+		position: absolute;
+		top: -0.5rem;
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 0.6rem;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		padding: 0.15rem 0.5rem;
+		border-radius: 1rem;
+		background: oklch(0.78 0.12 75 / 15%);
+		color: oklch(0.78 0.12 75);
+		border: 1px solid oklch(0.78 0.12 75 / 25%);
+	}
+
+	.create-plan-name {
+		font-family: 'DM Sans', sans-serif;
+		font-size: 0.9rem;
+		font-weight: 500;
+		color: oklch(0.88 0.02 75 / 80%);
+	}
+
+	.create-plan-price {
+		font-family: 'Instrument Serif', Georgia, serif;
+		font-style: italic;
+		font-size: 1.75rem;
+		color: oklch(0.78 0.12 75);
+		line-height: 1;
+		margin: 0.25rem 0;
+	}
+	.create-plan-period {
+		font-size: 0.8rem;
+		color: oklch(0.78 0.12 75 / 50%);
+	}
+
+	.create-plan-tokens {
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 0.72rem;
+		color: oklch(0.88 0.02 75 / 35%);
+	}
+
+	.create-plan-desc {
+		font-family: 'DM Sans', sans-serif;
+		font-size: 0.78rem;
+		color: oklch(0.88 0.02 75 / 25%);
+		font-style: italic;
+	}
+
+	/* ═══ BYOK Toggle ═══ */
+
+	.create-byok-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		cursor: pointer;
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 0.75rem;
+		color: oklch(0.88 0.02 75 / 35%);
+		margin-top: 0.25rem;
+	}
+	.create-byok-toggle input {
+		accent-color: oklch(0.78 0.12 75);
+	}
+
+	.create-byok-note {
+		font-size: 0.65rem;
+		color: oklch(0.72 0.15 155 / 60%);
+		padding: 0.1rem 0.4rem;
+		border-radius: 0.25rem;
+		background: oklch(0.72 0.15 155 / 8%);
+	}
+
+	/* ═══ Submit ═══ */
+
+	.create-error {
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 0.78rem;
+		color: oklch(0.7 0.18 25);
+		text-align: center;
+	}
+
+	.create-submit {
+		width: 100%;
+		padding: 1rem;
+		border-radius: 0.75rem;
+		font-family: 'DM Sans', sans-serif;
+		font-size: 1rem;
+		font-weight: 500;
+		letter-spacing: 0.02em;
+		color: oklch(0.065 0.015 280);
+		background: oklch(0.78 0.12 75);
+		border: none;
+		cursor: pointer;
+		transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+	}
+	.create-submit:hover:not(:disabled) {
+		transform: translateY(-1px);
+		box-shadow: 0 8px 30px oklch(0.78 0.12 75 / 25%), 0 2px 8px oklch(0.78 0.12 75 / 15%);
+	}
+	.create-submit:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
+	}
+	.create-submit-loading {
+		opacity: 0.7;
+	}
+
+	.create-submit-spinner {
+		width: 14px;
+		height: 14px;
+		border: 2px solid oklch(0.065 0.015 280 / 30%);
+		border-top-color: oklch(0.065 0.015 280);
+		border-radius: 50%;
+		animation: spin 0.6s linear infinite;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+
+	/* ═══ Responsive ═══ */
+
+	@media (max-width: 540px) {
+		.create-plan-grid {
+			grid-template-columns: 1fr;
+		}
+		.create-plan-card {
+			flex-direction: row;
+			justify-content: space-between;
+			padding: 1rem 1.25rem;
+		}
+		.create-plan-price { font-size: 1.3rem; margin: 0; }
+		.create-close { right: 0; top: -2rem; }
+	}
+</style>
