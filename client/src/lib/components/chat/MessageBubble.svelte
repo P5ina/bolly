@@ -157,14 +157,12 @@
 			{/if}
 		</div>
 	{/if}
-	{#if !isConsecutive()}
-		<span class="msg-time" class:msg-time-right={isUser}>
-			{time()}
-			{#if modelLabel && !isUser}
-				<span class="msg-model" class:msg-model-fast={modelLabel === "fast"}>{modelLabel}</span>
-			{/if}
-		</span>
-	{/if}
+	<span class="msg-time" class:msg-time-right={isUser}>
+		{time()}
+		{#if modelLabel && !isUser}
+			<span class="msg-model" class:msg-model-fast={modelLabel === "fast"}>{modelLabel}</span>
+		{/if}
+	</span>
 </div>
 
 <style>
