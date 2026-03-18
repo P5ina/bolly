@@ -91,6 +91,11 @@ async fn apply_update(State(_state): State<AppState>) -> Json<serde_json::Value>
         // Give time for response to be sent
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
+        // Read version before update to detect actual changes
+        let persist = std::env::var("BOLLY_HOME").unwrap_or_else(|_| "/data".to_string());
+        let version_file = std::path::Path::new(&persist).join("bin/.version");
+        let version_before = std::fs::read_to_string(&version_file).unwrap_or_default().trim().to_string();
+
         let result = tokio::process::Command::new("sh")
             .arg("-c")
             .arg(script.to_str().unwrap_or(""))
@@ -105,12 +110,16 @@ async fn apply_update(State(_state): State<AppState>) -> Json<serde_json::Value>
                 if !stderr.is_empty() {
                     log::warn!("[update] script stderr: {stderr}");
                 }
-                if output.status.success() {
-                    log::info!("[update] update complete, restarting...");
-                    // Exit with 0 — entrypoint/systemd will restart with new binary
+
+                // Check if the binary actually changed (don't rely on script exit code
+                // since the script in the Docker image may be outdated)
+                let version_after = std::fs::read_to_string(&version_file).unwrap_or_default().trim().to_string();
+
+                if version_after != version_before && !version_after.is_empty() {
+                    log::info!("[update] binary updated: {version_before} → {version_after}, restarting...");
                     std::process::exit(0);
                 } else {
-                    log::error!("[update] update script failed");
+                    log::info!("[update] no change after update script (before={version_before}, after={version_after})");
                 }
             }
             Err(e) => {

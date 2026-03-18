@@ -52,7 +52,7 @@ fi
 # Check if already up to date
 if [ -f "$VERSION_FILE" ] && [ "$(cat "$VERSION_FILE")" = "$VERSION" ] && [ -f "$BINARY" ]; then
     echo "[update] already at $VERSION"
-    exit 0
+    exit 2  # exit 2 = no update needed (distinct from 0 = updated, 1 = error)
 fi
 
 echo "[update] downloading bolly $VERSION ($CHANNEL) for $TARGET..."
