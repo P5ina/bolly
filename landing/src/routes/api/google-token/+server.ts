@@ -48,7 +48,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	}
 
 	// Refresh expired tokens and collect results
-	const accounts: { access_token: string; email: string }[] = [];
+	const accounts: { access_token: string; email: string; scopes: string }[] = [];
 
 	for (const account of rows) {
 		const now = new Date();

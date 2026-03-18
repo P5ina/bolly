@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Reveal from './Reveal.svelte';
 
+	const BYOK_ENABLED = false; // flip to true to re-enable BYOK pricing
 	let byok = $state(false);
 
 	const plans = [
@@ -43,7 +44,7 @@
 		<Reveal delay={200}>
 			<p class="text-[0.9375rem] text-text-dim max-w-[480px] mb-10">
 				Every plan includes full privacy, persistent memory, and a companion that never sleeps.
-				{#if byok}
+				{#if BYOK_ENABLED && byok}
 					Bring your own API key — pay only for hosting.
 				{:else}
 					AI included — no API key needed.
@@ -51,7 +52,8 @@
 			</p>
 		</Reveal>
 
-		<!-- BYOK toggle -->
+		<!-- BYOK toggle (hidden when BYOK_ENABLED=false) -->
+		{#if BYOK_ENABLED}
 		<Reveal delay={250}>
 			<div class="byok-toggle-row">
 				<button
@@ -64,11 +66,12 @@
 					</span>
 					<span class="byok-label">I have my own API key</span>
 				</button>
-				{#if byok}
+				{#if BYOK_ENABLED && byok}
 					<span class="byok-hint">hosting-only pricing · no rate limits</span>
 				{/if}
 			</div>
 		</Reveal>
+		{/if}
 
 		<div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-[400px] md:max-w-none mx-auto">
 			{#each plans as plan, i}
@@ -90,10 +93,10 @@
 							{/key}
 						</div>
 						<div class="text-[0.8125rem] text-text-ghost mb-1">per month</div>
-						{#if byok}
+						{#if BYOK_ENABLED && byok}
 							<div class="price-was">was ${plan.price}/mo</div>
 						{/if}
-						<div class={byok ? 'mb-4' : 'mb-8'}></div>
+						<div class={BYOK_ENABLED && byok ? 'mb-4' : 'mb-8'}></div>
 
 						<ul class="list-none mb-8 space-y-1.5 flex-1">
 							{#each plan.features as feature}
@@ -102,7 +105,7 @@
 									{feature}
 								</li>
 							{/each}
-							{#if byok}
+							{#if BYOK_ENABLED && byok}
 								<li class="text-[0.8125rem] flex items-center gap-2 byok-feature">
 									<span class="w-1 h-1 rounded-full shrink-0" style="background: oklch(0.70 0.14 145);"></span>
 									No rate limits

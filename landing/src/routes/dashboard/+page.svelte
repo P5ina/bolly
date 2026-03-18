@@ -4,6 +4,8 @@
 	import { ExternalLink, AlertTriangle, Loader, Mail, CreditCard, CalendarClock, XCircle, RotateCw, RefreshCw, Share2, Check, Key, ChevronDown, ChevronUp, Trash2 } from 'lucide-svelte';
 	import { enhance } from '$app/forms';
 
+	const BYOK_ENABLED = false; // flip to true to re-enable BYOK UI
+
 	let shared = $state<string | null>(null);
 	let byokOpen = $state<string | null>(null);
 	let byokSaving = $state<string | null>(null);
@@ -171,20 +173,20 @@
 									{/if}
 									<span class="create-plan-name">{plan.name}</span>
 									<span class="create-plan-price">
-										${createByok ? plan.byokPrice : plan.price}<span class="create-plan-period">/mo</span>
+										\${BYOK_ENABLED && createByok ? plan.byokPrice : plan.price}<span class="create-plan-period">/mo</span>
 									</span>
 									<span class="create-plan-tokens">{plan.tokens} tokens</span>
 									<span class="create-plan-desc">{plan.desc}</span>
 								</button>
 							{/each}
 						</div>
-						<label class="create-byok-toggle">
+						{#if BYOK_ENABLED}<label class="create-byok-toggle">
 							<input type="checkbox" bind:checked={createByok} />
 							<span>bring your own API key</span>
 							{#if createByok}
 								<span class="create-byok-note">hosting-only pricing</span>
 							{/if}
-						</label>
+						</label>{/if}
 					</div>
 
 					<!-- action -->
@@ -340,7 +342,7 @@
 									<div class="flex items-center gap-4 text-xs text-text-ghost">
 										<span class="inline-flex items-center gap-1.5">
 											<CreditCard size={13} class="text-text-ghost" />
-											{tenant.planName}{tenant.byok ? ' BYOK' : ''} — {formatPrice(tenant.subscription.amount)}/mo
+											{tenant.planName}{BYOK_ENABLED && tenant.byok ? ' BYOK' : ''} — {formatPrice(tenant.subscription.amount)}/mo
 										</span>
 										<span class="inline-flex items-center gap-1.5">
 											<CalendarClock size={13} class="text-text-ghost" />
@@ -382,7 +384,8 @@
 								</div>
 							{/if}
 
-						<!-- BYOK section -->
+						<!-- BYOK section (hidden when BYOK_ENABLED=false) -->
+						{#if BYOK_ENABLED}
 						<div class="mt-3 pt-3" style="border-top: 1px solid var(--color-border);">
 							{#if tenant.byok}
 								<div class="flex items-center justify-between">
@@ -444,6 +447,7 @@
 								</form>
 							{/if}
 						</div>
+tttttt{/if}
 						</div>
 					{/if}
 				{/each}
