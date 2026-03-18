@@ -28,11 +28,28 @@ use crate::services::tools::{
 
 static HEARTBEAT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// How often the heartbeat fires (minutes).
-const HEARTBEAT_INTERVAL_MINS: u64 = 45;
-
 /// Minimum minutes since last interaction before the companion considers reaching out.
 const MIN_SILENCE_MINS: i64 = 30;
+
+/// Seconds until the next even UTC hour (0:00, 2:00, 4:00, …).
+fn secs_until_next_even_hour() -> u64 {
+    let now = Utc::now();
+    let mut next_hour = now.hour() + 1;
+    // Round up to the next even hour
+    if next_hour % 2 != 0 {
+        next_hour += 1;
+    }
+    if next_hour >= 24 {
+        // Wraps to next day — compute remaining seconds today + offset into tomorrow
+        let secs_left_today = (24 * 3600) - (now.hour() * 3600 + now.minute() * 60 + now.second());
+        let extra = (next_hour - 24) * 3600;
+        (secs_left_today + extra) as u64
+    } else {
+        let target_secs = next_hour * 3600;
+        let now_secs = now.hour() * 3600 + now.minute() * 60 + now.second();
+        (target_secs - now_secs) as u64
+    }
+}
 
 pub fn start(
     workspace_dir: &Path,
@@ -41,10 +58,12 @@ pub fn start(
 ) {
     let workspace = workspace_dir.to_path_buf();
     tokio::spawn(async move {
-        // Wait a bit before the first heartbeat so the server is fully up
-        tokio::time::sleep(Duration::from_secs(60)).await;
+        // Wait until the next even UTC hour before the first heartbeat
+        let initial_wait = secs_until_next_even_hour();
+        log::info!("heartbeat: first tick in {}m", initial_wait / 60);
+        tokio::time::sleep(Duration::from_secs(initial_wait)).await;
 
-        let mut interval = tokio::time::interval(Duration::from_secs(HEARTBEAT_INTERVAL_MINS * 60));
+        let mut interval = tokio::time::interval(Duration::from_secs(2 * 3600));
         loop {
             interval.tick().await;
             let llm_guard = llm.read().await;
@@ -53,9 +72,7 @@ pub fn start(
             }
         }
     });
-    log::info!(
-        "heartbeat started — companion wakes up every {HEARTBEAT_INTERVAL_MINS} minutes"
-    );
+    log::info!("heartbeat started — companion wakes up every 2 hours (even UTC hours)");
 }
 
 async fn run_heartbeat(
