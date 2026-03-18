@@ -421,7 +421,7 @@
 		{#if updateDone}
 			<div class="update-banner update-done">
 				<span class="update-label">updated!</span>
-				<span class="update-version">now on {updateInfo?.current}</span>
+				<button class="update-reload-btn" onclick={() => location.reload()}>reload page</button>
 			</div>
 		{:else if updating}
 			<div class="update-banner">
@@ -988,6 +988,20 @@
 	}
 	.update-done .update-label {
 		color: oklch(0.72 0.15 155);
+	}
+	.update-reload-btn {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		padding: 0.25rem 0.6rem;
+		border-radius: 0.3rem;
+		background: oklch(0.72 0.15 155 / 15%);
+		color: oklch(0.72 0.15 155);
+		border: 1px solid oklch(0.72 0.15 155 / 30%);
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+	.update-reload-btn:hover {
+		background: oklch(0.72 0.15 155 / 25%);
 	}
 	.update-info {
 		display: flex;
