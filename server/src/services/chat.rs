@@ -513,7 +513,25 @@ pub async fn run_single_turn(
 
     // Save rig history to disk if we got one from the LLM
     if let Some(ref h) = tool_result.rig_history {
-        let merged = llm::merge_with_timestamps(&loaded_entries, h, timestamp, next_id);
+        let mut merged = llm::merge_with_timestamps(&loaded_entries, h, timestamp, next_id);
+
+        // Append file markers to the last assistant message so they persist
+        // across page reloads (send_file markers are added post-LLM).
+        if !file_markers.is_empty() {
+            let marker_text = file_markers.join("\n");
+            if let Some(last) = merged.iter_mut().rev().find(|e| matches!(e.message, llm::Message::Assistant { .. })) {
+                if let llm::Message::Assistant { content } = &mut last.message {
+                    // Append to existing text block or add a new one
+                    if let Some(llm::ContentBlock::Text { text }) = content.last_mut() {
+                        text.push('\n');
+                        text.push_str(&marker_text);
+                    } else {
+                        content.push(llm::ContentBlock::text(marker_text));
+                    }
+                }
+            }
+        }
+
         save_rig_history(&rig_path, &merged);
 
         // If compaction fired, rebuild the memory catalog snapshot so the
