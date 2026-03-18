@@ -280,7 +280,10 @@ async fn heartbeat_instance(
                 "{reflection}\n\n\
                  ## task from your heartbeat triage\n\
                  {task}\n\n\
-                 execute this task using your tools. be efficient."
+                 execute this task using your tools. be efficient.\n\n\
+                 when done, write a short summary of what you did (which files you touched, \
+                 what changed, and why). this will be saved to chat history so you can \
+                 recall it later when the user asks."
             );
 
             let cfg = config::load_config().ok();
@@ -300,7 +303,11 @@ async fn heartbeat_instance(
                     let cleaned = strip_tool_artifacts(&response);
                     let preview: String = cleaned.chars().take(100).collect();
                     log::info!("[heartbeat] {slug} agent done: {preview}");
-                    actions.push(format!("wake: {task}"));
+                    if cleaned.trim().is_empty() {
+                        actions.push(format!("wake: {task}"));
+                    } else {
+                        actions.push(format!("wake ({task}): {cleaned}"));
+                    }
                 }
                 Err(e) => {
                     log::warn!("[heartbeat] {slug} agent failed: {e}");
@@ -314,13 +321,24 @@ async fn heartbeat_instance(
     let thought = Thought {
         id: format!("thought_{}", unix_millis()),
         raw: triage_line.to_string(),
-        actions,
+        actions: actions.clone(),
         mood: mood.companion_mood.clone(),
         created_at: unix_millis().to_string(),
     };
 
     if let Err(e) = thoughts::save_thought(workspace_dir, slug, &thought) {
         log::warn!("[heartbeat] {slug} failed to save thought: {e}");
+    }
+
+    // Log non-quiet heartbeat actions to rig_history so the agent
+    // can recall what it did between conversations.
+    let dominated_by_quiet = actions.len() == 1 && actions[0] == "quiet";
+    if !dominated_by_quiet {
+        let summary = actions.join("; ");
+        let label = format!("[system] heartbeat: {summary}");
+        if let Err(e) = chat::save_system_message(workspace_dir, slug, "default", &label) {
+            log::warn!("[heartbeat] {slug} failed to save heartbeat log: {e}");
+        }
     }
 
     let _ = events.send(ServerEvent::HeartbeatThought {
