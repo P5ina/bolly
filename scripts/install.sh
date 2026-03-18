@@ -4,6 +4,11 @@
 set -e
 
 REPO="triangle-int/bolly"
+RELEASE_TOKEN="${BOLLY_RELEASE_TOKEN:-}"
+AUTH_HEADER=""
+if [ -n "$RELEASE_TOKEN" ]; then
+    AUTH_HEADER="Authorization: token $RELEASE_TOKEN"
+fi
 INSTALL_DIR="/opt/bolly"
 DATA_DIR="/data"
 BIN="$INSTALL_DIR/bin/bolly"
@@ -97,7 +102,7 @@ mkdir -p "$INSTALL_DIR/bin" "$INSTALL_DIR/scripts" "$DATA_DIR"
 
 # --- Download binary ---
 log "downloading bolly binary..."
-RELEASE_JSON=$(curl -fsSL "$API_URL")
+RELEASE_JSON=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$API_URL")
 TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
 
 if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
@@ -105,7 +110,7 @@ if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
 fi
 
 ASSET_URL="https://github.com/$REPO/releases/download/$TAG/bolly-$TARGET"
-curl -fsSL -L "$ASSET_URL" -o "$BIN"
+curl -fsSL -L ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$ASSET_URL" -o "$BIN"
 chmod +x "$BIN"
 echo "$TAG" > "$INSTALL_DIR/bin/.version"
 log "downloaded $TAG"
@@ -131,6 +136,7 @@ Environment=BOLLY_HOME=$DATA_DIR
 Environment=RUST_LOG=info,rig=warn
 Environment=CHROMIUM_PATH=/usr/bin/chromium-browser
 Environment=BOLLY_CHANNEL=$CHANNEL
+Environment=BOLLY_RELEASE_TOKEN=$RELEASE_TOKEN
 ExecStart=$BIN
 Restart=always
 RestartSec=5
@@ -149,6 +155,11 @@ set -e
 REPO="triangle-int/bolly"
 BIN="/opt/bolly/bin/bolly"
 CHANNEL="${BOLLY_CHANNEL:-stable}"
+RELEASE_TOKEN="${BOLLY_RELEASE_TOKEN:-}"
+AUTH_HEADER=""
+if [ -n "$RELEASE_TOKEN" ]; then
+    AUTH_HEADER="Authorization: token $RELEASE_TOKEN"
+fi
 ARCH=$(uname -m)
 case "$ARCH" in
     x86_64)  TARGET="x86_64-unknown-linux-gnu" ;;
@@ -159,14 +170,14 @@ if [ "$CHANNEL" = "nightly" ]; then
 else
     API_URL="https://api.github.com/repos/$REPO/releases/latest"
 fi
-TAG=$(curl -fsSL "$API_URL" | jq -r '.tag_name')
+TAG=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$API_URL" | jq -r '.tag_name')
 CURRENT=$(cat /opt/bolly/bin/.version 2>/dev/null || echo "none")
 if [ "$TAG" = "$CURRENT" ]; then
     echo "already at $TAG"
     exit 0
 fi
 echo "updating to $TAG..."
-curl -fsSL -L "https://github.com/$REPO/releases/download/$TAG/bolly-$TARGET" -o "$BIN.tmp"
+curl -fsSL -L ${AUTH_HEADER:+-H "$AUTH_HEADER"} "https://github.com/$REPO/releases/download/$TAG/bolly-$TARGET" -o "$BIN.tmp"
 chmod +x "$BIN.tmp"
 mv "$BIN.tmp" "$BIN"
 echo "$TAG" > /opt/bolly/bin/.version

@@ -179,12 +179,15 @@ async fn fetch_release_info(channel: &str) -> Option<ReleaseInfo> {
     };
 
     let client = reqwest::Client::new();
-    let resp = client
+    let mut req = client
         .get(&url)
-        .header("User-Agent", "bolly-update")
-        .send()
-        .await
-        .ok()?;
+        .header("User-Agent", "bolly-update");
+    if let Ok(token) = std::env::var("BOLLY_RELEASE_TOKEN") {
+        if !token.is_empty() {
+            req = req.header("Authorization", format!("token {token}"));
+        }
+    }
+    let resp = req.send().await.ok()?;
 
     let data: serde_json::Value = resp.json().await.ok()?;
     Some(ReleaseInfo {

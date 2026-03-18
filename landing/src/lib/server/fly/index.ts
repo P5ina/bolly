@@ -157,6 +157,7 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 					BOLLY_HOME: '/data',
 					RUST_LOG: 'info,rig=warn',
 					BOLLY_CHANNEL: opts.channel ?? 'stable',
+					BOLLY_RELEASE_TOKEN: env.BOLLY_RELEASE_TOKEN ?? '',
 					BOLLY_AUTH_TOKEN: opts.authToken,
 					BOLLY_INSTANCE_ID: opts.instanceId,
 					BOLLY_PUBLIC_URL: opts.publicUrl,

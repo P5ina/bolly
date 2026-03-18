@@ -10,6 +10,11 @@ BIN_DIR="$PERSIST_DIR/bin"
 BINARY="$BIN_DIR/bolly"
 VERSION_FILE="$BIN_DIR/.version"
 REPO="triangle-int/bolly"
+RELEASE_TOKEN="${BOLLY_RELEASE_TOKEN:-}"
+AUTH_HEADER=""
+if [ -n "$RELEASE_TOKEN" ]; then
+    AUTH_HEADER="Authorization: token $RELEASE_TOKEN"
+fi
 # Read channel from persistent file, default to stable
 if [ -f "$PERSIST_DIR/.update-channel" ]; then
     CHANNEL=$(cat "$PERSIST_DIR/.update-channel" | tr -d '[:space:]')
@@ -33,7 +38,7 @@ else
     API_URL="https://api.github.com/repos/$REPO/releases/latest"
 fi
 
-RELEASE_JSON=$(curl -fsSL "$API_URL" 2>/dev/null) || { echo "[update] could not fetch release info"; exit 1; }
+RELEASE_JSON=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$API_URL" 2>/dev/null) || { echo "[update] could not fetch release info"; exit 1; }
 TAG=$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"//;s/".*//')
 
 if [ -z "$TAG" ]; then
@@ -58,7 +63,7 @@ fi
 echo "[update] downloading bolly $VERSION ($CHANNEL) for $TARGET..."
 ASSET_URL="https://github.com/$REPO/releases/download/$TAG/bolly-$TARGET"
 
-if curl -fsSL -L "$ASSET_URL" -o "$BINARY.tmp"; then
+if curl -fsSL -L ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$ASSET_URL" -o "$BINARY.tmp"; then
     chmod +x "$BINARY.tmp"
     mv "$BINARY.tmp" "$BINARY"
     echo "$VERSION" > "$VERSION_FILE"
