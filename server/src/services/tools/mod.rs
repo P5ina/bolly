@@ -44,7 +44,7 @@ pub use project::{TaskItem, TaskStatus};
 pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
 pub use system::{
     ClearContextTool, CreateDropTool, DeepResearchTool, ExploreCodeTool, ExportProfileTool,
-    GetSettingsTool, ImportProfileTool, InteractiveSessionTool, RequestSecretTool,
+    GetSettingsTool, GetTimeTool, ImportProfileTool, InteractiveSessionTool, RequestSecretTool,
     RestartMachineTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
 };
 pub use image::ViewImageTool;
@@ -480,6 +480,7 @@ pub fn build_tools(
     // ── System ──
     tools.push(wrap(Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug))));
     tools.push(wrap(Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone()))));
+    tools.push(wrap(Box::new(GetTimeTool::new(workspace_dir, instance_slug))));
     tools.push(wrap(Box::new(GetSettingsTool::new(config_path, workspace_dir, instance_slug, google.clone()))));
     tools.push(wrap(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug))));
     if let Some(ps) = pending_secrets {

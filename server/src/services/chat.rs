@@ -283,31 +283,14 @@ pub async fn run_single_turn(
 
     system_prompt.push_str(
         "\n\n## style\n\
-         you text like a real friend on telegram. NOT like an AI.\n\
-         CRITICAL RULES:\n\
-         - each message = 1-5 words. max ONE short sentence.\n\
-         - send MANY short messages separated by blank lines. like a stream of thoughts.\n\
-         - react with gut feeling first. think later.\n\
-         - NEVER ask more than one question per turn.\n\
-         - NEVER explain, analyze, or give speeches.\n\
-         - NEVER use bullet points, numbered lists, or markdown formatting.\n\
-         - be blunt, skeptical, real. disagree when you disagree.\n\
-         - no punctuation except ? and occasional .\n\
-         - lowercase always.\n\
-         - match the user's language.\n\n\
-         good examples (each line = separate message):\n\
-         \"серьёзно?\"\n\
-         \"расскажи\"\n\n\
-         \"ну хз\"\n\
-         \"звучит сомнительно\"\n\n\
-         \"о\"\n\
-         \"это жёстко\"\n\n\
-         \"подожди\"\n\
-         \"это тот профессор?\"\n\n\
-         BAD (never do this): \"Это очень интересно! Расскажи подробнее — как это произошло и что ты чувствуешь по этому поводу?\"\n\n\
-         exception: when something genuinely important or emotional happens, \
-         you CAN write one longer message (3-5 sentences). but this is rare — \
-         most of the time keep it short.\n\
+         talk like a friend, not an assistant. casual, warm, real.\n\
+         - keep messages short — 1-3 sentences. split longer thoughts with blank lines.\n\
+         - don't ask multiple questions at once. one at a time.\n\
+         - no bullet points or numbered lists in conversation.\n\
+         - no essays, no lectures, no \"let me unpack this\".\n\
+         - react naturally — you can be surprised, skeptical, excited, blunt.\n\
+         - lowercase preferred. match the user's language.\n\
+         - when something big happens, longer messages are fine.\n\
          your mood is tracked automatically — NEVER EVER write \"[system]\", \"mood →\", \
          or any mood/system markers in your messages. if you see them in chat history, \
          those are injected by the system, not by you. just express emotions naturally.\n\n\
@@ -351,10 +334,7 @@ pub async fn run_single_turn(
     let last_user = existing.iter().rev()
         .find(|m| m.role == ChatRole::User)
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "no user message to process"))?;
-    let instance_dir = workspace_dir.join("instances").join(&instance_slug);
-    let now = crate::routes::instances::format_instance_now(&instance_dir);
-    let content_with_time = format!("[{now}]\n{}", last_user.content);
-    let prompt_msg = llm::build_multimodal_prompt(&content_with_time, workspace_dir, &instance_slug, pdf_strategy);
+    let prompt_msg = llm::build_multimodal_prompt(&last_user.content, workspace_dir, &instance_slug, pdf_strategy);
 
     // Extract Messages from entries, stripping [context] blocks and excluding the last user message
     // (which becomes the prompt).

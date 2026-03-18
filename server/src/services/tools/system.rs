@@ -786,6 +786,49 @@ fn unescape_input(s: &str) -> Vec<u8> {
 // get_settings
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// get_time
+// ---------------------------------------------------------------------------
+
+pub struct GetTimeTool {
+    instance_dir: PathBuf,
+}
+
+impl GetTimeTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            instance_dir: workspace_dir.join("instances").join(instance_slug),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct GetTimeArgs {}
+
+impl Tool for GetTimeTool {
+    const NAME: &'static str = "get_time";
+    type Error = ToolExecError;
+    type Args = GetTimeArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "get_time".into(),
+            description: "Get the current date and time in the user's timezone.".into(),
+            parameters: openai_schema::<GetTimeArgs>(),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let now = crate::routes::instances::format_instance_now(&self.instance_dir);
+        Ok(now)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// get_settings
+// ---------------------------------------------------------------------------
+
 pub struct GetSettingsTool {
     config_path: PathBuf,
     workspace_dir: PathBuf,
