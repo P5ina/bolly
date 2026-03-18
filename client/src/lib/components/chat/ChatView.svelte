@@ -142,25 +142,37 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		});
 	});
 
-	/** True if the user is within 150px of the bottom (i.e. "reading latest"). */
-	function isNearBottom(): boolean {
-		if (!scrollContainer) return true;
+	/** Tracks whether the user has intentionally scrolled away from the bottom. */
+	let userScrolledUp = false;
+	let programmaticScroll = false;
+
+	function handleScroll() {
+		if (programmaticScroll) return;
+		if (!scrollContainer) return;
 		const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-		return scrollHeight - scrollTop - clientHeight < 150;
+		const nearBottom = scrollHeight - scrollTop - clientHeight < 150;
+		if (nearBottom) {
+			userScrolledUp = false;
+		} else {
+			userScrolledUp = true;
+		}
 	}
 
-	/** Always scroll to bottom (used after sending a message). */
+	/** Always scroll to bottom (used after sending a message / initial load). */
 	function scrollToBottom() {
+		userScrolledUp = false;
 		requestAnimationFrame(() => {
 			if (scrollContainer) {
+				programmaticScroll = true;
 				scrollContainer.scrollTop = scrollContainer.scrollHeight;
+				programmaticScroll = false;
 			}
 		});
 	}
 
-	/** Scroll to bottom only if the user is already near the bottom. */
+	/** Scroll to bottom only if the user hasn't scrolled away. */
 	function scrollToBottomIfNear() {
-		if (isNearBottom()) scrollToBottom();
+		if (!userScrolledUp) scrollToBottom();
 	}
 
 	function now() {
@@ -636,7 +648,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 	<div class="chat-columns">
 		<div class="chat-main">
-			<div class="chat-stream" bind:this={scrollContainer}>
+			<div class="chat-stream" bind:this={scrollContainer} onscroll={handleScroll}>
 				<div class="stream-inner">
 					{#if loading}
 						<div class="chat-loading"><div class="loading-dot"></div></div>
