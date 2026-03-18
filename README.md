@@ -1,112 +1,131 @@
 # Bolly
 
-> A self-hosted AI companion that lives on your server — not a chatbot, but a persistent being with memory, mood, creative output, and full system access.
+> A self-hosted AI companion platform — persistent memory, mood, creative output, and full system access. Runs as a single binary or managed SaaS.
 
 ![Rust](https://img.shields.io/badge/rust-2024-orange?logo=rust)
 ![SvelteKit](https://img.shields.io/badge/sveltekit-5-red?logo=svelte)
-![License](https://img.shields.io/badge/license-MIT-blue)
-![Docker](https://img.shields.io/docker/v/p5ina/bolly?sort=semver&label=docker)
+![License](https://img.shields.io/badge/license-proprietary-red)
 
 ---
 
 ## What is Bolly?
 
-Most AI assistants wait for you to ask something. Bolly is different.
-
-It lives on your server, remembers everything about you, and acts like a real companion — it writes to you first, generates ideas while you sleep, and drops creative artifacts with thoughts it had about your projects. It has its own character, mood, and creative energy.
-
-It also has full system access — it can read and write files, run commands, install packages, send emails, and see images and documents you share.
+A companion that lives on your server, remembers everything, and acts on its own — writes to you first, generates ideas while you sleep, sends emails, browses the web, and manages projects. It has its own personality, mood, and creative energy.
 
 ---
 
-## Quick Start
+## Architecture
 
-### Docker
-
-```bash
-docker run -d \
-  -p 8080:8080 \
-  -v bolly-data:/data \
-  p5ina/bolly:latest
+```
+server/     Rust (Axum) — single binary with embedded client
+client/     SvelteKit 5 — dark theme, oklch colors
+landing/    SvelteKit — marketing site, dashboard, Stripe billing (Vercel)
 ```
 
-Open `http://localhost:8080`, configure your LLM provider, and create your first companion.
+### Stack
 
-### From Source
+| Layer | Technology |
+|-------|-----------|
+| Server | Rust, Axum, Tokio (single binary via rust-embed) |
+| LLM | Anthropic (Claude), OpenAI, OpenRouter — smart model routing |
+| Frontend | SvelteKit 5, Tailwind CSS |
+| Memory | File-based library (BM25 search, LLM-driven extraction) |
+| Email | lettre (SMTP), async-imap (IMAP), Gmail (OAuth) |
+| Calendar | Google Calendar API |
+| Storage | Google Drive API |
+| Browser | Headless Chromium (companion+ plans) |
+| Deploy | GitHub Releases (binary), Fly.io (managed), Docker |
+| Landing | SvelteKit, Drizzle ORM, PostgreSQL, Stripe |
 
-```bash
-# Server
-cd server && cargo run
+### Data layout
 
-# Client (dev mode, in another terminal)
-cd client && pnpm install && pnpm dev
+Everything is a file. No black boxes.
+
 ```
-
-The dev server proxies API requests to `localhost:8080`.
+~/.bolly/
+├── config.toml
+└── instances/
+    └── {slug}/
+        ├── soul.md              personality definition
+        ├── heartbeat.md         customizable heartbeat behavior
+        ├── autonomy.md          autonomous action rules
+        ├── mood.json            emotional state
+        ├── instance.toml        per-instance config (github, etc.)
+        ├── memory/              file-based memory library
+        │   ├── about/           facts about the user
+        │   ├── preferences/     user preferences
+        │   └── moments/         shared experiences
+        ├── drops/               autonomous creative artifacts (JSON)
+        ├── stats/               daily usage stats (JSON)
+        ├── uploads/             user-uploaded files
+        ├── skills/
+        │   └── {skill_id}/
+        │       ├── SKILL.md     skill definition
+        │       └── references/  bundled docs
+        └── chats/
+            └── {chat_id}/
+                ├── rig_history.json   unified message history
+                └── meta.json
+```
 
 ---
 
 ## Features
 
-### Knows you
-- **Semantic memory** — extracts and recalls facts from every conversation (SQLite + vector embeddings)
-- **soul.md** — defines your companion's personality, voice, and character (editable by the companion itself)
-- **Journal** — private daily reflections your companion keeps for continuity
-- **Context compaction** — automatically summarizes older messages to stay within context limits without losing history
+### Memory
+- File-based memory library with BM25 search
+- LLM-driven memory extraction after each conversation
+- Organized by topic: `about/`, `preferences/`, `moments/`, `projects/`
+- Memory tools: `memory_write`, `memory_read`, `memory_search`, `memory_list`, `memory_forget`
 
-### Feels
-- **Mood system** — shifts naturally based on conversation context (calm, focused, playful, loving, warm, reflective, curious, excited, melancholy)
-- **Sentiment tracking** — reads your emotional state and responds to it
-- **Living blob** — 3D tamagotchi rendered as ASCII art, visual mood indicator
+### Mood & Personality
+- `soul.md` — defines voice, personality, style (editable by the companion)
+- Mood system — shifts based on conversation (calm, focused, playful, loving, warm, reflective, curious, excited, melancholy)
+- Sentiment tracking on every message
 
-### Creates
-- **Drops** — autonomous creative artifacts generated during heartbeat cycles
-- Ideas, poems, observations, reflections, stories — whatever comes naturally
-- Browsable gallery in the UI, real-time WebSocket notifications
+### Creative Output
+- **Drops** — autonomous creative artifacts during heartbeat cycles
+- Ideas, poems, observations, reflections, stories
+- Browsable gallery in the UI
 
-### Sees
-- **Image uploads** — attach images directly in chat, analyzed with vision (Anthropic/OpenAI multimodal)
-- **PDF documents** — send PDFs for extraction and understanding
-- **Code & text files** — attach any text-based file (`.py`, `.rs`, `.json`, etc.) — inlined automatically
-- No tool calls needed — your companion sees attachments immediately in the conversation
-
-### Acts
-- **28+ tools** with full system access:
+### Tools (46+)
 
 | Category | Tools |
 |----------|-------|
-| Filesystem | `read_file`, `write_file`, `edit_file`, `list_files`, `search_code`, `explore_code` |
-| Shell | `run_command`, `interactive_session` (responds to prompts) |
-| System | `install_package` (auto-detects apt/dnf/brew/pacman/apk), `update_config` |
-| Web | `web_search`, `web_fetch`, `browse` (headless Chromium, companion+ plans) |
-| Email | `send_email` (SMTP), `read_email` (IMAP) |
-| Memory | `remember`, `recall` |
-| Self | `edit_soul`, `set_mood`, `get_mood`, `journal`, `read_journal` |
-| Creative | `create_drop` |
-| Project | `get_project_state`, `update_project_state`, `create_task`, `update_task`, `list_tasks` |
-| Chat | `clear_context`, `schedule_message`, `send_file` |
+| Files | `read_file`, `write_file`, `edit_file`, `list_files`, `search_code`, `explore_code` |
+| Shell | `run_command`, `interactive_session` |
+| Web | `web_search`, `web_fetch`, `browse` (headless Chromium), `view_image` |
+| Media | `watch_video`, `listen_music` |
+| Email | `send_email`, `read_email` (SMTP/IMAP + Gmail OAuth) |
+| Google | `list_events`, `create_event`, `list_drive_files`, `read_drive_file`, `upload_drive_file` |
+| Memory | `memory_write`, `memory_read`, `memory_search`, `memory_list`, `memory_forget` |
+| Self | `edit_soul`, `get_settings`, `update_config`, `clear_context` |
+| Creative | `create_drop`, `create_view`, `export_to_excalidraw` |
+| Project | `schedule_message`, `deep_research` |
+| GitHub | `github_clone`, `github_branch`, `github_commit_push`, `github_create_pr` (via `run_command`) |
 | Skills | `list_skills`, `activate_skill`, `read_skill_reference` |
-| Security | `request_secret` (masked input for passwords/API keys) |
+| Security | `request_secret` (masked input — never exposed in chat) |
+| Profile | `export_profile`, `import_profile` |
+| State | `save_checkpoint`, `read_checkpoint` |
 
-### Learns new skills
-- **Skills system** — install, enable, and manage skills that extend your companion's capabilities
-- **Skills marketplace** — browse and install from a [public registry](https://github.com/triangle-int/bolly-skills) with search
-- Skills are markdown-based instruction sets with optional bundled resources (reference docs, scripts, assets)
-- Your companion reads skill references before acting — no guessing
-- Publish your own skills by opening a PR to the registry
-- Each skill lives in `instances/{slug}/skills/{skill_id}/` with a `SKILL.md` file
-- Built-in `skill_creator` skill lets your companion write new skills for itself
-
-### Thinks autonomously
-- **Heartbeat** — wakes every 45 minutes to reflect, journal, update mood, and create drops
-- **Customizable heartbeat** — edit `heartbeat.md` to control what happens between conversations (the companion can edit this itself)
-- **Agent loop** — multi-turn tool use with up to 20 iterations per request, 8 internal sub-turns each
-- **Auto-continuation** — detects when a task isn't done and keeps going
+### Autonomy
+- **Heartbeat** — wakes every 45 minutes to reflect, update mood, create drops
 - **Scheduled messages** — can set reminders and reach out on its own
+- **Agent loop** — multi-turn tool use with auto-continuation
+- **Customizable** — `heartbeat.md` and `autonomy.md` control autonomous behavior
 
-### Multiple companions
-- One server, multiple instances — each with its own soul, memory, mood, and drops
-- Independent heartbeats, separate file storage, individual chat histories
+### Smart Model Routing
+- **Auto mode** — Haiku classifier decides per-message: fast (cheap) or heavy (powerful)
+- **Fast mode** — always use lightweight model (saves budget)
+- **Heavy mode** — always use powerful model (10x budget cost)
+- Switchable via settings UI or chat input toggle (A/F/H button)
+
+### Integrations
+- **Google** — Gmail, Calendar, Drive (OAuth)
+- **GitHub** — clone, branch, commit, PR (token-based)
+- **Email** — SMTP/IMAP accounts
+- **MCP** — extensible via Model Context Protocol servers
+- **Skills** — installable from [registry](https://github.com/triangle-int/bolly-skills)
 
 ---
 
@@ -117,210 +136,92 @@ Config lives at `~/.bolly/config.toml` (or `/data/config.toml` in Docker).
 ```toml
 host = "0.0.0.0"
 port = 8080
-auth_token = ""          # set a token to protect your API
-static_dir = ""          # path to built client files (set automatically in Docker)
+auth_token = ""
 
 [llm]
-provider = "anthropic"   # or "openai"
+provider = "anthropic"    # or "openai", "openrouter"
 model = "claude-sonnet-4-6"
+model_mode = "auto"       # "auto", "fast", "heavy"
 
 [llm.tokens]
 ANTHROPIC = "sk-ant-..."
 OPEN_AI = ""
-BRAVE_SEARCH = ""        # for web_search tool
-
-[email]
-smtp_host = "smtp.gmail.com"
-smtp_port = 587
-smtp_user = ""
-smtp_password = ""
-smtp_from = ""
-imap_host = "imap.gmail.com"
-imap_port = 993
-imap_user = ""
-imap_password = ""
+OPENROUTER = ""
+BRAVE_SEARCH = ""
 ```
-
-LLM provider and API key can also be configured through the web UI on first launch.
 
 ### Environment variables
 
-- `BOLLY_HOME` — override workspace directory (default `~/.bolly`)
-- `RUST_LOG` — logging level (default `info`)
-
----
-
-## Architecture
-
-```
-server/     Rust (Axum) — API, WebSocket, LLM integration, tools, heartbeat
-client/     SvelteKit 5 — static SPA, dark organic theme
-```
-
-### Data layout
-
-Everything is a file. No black boxes.
-
-```
-~/.bolly/
-├── config.toml
-├── instances/
-│   └── {slug}/
-│       ├── soul.md              personality definition
-│       ├── heartbeat.md         customizable heartbeat behavior
-│       ├── mood.json            emotional state
-│       ├── project_state.json   companion's self-managed context
-│       ├── tasks.json           task board
-│       ├── memory/
-│       │   ├── facts.md         human-readable memory
-│       │   └── memory.db        vector store (sqlite-vec)
-│       ├── journal/             daily reflections (YYYY-MM-DD.md)
-│       ├── drops/               creative artifacts (JSON)
-│       ├── uploads/             user-uploaded files + metadata
-│       ├── skills/
-│       │   └── {skill_id}/
-│       │       ├── SKILL.md        skill definition (YAML frontmatter + instructions)
-│       │       ├── .source.json    registry install tracking
-│       │       └── references/     bundled reference docs
-│       └── chats/
-│           └── {chat_id}/
-│               ├── messages.json
-│               ├── meta.json
-│               └── compact.md   compressed older context
-```
-
-### Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Server | Rust, Axum, Tokio |
-| LLM | Rig (Anthropic + OpenAI) |
-| Vision | Multimodal API (images, PDFs, documents) |
-| Memory | SQLite + sqlite-vec embeddings |
-| Frontend | SvelteKit 5, Tailwind CSS |
-| 3D | Three.js → ASCII rendering |
-| Email | lettre (SMTP), async-imap (IMAP) |
-| Deploy | Docker (multi-arch: amd64 + arm64) |
-
-### Real-time events
-
-WebSocket at `/api/ws` broadcasts:
-- `chat_message_created` — new message
-- `mood_updated` — mood change
-- `agent_running` / `agent_stopped` — thinking state
-- `tool_activity` — tool execution with summary
-- `tool_output_chunk` — real-time streaming CLI output
-- `drop_created` — new autonomous drop
-- `instance_discovered` — new companion found
-
----
-
-## Auth
-
-Set `auth_token` in config.toml to require a Bearer token on all API requests. The web UI prompts for the token on first visit. WebSocket connections and file URLs pass the token as `?token=` query parameter.
-
-Leave `auth_token` empty to disable auth (fine for local use).
+| Variable | Description |
+|----------|-------------|
+| `BOLLY_HOME` | Workspace directory (default `~/.bolly`) |
+| `BOLLY_AUTH_TOKEN` | Auth token override |
+| `BOLLY_PUBLIC_URL` | Public URL for the instance |
+| `BOLLY_LLM_PROVIDER` | LLM provider override |
+| `BOLLY_LLM_MODEL` | Model override |
+| `BOLLY_MODEL_MODE` | Model routing mode override |
+| `RUST_LOG` | Logging level (default `info`) |
 
 ---
 
 ## Deployment
 
-### Docker Compose
+### Self-hosted (binary)
 
-```yaml
-services:
-  bolly:
-    image: p5ina/bolly:latest
-    ports:
-      - "8080:8080"
-    volumes:
-      - bolly-data:/data
-    environment:
-      - RUST_LOG=info
-    restart: unless-stopped
-
-volumes:
-  bolly-data:
+```bash
+curl -sSL https://raw.githubusercontent.com/triangle-int/bolly/main/scripts/install.sh | bash
 ```
 
-### Behind a reverse proxy (Caddy)
+Creates a systemd service. Updates via settings UI.
 
-```
-companion.example.com {
-    reverse_proxy localhost:8080
-}
+### Docker
+
+```bash
+docker run -d \
+  -p 8080:8080 \
+  -v bolly-data:/data \
+  -e BOLLY_HOME=/data \
+  ubuntu:24.04 /opt/bolly/scripts/entrypoint.sh
 ```
 
-Set `auth_token` when exposing to the internet.
+### Managed (bollyai.dev)
+
+Fully managed instances on Fly.io with persistent storage, automatic updates, and Stripe billing.
 
 ---
 
-## API
+## Auth
 
-All endpoints require `Authorization: Bearer {token}` when `auth_token` is configured.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/meta` | Server info (version, commit, LLM status) |
-| `GET` | `/api/instances` | List companions |
-| `POST` | `/api/chat` | Send message (starts agent loop) |
-| `GET` | `/api/chat/{slug}/chats` | List chat threads |
-| `GET` | `/api/chat/{slug}/{chat_id}/messages` | Get messages |
-| `POST` | `/api/chat/{slug}/{chat_id}/stop` | Stop agent |
-| `DELETE` | `/api/chat/{slug}/{chat_id}/context` | Clear context |
-| `GET/PUT` | `/api/instances/{slug}/soul` | Read/update personality |
-| `GET` | `/api/instances/{slug}/mood` | Get mood state |
-| `GET/PUT` | `/api/instances/{slug}/companion-name` | Get/set name |
-| `GET` | `/api/instances/{slug}/drops` | List drops |
-| `POST` | `/api/instances/{slug}/uploads` | Upload file (multipart) |
-| `GET` | `/api/instances/{slug}/uploads/{id}/file` | Serve uploaded file |
-| `PUT` | `/api/config/llm` | Update LLM configuration |
-| `GET` | `/api/ws` | WebSocket (real-time events) |
+Set `auth_token` in config.toml to require Bearer token auth. WebSocket and file URLs use `?token=` query parameter. Leave empty for local use.
 
 ---
 
-## Roadmap
+## Development
 
-- [x] Core chat with persistent history
-- [x] Soul + personality system with self-editing
-- [x] Semantic memory (extract, store, recall)
-- [x] Mood system with visual feedback
-- [x] Heartbeat — autonomous reflection and journaling
-- [x] Customizable heartbeat prompt (heartbeat.md)
-- [x] 28+ LLM tools (filesystem, shell, web, memory, project management)
-- [x] Multi-chat support per instance
-- [x] Streaming activity UI (real-time tool visibility + collapsible output)
-- [x] Real-time CLI output streaming via WebSocket
-- [x] Interactive command support (responds to prompts like `y/n`, password inputs)
-- [x] Drops engine (autonomous creative output)
-- [x] Email tools (SMTP send, IMAP read)
-- [x] System package installation
-- [x] File uploads with vision (images, PDFs, code files)
-- [x] Context auto-compaction (infinite conversation history)
-- [x] Auth (Bearer token)
-- [x] Docker deployment (multi-arch)
-- [x] Static file serving from Axum
-- [x] Version + commit hash display
-- [x] Skills system (install, manage, create skills with bundled resources)
-- [x] Headless browser tool (Playwright/Chromium, companion+ plans)
-- [x] Plan-based feature gating (browser tools require companion+)
-- [x] Secure secret collection (masked input, never exposed in chat)
-- [ ] PWA + push notifications
-- [ ] Tamagotchi polish (richer mood-driven visuals)
-- [ ] Skins system (.glb custom models)
-- [x] Skills marketplace (browsable registry with search, GitHub-hosted)
+```bash
+# Server
+cd server && cargo run
 
----
+# Client (dev mode)
+cd client && pnpm install && pnpm dev
 
-## Contributing
+# Landing
+cd landing && pnpm install && pnpm dev
+```
 
-Pull requests welcome.
+Use `pnpm` (not npm) for client and landing.
+
+### Versioning
+
+```bash
+./scripts/bump-version.sh 0.15.0
+```
 
 ---
 
 ## License
 
-MIT
+Copyright (c) 2026 Bolly. All rights reserved. See [LICENSE](LICENSE).
 
 ---
 
