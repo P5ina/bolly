@@ -1542,7 +1542,7 @@ async fn manual_compact(
 async fn extract_sentiment(
     workspace_dir: &Path,
     instance_slug: &str,
-    chat_id: &str,
+    _chat_id: &str,
     user_message: &str,
     assistant_response: &str,
     llm: &LlmBackend,
@@ -1617,17 +1617,8 @@ respond ONLY with those three lines."#,
     tools::save_mood_state(&instance_dir, &mood);
 
     if mood_changed {
-        // Persist mood change in chat history so it survives page reloads.
-        // [system] prefix is required — client converts these to activity items.
-        let label = format!("[system] mood → {}", mood.companion_mood);
-        if let Ok(msg) = save_system_message(workspace_dir, instance_slug, chat_id, &label) {
-            let _ = events.send(ServerEvent::ChatMessageCreated {
-                instance_slug: instance_slug.to_string(),
-                chat_id: chat_id.to_string(),
-                message: msg,
-            });
-        }
-        // Broadcast mood update for UI state (blob color, header, etc.)
+        // Broadcast mood change via WebSocket only — do NOT write to rig_history.
+        // Writing [system] mood messages to history causes the agent to mimic them.
         let _ = events.send(ServerEvent::MoodUpdated {
             instance_slug: instance_slug.to_string(),
             mood: mood.companion_mood.clone(),

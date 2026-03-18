@@ -54,66 +54,58 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			: false,
 	);
 	let streamingContent = $state("");
-	let displayedLength = $state(0);
-	let typewriterRaf = 0;
-	let lastTypewriterTime = 0;
-	let lastTypeSoundChar = 0;
+	let streamingBubbles = $state<string[]>([]);
 
-	const CHARS_PER_FRAME = 2;
-	const FRAME_INTERVAL = 16; // ~60fps
-	const TYPE_SOUND_EVERY = 3; // play sound every N chars
+	preload("message_receive", "message_send", "error");
 
-	preload("typewriter", "message_receive", "message_send", "error");
+	function handleStreamDelta(delta: string) {
+		streamingContent += delta;
+		// Split by \n\n into bubbles in real-time
+		const parts = streamingContent.split("\n\n");
+		const completedParts = parts.slice(0, -1).map(p => p.trim()).filter(p => p.length > 0);
+		const pending = parts[parts.length - 1];
 
-	function startTypewriter() {
-		if (typewriterRaf) return;
-		lastTypewriterTime = performance.now();
-		function tick(now: number) {
-			if (displayedLength >= streamingContent.length && !streamingContent) {
-				typewriterRaf = 0;
-				return;
-			}
-			const elapsed = now - lastTypewriterTime;
-			if (elapsed >= FRAME_INTERVAL) {
-				const charsToAdd = Math.max(1, Math.floor(elapsed / FRAME_INTERVAL) * CHARS_PER_FRAME);
-				const newLen = Math.min(displayedLength + charsToAdd, streamingContent.length);
-				if (newLen !== displayedLength) {
-					displayedLength = newLen;
-					// Play typing sound every N characters
-					const soundsSince = Math.floor(newLen / TYPE_SOUND_EVERY) - Math.floor(lastTypeSoundChar / TYPE_SOUND_EVERY);
-					if (soundsSince > 0) {
-						playImmediate("typewriter", { pitchRange: [0.88, 1.15] });
-						lastTypeSoundChar = newLen;
-					}
-					updateStreamingBubble();
-					scrollToBottomIfNear();
-				}
-				lastTypewriterTime = now;
-			}
-			if (displayedLength < streamingContent.length) {
-				typewriterRaf = requestAnimationFrame(tick);
+		// Promote completed parts to real bubbles
+		while (completedParts.length > streamingBubbles.length) {
+			const newPart = completedParts[streamingBubbles.length];
+			streamingBubbles = [...streamingBubbles, newPart];
+			// Add as a real message bubble
+			const msg: ChatMessage = {
+				id: `__stream_${Date.now()}_${streamingBubbles.length}`,
+				role: "assistant",
+				content: newPart,
+				created_at: String(Date.now()),
+			};
+			// Remove streaming bubble, add real one
+			stream = stream.filter(s => !(s.type === "message" && s.data.id === "__streaming__"));
+			stream = [...stream, { type: "message", data: msg }];
+			play("message_receive");
+		}
+
+		// Update or create streaming bubble for pending text
+		const trimmedPending = pending.trim();
+		if (trimmedPending) {
+			const streamIdx = stream.findIndex(s => s.type === "message" && s.data.id === "__streaming__");
+			const streamingMsg: ChatMessage = {
+				id: "__streaming__",
+				role: "assistant",
+				content: trimmedPending,
+				created_at: String(Date.now()),
+			};
+			if (streamIdx >= 0) {
+				stream[streamIdx] = { type: "message", data: streamingMsg };
+				stream = stream;
 			} else {
-				typewriterRaf = 0;
+				stream = [...stream, { type: "message", data: streamingMsg }];
 			}
 		}
-		typewriterRaf = requestAnimationFrame(tick);
+		scrollToBottomIfNear();
 	}
 
-	function updateStreamingBubble() {
-		const displayed = streamingContent.slice(0, displayedLength);
-		const streamIdx = stream.findIndex((s) => s.type === "message" && s.data.id === "__streaming__");
-		const streamingMsg: ChatMessage = {
-			id: "__streaming__",
-			role: "assistant",
-			content: displayed,
-			created_at: new Date().toISOString(),
-		};
-		if (streamIdx >= 0) {
-			stream[streamIdx] = { type: "message", data: streamingMsg };
-			stream = stream;
-		} else {
-			stream = [...stream, { type: "message", data: streamingMsg }];
-		}
+	function clearStreaming() {
+		streamingContent = "";
+		streamingBubbles = [];
+		stream = stream.filter(s => !(s.type === "message" && s.data.id === "__streaming__"));
 	}
 
 	const ws = getWebSocket();
@@ -195,12 +187,9 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 	function addMessage(msg: ChatMessage) {
 		if (!messages.some((m) => m.id === msg.id)) {
-			// Clear streaming bubble when first real assistant message arrives
+			// Clear streaming state when first real assistant message arrives
 			if (msg.role === "assistant" && streamingContent) {
-				streamingContent = "";
-				displayedLength = 0;
-				if (typewriterRaf) { cancelAnimationFrame(typewriterRaf); typewriterRaf = 0; }
-				stream = stream.filter((s) => !(s.type === "message" && s.data.id === "__streaming__"));
+				clearStreaming();
 			}
 			// Replace promoted placeholder with the real message if content matches
 			if (msg.role === "assistant") {
@@ -392,16 +381,16 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				} else if (isToolActivity(msg)) {
 					// Promote streaming bubble to a real message so it doesn't vanish
 					if (streamingContent) {
-						const snapshotContent = streamingContent;
-						streamingContent = "";
-						displayedLength = 0;
-						if (typewriterRaf) { cancelAnimationFrame(typewriterRaf); typewriterRaf = 0; }
-						const snapshotId = `__promoted_${Date.now()}`;
-						stream = stream.map((s) =>
-							s.type === "message" && s.data.id === "__streaming__"
-								? { type: "message" as const, data: { id: snapshotId, role: "assistant" as const, content: snapshotContent, created_at: new Date().toISOString() } }
-								: s
-						);
+						const pending = streamingContent.split("\n\n").pop()?.trim() ?? "";
+						if (pending) {
+							const snapshotId = `__promoted_${Date.now()}`;
+							stream = stream.map((s) =>
+								s.type === "message" && s.data.id === "__streaming__"
+									? { type: "message" as const, data: { id: snapshotId, role: "assistant" as const, content: pending, created_at: String(Date.now()) } }
+									: s
+							);
+						}
+						clearStreaming();
 					}
 					const item = toolActivityToStreamItem(msg);
 					if (item) {
@@ -433,16 +422,14 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				hapticDouble();
 				mood = event.mood;
 				localStorage.setItem("mood:" + slug, event.mood);
-				// Activity is added via ChatMessageCreated "[system] mood → ..."
+				pushActivity("mood", `mood → ${event.mood}`);
 			} else if (event.type === "agent_running") {
 				agentRunning = true;
 				pushActivity("state", "thinking...");
 			} else if (event.type === "agent_stopped") {
 				agentRunning = false;
 				sending = false;
-				streamingContent = "";
-				displayedLength = 0;
-				if (typewriterRaf) { cancelAnimationFrame(typewriterRaf); typewriterRaf = 0; }
+				clearStreaming();
 				// Clean up any promoted streaming messages stuck in wrong position
 				stream = stream.filter((s) =>
 					!(s.type === "message" && typeof s.data.id === "string" && s.data.id.startsWith("__promoted_"))
@@ -469,9 +456,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				}
 				scrollToBottomIfNear();
 			} else if (event.type === "chat_stream_delta") {
-				if (!streamingContent) lastTypeSoundChar = 0;
-				streamingContent += event.delta;
-				startTypewriter();
+				handleStreamDelta(event.delta);
 			} else if (event.type === "mcp_app_start") {
 				// MCP App tool call starting — show iframe immediately
 				stream = [...stream, {
@@ -593,6 +578,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		<div class="bar-left">
 			<div class="bar-led" class:bar-led-on={isConnected}></div>
 			<span class="bar-name">{companionName || slug}</span>
+			<span class="bar-mood" data-mood={mood}>{mood}</span>
 			{#if sending || agentRunning}
 				<span class="bar-activity">
 					<span class="bar-activity-dot"></span>
@@ -657,7 +643,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					{:else}
 						{#each stream as item, i (streamKey(item))}
 							{#if item.type === "message"}
-								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} streaming={item.data.id === "__streaming__"} />
+								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} />
 							{:else if item.type === "mcp_app"}
 								<McpAppViewer
 									html={item.html}
@@ -795,6 +781,28 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	.bar-name {
 		color: oklch(0.82 0.03 75 / 70%);
 	}
+
+	.bar-mood {
+		font-family: var(--font-mono);
+		font-size: 0.62rem;
+		letter-spacing: 0.06em;
+		color: oklch(0.78 0.12 75 / 30%);
+		transition: color 0.5s ease;
+	}
+	.bar-mood[data-mood="focused"] { color: oklch(0.76 0.12 170 / 40%); }
+	.bar-mood[data-mood="playful"] { color: oklch(0.78 0.14 145 / 40%); }
+	.bar-mood[data-mood="loving"] { color: oklch(0.8 0.12 20 / 40%); }
+	.bar-mood[data-mood="warm"] { color: oklch(0.8 0.12 55 / 40%); }
+	.bar-mood[data-mood="reflective"] { color: oklch(0.72 0.08 300 / 40%); }
+	.bar-mood[data-mood="excited"] { color: oklch(0.82 0.14 85 / 40%); }
+	.bar-mood[data-mood="curious"] { color: oklch(0.78 0.10 200 / 40%); }
+	.bar-mood[data-mood="melancholy"] { color: oklch(0.60 0.06 260 / 40%); }
+	.bar-mood[data-mood="sad"] { color: oklch(0.55 0.06 250 / 40%); }
+	.bar-mood[data-mood="anxious"] { color: oklch(0.70 0.12 30 / 40%); }
+	.bar-mood[data-mood="creative"] { color: oklch(0.78 0.14 145 / 40%); }
+	.bar-mood[data-mood="energetic"] { color: oklch(0.82 0.14 100 / 40%); }
+	.bar-mood[data-mood="tired"] { color: oklch(0.50 0.03 260 / 40%); }
+	.bar-mood[data-mood="peaceful"] { color: oklch(0.75 0.08 170 / 40%); }
 
 	.bar-activity {
 		display: flex;
