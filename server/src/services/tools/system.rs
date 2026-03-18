@@ -2086,8 +2086,8 @@ impl ImportProfileTool {
 
 #[derive(Deserialize, JsonSchema)]
 pub struct ImportProfileArgs {
-    /// Path to the .tar.gz file to import (relative to instance workspace or absolute).
-    pub path: String,
+    /// Path to the .tar.gz file OR an upload ID (e.g. "upload_12345") from a user attachment.
+    pub source: String,
 }
 
 impl Tool for ImportProfileTool {
@@ -2101,18 +2101,31 @@ impl Tool for ImportProfileTool {
             name: "import_profile".into(),
             description: "Import a .tar.gz profile archive into this instance. \
                 Merges data (soul, memory, drops, chat history) from the archive. \
-                The file must already exist on disk (e.g. uploaded by the user).".into(),
+                Accepts a file path or an upload ID from a user attachment (e.g. 'upload_12345').".into(),
             parameters: openai_schema::<ImportProfileArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let instance_dir = self.workspace_dir.join("instances").join(&self.instance_slug);
+        let source = args.source.trim();
 
-        let archive_path = if args.path.starts_with('/') {
-            std::path::PathBuf::from(&args.path)
+        // Resolve source: upload ID or file path
+        let archive_path = if source.starts_with("upload_") {
+            // Look up the upload by ID
+            let uploads_dir = instance_dir.join("uploads");
+            let meta_path = uploads_dir.join(format!("{source}.json"));
+            let meta_raw = fs::read_to_string(&meta_path)
+                .map_err(|_| ToolExecError(format!("upload '{source}' not found")))?;
+            let meta: serde_json::Value = serde_json::from_str(&meta_raw)
+                .map_err(|_| ToolExecError("invalid upload metadata".into()))?;
+            let stored_name = meta["stored_name"].as_str()
+                .ok_or_else(|| ToolExecError("upload has no stored_name".into()))?;
+            uploads_dir.join(stored_name)
+        } else if source.starts_with('/') {
+            std::path::PathBuf::from(source)
         } else {
-            instance_dir.join(&args.path)
+            instance_dir.join(source)
         };
 
         if !archive_path.is_file() {
@@ -2137,6 +2150,6 @@ impl Tool for ImportProfileTool {
         // Rebuild memory catalog after import
         crate::services::memory::rebuild_catalog_snapshot(&self.workspace_dir, &self.instance_slug);
 
-        Ok(format!("imported profile from {}. memory catalog rebuilt.", args.path))
+        Ok(format!("imported profile from {}. memory catalog rebuilt.", args.source))
     }
 }
