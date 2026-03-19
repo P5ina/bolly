@@ -1055,10 +1055,10 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		align-items: center;
 		justify-content: center;
 		transform: scale(2.4);
-		opacity: 0.55;
+		opacity: 0.85;
 		pointer-events: none;
 		margin-top: 2rem;
-		filter: drop-shadow(0 0 20px oklch(0.5 0.08 200 / 15%));
+		filter: drop-shadow(0 0 24px oklch(0.5 0.1 200 / 25%));
 	}
 
 	/* --- stream --- */

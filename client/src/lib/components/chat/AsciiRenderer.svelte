@@ -63,7 +63,11 @@
 		if (!ctx) return;
 
 		const threlteCanvas = containerRef?.querySelector("canvas") as HTMLCanvasElement | null;
-		if (!threlteCanvas || !threlteCanvas.width || !threlteCanvas.height) return;
+		if (!threlteCanvas) return;
+		// Use the buffer size if available, otherwise fall back to CSS layout size
+		const cw = threlteCanvas.width || threlteCanvas.clientWidth;
+		const ch = threlteCanvas.height || threlteCanvas.clientHeight;
+		if (!cw || !ch) return;
 
 		canvasRef.width = COLS;
 		canvasRef.height = ROWS;
@@ -191,13 +195,13 @@
 		text-align: center;
 		margin: 0;
 		user-select: none;
-		opacity: 0.6;
+		opacity: 0.8;
 		transition: color 0.8s ease, text-shadow 0.8s ease, opacity 0.8s ease;
 		white-space: pre;
 		contain: strict;
 	}
 
 	.ascii-thinking {
-		opacity: 0.85;
+		opacity: 1;
 	}
 </style>
