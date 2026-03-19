@@ -322,7 +322,7 @@
 			// ── Per-orb animation ──
 			// In selecting/intro the easing functions already produce smooth curves,
 			// so we write position/scale directly. Lerp is only for home↔chat.
-			const useLerp = m === "home" || m === "chat";
+			const useLerp = m === "home" || m === "chat" || m === "onboarding";
 			const lerpF = Math.min(delta * 6, 1);
 
 			for (const [slug, orb] of orbMap) {
@@ -334,6 +334,12 @@
 
 				if (m === "home") {
 					ts = isHovered ? 0.58 : HOME_SCALE;
+				} else if (m === "onboarding") {
+					if (isSelected) {
+						tx = 0; ty = 0; ts = 0.9;
+					} else {
+						ts = 0;
+					}
 				} else if (m === "selecting") {
 					const e = easeInOutQuart(store.selectProgress);
 					if (isSelected) {
@@ -394,7 +400,12 @@
 			}
 
 			// ── Shader uniforms ──
-			if (m === "selecting") {
+			if (m === "onboarding") {
+				uSpeed.value = 0.6;
+				uIntensity.value = 0.08;
+				uBreathe.value = 1.0 + Math.sin(t * 0.8) * 0.04;
+				glassMat.dispersion = 0.15;
+			} else if (m === "selecting") {
 				// Gently ramp up from home defaults
 				const e = easeInOutQuart(store.selectProgress);
 				uSpeed.value = 0.8 + e * 0.3;

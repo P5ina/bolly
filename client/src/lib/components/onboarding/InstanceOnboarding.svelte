@@ -10,12 +10,13 @@
 	} from "$lib/api/client.js";
 	import type { SoulTemplate } from "$lib/api/types.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
+	import { getSceneStore } from "$lib/stores/scene.svelte.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import { play, playImmediate, preload } from "$lib/sounds.js";
 	import { hapticReveal } from "$lib/haptics.js";
 
 	const toast = getToasts();
-	import AsciiRenderer from "$lib/components/chat/AsciiRenderer.svelte";
+	const scene = getSceneStore();
 
 	let { slug, oncomplete }: { slug: string; oncomplete: () => void } = $props();
 
@@ -47,7 +48,7 @@
 	let apiKeyValue = $state("");
 	let keyError = $state("");
 	let chosenLanguage = $state(
-		localStorage.getItem("bolly:language") ?? "english",
+		typeof localStorage !== "undefined" ? (localStorage.getItem("bolly:language") ?? "english") : "english",
 	);
 	let lines = $state<{ text: string; revealed: string; done: boolean }[]>([]);
 	let soulTemplates = $state<SoulTemplate[]>([]);
@@ -93,24 +94,16 @@
 			lines = [...lines, entry];
 			const idx = lines.length - 1;
 			let i = 0;
-
 			function tick() {
-				if (i >= text.length) {
-					lines[idx].done = true;
-					resolve();
-					return;
-				}
+				if (i >= text.length) { lines[idx].done = true; resolve(); return; }
 				const char = text[i];
 				lines[idx].revealed += char;
 				i++;
-
 				if (i % 3 === 0) playImmediate("typewriter", { pitchRange: [0.88, 1.15] });
-
 				let delay = speed;
 				if (char === "." || char === "?" || char === "!") delay = speed * 8;
 				else if (char === ",") delay = speed * 3;
 				else if (char === "\u2014" || char === "\u2013") delay = speed * 4;
-
 				setTimeout(tick, delay);
 			}
 			setTimeout(tick, speed);
@@ -122,7 +115,9 @@
 	}
 
 	async function runSequence() {
-		// Reveal stage
+		// Tell scene to show a centered sphere for this slug
+		scene.enterOnboarding(slug);
+
 		preload("intro_reveal", "typewriter");
 		await pause(600);
 		play("intro_reveal");
@@ -131,13 +126,12 @@
 		await pause(1800);
 		stage = "intro";
 		await pause(400);
-		const userName = localStorage.getItem("bolly:preferredName") || slug;
+		const userName = typeof localStorage !== "undefined" ? localStorage.getItem("bolly:preferredName") || slug : slug;
 		await typewrite(`hey, ${userName}.`);
 		await pause(400);
 		await typewrite("a new space, just for us.");
 		await pause(600);
 
-		// Check if LLM is already configured
 		let llmConfigured = false;
 		for (let attempt = 0; attempt < 3; attempt++) {
 			try {
@@ -170,8 +164,7 @@
 	async function continueAfterProvider() {
 		stage = "intro";
 		await pause(300);
-		const name = chosenProvider ?? "unknown";
-		await typewrite(`${name}. good choice.`);
+		await typewrite(`${chosenProvider ?? "unknown"}. good choice.`);
 		await pause(400);
 		await typewrite("which mind should i wear?");
 		stage = "picking-model";
@@ -195,13 +188,8 @@
 		if (!key || !chosenProvider) return;
 		keyError = "";
 		stage = "testing";
-
 		try {
-			await updateLlmConfig({
-				provider: chosenProvider,
-				model: chosenModel ?? undefined,
-				api_key: key,
-			});
+			await updateLlmConfig({ provider: chosenProvider, model: chosenModel ?? undefined, api_key: key });
 		} catch (err) {
 			keyError = `hmm, that didn\u2019t work. try again? (${err instanceof Error ? err.message : String(err)})`;
 			stage = "waiting-key";
@@ -209,7 +197,6 @@
 			keyInput?.focus();
 			return;
 		}
-
 		await pause(300);
 		await typewrite("i can feel it. i\u2019m alive now.");
 		await pause(600);
@@ -226,12 +213,7 @@
 		stage = "picking-language";
 	}
 
-	function handleKeyKeydown(e: KeyboardEvent) {
-		if (e.key === "Enter") {
-			e.preventDefault();
-			submitKey();
-		}
-	}
+	function handleKeyKeydown(e: KeyboardEvent) { if (e.key === "Enter") { e.preventDefault(); submitKey(); } }
 
 	async function pickLanguage(langId: string) {
 		chosenLanguage = langId;
@@ -250,37 +232,22 @@
 	async function submitCompanionName() {
 		const name = companionNameInput.trim();
 		if (!name) return;
-
 		stage = "intro";
 		await pause(200);
 		await typewrite(`${name}. i like that.`);
-
-		// Save companion name to server
-		try {
-			await setCompanionName(slug, name);
-		} catch {
-			// will be set later
-		}
-
+		try { await setCompanionName(slug, name); } catch {}
 		await pause(400);
 
 		let hasSoul = false;
 		try {
 			const soul = await fetchSoul(slug);
 			hasSoul = soul.exists && soul.content.trim().length > 0;
-		} catch {
-			// no soul
-		}
+		} catch {}
 
 		if (hasSoul) {
 			await askFirstMessage();
 		} else {
-			try {
-				soulTemplates = await fetchSoulTemplates();
-			} catch {
-				soulTemplates = [];
-			}
-
+			try { soulTemplates = await fetchSoulTemplates(); } catch { soulTemplates = []; }
 			if (soulTemplates.length > 0) {
 				await typewrite("who should i be for you?");
 				stage = "picking-soul";
@@ -290,28 +257,17 @@
 		}
 	}
 
-	function handleNameKeydown(e: KeyboardEvent) {
-		if (e.key === "Enter") {
-			e.preventDefault();
-			submitCompanionName();
-		}
-	}
+	function handleNameKeydown(e: KeyboardEvent) { if (e.key === "Enter") { e.preventDefault(); submitCompanionName(); } }
 
 	async function pickSoul(template: SoulTemplate) {
 		stage = "intro";
 		await pause(200);
-
 		if (template.id !== "custom") {
-			try {
-				await applySoulTemplate(slug, template.id);
-			} catch {
-				// will use default
-			}
+			try { await applySoulTemplate(slug, template.id); } catch {}
 			await typewrite(`${template.name}. i can be that.`);
 		} else {
 			await typewrite("a blank canvas. you can shape me later.");
 		}
-
 		await pause(400);
 		await askFirstMessage();
 	}
@@ -326,544 +282,374 @@
 	async function submitFirst() {
 		const content = firstMessage.trim();
 		if (!content) return;
-
 		stage = "sending";
-
-		const langLabel =
-			LANGUAGES.find((l) => l.id === chosenLanguage)?.label ?? chosenLanguage;
-		const setupParts: string[] = [];
-		const preferredName = localStorage.getItem("bolly:preferredName") || slug;
-		setupParts.push(`my name is ${preferredName}`);
-		setupParts.push(`please speak to me in ${langLabel}`);
-
-		const combined = setupParts.join(". ") + ".\n\n" + content;
-
+		const langLabel = LANGUAGES.find((l) => l.id === chosenLanguage)?.label ?? chosenLanguage;
+		const preferredName = typeof localStorage !== "undefined" ? localStorage.getItem("bolly:preferredName") || slug : slug;
+		const combined = `my name is ${preferredName}. please speak to me in ${langLabel}.\n\n${content}`;
 		try {
 			await sendMessage(slug, combined);
 			await instances.refresh();
 		} catch {
 			toast.error("setup failed — try sending a message after");
 		}
-
+		// Start cinematic intro, then complete
+		scene.finishOnboarding();
 		stage = "departing";
-		await pause(400);
+		await pause(600);
 		oncomplete();
 	}
 
 	function handleMessageKeydown(e: KeyboardEvent) {
-		if (e.key === "Enter" && !e.shiftKey) {
-			e.preventDefault();
-			submitFirst();
-		}
+		if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitFirst(); }
 	}
 
-	$effect(() => {
-		runSequence();
-	});
+	$effect(() => { runSequence(); });
 </script>
 
-<div
-	class="instance-space"
-	class:instance-depart={stage === "departing"}
->
-	<!-- living glow -->
-	<div class="instance-glow"></div>
-	<div class="instance-glow-secondary"></div>
-
-	<!-- particles -->
-	<div class="instance-particles">
-		{#each Array(6) as _, i}
-			<div class="instance-particle" style="--i:{i}; --x:{12 + (i * 13) % 76}; --y:{15 + (i * 19) % 65}"></div>
-		{/each}
-	</div>
-
-	<div class="relative z-10 w-full max-w-md px-6">
-		<!-- companion creature -->
-		<div class="mb-10 flex justify-center">
-			<div class="instance-creature" class:instance-creature-reveal={revealed}>
-				<AsciiRenderer thinking={stage === "reveal" && revealed} mood="calm" />
-				{#if stage === "reveal" && revealed}
-					<div class="instance-ring instance-ring-1"></div>
-					<div class="instance-ring instance-ring-2"></div>
-					<div class="instance-ring instance-ring-3"></div>
-				{/if}
-			</div>
-		</div>
-
-		<!-- typewriter lines -->
-		<div class="space-y-3 mb-8" class:invisible={stage === "reveal"}>
+<div class="ob" class:ob-depart={stage === "departing"} class:ob-hidden={stage === "reveal" && !revealed}>
+	<div class="ob-content">
+		<!-- Typewriter lines -->
+		<div class="ob-lines" class:ob-lines-hidden={stage === "reveal"}>
 			{#each lines as line, i}
-				<div class="instance-line" style="animation-delay: {i * 50}ms">
+				<div class="ob-line" style="animation-delay: {i * 40}ms">
 					{#if i === 0 && line.done}
-						<p class="instance-title">{line.revealed}</p>
+						<p class="ob-title">{line.revealed}</p>
 					{:else if i === 0}
-						<p class="instance-title">{line.revealed}<span class="instance-cursor"></span></p>
+						<p class="ob-title">{line.revealed}<span class="ob-cursor"></span></p>
 					{:else if !line.done}
-						<p class="instance-text">{line.revealed}<span class="instance-cursor"></span></p>
+						<p class="ob-text">{line.revealed}<span class="ob-cursor"></span></p>
 					{:else}
-						<p class="instance-text">{line.revealed}</p>
+						<p class="ob-text">{line.revealed}</p>
 					{/if}
 				</div>
 			{/each}
 		</div>
 
-		<!-- provider picker -->
-		{#if stage === "picking-provider"}
-			<div class="instance-input-enter">
-				<div class="flex gap-3">
-					<button onclick={() => pickProvider("anthropic")} class="instance-pill flex-1">
-						<span class="font-display text-sm italic">anthropic</span>
-					</button>
-					<button onclick={() => pickProvider("openai")} class="instance-pill flex-1">
-						<span class="font-display text-sm italic">openai</span>
-					</button>
-					<button onclick={() => pickProvider("openrouter")} class="instance-pill flex-1">
-						<span class="font-display text-sm italic">openrouter</span>
-					</button>
+		<!-- Interactive sections -->
+		<div class="ob-input-area">
+			{#if stage === "picking-provider"}
+				<div class="ob-enter">
+					<div class="ob-pills">
+						<button onclick={() => pickProvider("anthropic")} class="ob-pill">anthropic</button>
+						<button onclick={() => pickProvider("openai")} class="ob-pill">openai</button>
+						<button onclick={() => pickProvider("openrouter")} class="ob-pill">openrouter</button>
+					</div>
+					<button onclick={skipConfig} class="ob-skip">skip for now</button>
 				</div>
-				<button
-					onclick={skipConfig}
-					class="mt-4 w-full text-xs text-muted-foreground/25 transition-colors hover:text-muted-foreground/50 italic"
-				>
-					skip for now
-				</button>
-			</div>
-		{/if}
+			{/if}
 
-		<!-- model picker -->
-		{#if stage === "picking-model" && chosenProvider}
-			<div class="instance-input-enter">
-				<div class="grid grid-cols-3 gap-2.5">
-					{#each MODELS[chosenProvider] as model}
-						<button onclick={() => pickModel(model.id)} class="instance-pill flex-col gap-0.5 py-3.5">
-							<span class="font-display text-sm italic">{model.label}</span>
-							<span class="text-[10px] text-muted-foreground/25">{model.note}</span>
-						</button>
-					{/each}
+			{#if stage === "picking-model" && chosenProvider}
+				<div class="ob-enter">
+					<div class="ob-pills ob-pills-grid">
+						{#each MODELS[chosenProvider] as model}
+							<button onclick={() => pickModel(model.id)} class="ob-pill ob-pill-col">
+								<span class="ob-pill-label">{model.label}</span>
+								<span class="ob-pill-note">{model.note}</span>
+							</button>
+						{/each}
+					</div>
 				</div>
-			</div>
-		{/if}
+			{/if}
 
-		<!-- api key -->
-		{#if stage === "waiting-key"}
-			<div class="instance-input-enter">
-				<div class="relative">
-					<input
-						bind:this={keyInput}
-						bind:value={apiKeyValue}
-						onkeydown={handleKeyKeydown}
-						type="password"
-						placeholder="sk-..."
-						class="instance-name-input font-mono text-sm"
-						style="text-align: left;"
-					/>
-					{#if apiKeyValue.trim()}
-						<button onclick={submitKey} aria-label="Submit key" class="instance-send" style="top: 50%; bottom: auto; transform: translateY(-50%);">
-							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-						</button>
+			{#if stage === "waiting-key"}
+				<div class="ob-enter">
+					<div class="ob-field">
+						<input bind:this={keyInput} bind:value={apiKeyValue} onkeydown={handleKeyKeydown} type="password" placeholder="sk-..." class="ob-input ob-input-mono" />
+						{#if apiKeyValue.trim()}
+							<button onclick={submitKey} class="ob-go" aria-label="Submit">→</button>
+						{/if}
+					</div>
+					{#if keyError}
+						<p class="ob-error">{keyError}</p>
 					{/if}
 				</div>
-				{#if keyError}
-					<p class="mt-2 text-xs text-red-400/60 italic">{keyError}</p>
-				{/if}
-			</div>
-		{/if}
+			{/if}
 
-		<!-- testing -->
-		{#if stage === "testing"}
-			<div class="instance-input-enter flex items-center justify-center gap-3">
-				<div class="instance-spinner"></div>
-				<span class="font-display text-xs italic text-warm/40">waking up</span>
-			</div>
-		{/if}
-
-		<!-- language picker -->
-		{#if stage === "picking-language"}
-			<div class="instance-input-enter">
-				<div class="grid grid-cols-4 gap-2">
-					{#each LANGUAGES as lang}
-						<button
-							onclick={() => pickLanguage(lang.id)}
-							class="instance-pill"
-							class:instance-pill-active={chosenLanguage === lang.id}
-						>
-							{lang.label}
-						</button>
-					{/each}
+			{#if stage === "testing" || stage === "sending"}
+				<div class="ob-enter ob-center">
+					<div class="ob-spinner"></div>
+					<span class="ob-spinner-label">{stage === "testing" ? "waking up" : "thinking"}</span>
 				</div>
-			</div>
-		{/if}
+			{/if}
 
-		<!-- companion name -->
-		{#if stage === "naming-companion"}
-			<div class="instance-input-enter">
-				<div class="relative">
-					<input
-						bind:this={nameInputEl}
-						bind:value={companionNameInput}
-						onkeydown={handleNameKeydown}
-						placeholder="a name..."
-						class="instance-name-input"
-					/>
-					{#if companionNameInput.trim()}
-						<button onclick={submitCompanionName} aria-label="Confirm" class="instance-send">
-							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-								<path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
-							</svg>
-						</button>
-					{/if}
+			{#if stage === "picking-language"}
+				<div class="ob-enter">
+					<div class="ob-pills ob-pills-lang">
+						{#each LANGUAGES as lang}
+							<button onclick={() => pickLanguage(lang.id)} class="ob-pill" class:ob-pill-active={chosenLanguage === lang.id}>{lang.label}</button>
+						{/each}
+					</div>
 				</div>
-			</div>
-		{/if}
+			{/if}
 
-		<!-- soul picker -->
-		{#if stage === "picking-soul"}
-			<div class="instance-input-enter">
-				<div class="grid grid-cols-2 gap-2.5">
-					{#each soulTemplates as template (template.id)}
-						<button
-							onclick={() => pickSoul(template)}
-							class="instance-pill instance-pill-soul"
-						>
-							<span class="instance-pill-name">{template.name}</span>
-							<span class="instance-pill-desc">{template.description}</span>
-						</button>
-					{/each}
+			{#if stage === "naming-companion"}
+				<div class="ob-enter">
+					<div class="ob-field">
+						<input bind:this={nameInputEl} bind:value={companionNameInput} onkeydown={handleNameKeydown} placeholder="a name..." class="ob-input" />
+						{#if companionNameInput.trim()}
+							<button onclick={submitCompanionName} class="ob-go" aria-label="Confirm">→</button>
+						{/if}
+					</div>
 				</div>
-			</div>
-		{/if}
+			{/if}
 
-		<!-- first message -->
-		{#if stage === "waiting-first"}
-			<div class="instance-input-enter">
-				<div class="relative">
-					<textarea
-						bind:this={messageInput}
-						bind:value={firstMessage}
-						onkeydown={handleMessageKeydown}
-						placeholder="what's on your mind?"
-						rows={3}
-						class="instance-textarea"
-					></textarea>
-					{#if firstMessage.trim()}
-						<button onclick={submitFirst} aria-label="Send" class="instance-send">
-							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-								<path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
-							</svg>
-						</button>
-					{/if}
+			{#if stage === "picking-soul"}
+				<div class="ob-enter">
+					<div class="ob-pills ob-pills-soul">
+						{#each soulTemplates as template (template.id)}
+							<button onclick={() => pickSoul(template)} class="ob-pill ob-pill-col ob-pill-soul">
+								<span class="ob-pill-label">{template.name}</span>
+								<span class="ob-pill-note">{template.description}</span>
+							</button>
+						{/each}
+					</div>
 				</div>
-			</div>
-		{/if}
+			{/if}
 
-		<!-- sending -->
-		{#if stage === "sending"}
-			<div class="instance-input-enter flex items-center justify-center gap-3">
-				<div class="instance-spinner"></div>
-				<span class="font-display text-xs italic text-warm/40">waking up</span>
-			</div>
-		{/if}
+			{#if stage === "waiting-first"}
+				<div class="ob-enter">
+					<div class="ob-field">
+						<textarea bind:this={messageInput} bind:value={firstMessage} onkeydown={handleMessageKeydown} placeholder="what's on your mind?" rows={3} class="ob-input ob-textarea"></textarea>
+						{#if firstMessage.trim()}
+							<button onclick={submitFirst} class="ob-go ob-go-textarea" aria-label="Send">→</button>
+						{/if}
+					</div>
+				</div>
+			{/if}
+		</div>
 	</div>
 </div>
 
 <style>
-	.instance-space {
+	.ob {
 		position: relative;
 		display: flex;
 		height: 100%;
 		align-items: center;
 		justify-content: center;
 		overflow: hidden;
-	}
-
-	.instance-glow {
-		position: absolute;
-		top: 30%;
-		left: 50%;
-		width: 500px;
-		height: 500px;
-		transform: translate(-50%, -50%);
-		border-radius: 50%;
-		background: radial-gradient(
-			circle,
-			oklch(0.78 0.12 75 / 5%) 0%,
-			oklch(0.78 0.12 75 / 2%) 30%,
-			transparent 65%
-		);
-		animation: glow-breathe 6s ease-in-out infinite;
 		pointer-events: none;
+		z-index: 10;
+		transition: opacity 0.6s ease;
 	}
-	.instance-glow-secondary {
-		position: absolute;
-		top: 35%;
-		left: 48%;
-		width: 300px;
-		height: 300px;
-		transform: translate(-50%, -50%);
-		border-radius: 50%;
-		background: radial-gradient(
-			circle,
-			oklch(0.70 0.08 300 / 2%) 0%,
-			transparent 60%
-		);
-		animation: glow-breathe 10s ease-in-out infinite;
-		animation-delay: -3s;
-		pointer-events: none;
-	}
-	@keyframes glow-breathe {
-		0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-		50% { opacity: 0.5; transform: translate(-50%, -50%) scale(1.08); }
-	}
+	.ob-hidden { opacity: 0; }
 
-	/* particles */
-	.instance-particles {
-		position: absolute;
-		inset: 0;
-		pointer-events: none;
-		overflow: hidden;
-	}
-	.instance-particle {
-		position: absolute;
-		width: 2px;
-		height: 2px;
-		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 28%);
-		left: calc(var(--x) * 1%);
-		top: calc(var(--y) * 1%);
-		animation: particle-drift 14s ease-in-out infinite;
-		animation-delay: calc(var(--i) * -2.3s);
-	}
-	@keyframes particle-drift {
-		0%, 100% { transform: translate(0, 0); opacity: 0.2; }
-		25% { transform: translate(12px, -18px); opacity: 0.6; }
-		50% { transform: translate(-8px, -30px); opacity: 0.3; }
-		75% { transform: translate(16px, -12px); opacity: 0.5; }
-	}
-
-	.invisible {
-		visibility: hidden;
-	}
-
-	/* companion creature */
-	.instance-creature {
+	.ob-content {
 		position: relative;
+		width: 100%;
+		max-width: 420px;
+		padding: 0 1.5rem;
 		display: flex;
+		flex-direction: column;
 		align-items: center;
-		justify-content: center;
-		opacity: 0;
-		transform: scale(0.3);
-		transition: all 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+		gap: 1.5rem;
+		pointer-events: auto;
 	}
 
-	.instance-creature-reveal {
-		opacity: 1;
-		transform: scale(1);
+	/* ── Lines ── */
+	.ob-lines { display: flex; flex-direction: column; gap: 0.625rem; width: 100%; }
+	.ob-lines-hidden { visibility: hidden; }
+
+	.ob-line { animation: ob-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+	@keyframes ob-fade-in {
+		from { opacity: 0; transform: translateY(6px); }
+		to { opacity: 1; transform: translateY(0); }
 	}
 
-	/* reveal rings */
-	.instance-ring {
-		position: absolute;
-		inset: -4px;
-		border-radius: 50%;
-		border: 1px solid oklch(0.78 0.12 75 / 30%);
-		animation: ring-expand 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-	}
-	.instance-ring-1 { animation-delay: 0ms; }
-	.instance-ring-2 { animation-delay: 150ms; border-color: oklch(0.78 0.12 75 / 28%); }
-	.instance-ring-3 { animation-delay: 300ms; border-color: oklch(0.78 0.12 75 / 10%); }
-
-	@keyframes ring-expand {
-		0% {
-			transform: scale(1);
-			opacity: 1;
-		}
-		100% {
-			transform: scale(3.5);
-			opacity: 0;
-		}
-	}
-
-	/* text styles */
-	.instance-title {
+	.ob-title {
 		font-family: var(--font-display);
-		font-size: 1.5rem;
+		font-size: 1.35rem;
 		font-weight: 400;
 		font-style: italic;
 		letter-spacing: -0.01em;
-		color: oklch(0.88 0.03 75 / 90%);
+		color: oklch(0.90 0.02 75 / 85%);
 		text-align: center;
 	}
 
-	.instance-text {
+	.ob-text {
 		font-family: var(--font-body);
-		font-size: 0.875rem;
+		font-size: 0.85rem;
 		line-height: 1.6;
-		color: oklch(0.88 0.03 75 / 50%);
+		color: oklch(1 0 0 / 45%);
 		text-align: center;
 	}
 
-	.instance-cursor {
+	.ob-cursor {
 		display: inline-block;
 		width: 1.5px;
-		height: 1.1em;
+		height: 1.05em;
 		margin-left: 1px;
 		vertical-align: text-bottom;
-		background: oklch(0.78 0.12 75 / 50%);
-		animation: cursor-blink 0.8s steps(2) infinite;
+		background: oklch(1 0 0 / 40%);
+		animation: blink 0.8s steps(2) infinite;
 	}
-	@keyframes cursor-blink {
-		0% { opacity: 1; }
-		100% { opacity: 0; }
-	}
+	@keyframes blink { 0% { opacity: 1; } 100% { opacity: 0; } }
 
-	.instance-line {
-		animation: line-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+	/* ── Input area ── */
+	.ob-input-area { width: 100%; }
+	.ob-enter {
+		animation: ob-slide-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: 80ms;
 	}
-	@keyframes line-enter {
-		from { opacity: 0; transform: translateY(8px); }
+	@keyframes ob-slide-in {
+		from { opacity: 0; transform: translateY(10px); }
 		to { opacity: 1; transform: translateY(0); }
 	}
 
-	.instance-input-enter {
-		animation: input-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-		animation-delay: 100ms;
-	}
-	@keyframes input-enter {
-		from { opacity: 0; transform: translateY(12px); }
-		to { opacity: 1; transform: translateY(0); }
-	}
+	.ob-center { display: flex; align-items: center; justify-content: center; gap: 0.625rem; }
 
-	/* pills */
-	.instance-pill {
+	/* ── Pills (liquid glass) ── */
+	.ob-pills { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+	.ob-pills-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
+	.ob-pills-lang { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.375rem; }
+	.ob-pills-soul { display: grid; grid-template-columns: repeat(2, 1fr); }
+
+	.ob-pill {
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		flex: 1;
+		padding: 0.55rem 0.75rem;
 		border-radius: 2rem;
-		border: 1px solid oklch(0.78 0.12 75 / 10%);
-		background: oklch(0.78 0.12 75 / 3%);
-		padding: 0.5rem 0.5rem;
-		font-family: var(--font-body);
-		font-size: 0.75rem;
-		color: oklch(0.88 0.03 75 / 60%);
-		transition: all 0.3s ease;
-		cursor: pointer;
-	}
-	.instance-pill:hover {
-		border-color: oklch(0.78 0.12 75 / 35%);
-		background: oklch(0.78 0.12 75 / 8%);
-		color: oklch(0.88 0.03 75 / 85%);
-		box-shadow: 0 0 20px oklch(0.78 0.12 75 / 6%);
-	}
-	.instance-pill-active {
-		border-color: oklch(0.78 0.12 75 / 35%);
-		background: oklch(0.78 0.12 75 / 12%);
-		color: oklch(0.88 0.03 75 / 90%);
-	}
-
-	.instance-pill-soul {
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 0.25rem;
-		padding: 0.75rem 1rem;
-		border-radius: 1rem;
-	}
-	.instance-pill-name {
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		-webkit-backdrop-filter: var(--glass-blur);
+		border: 1px solid var(--glass-border);
+		border-top-color: var(--glass-border-top);
 		font-family: var(--font-display);
 		font-size: 0.8rem;
 		font-style: italic;
-		color: oklch(0.88 0.03 75 / 70%);
+		color: oklch(1 0 0 / 50%);
+		cursor: pointer;
+		transition: all 0.3s ease;
+		box-shadow:
+			0 1px 4px oklch(0 0 0 / 8%),
+			inset 0 1px 0 oklch(1 0 0 / 5%);
 	}
-	.instance-pill-desc {
-		font-size: 0.625rem;
-		color: oklch(0.88 0.03 75 / 30%);
-		line-height: 1.3;
+	.ob-pill:hover {
+		border-color: oklch(1 0 0 / 20%);
+		background: oklch(1 0 0 / 8%);
+		color: oklch(1 0 0 / 75%);
+		box-shadow: 0 2px 12px oklch(0 0 0 / 12%), inset 0 1px 0 oklch(1 0 0 / 8%);
 	}
-
-	/* name input */
-	.instance-name-input {
-		width: 100%;
-		border-radius: 2rem;
-		border: 1px solid oklch(0.78 0.12 75 / 12%);
-		background: oklch(0.78 0.12 75 / 3%);
-		padding: 0.75rem 3rem 0.75rem 1.25rem;
-		font-family: var(--font-display);
-		font-size: 0.95rem;
-		font-style: italic;
-		color: oklch(0.88 0.03 75 / 80%);
-		outline: none;
-		transition: all 0.4s ease;
-		text-align: center;
-	}
-	.instance-name-input::placeholder {
-		color: oklch(0.78 0.12 75 / 15%);
-		font-style: italic;
-	}
-	.instance-name-input:focus {
-		border-color: oklch(0.78 0.12 75 / 35%);
-		box-shadow: 0 0 40px oklch(0.78 0.12 75 / 6%);
+	.ob-pill-active {
+		border-color: oklch(1 0 0 / 22%);
+		background: oklch(1 0 0 / 10%);
+		color: oklch(1 0 0 / 80%);
 	}
 
-	/* textarea */
-	.instance-textarea {
-		width: 100%;
-		resize: none;
+	.ob-pill-col {
+		flex-direction: column;
+		gap: 0.2rem;
+		padding: 0.65rem 0.75rem;
+	}
+	.ob-pill-soul {
 		border-radius: 1rem;
-		border: 1px solid oklch(0.78 0.12 75 / 12%);
-		background: oklch(0.78 0.12 75 / 3%);
-		padding: 0.875rem 1.25rem;
-		font-family: var(--font-body);
-		font-size: 0.875rem;
-		line-height: 1.6;
-		color: oklch(0.88 0.03 75 / 80%);
-		outline: none;
-		transition: all 0.4s ease;
+		align-items: flex-start;
+		padding: 0.75rem 1rem;
+		gap: 0.25rem;
 	}
-	.instance-textarea::placeholder {
-		color: oklch(0.78 0.12 75 / 15%);
+	.ob-pill-label {
 		font-family: var(--font-display);
+		font-size: 0.8rem;
 		font-style: italic;
+		color: oklch(1 0 0 / 60%);
 	}
-	.instance-textarea:focus {
-		border-color: oklch(0.78 0.12 75 / 35%);
-		box-shadow: 0 0 40px oklch(0.78 0.12 75 / 6%);
+	.ob-pill-note {
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-style: normal;
+		color: oklch(1 0 0 / 25%);
 	}
 
-	.instance-send {
+	/* ── Input fields (liquid glass) ── */
+	.ob-field { position: relative; }
+
+	.ob-input {
+		width: 100%;
+		padding: 0.75rem 3rem 0.75rem 1.25rem;
+		border-radius: 2rem;
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		-webkit-backdrop-filter: var(--glass-blur);
+		border: 1px solid var(--glass-border);
+		border-top-color: var(--glass-border-top);
+		font-family: var(--font-display);
+		font-size: 0.9rem;
+		font-style: italic;
+		color: oklch(1 0 0 / 80%);
+		outline: none;
+		text-align: center;
+		transition: all 0.3s ease;
+		box-shadow: inset 0 1px 0 oklch(1 0 0 / 5%), inset 0 -1px 0 oklch(0 0 0 / 4%);
+	}
+	.ob-input::placeholder { color: oklch(1 0 0 / 18%); font-style: italic; }
+	.ob-input:focus {
+		border-color: oklch(1 0 0 / 20%);
+		box-shadow: 0 0 0 3px oklch(0.40 0.06 240 / 8%), inset 0 1px 0 oklch(1 0 0 / 8%);
+	}
+	.ob-input-mono { font-family: var(--font-mono); font-size: 0.8rem; font-style: normal; text-align: left; }
+
+	.ob-textarea {
+		border-radius: 1rem;
+		resize: none;
+		text-align: left;
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-style: normal;
+		line-height: 1.6;
+		padding: 0.875rem 1.25rem;
+	}
+
+	.ob-go {
 		position: absolute;
 		right: 0.5rem;
-		bottom: 0.5rem;
+		top: 50%;
+		transform: translateY(-50%);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		width: 2rem;
 		height: 2rem;
 		border-radius: 50%;
-		color: oklch(0.78 0.12 75 / 50%);
+		font-size: 0.9rem;
+		color: oklch(1 0 0 / 40%);
 		transition: all 0.3s ease;
+		cursor: pointer;
 	}
-	.instance-send:hover {
-		color: oklch(0.78 0.12 75 / 80%);
-		background: oklch(0.78 0.12 75 / 8%);
-	}
+	.ob-go:hover { color: oklch(1 0 0 / 70%); background: oklch(1 0 0 / 6%); }
+	.ob-go-textarea { top: auto; bottom: 0.5rem; transform: none; }
 
-	/* spinner */
-	.instance-spinner {
-		width: 12px;
-		height: 12px;
-		border: 1.5px solid oklch(0.78 0.12 75 / 15%);
-		border-top-color: oklch(0.78 0.12 75 / 50%);
+	.ob-error { margin-top: 0.5rem; font-size: 0.72rem; color: oklch(0.65 0.15 25 / 60%); font-style: italic; text-align: center; }
+	.ob-skip {
+		margin-top: 0.75rem;
+		width: 100%;
+		font-size: 0.68rem;
+		color: oklch(1 0 0 / 18%);
+		font-style: italic;
+		transition: color 0.2s ease;
+		cursor: pointer;
+		text-align: center;
+	}
+	.ob-skip:hover { color: oklch(1 0 0 / 40%); }
+
+	/* ── Spinner ── */
+	.ob-spinner {
+		width: 12px; height: 12px;
+		border: 1.5px solid oklch(1 0 0 / 10%);
+		border-top-color: oklch(1 0 0 / 40%);
 		border-radius: 50%;
 		animation: spin 0.7s linear infinite;
 	}
-	@keyframes spin {
-		to { transform: rotate(360deg); }
+	@keyframes spin { to { transform: rotate(360deg); } }
+	.ob-spinner-label {
+		font-family: var(--font-display);
+		font-size: 0.72rem;
+		font-style: italic;
+		color: oklch(1 0 0 / 30%);
 	}
 
-	/* depart */
-	.instance-depart {
-		animation: depart 0.4s cubic-bezier(0.55, 0, 1, 0.45) forwards;
-	}
-	@keyframes depart {
-		to { opacity: 0; transform: scale(0.98); filter: blur(4px); }
-	}
+	/* ── Depart ── */
+	.ob-depart { animation: depart 0.5s cubic-bezier(0.55, 0, 1, 0.45) forwards; }
+	@keyframes depart { to { opacity: 0; transform: scale(0.98); } }
 </style>

@@ -109,8 +109,6 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	}
 
 	// ── Sync state to shared 3D scene ──
-	// Enter chat mode (no-op if already selecting/intro)
-	scene.enterChat(slug);
 	// Keep mood/thinking/voice synced to scene store
 	$effect(() => { scene.setMood(mood); });
 	$effect(() => { scene.setThinking(sending || agentRunning); });
@@ -855,11 +853,11 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	.chat-intro-playing > * {
 		opacity: 0;
 		pointer-events: none;
-		transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+		transition: opacity 0.35s ease;
 	}
 	.chat-space:not(.chat-intro-playing) > * {
 		opacity: 1;
-		transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s;
+		transition: opacity 0.35s ease;
 	}
 
 	/* --- Intro overlay UI --- */

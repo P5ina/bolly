@@ -17,6 +17,13 @@
 	);
 	const checking = $derived(instances.loading);
 
+	// Ensure scene enters chat mode when instance is ready
+	$effect(() => {
+		if (!checking && !isNew) {
+			scene.enterChat(slug);
+		}
+	});
+
 	const tabs = ["chat", "drops", "thoughts", "memory", "stats", "skills", "settings"] as const;
 	const activeTab = $derived(
 		tabs.find((t) => page.url.pathname.includes(`/${slug}/${t}`)) ?? "chat"

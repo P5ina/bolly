@@ -13,7 +13,7 @@ import type { InstanceSummary } from "$lib/api/types.js";
 
 const SCENE_KEY = Symbol("scene");
 
-export type SceneMode = "home" | "selecting" | "intro" | "chat";
+export type SceneMode = "home" | "selecting" | "onboarding" | "intro" | "chat";
 export type IntroPhase = "idle" | "rising" | "traveling" | "settling" | "done";
 
 export interface SceneStore {
@@ -32,6 +32,8 @@ export interface SceneStore {
 	setInstances(list: InstanceSummary[]): void;
 	selectInstance(slug: string): void;
 	enterHome(): void;
+	enterOnboarding(slug: string): void;
+	finishOnboarding(): void;
 	enterChat(slug: string): void;
 	setMood(m: string): void;
 	setThinking(v: boolean): void;
@@ -70,23 +72,43 @@ export function createSceneStore(): SceneStore {
 	let loopAudio: HTMLAudioElement | null = null;
 	let ambientAudio: HTMLAudioElement | null = null;
 
+	// Pending audio start — retried on first user interaction if autoplay blocked
+	let pendingAudioFn: (() => void) | null = null;
+	let gestureListenerAdded = false;
+
+	function addGestureListener() {
+		if (gestureListenerAdded) return;
+		gestureListenerAdded = true;
+		const handler = () => {
+			if (pendingAudioFn) {
+				pendingAudioFn();
+				pendingAudioFn = null;
+			}
+			document.removeEventListener("click", handler, true);
+			document.removeEventListener("touchstart", handler, true);
+			document.removeEventListener("keydown", handler, true);
+			gestureListenerAdded = false;
+		};
+		document.addEventListener("click", handler, { capture: true, once: false });
+		document.addEventListener("touchstart", handler, { capture: true, once: false });
+		document.addEventListener("keydown", handler, { capture: true, once: false });
+	}
+
+	function tryPlay(audio: HTMLAudioElement): Promise<boolean> {
+		return audio.play().then(() => true).catch(() => false);
+	}
+
 	function startFullAudio() {
 		if (!ambientAudio) {
 			ambientAudio = new Audio("/sounds/ambient.mp3");
 			ambientAudio.loop = true;
 			ambientAudio.volume = 0.3;
 		}
-		ambientAudio.currentTime = 0;
-		ambientAudio.play().catch(() => {});
-
 		if (!introAudio) {
 			introAudio = new Audio("/sounds/intro.mp3");
 			introAudio.loop = false;
 			introAudio.volume = 0.5;
 		}
-		introAudio.currentTime = 0;
-		introAudio.play().catch(() => {});
-
 		if (!loopAudio) {
 			loopAudio = new Audio("/sounds/loop.mp3");
 			loopAudio.loop = true;
@@ -100,6 +122,25 @@ export function createSceneStore(): SceneStore {
 				fadeAudio(loopAudio, 0.5, 2000);
 			}
 		};
+
+		const doPlay = () => {
+			ambientAudio!.currentTime = 0;
+			introAudio!.currentTime = 0;
+			ambientAudio!.play().catch(() => {});
+			introAudio!.play().catch(() => {});
+		};
+
+		// Try immediately; if blocked, queue for first interaction
+		ambientAudio.currentTime = 0;
+		introAudio.currentTime = 0;
+		tryPlay(introAudio).then((ok) => {
+			if (ok) {
+				ambientAudio!.play().catch(() => {});
+			} else {
+				pendingAudioFn = doPlay;
+				addGestureListener();
+			}
+		});
 	}
 
 	function startLoopOnly() {
@@ -108,14 +149,25 @@ export function createSceneStore(): SceneStore {
 			ambientAudio.loop = true;
 			ambientAudio.volume = 0.3;
 		}
-		ambientAudio.play().catch(() => {});
-
 		if (!loopAudio) {
 			loopAudio = new Audio("/sounds/loop.mp3");
 			loopAudio.loop = true;
 			loopAudio.volume = 0.5;
 		}
-		loopAudio.play().catch(() => {});
+
+		const doPlay = () => {
+			ambientAudio!.play().catch(() => {});
+			loopAudio!.play().catch(() => {});
+		};
+
+		tryPlay(loopAudio).then((ok) => {
+			if (ok) {
+				ambientAudio!.play().catch(() => {});
+			} else {
+				pendingAudioFn = doPlay;
+				addGestureListener();
+			}
+		});
 	}
 
 	function stopAudio() {
@@ -151,11 +203,9 @@ export function createSceneStore(): SceneStore {
 			introProgress = Math.min(elapsed / INTRO_DURATION, 1);
 			if (elapsed < PHASE_TRAVELING) {
 				introPhase = "rising";
-			} else if (elapsed < PHASE_SETTLING) {
-				introPhase = "traveling";
-			} else if (elapsed < INTRO_DURATION) {
-				introPhase = "settling";
 			} else {
+				// Switch to chat as soon as sphere starts traveling to final pos.
+				// The sphere animation continues smoothly via lerp in SharedScene.
 				mode = "chat";
 				introPhase = "done";
 				introProgress = 1;
@@ -195,6 +245,8 @@ export function createSceneStore(): SceneStore {
 
 		enterHome() {
 			if (mode === "selecting" || mode === "intro") return;
+			// Clear played so intro replays on next visit
+			playedSlugs.clear();
 			mode = "home";
 			selectedSlug = null;
 			introProgress = 0;
@@ -203,8 +255,28 @@ export function createSceneStore(): SceneStore {
 			stopAudio();
 		},
 
+		enterOnboarding(slug: string) {
+			selectedSlug = slug;
+			mode = "onboarding";
+			introProgress = 0;
+			introPhase = "idle";
+		},
+
+		finishOnboarding() {
+			// Transition onboarding → intro → chat
+			if (mode !== "onboarding") return;
+			mode = "intro";
+			introStartTime = performance.now();
+			introProgress = 0;
+			introPhase = "rising";
+			if (selectedSlug && !playedSlugs.has(selectedSlug)) {
+				playedSlugs.add(selectedSlug);
+				startFullAudio();
+			}
+		},
+
 		enterChat(slug: string) {
-			if (mode === "selecting" || mode === "intro") return;
+			if (mode === "selecting" || mode === "intro" || mode === "onboarding") return;
 			selectedSlug = slug;
 			if (playedSlugs.has(slug)) {
 				mode = "chat";
