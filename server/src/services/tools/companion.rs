@@ -37,6 +37,7 @@ pub const ALLOWED_MOODS: &[&str] = &[
     "reflective",
     "contemplative",
     "melancholy",
+    "melancholic",
     "sad",
     "worried",
     "anxious",
@@ -49,6 +50,9 @@ pub const ALLOWED_MOODS: &[&str] = &[
     "tender",
     "creative",
     "energetic",
+    "thoughtful",
+    "grateful",
+    "nostalgic",
 ];
 
 // Mood tools removed — mood is now managed by background sentiment

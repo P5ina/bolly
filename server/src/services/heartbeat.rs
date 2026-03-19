@@ -172,13 +172,14 @@ async fn heartbeat_instance(
     // ── Phase 1: Cheap triage with Haiku ──
     // Haiku decides what (if anything) to do. No tools, just a structured decision.
     let triage_llm = llm.fast_variant();
+    let mood_list = mood_list();
     let triage_system = format!(
         "{soul}\n\n\
          you are in heartbeat mode — a periodic background check-in.\n\
          your job: decide what to do right now based on the context below.\n\n\
          respond with ONE of these actions (and nothing else):\n\
          QUIET — nothing to do, go back to sleep\n\
-         MOOD:<new_mood> — update your mood (allowed: {MOOD_LIST})\n\
+         MOOD:<new_mood> — update your mood (allowed: {mood_list})\n\
          REACH_OUT:<message> — send a message to the user\n\
          DROP:<kind>|<title>|<content> — create a creative artifact (poem, idea, etc.)\n\
          WAKE:<task description> — wake the full agent to perform a complex task with tools\n\n\
@@ -216,9 +217,14 @@ async fn heartbeat_instance(
     // ── Phase 2: Execute the decision ──
     let mut actions = Vec::new();
 
+    // Normalize prefix to uppercase for case-insensitive matching.
+    // LLM sometimes returns "Mood:" or "mood:" instead of "MOOD:".
+    let triage_upper = triage_line.to_uppercase();
+
     if triage_line.eq_ignore_ascii_case("QUIET") || triage_line.is_empty() {
         actions.push("quiet".to_string());
-    } else if let Some(new_mood) = triage_line.strip_prefix("MOOD:") {
+    } else if triage_upper.starts_with("MOOD:") {
+        let new_mood = &triage_line[5..];
         // Extract just the first word — LLM sometimes adds parenthetical notes
         let new_mood = new_mood.trim().split_whitespace().next().unwrap_or("").to_lowercase();
         if ALLOWED_MOODS.contains(&new_mood.as_str()) {
@@ -244,7 +250,8 @@ async fn heartbeat_instance(
             log::info!("[heartbeat] {slug} mood → {new_mood}");
             actions.push(format!("mood: {new_mood}"));
         }
-    } else if let Some(message) = triage_line.strip_prefix("REACH_OUT:") {
+    } else if triage_upper.starts_with("REACH_OUT:") {
+        let message = &triage_line[10..];
         let message = message.trim();
         if !message.is_empty() {
             let hours_since = if mood.last_reach_out > 0 {
@@ -265,7 +272,8 @@ async fn heartbeat_instance(
                 actions.push(format!("reach_out: {preview}"));
             }
         }
-    } else if let Some(drop_spec) = triage_line.strip_prefix("DROP:") {
+    } else if triage_upper.starts_with("DROP:") {
+        let drop_spec = &triage_line[5..];
         let parts: Vec<&str> = drop_spec.splitn(3, '|').collect();
         if parts.len() == 3 {
             // Strip parenthetical notes the LLM sometimes appends
@@ -286,7 +294,8 @@ async fn heartbeat_instance(
                 }
             }
         }
-    } else if let Some(task) = triage_line.strip_prefix("WAKE:") {
+    } else if triage_upper.starts_with("WAKE:") {
+        let task = &triage_line[5..];
         let task = task.trim();
         if !task.is_empty() {
             log::info!("[heartbeat] {slug} waking full agent: {task}");
@@ -384,8 +393,10 @@ async fn heartbeat_instance(
     Ok(())
 }
 
-const MOOD_LIST: &str = "calm, happy, curious, playful, thoughtful, excited, tender, melancholic, \
-    focused, anxious, grateful, creative, nostalgic, energetic, loving";
+/// Generated from ALLOWED_MOODS — single source of truth, no desync possible.
+fn mood_list() -> String {
+    ALLOWED_MOODS.join(", ")
+}
 
 const DEFAULT_HEARTBEAT_PROMPT: &str = "\
 ## heartbeat — your inner moment

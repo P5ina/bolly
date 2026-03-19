@@ -139,6 +139,27 @@
 		return cut + "…";
 	}
 
+	/** Clean raw text: strip action prefixes like "WAKE:foo bar" that duplicate action tags */
+	function cleanRaw(raw: string, actions: string[]): string {
+		if (!raw) return "";
+		let cleaned = raw.trim();
+		// Strip lines that are just action prefixes (e.g. "WAKE:memory-cleanup ...")
+		for (const action of actions) {
+			const parsed = parseAction(action);
+			// Remove "KIND:label" prefix if raw starts with it
+			const prefix = `${parsed.kind.toUpperCase()}:${parsed.label}`;
+			if (prefix && cleaned.toUpperCase().startsWith(prefix.toUpperCase())) {
+				cleaned = cleaned.substring(prefix.length).trim();
+			}
+			// Also try "kind (label)" format
+			const altPrefix = `${parsed.kind} (${parsed.label})`;
+			if (altPrefix && cleaned.toLowerCase().startsWith(altPrefix.toLowerCase())) {
+				cleaned = cleaned.substring(altPrefix.length).trim();
+			}
+		}
+		return cleaned;
+	}
+
 	/** Format the raw thought into readable paragraphs */
 	function formatRaw(raw: string): string[] {
 		if (!raw) return [];
@@ -234,13 +255,16 @@
 					</div>
 				{:else}
 					{@const thought = group.thoughts[0]}
-					{@const accentColor = moodColors[thought.mood] ?? "oklch(0.78 0.12 75)"}
-					{@const emoji = moodEmoji[thought.mood] ?? "·"}
+					{@const moodAction = thought.actions.find(a => a.startsWith("mood:"))}
+					{@const displayMood = moodAction ? moodAction.substring(5).trim() : thought.mood}
+					{@const accentColor = moodColors[displayMood] ?? "oklch(0.78 0.12 75)"}
+					{@const emoji = moodEmoji[displayMood] ?? "·"}
 					{@const kind = primaryKind(thought)}
 					{@const isExpanded = expandedIds.has(thought.id)}
-					{@const rawParagraphs = formatRaw(thought.raw)}
-					{@const hasLongContent = thought.raw.length > 200}
-					{@const summary = extractSummary(thought.raw)}
+					{@const cleaned = cleanRaw(thought.raw, thought.actions)}
+					{@const rawParagraphs = formatRaw(cleaned)}
+					{@const hasLongContent = cleaned.length > 200}
+					{@const summary = extractSummary(cleaned)}
 
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -259,7 +283,7 @@
 						<div class="card-header">
 							<div class="card-mood">
 								<span class="mood-symbol" style="color: {accentColor}">{emoji}</span>
-								<span class="mood-label" style="color: {accentColor}">{thought.mood}</span>
+								<span class="mood-label" style="color: {accentColor}">{displayMood}</span>
 							</div>
 							<span class="card-time">{formatTime(thought.created_at)}</span>
 						</div>
@@ -270,7 +294,7 @@
 								{#each thought.actions as action}
 									{@const parsed = parseAction(action)}
 									{@const meta = actionKindLabels[parsed.kind] ?? { icon: "·", label: parsed.kind }}
-									{#if parsed.kind !== "quiet"}
+									{#if parsed.kind !== "quiet" && parsed.kind !== "mood"}
 										<span
 											class="action-tag"
 											class:action-tag-wake={parsed.kind === "wake"}
@@ -287,7 +311,7 @@
 						{/if}
 
 						<!-- Thought content -->
-						{#if thought.raw}
+						{#if cleaned}
 							<div class="card-content" class:card-content-expanded={isExpanded}>
 								{#if isExpanded}
 									{#each rawParagraphs as para}
