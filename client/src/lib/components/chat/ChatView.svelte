@@ -7,6 +7,7 @@
 	import MessageBubble from "./MessageBubble.svelte";
 	import ChatInput from "./ChatInput.svelte";
 	import AsciiRenderer from "./AsciiRenderer.svelte";
+	import BackgroundShader from "./BackgroundShader.svelte";
 	import CreatureBubble from "./CreatureBubble.svelte";
 	import StreamActivity from "./StreamActivity.svelte";
 	import ContextStats from "./ContextStats.svelte";
@@ -612,6 +613,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 </script>
 
 <div class="chat-space" class:chat-active={sending || agentRunning}>
+	<BackgroundShader {mood} thinking={sending || agentRunning} />
 
 	<header class="chat-bar">
 		<div class="bar-left">
@@ -754,27 +756,6 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		width: 100%;
 		max-width: 100%;
 		overflow: hidden;
-	}
-
-	/* --- Gradient mesh background (gives glass something to refract) --- */
-	.chat-space::after {
-		content: "";
-		position: absolute;
-		inset: 0;
-		pointer-events: none;
-		z-index: 0;
-		background-color: oklch(0.08 0.02 240);
-		background-image:
-			/* top-left: navy bloom */
-			radial-gradient(ellipse 65% 55% at 12% 8%, oklch(0.22 0.06 250) 0%, transparent 70%),
-			/* center-right: indigo wash */
-			radial-gradient(ellipse 55% 65% at 82% 32%, oklch(0.18 0.05 280) 0%, transparent 65%),
-			/* bottom-left: teal field */
-			radial-gradient(ellipse 60% 50% at 20% 88%, oklch(0.17 0.05 210) 0%, transparent 60%),
-			/* bottom-right: warm undertone */
-			radial-gradient(ellipse 45% 55% at 88% 75%, oklch(0.15 0.04 300) 0%, transparent 55%),
-			/* center: depth brightening */
-			radial-gradient(circle at 50% 50%, oklch(0.13 0.03 230) 0%, transparent 55%);
 	}
 
 	/* --- Perimeter ambient glow (Siri-style) --- */
