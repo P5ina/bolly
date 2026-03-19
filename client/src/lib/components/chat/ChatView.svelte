@@ -210,50 +210,33 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	/** Reconcile local state with a server snapshot — game-style sync. */
 	function reconcileSnapshot(serverMessages: ChatMessage[], serverAgentRunning: boolean) {
 		const serverStream = messagesToStream(serverMessages);
-		const serverMsgIds = new Set(serverStream.filter(s => s.type === "message").map(s => (s as any).data.id));
 
-		// Detect new assistant messages that we don't have locally
-		const localMsgIds = new Set(
-			stream.filter(s => s.type === "message").map(s => (s as { type: "message"; data: ChatMessage }).data.id)
+		// Detect new assistant messages not in local stream (by content, not ID —
+		// rig_history may assign different IDs than streaming)
+		const localContents = new Set(
+			stream.filter(s => s.type === "message")
+				.map(s => (s as { type: "message"; data: ChatMessage }).data.content)
 		);
 		let hasNew = false;
-		for (const id of serverMsgIds) {
-			if (!localMsgIds.has(id)) {
-				// Check if it's an assistant message
-				const item = serverStream.find(s => s.type === "message" && (s as any).data.id === id);
-				if (item && (item as { type: "message"; data: ChatMessage }).data.role === "assistant") {
-					hasNew = true;
-					break;
-				}
+		for (const item of serverStream) {
+			if (item.type !== "message") continue;
+			const msg = (item as { type: "message"; data: ChatMessage }).data;
+			if (msg.role === "assistant" && !localContents.has(msg.content)) {
+				hasNew = true;
+				break;
 			}
 		}
 
-		// Play sound for new assistant messages arriving via snapshot
 		if (hasNew && !voice.enabled) {
 			play("message_receive");
 			hapticMedium();
 		}
 
-		// Preserve the actively-streaming message (it's ahead of the snapshot)
-		const streamingItem = streamingMessageId
-			? stream.find(s => s.type === "message" && (s as any).data.id === streamingMessageId)
-			: null;
-
-		// Build new stream: server items + any local-only streaming message
-		const newStream: StreamItem[] = [...serverStream];
-
-		if (streamingItem && !serverMsgIds.has(streamingMessageId)) {
-			newStream.push(streamingItem);
-		}
-
-		// Preserve local activity items that aren't in the snapshot (live tool output, thinking state)
-		for (const item of stream) {
-			if (item.type === "activity" && item.id.startsWith("__live_")) {
-				newStream.push(item);
-			}
-		}
-
-		stream = newStream;
+		// Snapshot is ground truth — replace stream entirely.
+		// Don't try to preserve streaming items (they may duplicate
+		// server messages that have different IDs but same content).
+		stream = serverStream;
+		streamingMessageId = "";
 		messages = serverMessages.filter((m) => !isToolActivity(m));
 		agentRunning = serverAgentRunning;
 
