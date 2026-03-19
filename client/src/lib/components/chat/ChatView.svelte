@@ -1064,36 +1064,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		gap: 1rem;
 		overflow: hidden;
 		position: relative;
-		background:
-			radial-gradient(ellipse 70% 60% at 50% 45%, oklch(0.18 0.05 240) 0%, transparent 70%),
-			radial-gradient(ellipse 50% 40% at 30% 70%, oklch(0.15 0.04 200) 0%, transparent 60%);
-	}
 
-	/* Sidebar ambient glow behind creature */
-	.chat-sidebar::before {
-		content: "";
-		position: absolute;
-		width: 300px;
-		height: 300px;
-		border-radius: 50%;
-		background: radial-gradient(
-			circle,
-			oklch(0.45 0.08 200 / 6%) 0%,
-			oklch(0.4 0.06 220 / 3%) 40%,
-			transparent 70%
-		);
-		pointer-events: none;
-		animation: breathe-slow 8s ease-in-out infinite;
-	}
-
-	.chat-active .chat-sidebar::before {
-		animation: breathe-intense 3s ease-in-out infinite;
-		background: radial-gradient(
-			circle,
-			oklch(0.5 0.1 190 / 10%) 0%,
-			oklch(0.45 0.08 210 / 5%) 40%,
-			transparent 70%
-		);
 	}
 
 	.sidebar-banners {
