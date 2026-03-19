@@ -340,7 +340,9 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         if !api_key.is_empty() {
             let voice_id = crate::routes::tts::resolve_voice_id(&state.workspace_dir, &instance_slug);
             let full_text = voice_texts.join(" ");
-            match crate::routes::tts::synthesize_bytes(&state.http_client, &api_key, &voice_id, &full_text).await {
+            let instance_dir = state.workspace_dir.join("instances").join(&instance_slug);
+            let current_mood = crate::services::tools::companion::load_mood_state(&instance_dir).companion_mood;
+            match crate::routes::tts::synthesize_bytes(&state.http_client, &api_key, &voice_id, &full_text, &current_mood).await {
                 Ok(audio_bytes) => {
                     use base64::Engine;
                     let audio_base64 = base64::engine::general_purpose::STANDARD.encode(&audio_bytes);
