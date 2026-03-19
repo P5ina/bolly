@@ -278,19 +278,13 @@
 		max-width: 65%;
 	}
 
-	/* Companion wrap: right-offset spatial composition */
+	/* Companion wrap: right-aligned */
 	.msg-companion-wrap {
 		display: flex;
 		flex-direction: column;
 		gap: 0.28rem;
 		align-items: flex-end;
 	}
-
-	/* Stagger companion messages for spatial feel */
-	.msg-companion:nth-child(4n+1) .msg-companion-wrap { padding-right: 0; }
-	.msg-companion:nth-child(4n+2) .msg-companion-wrap { padding-right: 1.5rem; }
-	.msg-companion:nth-child(4n+3) .msg-companion-wrap { padding-right: 0.5rem; }
-	.msg-companion:nth-child(4n+4) .msg-companion-wrap { padding-right: 2rem; }
 
 	.msg-presence-line {
 		display: inline-flex;
