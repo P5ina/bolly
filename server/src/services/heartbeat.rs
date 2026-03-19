@@ -297,7 +297,9 @@ async fn heartbeat_instance(
                 "{reflection}\n\n\
                  ## task from your heartbeat triage\n\
                  {task}\n\n\
-                 execute this task using your tools. be efficient.\n\n\
+                 IMPORTANT: call your tools NOW. do not describe what you plan to do — \
+                 just do it. start with a tool call on your very first response. \
+                 every response must include at least one tool call until the task is done.\n\n\
                  when done, write a short summary of what you did (which files you touched, \
                  what changed, and why). this will be saved to chat history so you can \
                  recall it later when the user asks."
