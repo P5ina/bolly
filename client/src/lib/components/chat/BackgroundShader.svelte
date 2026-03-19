@@ -78,10 +78,9 @@
 
 		const scene = new THREE.Scene();
 
-		// Camera: looking at the blob which is offset to the right
 		const cam = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
-		cam.position.set(0.8, 0, 3.5);
-		cam.lookAt(0.8, 0, 0);
+		cam.position.set(0, 0, 5);
+		cam.lookAt(0, 0, 0);
 
 		// ── Background (TSL wave shader as scene.backgroundNode) ──
 
@@ -117,17 +116,17 @@
 
 		// ── Lighting ──
 
-		scene.add(new THREE.AmbientLight(0x334477, 0.5));
+		scene.add(new THREE.AmbientLight(0x334477, 0.3));
 
-		const keyLight = new THREE.DirectionalLight(0xffffff, 3.0);
+		const keyLight = new THREE.DirectionalLight(0xffffff, 2.0);
 		keyLight.position.set(3, 2, 4);
 		scene.add(keyLight);
 
-		const rimLight = new THREE.PointLight(0x8899cc, 2.0);
+		const rimLight = new THREE.PointLight(0x8899cc, 1.0);
 		rimLight.position.set(-3, 1.5, -2);
 		scene.add(rimLight);
 
-		const fillLight = new THREE.PointLight(0x6677aa, 0.8);
+		const fillLight = new THREE.PointLight(0x6677aa, 0.4);
 		fillLight.position.set(0, -3, 1);
 		scene.add(fillLight);
 
@@ -163,17 +162,13 @@
 		glassMat.clearcoatRoughness = 0.05;
 		glassMat.specularIntensity = 1.5;
 		glassMat.specularColor = new THREE.Color(0xccddff);
-		glassMat.envMapIntensity = 1.5;
+		glassMat.envMapIntensity = 0.5;
 		glassMat.transparent = true;
 		glassMat.side = THREE.DoubleSide;
 
-		// Generate envmap from scene for reflections
-		const pmrem = new THREE.PMREMGenerator(renderer);
-		const envRT = pmrem.fromScene(scene);
-		scene.environment = envRT.texture;
-
 		const creature = new THREE.Mesh(creatureGeo, glassMat);
-		creature.position.set(0.8, 0, 0); // right side
+		creature.scale.setScalar(0.7);
+		creature.position.set(1.8, -0.1, 0); // right side, slightly below center
 		scene.add(creature);
 
 		// ── Resize ──
@@ -223,7 +218,7 @@
 				+ (isSpeaking ? amp * 0.12 : 0);
 
 			keyLight.color.set(moodColors[resolved]);
-			keyLight.intensity = thinkingRef ? 4.0 : 3.0;
+			keyLight.intensity = thinkingRef ? 2.5 : 2.0;
 			fillLight.color.set(moodColors[resolved]);
 
 			creature.rotation.y += delta * (thinkingRef ? 0.4 : energy.rotSpeed);
@@ -240,8 +235,6 @@
 			ro.disconnect();
 			creatureGeo.dispose();
 			glassMat.dispose();
-			pmrem.dispose();
-			envRT.dispose();
 			renderer.dispose();
 			renderer.domElement.remove();
 		};
