@@ -89,11 +89,24 @@
 		/>
 	{/if}
 
-	<!-- connection lost banner -->
+	<!-- Dynamic Island — connection status -->
 	{#if ws.reconnecting}
-		<div class="connection-banner">
-			<span class="connection-banner-dot"></span>
-			reconnecting{ws.retryCount > 2 ? ` (attempt ${ws.retryCount})` : "…"}
+		<div class="island">
+			<div class="island-pill" class:island-expanded={ws.retryCount > 2}>
+				<div class="island-content">
+					<div class="island-activity">
+						<span class="island-ring"></span>
+						<span class="island-dot"></span>
+					</div>
+					<span class="island-label">
+						{#if ws.retryCount > 2}
+							reconnecting · attempt {ws.retryCount}
+						{:else}
+							reconnecting
+						{/if}
+					</span>
+				</div>
+			</div>
 		</div>
 	{/if}
 </div>
@@ -163,37 +176,129 @@
 		background: oklch(0.78 0.12 75 / 8%);
 	}
 
-	.connection-banner {
+	/* ── Dynamic Island ── */
+
+	.island {
 		position: fixed;
-		top: calc(1rem + env(safe-area-inset-top, 0px));
+		top: calc(0.5rem + env(safe-area-inset-top, 0px));
 		left: 50%;
 		transform: translateX(-50%);
+		z-index: 200;
+		pointer-events: none;
+	}
+
+	.island-pill {
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 120px;
+		height: 32px;
+		border-radius: 50px;
+		background: oklch(0.03 0.01 260 / 92%);
+		backdrop-filter: blur(40px) saturate(180%);
+		-webkit-backdrop-filter: blur(40px) saturate(180%);
+		border: 1px solid oklch(1 0 0 / 8%);
+		border-top-color: oklch(1 0 0 / 14%);
+		box-shadow:
+			0 2px 20px oklch(0 0 0 / 40%),
+			0 8px 40px oklch(0 0 0 / 20%),
+			inset 0 1px 0 oklch(1 0 0 / 6%),
+			inset 0 -1px 0 oklch(0 0 0 / 10%);
+		overflow: hidden;
+		animation: island-enter 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+		transition: min-width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+		            height 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+		            border-radius 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.island-expanded {
+		min-width: 200px;
+		height: 36px;
+	}
+
+	/* Specular highlight */
+	.island-pill::before {
+		content: "";
+		position: absolute;
+		top: 0;
+		left: 15%;
+		right: 15%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 18%), transparent);
+		pointer-events: none;
+	}
+
+	/* Inner refraction glow */
+	.island-pill::after {
+		content: "";
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 50%;
+		background: linear-gradient(180deg, oklch(1 0 0 / 3%) 0%, transparent 100%);
+		pointer-events: none;
+		border-radius: 50px 50px 0 0;
+	}
+
+	@keyframes island-enter {
+		0% { transform: scaleX(0.3) scaleY(0.5); opacity: 0; border-radius: 50%; }
+		50% { transform: scaleX(1.08) scaleY(1.05); opacity: 1; }
+		100% { transform: scaleX(1) scaleY(1); opacity: 1; }
+	}
+
+	.island-content {
+		position: relative;
+		z-index: 1;
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		padding: 0.4rem 1rem;
-		border-radius: 2rem;
-		background: oklch(0.065 0.015 280 / 85%);
-		backdrop-filter: blur(20px);
-		border: 1px solid oklch(0.75 0.15 55 / 15%);
-		color: oklch(0.75 0.15 55 / 80%);
-		font-family: var(--font-body);
-		font-size: 0.75rem;
-		letter-spacing: 0.03em;
-		z-index: 100;
-		animation: banner-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+		padding: 0 0.875rem;
 	}
 
-	@keyframes banner-enter {
-		from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
-		to { opacity: 1; transform: translateX(-50%) translateY(0); }
+	.island-activity {
+		position: relative;
+		width: 12px;
+		height: 12px;
+		flex-shrink: 0;
 	}
 
-	.connection-banner-dot {
-		width: 6px;
-		height: 6px;
+	.island-dot {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: 5px;
+		height: 5px;
 		border-radius: 50%;
 		background: oklch(0.75 0.15 55);
-		animation: pulse-warn 0.8s ease-in-out infinite;
+		transform: translate(-50%, -50%);
+		animation: island-dot-pulse 1.2s ease-in-out infinite;
+	}
+
+	.island-ring {
+		position: absolute;
+		inset: 0;
+		border-radius: 50%;
+		border: 1.5px solid oklch(0.75 0.15 55 / 50%);
+		animation: island-ring-expand 1.2s ease-out infinite;
+	}
+
+	@keyframes island-dot-pulse {
+		0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+		50% { transform: translate(-50%, -50%) scale(0.7); opacity: 0.5; }
+	}
+
+	@keyframes island-ring-expand {
+		0% { transform: scale(0.5); opacity: 0.8; }
+		100% { transform: scale(1.8); opacity: 0; }
+	}
+
+	.island-label {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		letter-spacing: 0.05em;
+		color: oklch(0.85 0.02 75 / 75%);
+		white-space: nowrap;
 	}
 </style>
