@@ -59,13 +59,14 @@
 <style>
 	.act-row {
 		display: flex;
+		flex-direction: row-reverse;
 		gap: 0;
 		padding: 0.15rem 0;
 		animation: act-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
 
 	@keyframes act-in {
-		from { opacity: 0; transform: translateX(-4px); }
+		from { opacity: 0; transform: translateX(4px); }
 		to { opacity: 1; transform: translateX(0); }
 	}
 
@@ -73,7 +74,7 @@
 		width: 2px;
 		flex-shrink: 0;
 		border-radius: 1px;
-		margin-right: 0.6rem;
+		margin-left: 0.6rem;
 		transition: background 0.3s ease;
 	}
 
@@ -94,6 +95,7 @@
 	.act-body {
 		display: flex;
 		flex-direction: column;
+		align-items: flex-end;
 		gap: 0;
 		min-width: 0;
 		padding: 0.2rem 0;
@@ -107,6 +109,7 @@
 		color: oklch(0.6 0.04 200 / 50%);
 		white-space: nowrap;
 		overflow: hidden;
+		text-align: right;
 		text-overflow: ellipsis;
 	}
 

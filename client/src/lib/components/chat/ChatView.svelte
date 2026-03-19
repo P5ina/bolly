@@ -1107,6 +1107,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		gap: 0.4rem;
 		padding: 0.8rem 0;
 		justify-content: flex-end;
+		align-self: flex-end;
 		animation: fade-up 0.3s ease both;
 	}
 
@@ -1132,6 +1133,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		gap: 0.5rem;
 		padding: 0.5rem 0.75rem;
 		margin: 0.5rem 0;
+		margin-left: auto;
 		border-radius: 10px;
 		background: oklch(0.12 0.02 200 / 20%);
 		backdrop-filter: blur(12px);
