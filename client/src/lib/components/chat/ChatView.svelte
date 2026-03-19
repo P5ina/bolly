@@ -756,6 +756,26 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		overflow: hidden;
 	}
 
+	/* --- Gradient mesh background (gives glass something to refract) --- */
+	.chat-space::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		z-index: 0;
+		background:
+			/* top-left: deep navy bloom */
+			radial-gradient(ellipse 60% 50% at 15% 10%, oklch(0.14 0.04 250 / 70%) 0%, transparent 70%),
+			/* center-right: indigo wash */
+			radial-gradient(ellipse 50% 60% at 80% 35%, oklch(0.12 0.035 280 / 55%) 0%, transparent 65%),
+			/* bottom-left: dark teal field */
+			radial-gradient(ellipse 55% 45% at 25% 85%, oklch(0.11 0.03 210 / 50%) 0%, transparent 60%),
+			/* bottom-right: subtle warm undertone */
+			radial-gradient(ellipse 40% 50% at 90% 80%, oklch(0.10 0.025 300 / 35%) 0%, transparent 55%),
+			/* center: faint brightening for depth */
+			radial-gradient(circle at 50% 50%, oklch(0.09 0.02 230 / 30%) 0%, transparent 50%);
+	}
+
 	/* --- Perimeter ambient glow (Siri-style) --- */
 	.chat-space::before {
 		content: "";
@@ -989,6 +1009,9 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		gap: 1rem;
 		overflow: hidden;
 		position: relative;
+		background:
+			radial-gradient(ellipse 70% 60% at 50% 45%, oklch(0.1 0.03 240 / 40%) 0%, transparent 70%),
+			radial-gradient(ellipse 50% 40% at 30% 70%, oklch(0.09 0.025 200 / 30%) 0%, transparent 60%);
 	}
 
 	/* Sidebar ambient glow behind creature */
