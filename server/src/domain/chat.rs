@@ -48,6 +48,8 @@ pub struct ChatRequest {
     pub content: String,
     #[serde(default = "default_chat_id")]
     pub chat_id: String,
+    #[serde(default)]
+    pub voice_mode: bool,
 }
 
 fn default_chat_id() -> String {

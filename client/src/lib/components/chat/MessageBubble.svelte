@@ -11,6 +11,8 @@
 		nextMessage,
 		mood = "calm",
 		active = false,
+		speaking = false,
+		revealProgress = 1,
 	}: {
 		message: ChatMessage;
 		slug?: string;
@@ -19,6 +21,8 @@
 		nextMessage?: ChatMessage;
 		mood?: string;
 		active?: boolean;
+		speaking?: boolean;
+		revealProgress?: number;
 	} = $props();
 
 	const isUser = $derived(message.role === "user");
@@ -84,6 +88,12 @@
 		isUser ? textContent : (marked.parse(textContent) as string)
 	);
 
+	/** Words for voice reveal (only used when speaking). */
+	const words = $derived(textContent.split(/(\s+)/));
+	const revealCount = $derived(
+		speaking ? Math.ceil(revealProgress * words.filter(w => w.trim()).length) : words.length
+	);
+
 	const modelLabel = $derived.by(() => {
 		if (!message.model) return "";
 		const m = message.model.toLowerCase();
@@ -139,9 +149,22 @@
 				</div>
 			{/if}
 			{#if textContent}
-				<div class="msg-content msg-content-companion prose">
-					{@html html}
-				</div>
+				{#if speaking}
+					<div class="msg-content msg-content-companion msg-voice-reveal">
+						{#each words as word, wi}
+							{#if word.trim()}
+								{@const wordIdx = words.slice(0, wi + 1).filter(w => w.trim()).length}
+								<span class="voice-word" class:voice-word-visible={wordIdx <= revealCount}>{word}</span>
+							{:else}
+								{@html word.includes("\n") ? "<br>" : " "}
+							{/if}
+						{/each}
+					</div>
+				{:else}
+					<div class="msg-content msg-content-companion prose">
+						{@html html}
+					</div>
+				{/if}
 			{/if}
 			{#if attachments.length > 0}
 				<div class="msg-attachments">
@@ -477,5 +500,20 @@
 	}
 	.msg:hover .msg-model-fast {
 		color: oklch(0.72 0.15 155 / 70%);
+	}
+
+	/* voice word reveal */
+	.msg-voice-reveal {
+		font-family: var(--font-body);
+		color: oklch(0.88 0.03 75 / 90%);
+	}
+
+	.voice-word {
+		opacity: 0.08;
+		transition: opacity 0.15s ease;
+	}
+
+	.voice-word-visible {
+		opacity: 1;
 	}
 </style>

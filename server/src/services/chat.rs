@@ -132,6 +132,7 @@ pub async fn run_single_turn(
     plan: &str,
     pdf_strategy: &llm::PdfStrategy,
     mcp_registry: &crate::services::mcp::McpRegistry,
+    voice_mode: bool,
 ) -> io::Result<SingleTurnResult> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
@@ -285,6 +286,15 @@ pub async fn run_single_turn(
          current time: {now}\n\
          if you need the exact time later in the conversation, use the `get_time` tool."
     ));
+
+    if voice_mode {
+        system_prompt.push_str(
+            "\n\n## voice mode\n\
+             your responses will be read aloud. reply conversationally — \
+             no markdown, no code blocks, no lists. \
+             if asked about code, explain in plain words."
+        );
+    }
 
     system_prompt.push_str(
         "\n\n## style\n\

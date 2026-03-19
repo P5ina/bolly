@@ -2,7 +2,7 @@
 	import { Canvas } from "@threlte/core";
 	import CreatureScene from "./CreatureScene.svelte";
 
-	let { thinking = false, mood = "calm" }: { thinking?: boolean; mood?: string } = $props();
+	let { thinking = false, mood = "calm", voiceAmplitude = 0 }: { thinking?: boolean; mood?: string; voiceAmplitude?: number } = $props();
 
 	const moodColors: Record<string, string> = {
 		calm: "#8ab4f8",
@@ -145,7 +145,7 @@
 	<!-- Hidden 3D canvas -->
 	<div class="threlte-hidden" bind:this={containerRef}>
 		<Canvas>
-			<CreatureScene {thinking} {mood} />
+			<CreatureScene {thinking} {mood} {voiceAmplitude} />
 		</Canvas>
 	</div>
 

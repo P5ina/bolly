@@ -56,7 +56,7 @@ async fn main() {
         }
         let bg_state = state.clone();
         tokio::spawn(async move {
-            routes::chat::run_agent_loop(bg_state, slug, chat_id, cancel).await;
+            routes::chat::run_agent_loop(bg_state, slug, chat_id, cancel, false).await;
         });
     }
 

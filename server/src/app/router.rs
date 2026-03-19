@@ -24,6 +24,7 @@ pub fn build_router(state: AppState, static_dir: Option<PathBuf>) -> Router {
         .merge(routes::heartbeat::router())
         .merge(routes::ws::router())
         .merge(routes::update::router())
+        .merge(routes::tts::router())
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 
     // Public routes — no auth

@@ -236,6 +236,8 @@ pub struct LlmTokens {
     pub brave_search: String,
     #[serde(default, rename = "OPENROUTER", alias = "open_router", alias = "openrouter")]
     pub open_router: String,
+    #[serde(default, rename = "ELEVENLABS", alias = "elevenlabs")]
+    pub elevenlabs: String,
 }
 
 
@@ -339,6 +341,7 @@ impl Default for LlmTokens {
             anthropic: String::new(),
             brave_search: String::new(),
             open_router: String::new(),
+            elevenlabs: String::new(),
         }
     }
 }
@@ -430,6 +433,11 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     if let Ok(key) = env::var("BRAVE_SEARCH_API_KEY") {
         if !key.is_empty() {
             config.llm.tokens.brave_search = key;
+        }
+    }
+    if let Ok(key) = env::var("ELEVENLABS_API_KEY") {
+        if !key.is_empty() {
+            config.llm.tokens.elevenlabs = key;
         }
     }
 

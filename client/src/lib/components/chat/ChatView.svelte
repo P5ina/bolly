@@ -15,13 +15,18 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	import { play, playImmediate, preload } from "$lib/sounds.js";
 	import { hapticMedium, hapticDouble, hapticError } from "$lib/haptics.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
+	import { getVoiceState } from "$lib/stores/voice.svelte.js";
+	import { speak, stopTts } from "$lib/tts.js";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 	import TerminalSquare from "@lucide/svelte/icons/terminal-square";
 	import BarChart3 from "@lucide/svelte/icons/bar-chart-3";
 	import Eraser from "@lucide/svelte/icons/eraser";
 	import Minimize2 from "@lucide/svelte/icons/minimize-2";
+	import Volume2 from "@lucide/svelte/icons/volume-2";
+	import VolumeOff from "@lucide/svelte/icons/volume-off";
 
 	const toast = getToasts();
+	const voice = getVoiceState();
 
 	let { slug, chatId }: { slug: string; chatId: string } = $props();
 
@@ -55,6 +60,10 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	);
 	let streamingContent = $state("");
 	let streamingBubbles = $state<string[]>([]);
+	/** Accumulates streamed text for TTS when voice is enabled. */
+	let voiceText = $state("");
+	/** Message IDs from the current agent turn (for voice reveal). */
+	let turnMessageIds = $state<string[]>([]);
 
 	preload("message_receive", "message_send", "error");
 
@@ -77,6 +86,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 	function handleStreamDelta(delta: string) {
 		streamingContent += delta;
+		if (voice.enabled) voiceText += delta;
 		const { completed: completedParts, pending } = splitPreservingCode(streamingContent);
 
 		// Promote completed parts to real bubbles
@@ -429,7 +439,10 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					}
 					scrollToBottomIfNear();
 				} else {
-					if (msg.role === "assistant") { play("message_receive"); hapticMedium(); }
+					if (msg.role === "assistant") {
+						play("message_receive"); hapticMedium();
+						if (voice.enabled) turnMessageIds = [...turnMessageIds, msg.id];
+					}
 					addMessage(msg);
 					refreshChatList();
 				}
@@ -450,6 +463,17 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				stream = stream.filter((s) =>
 					!(s.type === "message" && typeof s.data.id === "string" && s.data.id.startsWith("__promoted_"))
 				);
+				// Trigger TTS when voice is enabled
+				if (voice.enabled && voiceText.trim()) {
+					const text = voiceText.trim();
+					const ids = [...turnMessageIds];
+					voiceText = "";
+					turnMessageIds = [];
+					speak(currentSlug, text, voice, ids);
+				} else {
+					voiceText = "";
+					turnMessageIds = [];
+				}
 			} else if (event.type === "tool_activity") {
 				if (event.summary.startsWith("mood →")) return;
 				const isOutput = event.tool_name.endsWith("_output");
@@ -537,7 +561,11 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					.join("\n");
 				finalContent = finalContent ? `${finalContent}\n\n${refs}` : refs;
 			}
-			const res = await sendMessage(slug, finalContent, activeChatId);
+			// Stop any playing TTS when sending a new message
+			if (voice.speaking) stopTts(voice);
+			voiceText = "";
+			turnMessageIds = [];
+			const res = await sendMessage(slug, finalContent, activeChatId, voice.enabled);
 			for (const msg of res.messages) addMessage(msg);
 		} catch (e) {
 			play("error");
@@ -611,6 +639,13 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			{/if}
 		</div>
 		<div class="bar-right">
+			<button onclick={() => { voice.toggle(); if (!voice.enabled && voice.speaking) stopTts(voice); }} onmousedown={(e) => e.preventDefault()} class="bar-btn" class:bar-btn-active={voice.enabled} title={voice.enabled ? "Mute voice" : "Enable voice"}>
+				{#if voice.enabled}
+					<Volume2 size={13} />
+				{:else}
+					<VolumeOff size={13} />
+				{/if}
+			</button>
 			<button onclick={() => { showToolActivity = !showToolActivity; localStorage.setItem("bolly:showToolActivity", String(showToolActivity)); }} onmousedown={(e) => e.preventDefault()} class="bar-btn" class:bar-btn-active={showToolActivity} title="Toggle tool activity">
 				<TerminalSquare size={12} />
 			</button>
@@ -667,7 +702,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					{:else}
 						{#each stream as item, i (streamKey(item))}
 							{#if item.type === "message"}
-								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} nextMessage={getNext(item, i)} />
+								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} nextMessage={getNext(item, i)} speaking={voice.speakingIds.has(item.data.id)} revealProgress={voice.revealProgress} />
 							{:else if item.type === "mcp_app"}
 								<McpAppViewer
 									html={item.html}
@@ -711,7 +746,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				{/if}
 			</div>
 			<div class="chat-creature">
-				<AsciiRenderer thinking={sending || agentRunning} {mood} />
+				<AsciiRenderer thinking={sending || agentRunning} {mood} voiceAmplitude={voice.amplitude} />
 			</div>
 		</aside>
 	</div>

@@ -41,6 +41,7 @@ async fn post_chat(
     let instance_slug = request.instance_slug.clone();
     let chat_id = request.chat_id.clone();
     let content = request.content.trim().to_string();
+    let voice_mode = request.voice_mode;
 
     if instance_slug.is_empty() || content.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "slug and content required".into()));
@@ -97,7 +98,7 @@ async fn post_chat(
         let bg_state = state.clone();
         let bg_chat_id = chat_id.clone();
         tokio::spawn(async move {
-            run_agent_loop(bg_state, instance_slug, bg_chat_id, cancel).await;
+            run_agent_loop(bg_state, instance_slug, bg_chat_id, cancel, voice_mode).await;
         });
     }
 
@@ -112,7 +113,7 @@ async fn post_chat(
 
 /// Agent loop: keeps calling the LLM until it responds without tool use or is cancelled.
 /// New user messages are automatically picked up because each turn re-reads from disk.
-pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String, cancel: CancellationToken) {
+pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: String, cancel: CancellationToken, voice_mode: bool) {
     let _ = state.events.send(ServerEvent::AgentRunning {
         instance_slug: instance_slug.clone(),
         chat_id: chat_id.clone(),
@@ -193,6 +194,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             &plan,
             &pdf_strategy,
             &state.mcp_registry,
+            voice_mode,
         );
 
         let result = tokio::select! {

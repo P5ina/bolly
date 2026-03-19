@@ -137,11 +137,12 @@ export function sendMessage(
 	slug: string,
 	content: string,
 	chatId = "default",
+	voiceMode = false,
 ): Promise<ChatResponse> {
 	return json("/api/chat", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ instance_slug: slug, content, chat_id: chatId }),
+		body: JSON.stringify({ instance_slug: slug, content, chat_id: chatId, voice_mode: voiceMode }),
 	});
 }
 

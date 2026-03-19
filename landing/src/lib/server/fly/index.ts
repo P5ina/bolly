@@ -170,6 +170,7 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 						ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
 						OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
 						BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY ?? '',
+						ELEVENLABS_API_KEY: env.ELEVENLABS_API_KEY ?? '',
 					}),
 				},
 				guest: {

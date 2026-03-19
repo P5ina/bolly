@@ -3,7 +3,7 @@
 	import { IcosahedronGeometry } from "three";
 	import type { Mesh } from "three";
 
-	let { thinking = false, mood = "calm" }: { thinking?: boolean; mood?: string } = $props();
+	let { thinking = false, mood = "calm", voiceAmplitude = 0 }: { thinking?: boolean; mood?: string; voiceAmplitude?: number } = $props();
 
 	let meshRef = $state<Mesh | undefined>();
 	let time = $state(0);
@@ -84,9 +84,13 @@
 		const geo = meshRef.geometry;
 		const pos = geo.getAttribute("position");
 
-		const speed = thinking ? 3.0 : energy.speed;
-		const intensity = thinking ? 0.25 : energy.intensity;
-		const breathe = 1.0 + Math.sin(time * (thinking ? 2.5 : energy.breatheRate)) * (thinking ? 0.06 : energy.breatheDepth);
+		const amp = voiceAmplitude ?? 0;
+		const isSpeaking = amp > 0.01;
+		const speed = thinking ? 3.0 : isSpeaking ? energy.speed + amp * 3.0 : energy.speed;
+		const intensity = thinking ? 0.25 : isSpeaking ? energy.intensity + amp * 0.3 : energy.intensity;
+		const breathe = 1.0
+			+ Math.sin(time * (thinking ? 2.5 : energy.breatheRate)) * (thinking ? 0.06 : energy.breatheDepth)
+			+ (isSpeaking ? amp * 0.12 : 0);
 
 		for (let i = 0; i < pos.count; i++) {
 			const bx = basePositions[i * 3];
