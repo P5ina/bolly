@@ -86,35 +86,72 @@
 
 		const bgNode = Fn(() => {
 			const st = screenUV;
-			const t = time.mul(0.015);
+			const t = time.mul(0.02);
 
-			const deep = vec3(0.015, 0.035, 0.14);
-			const mid = vec3(0.04, 0.07, 0.24);
-			const purp = vec3(0.10, 0.05, 0.26);
-			const lite = vec3(0.08, 0.12, 0.28);
+			// Full palette — matching the original GLSL shader
+			const deepBlue  = vec3(0.015, 0.035, 0.14);
+			const midBlue   = vec3(0.04, 0.07, 0.24);
+			const purple    = vec3(0.10, 0.05, 0.26);
+			const indigo    = vec3(0.07, 0.04, 0.22);
+			const lightBlue = vec3(0.08, 0.12, 0.28);
+			const mist      = vec3(0.12, 0.16, 0.30);
 
-			// TSL requires .toVar() for mutable values
-			const c = mix(deep, mid, smoothstep(float(0.0), float(0.4), st.y)).toVar();
-			c.assign(mix(c, purp, smoothstep(float(0.5), float(1.0), st.y)));
+			// 3-stop vertical gradient
+			const c = mix(deepBlue, midBlue, smoothstep(float(0.0), float(0.4), st.y)).toVar();
+			c.assign(mix(c, indigo, smoothstep(float(0.3), float(0.7), st.y)));
+			c.assign(mix(c, purple, smoothstep(float(0.6), float(1.0), st.y)));
 
-			// Waves
+			// Terrain waves (5 layered sine/cos)
 			const w = sin(st.x.mul(2.2).add(t.mul(0.8)).add(st.y.mul(0.5))).mul(0.35)
 				.add(sin(st.x.mul(1.1).sub(t.mul(0.5)).add(3.0)).mul(0.25))
 				.add(sin(st.x.mul(3.5).add(t.mul(1.2)).add(st.y.mul(1.5)).add(1.0)).mul(0.15))
+				.add(sin(st.x.mul(0.8).add(t.mul(0.3)).sub(2.0)).mul(0.2))
 				.add(cos(st.x.mul(1.8).add(st.y.mul(2.0)).add(t.mul(0.7))).mul(0.12));
 
-			c.assign(mix(c, lite, smoothstep(float(-0.1), float(0.3), w.sub(st.y.mul(0.8)).add(0.2)).mul(0.3)));
+			// Lower mist/light area
+			c.assign(mix(c, lightBlue, smoothstep(float(-0.1), float(0.3), w.sub(st.y.mul(0.8)).add(0.2)).mul(0.3)));
 
-			// Caustic line: exp(-dist²*800) — use negative exponent directly
-			const curve = float(0.55).add(sin(st.x.mul(2.5).add(t.mul(0.4))).mul(0.25))
-				.add(cos(st.x.mul(4.0).sub(t.mul(0.6))).mul(0.1));
+			// Upper wave crest
+			c.assign(mix(c, mist, smoothstep(float(-0.05), float(0.15), w.sub(st.y.mul(1.2)).add(0.5)).mul(0.2)));
+
+			// Deep shadow in wave valleys
+			c.assign(mix(c, deepBlue.mul(0.6), smoothstep(float(0.2), float(-0.1), w.sub(st.y.mul(0.6)).add(0.1)).mul(0.4)));
+
+			// Secondary wave layer (slower, larger scale)
+			const w2 = sin(st.x.mul(0.6).mul(2.2).add(5.0).add(t.mul(0.8)).add(st.y.mul(0.6).mul(0.5))).mul(0.35)
+				.add(sin(st.x.mul(0.6).mul(1.1).add(5.0).sub(t.mul(0.5)).add(3.0)).mul(0.25))
+				.add(cos(st.x.mul(0.6).mul(1.8).add(5.0).add(st.y.mul(0.6).mul(2.0)).add(t.mul(0.7))).mul(0.12));
+			c.assign(mix(c, midBlue.mul(1.1), smoothstep(float(-0.05), float(0.2), w2.sub(st.y.mul(0.9)).add(0.35)).mul(0.2)));
+
+			// Specular caustic line
+			const curve = float(0.55)
+				.add(sin(st.x.mul(2.5).add(t.mul(0.6))).mul(0.25))
+				.add(cos(st.x.mul(4.0).sub(t.mul(0.9)).add(1.5)).mul(0.1))
+				.add(sin(st.x.mul(6.0).add(t.mul(1.2)).add(3.0)).mul(0.08));
 			const dist = abs(st.y.sub(curve));
-			const caustic = vec3(0.2, 0.22, 0.3).mul(
-				pow(float(2.718), dist.mul(dist).mul(-800.0)).mul(0.25)
-			);
-			c.addAssign(caustic);
+			// exp(-dist²*1200) for thin line + exp(-dist²*60) for glow
+			const line = pow(float(2.718), dist.mul(dist).mul(-1200.0)).mul(0.35);
+			const glow = pow(float(2.718), dist.mul(dist).mul(-60.0)).mul(0.08);
+			c.addAssign(vec3(0.35, 0.40, 0.55).mul(line.add(glow)));
 
-			return c; // backgroundNode expects vec3, not vec4
+			// Secondary faint caustic
+			const curve2 = float(0.4)
+				.add(sin(st.x.mul(2.0).add(t.mul(0.3)).add(2.0)).mul(0.2))
+				.add(cos(st.x.mul(3.5).sub(t.mul(0.5))).mul(0.08));
+			const dist2 = abs(st.y.sub(curve2));
+			c.addAssign(vec3(0.35, 0.40, 0.55).mul(
+				pow(float(2.718), dist2.mul(dist2).mul(-1200.0)).mul(0.1)
+			));
+
+			// Vignette
+			const vigX = st.x.sub(0.5).mul(1.2);
+			const vigY = st.y.sub(0.5).mul(1.4);
+			const vig = smoothstep(float(-0.1), float(0.6),
+				float(1.0).sub(vigX.mul(vigX).add(vigY.mul(vigY)).pow(0.5))
+			);
+			c.mulAssign(float(0.7).add(vig.mul(0.3)));
+
+			return c;
 		});
 		scene.backgroundNode = bgNode();
 
