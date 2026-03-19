@@ -469,14 +469,21 @@
 		font-size: 1rem;
 		line-height: 1.6;
 		color: oklch(0.90 0.02 75 / 90%);
-		background: oklch(0.1 0.02 210 / 30%);
-		backdrop-filter: blur(20px) saturate(130%);
-		-webkit-backdrop-filter: blur(20px) saturate(130%);
-		border: 1px solid oklch(0.5 0.06 200 / 12%);
+		background: linear-gradient(
+			155deg,
+			oklch(1 0 0 / 5%) 0%,
+			oklch(0.5 0.02 210 / 10%) 40%,
+			oklch(1 0 0 / 3%) 100%
+		);
+		backdrop-filter: blur(24px) saturate(160%) brightness(1.06);
+		-webkit-backdrop-filter: blur(24px) saturate(160%) brightness(1.06);
+		border: 1px solid oklch(1 0 0 / 10%);
+		border-top-color: oklch(1 0 0 / 16%);
 		border-radius: 14px;
 		outline: none;
 		transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 		letter-spacing: 0.01em;
+		box-shadow: inset 0 1px 0 oklch(1 0 0 / 6%), inset 0 -1px 0 oklch(0 0 0 / 4%);
 		box-shadow: 0 2px 8px oklch(0 0 0 / 12%), inset 0 1px 0 oklch(1 0 0 / 2%);
 	}
 	.whisper-input::placeholder {

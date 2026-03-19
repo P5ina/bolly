@@ -266,16 +266,40 @@
 	}
 
 	.msg-content-user {
+		position: relative;
 		color: oklch(0.72 0.025 220 / 60%);
 		font-family: var(--font-body);
 		font-size: 0.8125rem;
 		padding: 0.55rem 0.9rem;
-		background: oklch(0.16 0.015 220 / 20%);
-		backdrop-filter: blur(16px) saturate(120%);
-		-webkit-backdrop-filter: blur(16px) saturate(120%);
-		border: 1px solid oklch(0.5 0.03 220 / 8%);
+		background: linear-gradient(
+			160deg,
+			oklch(1 0 0 / 6%) 0%,
+			oklch(0.5 0.02 220 / 8%) 40%,
+			oklch(1 0 0 / 3%) 100%
+		);
+		backdrop-filter: blur(20px) saturate(150%) brightness(1.05);
+		-webkit-backdrop-filter: blur(20px) saturate(150%) brightness(1.05);
+		border: 1px solid oklch(1 0 0 / 8%);
+		border-top-color: oklch(1 0 0 / 15%);
 		border-radius: 14px 14px 14px 4px;
 		max-width: 65%;
+		box-shadow:
+			0 2px 8px oklch(0 0 0 / 12%),
+			inset 0 1px 0 oklch(1 0 0 / 8%),
+			inset 0 -1px 0 oklch(0 0 0 / 5%);
+		overflow: hidden;
+	}
+
+	/* Specular highlight sweep */
+	.msg-content-user::before {
+		content: "";
+		position: absolute;
+		top: 0;
+		left: 8%;
+		right: 8%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 25%), transparent);
+		pointer-events: none;
 	}
 
 	/* Companion wrap: right-aligned */
@@ -307,34 +331,72 @@
 		animation: presence-beacon 3s ease-in-out infinite;
 	}
 
-	/* Companion glass card */
+	/* Companion liquid glass card */
 	.msg-content-companion {
+		position: relative;
 		color: oklch(0.9 0.025 75 / 92%);
 		font-family: var(--font-body);
 		padding: 0.7rem 1rem;
 		background: linear-gradient(
-			135deg,
-			var(--msg-glass-bg) 0%,
-			oklch(0.1 0.018 220 / 20%) 100%
+			145deg,
+			oklch(1 0 0 / 7%) 0%,
+			var(--msg-glass-bg) 35%,
+			oklch(1 0 0 / 4%) 70%,
+			oklch(0.5 0.03 200 / 10%) 100%
 		);
-		backdrop-filter: blur(20px) saturate(140%);
-		-webkit-backdrop-filter: blur(20px) saturate(140%);
-		border: 1px solid var(--msg-glass-border);
+		backdrop-filter: blur(24px) saturate(170%) brightness(1.08);
+		-webkit-backdrop-filter: blur(24px) saturate(170%) brightness(1.08);
+		border: 1px solid oklch(1 0 0 / 10%);
+		border-top-color: oklch(1 0 0 / 20%);
+		border-bottom-color: oklch(0 0 0 / 8%);
 		border-radius: 16px 16px 4px 16px;
 		max-width: 80%;
 		box-shadow:
-			0 2px 12px oklch(0 0 0 / 18%),
-			0 0 1px oklch(0.6 0.08 200 / 15%),
-			inset 0 1px 0 oklch(1 0 0 / 3%);
+			0 2px 16px oklch(0 0 0 / 20%),
+			0 8px 32px oklch(0 0 0 / 8%),
+			inset 0 1px 0 oklch(1 0 0 / 10%),
+			inset 0 -1px 0 oklch(0 0 0 / 6%);
 		transition: border-color 0.4s ease, box-shadow 0.4s ease;
+		overflow: hidden;
+	}
+
+	/* Specular highlight — bright line along top edge */
+	.msg-content-companion::before {
+		content: "";
+		position: absolute;
+		top: 0;
+		left: 10%;
+		right: 10%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 35%), oklch(1 0 0 / 15%), transparent);
+		pointer-events: none;
+	}
+
+	/* Secondary inner refraction glow */
+	.msg-content-companion::after {
+		content: "";
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 50%;
+		background: linear-gradient(
+			180deg,
+			oklch(1 0 0 / 4%) 0%,
+			transparent 100%
+		);
+		pointer-events: none;
+		border-radius: 16px 16px 0 0;
 	}
 
 	.msg-active .msg-content-companion {
-		border-color: oklch(0.6 0.08 200 / 22%);
+		border-color: oklch(1 0 0 / 15%);
+		border-top-color: oklch(1 0 0 / 25%);
 		box-shadow:
-			0 4px 20px oklch(0 0 0 / 22%),
-			0 0 24px oklch(0.6 0.08 200 / 8%),
-			inset 0 1px 0 oklch(1 0 0 / 5%);
+			0 4px 24px oklch(0 0 0 / 25%),
+			0 0 30px oklch(0.6 0.08 200 / 8%),
+			inset 0 1px 0 oklch(1 0 0 / 12%),
+			inset 0 -1px 0 oklch(0 0 0 / 6%);
 	}
 
 	/* --- Prose (markdown) --- */

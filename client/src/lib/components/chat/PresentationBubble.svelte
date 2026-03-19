@@ -107,22 +107,62 @@
 	}
 
 	.pbubble-glass {
+		position: relative;
 		padding: 1rem 1.5rem;
-		background: oklch(0.1 0.025 210 / 50%);
-		backdrop-filter: blur(28px) saturate(140%);
-		-webkit-backdrop-filter: blur(28px) saturate(140%);
-		border: 1px solid oklch(0.5 0.06 200 / 12%);
+		background: linear-gradient(
+			150deg,
+			oklch(1 0 0 / 8%) 0%,
+			oklch(0.5 0.03 210 / 12%) 40%,
+			oklch(1 0 0 / 5%) 70%,
+			oklch(0.5 0.02 200 / 8%) 100%
+		);
+		backdrop-filter: blur(28px) saturate(180%) brightness(1.1);
+		-webkit-backdrop-filter: blur(28px) saturate(180%) brightness(1.1);
+		border: 1px solid oklch(1 0 0 / 12%);
+		border-top-color: oklch(1 0 0 / 22%);
+		border-bottom-color: oklch(0 0 0 / 8%);
 		border-radius: 20px;
 		box-shadow:
 			0 4px 24px oklch(0 0 0 / 25%),
-			0 0 1px oklch(0.6 0.08 200 / 20%),
-			inset 0 1px 0 oklch(1 0 0 / 4%);
+			0 12px 48px oklch(0 0 0 / 10%),
+			inset 0 1px 0 oklch(1 0 0 / 12%),
+			inset 0 -1px 0 oklch(0 0 0 / 6%);
+		overflow: hidden;
+	}
+
+	/* Specular highlight line */
+	.pbubble-glass::before {
+		content: "";
+		position: absolute;
+		top: 0;
+		left: 10%;
+		right: 10%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 40%), oklch(1 0 0 / 15%), transparent);
+		pointer-events: none;
+	}
+
+	/* Inner refraction gradient */
+	.pbubble-glass::after {
+		content: "";
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 45%;
+		background: linear-gradient(180deg, oklch(1 0 0 / 5%) 0%, transparent 100%);
+		pointer-events: none;
+		border-radius: 20px 20px 0 0;
 	}
 
 	.pbubble-left .pbubble-glass {
 		border-radius: 20px 20px 20px 4px;
-		background: oklch(0.1 0.015 220 / 35%);
-		border-color: oklch(0.4 0.04 220 / 10%);
+		background: linear-gradient(
+			160deg,
+			oklch(1 0 0 / 5%) 0%,
+			oklch(0.5 0.02 220 / 8%) 50%,
+			oklch(1 0 0 / 3%) 100%
+		);
 	}
 
 	.pbubble-right .pbubble-glass {
@@ -132,8 +172,9 @@
 	.pbubble-streaming .pbubble-glass {
 		box-shadow:
 			0 4px 24px oklch(0 0 0 / 25%),
-			0 0 24px oklch(0.55 0.08 200 / 10%),
-			inset 0 1px 0 oklch(1 0 0 / 4%);
+			0 0 30px oklch(0.55 0.08 200 / 10%),
+			inset 0 1px 0 oklch(1 0 0 / 14%),
+			inset 0 -1px 0 oklch(0 0 0 / 6%);
 	}
 
 	.pbubble-text {
