@@ -198,7 +198,9 @@
 		opacity: 0.8;
 		transition: color 0.8s ease, text-shadow 0.8s ease, opacity 0.8s ease;
 		white-space: pre;
-		contain: strict;
+		contain: layout style paint;
+		min-width: 144px;
+		min-height: 154px;
 	}
 
 	.ascii-thinking {
