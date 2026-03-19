@@ -13,6 +13,7 @@
 		active = false,
 		speaking = false,
 		revealProgress = 1,
+		streaming = false,
 	}: {
 		message: ChatMessage;
 		slug?: string;
@@ -23,6 +24,7 @@
 		active?: boolean;
 		speaking?: boolean;
 		revealProgress?: number;
+		streaming?: boolean;
 	} = $props();
 
 	const isUser = $derived(message.role === "user");
@@ -85,7 +87,7 @@
 	);
 
 	const html = $derived(
-		isUser ? textContent : (marked.parse(textContent) as string)
+		isUser || streaming ? textContent : (marked.parse(textContent) as string)
 	);
 
 	/** Words for voice reveal (only used when speaking). */

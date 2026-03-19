@@ -42,23 +42,23 @@
 
 	let containerRef = $state<HTMLDivElement | undefined>();
 	let canvasRef = $state<HTMLCanvasElement | undefined>();
-	let asciiOutput = $state("");
+	let preRef = $state<HTMLPreElement | undefined>();
 
-	const COLS = 56;
-	const ROWS = 32;
+	const COLS = 40;
+	const ROWS = 22;
 
-	// Only use visually "round" characters — no colons, semicolons, dashes, equals
-	// At tiny font sizes those create horizontal line artifacts
 	const RAMP = " .+xo*#%@";
 	const RAMP_LEN = RAMP.length;
 
-	// Smoothed luminance range to prevent flickering from frame-to-frame jumps
 	let smoothMin = 0.1;
 	let smoothMax = 0.9;
-	const SMOOTH = 0.1; // lerp factor — lower = more stable
+	const SMOOTH = 0.1;
+
+	// Reusable buffer to avoid allocations
+	const luminances = new Float32Array(COLS * ROWS);
 
 	function renderAscii() {
-		if (!canvasRef) return;
+		if (!canvasRef || !preRef) return;
 		const ctx = canvasRef.getContext("2d", { willReadFrequently: true });
 		if (!ctx) return;
 
@@ -73,10 +73,8 @@
 		const imageData = ctx.getImageData(0, 0, COLS, ROWS);
 		const data = imageData.data;
 
-		// First pass: find luminance range
 		let frameMin = 1;
 		let frameMax = 0;
-		const luminances = new Float32Array(COLS * ROWS);
 
 		for (let y = 0; y < ROWS; y++) {
 			for (let x = 0; x < COLS; x++) {
@@ -98,7 +96,6 @@
 			}
 		}
 
-		// Smooth the range across frames to prevent flicker
 		smoothMin += (frameMin - smoothMin) * SMOOTH;
 		smoothMax += (frameMax - smoothMax) * SMOOTH;
 		const range = smoothMax - smoothMin;
@@ -120,23 +117,21 @@
 			result += "\n";
 		}
 
-		asciiOutput = result;
+		// Direct DOM update — bypass Svelte reactivity to avoid diffing overhead
+		preRef.textContent = result;
 	}
 
-	// Render loop — throttled to ~20fps to avoid layout thrashing
+	// Render loop — throttled to ~24fps (every other frame) to reduce getImageData cost
 	$effect(() => {
 		if (!containerRef) return;
 
 		let running = true;
-		let lastFrame = 0;
-		const FRAME_INTERVAL = 50; // ms (~20fps)
+		let skip = false;
 
-		function loop(now: number) {
+		function loop() {
 			if (!running) return;
-			if (now - lastFrame >= FRAME_INTERVAL) {
-				renderAscii();
-				lastFrame = now;
-			}
+			skip = !skip;
+			if (!skip) renderAscii();
 			requestAnimationFrame(loop);
 		}
 		setTimeout(() => requestAnimationFrame(loop), 100);
@@ -158,12 +153,13 @@
 	<!-- Sampling canvas (hidden) -->
 	<canvas bind:this={canvasRef} class="sample-canvas"></canvas>
 
-	<!-- ASCII output -->
+	<!-- ASCII output — updated via direct DOM manipulation, not Svelte state -->
 	<pre
+		bind:this={preRef}
 		class="ascii-display"
 		class:ascii-thinking={thinking}
 		style="color: {moodColor}; {thinking ? `text-shadow: 0 0 8px ${moodColor}40, 0 0 20px ${moodColor}20;` : ''}"
-	>{asciiOutput}</pre>
+	></pre>
 </div>
 
 <style>
@@ -198,8 +194,7 @@
 		opacity: 0.6;
 		transition: color 0.8s ease, text-shadow 0.8s ease, opacity 0.8s ease;
 		white-space: pre;
-		will-change: contents;
-		contain: layout style paint;
+		contain: strict;
 	}
 
 	.ascii-thinking {

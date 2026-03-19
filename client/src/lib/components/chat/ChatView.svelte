@@ -691,7 +691,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 						{#each stream as item, i (streamKey(item))}
 							{#if item.type === "message"}
 								{#if !shouldHideForVoice(item.data.id)}
-									<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} nextMessage={getNext(item, i)} speaking={voice.speakingIds.has(item.data.id)} revealProgress={getMessageRevealProgress(item.data.id)} />
+									<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} nextMessage={getNext(item, i)} speaking={voice.speakingIds.has(item.data.id)} revealProgress={getMessageRevealProgress(item.data.id)} streaming={item.data.id === streamingMessageId} />
 								{/if}
 							{:else if item.type === "mcp_app"}
 								<McpAppViewer
