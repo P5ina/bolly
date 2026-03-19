@@ -68,6 +68,9 @@ fn default_imap_port() -> u16 { 993 }
 pub struct InstanceConfig {
     #[serde(default)]
     pub github: GithubConfig,
+    /// ElevenLabs voice ID override for this instance.
+    #[serde(default)]
+    pub elevenlabs_voice_id: String,
 }
 
 impl InstanceConfig {

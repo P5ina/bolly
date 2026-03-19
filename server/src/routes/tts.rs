@@ -7,7 +7,9 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::app::state::AppState;
+use crate::{app::state::AppState, config::InstanceConfig};
+
+const DEFAULT_VOICE_ID: &str = "TWutjvRaJqAX89preB4e";
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/api/tts", post(synthesize))
@@ -16,12 +18,8 @@ pub fn router() -> Router<AppState> {
 #[derive(Debug, Deserialize)]
 struct TtsRequest {
     text: String,
-    #[serde(default = "default_voice_id")]
-    voice_id: String,
-}
-
-fn default_voice_id() -> String {
-    "21m00Tcm4TlvDq8ikWAM".into() // Rachel
+    #[serde(default)]
+    instance_slug: String,
 }
 
 async fn synthesize(
@@ -44,9 +42,21 @@ async fn synthesize(
         return Err((StatusCode::BAD_REQUEST, "text is required".into()));
     }
 
+    // Resolve voice ID: instance config > env var > default
+    let voice_id = if !request.instance_slug.is_empty() {
+        let inst = InstanceConfig::load(&state.workspace_dir, &request.instance_slug);
+        if !inst.elevenlabs_voice_id.is_empty() {
+            inst.elevenlabs_voice_id
+        } else {
+            std::env::var("ELEVENLABS_VOICE_ID").unwrap_or_else(|_| DEFAULT_VOICE_ID.into())
+        }
+    } else {
+        std::env::var("ELEVENLABS_VOICE_ID").unwrap_or_else(|_| DEFAULT_VOICE_ID.into())
+    };
+
     let url = format!(
         "https://api.elevenlabs.io/v1/text-to-speech/{}/stream",
-        request.voice_id
+        voice_id
     );
 
     let body = serde_json::json!({

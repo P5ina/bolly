@@ -57,7 +57,7 @@ export async function speak(
 	const res = await fetch("/api/tts", {
 		method: "POST",
 		headers,
-		body: JSON.stringify({ text }),
+		body: JSON.stringify({ text, instance_slug: slug }),
 	});
 
 	if (!res.ok) {
