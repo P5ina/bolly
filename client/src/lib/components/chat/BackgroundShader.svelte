@@ -93,24 +93,28 @@
 			const purp = vec3(0.10, 0.05, 0.26);
 			const lite = vec3(0.08, 0.12, 0.28);
 
-			let c = mix(deep, mid, smoothstep(float(0.0), float(0.4), st.y));
-			c = mix(c, purp, smoothstep(float(0.5), float(1.0), st.y));
+			// TSL requires .toVar() for mutable values
+			const c = mix(deep, mid, smoothstep(float(0.0), float(0.4), st.y)).toVar();
+			c.assign(mix(c, purp, smoothstep(float(0.5), float(1.0), st.y)));
 
+			// Waves
 			const w = sin(st.x.mul(2.2).add(t.mul(0.8)).add(st.y.mul(0.5))).mul(0.35)
 				.add(sin(st.x.mul(1.1).sub(t.mul(0.5)).add(3.0)).mul(0.25))
 				.add(sin(st.x.mul(3.5).add(t.mul(1.2)).add(st.y.mul(1.5)).add(1.0)).mul(0.15))
 				.add(cos(st.x.mul(1.8).add(st.y.mul(2.0)).add(t.mul(0.7))).mul(0.12));
 
-			c = mix(c, lite, smoothstep(float(-0.1), float(0.3), w.sub(st.y.mul(0.8)).add(0.2)).mul(0.3));
+			c.assign(mix(c, lite, smoothstep(float(-0.1), float(0.3), w.sub(st.y.mul(0.8)).add(0.2)).mul(0.3)));
 
+			// Caustic line: exp(-dist²*800) — use negative exponent directly
 			const curve = float(0.55).add(sin(st.x.mul(2.5).add(t.mul(0.4))).mul(0.25))
 				.add(cos(st.x.mul(4.0).sub(t.mul(0.6))).mul(0.1));
 			const dist = abs(st.y.sub(curve));
-			c = c.add(vec3(0.2, 0.22, 0.3).mul(
-				pow(float(2.718), dist.mul(dist).mul(-800.0).negate()).mul(0.25)
-			));
+			const caustic = vec3(0.2, 0.22, 0.3).mul(
+				pow(float(2.718), dist.mul(dist).mul(-800.0)).mul(0.25)
+			);
+			c.addAssign(caustic);
 
-			return vec4(c, float(1.0));
+			return c; // backgroundNode expects vec3, not vec4
 		});
 		scene.backgroundNode = bgNode();
 
