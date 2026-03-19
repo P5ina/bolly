@@ -19,7 +19,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	import { hapticMedium, hapticDouble, hapticError } from "$lib/haptics.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import { getVoiceState } from "$lib/stores/voice.svelte.js";
-	import { playBase64Audio, stopTts, warmUpAudio } from "$lib/tts.js";
+	import { playBase64Audio, stopTts, warmUpAudio, clearAudioQueue } from "$lib/tts.js";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 	import TerminalSquare from "@lucide/svelte/icons/terminal-square";
 	import BarChart3 from "@lucide/svelte/icons/bar-chart-3";
@@ -468,13 +468,9 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				agentRunning = true;
 				pushActivity("state", "thinking...");
 			} else if (event.type === "chat_audio_ready") {
-				// Server-generated TTS audio — play immediately
+				// Server-generated TTS audio — queue for sequential playback
 				const ids = event.message_ids;
-				voice.speakingIds = new Set(ids);
-				voice.revealProgress = 0;
-				voice.speaking = true;
-				voiceText = "";
-				turnMessageIds = [];
+				turnMessageIds = turnMessageIds.filter(id => !ids.includes(id));
 				playBase64Audio(event.audio_base64, voice, ids);
 			} else if (event.type === "agent_stopped") {
 				agentRunning = false;
@@ -580,6 +576,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			}
 			// Stop any playing TTS when sending a new message
 			if (voice.speaking) stopTts(voice);
+			clearAudioQueue();
 			voiceText = "";
 			turnMessageIds = [];
 			const res = await sendMessage(slug, finalContent, activeChatId, voice.enabled);
