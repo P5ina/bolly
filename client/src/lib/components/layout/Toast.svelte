@@ -37,29 +37,56 @@
 	}
 
 	.toast {
+		position: relative;
 		pointer-events: auto;
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 		padding: 0.5rem 0.75rem;
 		border-radius: 1rem;
-		background: oklch(0.10 0.015 280 / 90%);
-		backdrop-filter: blur(16px);
-		border: 1px solid oklch(1 0 0 / 6%);
+		background: linear-gradient(
+			155deg,
+			oklch(1 0 0 / 6%) 0%,
+			oklch(0.5 0.02 250 / 10%) 40%,
+			oklch(1 0 0 / 4%) 100%
+		);
+		backdrop-filter: blur(24px) saturate(160%) brightness(1.06);
+		-webkit-backdrop-filter: blur(24px) saturate(160%) brightness(1.06);
+		border: 1px solid oklch(1 0 0 / 10%);
+		border-top-color: oklch(1 0 0 / 18%);
+		box-shadow:
+			0 4px 20px oklch(0 0 0 / 20%),
+			inset 0 1px 0 oklch(1 0 0 / 8%),
+			inset 0 -1px 0 oklch(0 0 0 / 4%);
 		font-family: var(--font-body);
 		font-size: 0.75rem;
 		color: oklch(0.88 0.02 75 / 80%);
 		animation: toast-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 		white-space: nowrap;
+		overflow: hidden;
+	}
+
+	/* Specular highlight */
+	.toast::before {
+		content: "";
+		position: absolute;
+		top: 0;
+		left: 15%;
+		right: 15%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 25%), transparent);
+		pointer-events: none;
 	}
 
 	.toast-error {
-		border-color: oklch(0.65 0.12 25 / 20%);
+		border-color: oklch(0.65 0.12 25 / 15%);
+		border-top-color: oklch(0.65 0.12 25 / 25%);
 		color: oklch(0.85 0.08 25 / 90%);
 	}
 
 	.toast-success {
-		border-color: oklch(0.65 0.10 160 / 20%);
+		border-color: oklch(0.65 0.10 160 / 15%);
+		border-top-color: oklch(0.65 0.10 160 / 25%);
 		color: oklch(0.80 0.08 160 / 90%);
 	}
 

@@ -163,7 +163,7 @@
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 30%);
+		background: oklch(0.55 0.08 240 / 40%);
 		animation: waking 2s ease-in-out infinite;
 	}
 	@keyframes waking {
@@ -180,15 +180,19 @@
 	}
 
 	.instance-tabs {
+		position: relative;
 		display: flex;
 		gap: 0;
 		padding: 0.5rem 1.5rem 0;
-		border-bottom: 1px solid oklch(1 0 0 / 4%);
+		border-bottom: 1px solid var(--glass-border);
 		flex-shrink: 0;
 		z-index: 10;
 		overflow-x: auto;
 		scrollbar-width: none;
 		-webkit-overflow-scrolling: touch;
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		-webkit-backdrop-filter: var(--glass-blur);
 	}
 	.instance-tabs::-webkit-scrollbar {
 		display: none;
@@ -204,34 +208,37 @@
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
 		letter-spacing: 0.04em;
-		color: oklch(0.78 0.12 75 / 45%);
+		color: oklch(0.65 0.04 240 / 50%);
 		background: none;
 		border: none;
 		padding: 0.6rem 1rem 0.7rem;
 		cursor: pointer;
 		position: relative;
-		transition: color 0.3s ease;
+		transition: color 0.3s ease, background 0.3s ease;
 		text-decoration: none;
 		white-space: nowrap;
 		flex-shrink: 0;
+		border-radius: 8px 8px 0 0;
 	}
 
 	.instance-tab:hover {
-		color: oklch(0.78 0.12 75 / 70%);
+		color: oklch(0.80 0.04 240 / 75%);
+		background: oklch(1 0 0 / 3%);
 	}
 
 	.instance-tab-active {
-		color: oklch(0.78 0.12 75 / 90%);
+		color: oklch(0.90 0.03 240 / 90%);
+		background: oklch(1 0 0 / 5%);
 	}
 
 	.instance-tab-active::after {
 		content: "";
 		position: absolute;
 		bottom: -1px;
-		left: 1rem;
-		right: 1rem;
+		left: 0.75rem;
+		right: 0.75rem;
 		height: 1.5px;
-		background: oklch(0.78 0.12 75 / 50%);
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 35%), transparent);
 	}
 
 	.instance-tab-home {
@@ -274,8 +281,9 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: oklch(0.065 0.015 280 / 80%);
-		backdrop-filter: blur(4px);
+		background: oklch(0.03 0.01 260 / 75%);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
 		animation: fade-in 0.15s ease;
 	}
 	@keyframes fade-in {
@@ -284,14 +292,40 @@
 	}
 
 	.delete-modal {
+		position: relative;
 		width: 100%;
 		max-width: 420px;
 		margin: 1rem;
 		padding: 1.75rem;
-		border-radius: 1rem;
-		border: 1px solid oklch(0.65 0.15 25 / 15%);
-		background: oklch(0.10 0.01 280);
+		border-radius: 1.25rem;
+		border: 1px solid oklch(1 0 0 / 10%);
+		border-top-color: oklch(1 0 0 / 18%);
+		background: linear-gradient(
+			155deg,
+			oklch(1 0 0 / 6%) 0%,
+			oklch(0.5 0.02 250 / 10%) 40%,
+			oklch(1 0 0 / 4%) 100%
+		);
+		backdrop-filter: blur(28px) saturate(160%) brightness(1.06);
+		-webkit-backdrop-filter: blur(28px) saturate(160%) brightness(1.06);
+		box-shadow:
+			0 8px 40px oklch(0 0 0 / 30%),
+			0 24px 80px oklch(0 0 0 / 15%),
+			inset 0 1px 0 oklch(1 0 0 / 10%),
+			inset 0 -1px 0 oklch(0 0 0 / 5%);
 		animation: modal-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+		overflow: hidden;
+	}
+	/* Specular highlight */
+	.delete-modal::before {
+		content: "";
+		position: absolute;
+		top: 0;
+		left: 12%;
+		right: 12%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 25%), transparent);
+		pointer-events: none;
 	}
 	@keyframes modal-enter {
 		from { opacity: 0; transform: scale(0.95) translateY(8px); }
