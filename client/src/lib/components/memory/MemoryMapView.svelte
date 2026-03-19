@@ -2,6 +2,8 @@
 	import { fetchMemory, fetchMemoryContent, searchMemory, type MemorySearchResult } from "$lib/api/client.js";
 	import type { MemoryEntry } from "$lib/api/types.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
+	import { Canvas } from "@threlte/core";
+	import MemoryScene from "./MemoryScene.svelte";
 
 	const toast = getToasts();
 
@@ -354,6 +356,15 @@
 
 	let activeCircles = $derived(focusedFolder ? fileCircles : folderCircles);
 
+	let sphereData = $derived(activeCircles.map(c => ({
+		id: c.id,
+		x: c.x,
+		y: c.y,
+		r: c.r,
+		hex: c.hex,
+		hovered: hoveredNode === c.id,
+	})));
+
 	function resetView() {
 		panX = 0; panY = 0; zoom = 1;
 	}
@@ -408,6 +419,9 @@
 		if (label.length <= maxChars) return label;
 		return label.slice(0, Math.max(maxChars - 2, 3)) + "..";
 	}
+
+	// ── 3D Glass Spheres ──
+
 
 	// Zoom
 	let zoom = $state(1);
@@ -560,6 +574,20 @@
 		{/if}
 
 		{#if !searchOpen}
+		<!-- 3D Glass Spheres -->
+		<div class="gl-layer" style="height: {mapH}px">
+			<Canvas>
+				<MemoryScene
+					spheres={sphereData}
+					width={containerWidth}
+					height={mapH}
+					{panX}
+					{panY}
+					{zoom}
+				/>
+			</Canvas>
+		</div>
+
 		{#key viewKey}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
@@ -873,6 +901,21 @@
 		100% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0); }
 	}
 
+	.gl-layer {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 0;
+		pointer-events: none;
+	}
+
+	.gl-layer :global(canvas) {
+		display: block;
+		width: 100% !important;
+		height: 100% !important;
+	}
+
 	.bubble {
 		position: relative;
 		border-radius: 50%;
@@ -881,51 +924,16 @@
 		align-items: center;
 		justify-content: center;
 		gap: 2px;
-		background: linear-gradient(
-			145deg,
-			oklch(1 0 0 / 8%) 0%,
-			color-mix(in srgb, var(--c) 8%, transparent) 40%,
-			oklch(1 0 0 / 4%) 70%,
-			color-mix(in srgb, var(--c) 5%, transparent) 100%
-		);
-		backdrop-filter: blur(16px) saturate(150%) brightness(1.05);
-		-webkit-backdrop-filter: blur(16px) saturate(150%) brightness(1.05);
-		border: 1px solid oklch(1 0 0 / 10%);
-		border-top-color: oklch(1 0 0 / 20%);
-		box-shadow:
-			0 4px 24px oklch(0 0 0 / 15%),
-			0 0 40px color-mix(in srgb, var(--c) 5%, transparent),
-			inset 0 1px 0 oklch(1 0 0 / 10%),
-			inset 0 -1px 0 oklch(0 0 0 / 5%);
+		/* Transparent — 3D sphere renders behind */
+		background: transparent;
+		border: none;
+		box-shadow: none;
 		animation: bubble-float var(--float-dur) ease-in-out infinite var(--float-delay);
-		transition: border-color 0.3s ease, box-shadow 0.3s ease;
-		overflow: hidden;
-	}
-
-	/* Specular highlight on glass sphere */
-	.bubble::before {
-		content: "";
-		position: absolute;
-		top: 8%;
-		left: 20%;
-		width: 35%;
-		height: 20%;
-		border-radius: 50%;
-		background: radial-gradient(ellipse, oklch(1 0 0 / 15%) 0%, transparent 70%);
-		transform: rotate(-20deg);
-		pointer-events: none;
 	}
 
 	.bubble-clickable { cursor: pointer; }
 
 	.bubble-hovered {
-		border-color: oklch(1 0 0 / 18%);
-		border-top-color: oklch(1 0 0 / 28%);
-		box-shadow:
-			0 4px 32px oklch(0 0 0 / 20%),
-			0 0 60px color-mix(in srgb, var(--c) 10%, transparent),
-			0 0 120px color-mix(in srgb, var(--c) 4%, transparent),
-			inset 0 1px 0 oklch(1 0 0 / 14%);
 		z-index: 5;
 	}
 
@@ -935,26 +943,8 @@
 		66% { transform: translate(calc(var(--float-x) * -0.6), calc(var(--float-y) * -0.4)); }
 	}
 
-	.bubble-core {
-		position: absolute; top: 50%; left: 50%; width: 30%; height: 30%;
-		border-radius: 50%;
-		background: radial-gradient(circle, color-mix(in srgb, var(--c) 20%, transparent), transparent 70%);
-		transform: translate(-50%, -50%);
-		animation: core-pulse 3s ease-in-out infinite;
-	}
-
-	@keyframes core-pulse {
-		0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
-		50% { opacity: 1; transform: translate(-50%, -50%) scale(1.3); }
-	}
-
-	.bubble-shine {
-		position: absolute; top: 12%; left: 22%; width: 32%; height: 18%;
-		border-radius: 50%;
-		background: radial-gradient(ellipse at center, rgba(255,255,255,0.1) 0%, transparent 70%);
-		transform: rotate(-20deg); pointer-events: none;
-	}
-
+	/* Visual elements now rendered by Three.js */
+	.bubble-core, .bubble-shine { display: none; }
 	.bubble-ring {
 		position: absolute; inset: -6px; border-radius: 50%;
 		border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
