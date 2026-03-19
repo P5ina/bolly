@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { ChatMessage } from "$lib/api/types.js";
-	import BackgroundShader from "./BackgroundShader.svelte";
 	import PresentationBubble from "./PresentationBubble.svelte";
 
 	type StreamItem =
@@ -102,8 +101,6 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="present-root" onclick={showInput} onkeydown={handleGlobalKey} role="application">
-	<BackgroundShader {mood} {thinking} {voiceAmplitude} />
-
 	<div class="present-column" bind:this={messageColumn}>
 		<div class="present-spacer"></div>
 		{#each visible as bubble (bubble.id)}

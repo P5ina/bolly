@@ -3,17 +3,23 @@
 	import favicon from "$lib/assets/favicon.svg";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
+	import { createSceneStore, setSceneStore } from "$lib/stores/scene.svelte.js";
 	import { AuthError } from "$lib/api/client.js";
 	import type { ServerEvent } from "$lib/api/types.js";
-	import { onMount } from "svelte";
+	import { onMount, onDestroy } from "svelte";
 	import AuthGate from "$lib/components/auth/AuthGate.svelte";
 	import Toast from "$lib/components/layout/Toast.svelte";
 	import SecretDialog from "$lib/components/layout/SecretDialog.svelte";
+	import SharedScene from "$lib/components/SharedScene.svelte";
 
 	let { children } = $props();
 
 	const instances = getInstances();
 	const ws = getWebSocket();
+	const sceneStore = createSceneStore();
+	setSceneStore(sceneStore);
+
+	onDestroy(() => sceneStore.destroy());
 
 	let needsAuth = $state(false);
 
@@ -71,6 +77,8 @@
 </svelte:head>
 
 <div class="relative h-dvh w-full overflow-hidden" style="padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);">
+	<SharedScene />
+
 	{#if needsAuth}
 		<AuthGate onauth={handleAuth} />
 	{:else}

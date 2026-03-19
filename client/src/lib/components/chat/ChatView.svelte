@@ -6,7 +6,6 @@
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
 	import MessageBubble from "./MessageBubble.svelte";
 	import ChatInput from "./ChatInput.svelte";
-	import BackgroundShader from "./BackgroundShader.svelte";
 	import PresentationOverlay from "./PresentationOverlay.svelte";
 	import { getPresentationState } from "$lib/stores/presentation.svelte.js";
 	import CreatureBubble from "./CreatureBubble.svelte";
@@ -18,6 +17,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	import { hapticMedium, hapticDouble, hapticError } from "$lib/haptics.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import { getVoiceState } from "$lib/stores/voice.svelte.js";
+	import { getSceneStore } from "$lib/stores/scene.svelte.js";
 	import { playBase64Audio, stopTts, warmUpAudio, clearAudioQueue } from "$lib/tts.js";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 	import TerminalSquare from "@lucide/svelte/icons/terminal-square";
@@ -30,6 +30,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	const toast = getToasts();
 	const voice = getVoiceState();
 	const presentation = getPresentationState();
+	const scene = getSceneStore();
 
 	let { slug, chatId }: { slug: string; chatId: string } = $props();
 
@@ -106,6 +107,14 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	function clearStreaming() {
 		streamingMessageId = "";
 	}
+
+	// ── Sync state to shared 3D scene ──
+	// Enter chat mode (no-op if already selecting/intro)
+	scene.enterChat(slug);
+	// Keep mood/thinking/voice synced to scene store
+	$effect(() => { scene.setMood(mood); });
+	$effect(() => { scene.setThinking(sending || agentRunning); });
+	$effect(() => { scene.setVoiceAmplitude(voice.amplitude); });
 
 	const ws = getWebSocket();
 	let hadConnection = false;
@@ -686,8 +695,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	/>
 {:else}
 
-<div class="chat-space" class:chat-active={sending || agentRunning}>
-	<BackgroundShader {mood} thinking={sending || agentRunning} voiceAmplitude={voice.amplitude} />
+<div class="chat-space" class:chat-active={sending || agentRunning} class:chat-intro-playing={scene.mode !== "chat"}>
 
 	<header class="chat-bar">
 		<div class="bar-left">
@@ -812,6 +820,18 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			</div>
 		</aside>
 	</div>
+
+	<!-- Intro overlay UI (skip + name) -->
+	{#if scene.mode === "intro" || scene.mode === "selecting"}
+		<div class="intro-overlay-ui">
+			{#if scene.introPhase === "settling"}
+				<div class="intro-name">{slug}</div>
+			{/if}
+			{#if scene.mode === "intro"}
+				<button class="intro-skip" onclick={() => scene.skipIntro()}>skip</button>
+			{/if}
+		</div>
+	{/if}
 </div>
 
 {#if showContextStats}
@@ -830,6 +850,61 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		max-width: 100%;
 		overflow: hidden;
 	}
+
+	/* --- Intro: hide all chat UI until scene is in chat mode --- */
+	.chat-intro-playing > * {
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+	.chat-space:not(.chat-intro-playing) > * {
+		opacity: 1;
+		transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s;
+	}
+
+	/* --- Intro overlay UI --- */
+	.intro-overlay-ui {
+		position: absolute;
+		inset: 0;
+		z-index: 20;
+		pointer-events: none;
+	}
+	.intro-name {
+		position: absolute;
+		bottom: 38%;
+		left: 50%;
+		transform: translateX(-50%);
+		font-family: var(--font-display);
+		font-size: clamp(1.5rem, 4vw, 2.5rem);
+		font-weight: 300;
+		font-style: italic;
+		letter-spacing: 0.06em;
+		color: oklch(1 0 0 / 45%);
+		white-space: nowrap;
+		animation: intro-name-in 1s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+	@keyframes intro-name-in {
+		from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+		to { opacity: 1; transform: translateX(-50%) translateY(0); }
+	}
+	.intro-skip {
+		position: absolute;
+		bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+		right: 2rem;
+		pointer-events: auto;
+		padding: 0.4rem 1rem;
+		border-radius: 2rem;
+		background: oklch(1 0 0 / 5%);
+		backdrop-filter: blur(12px);
+		border: 1px solid oklch(1 0 0 / 10%);
+		color: oklch(1 0 0 / 35%);
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		letter-spacing: 0.08em;
+		cursor: pointer;
+		transition: all 0.3s ease;
+	}
+	.intro-skip:hover { background: oklch(1 0 0 / 10%); color: oklch(1 0 0 / 60%); }
 
 	/* --- Perimeter ambient glow (Siri-style) --- */
 	.chat-space::before {

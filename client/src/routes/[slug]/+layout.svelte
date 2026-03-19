@@ -4,13 +4,14 @@
 	import { deleteInstance } from "$lib/api/client.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getPresentationState } from "$lib/stores/presentation.svelte.js";
+	import { getSceneStore } from "$lib/stores/scene.svelte.js";
 	import InstanceOnboarding from "$lib/components/onboarding/InstanceOnboarding.svelte";
 	let { children } = $props();
 
 	const slug = $derived(page.params.slug!);
 	const instances = getInstances();
 	const presentation = getPresentationState();
-
+	const scene = getSceneStore();
 	const isNew = $derived(
 		!instances.loading && !instances.list.some((i) => i.slug === slug)
 	);
@@ -65,7 +66,7 @@
 	{/key}
 {:else}
 	<div class="instance-view">
-		{#if !presentation.active}
+		{#if !presentation.active && scene.mode === "chat"}
 		<nav class="instance-tabs">
 			<a
 				href="/"
