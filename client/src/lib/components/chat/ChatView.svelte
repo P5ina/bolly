@@ -572,6 +572,8 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	let uploadProgress = $state<{ fileIndex: number; fileCount: number; loaded: number; total: number } | null>(null);
 
 	async function handleSend(content: string, files?: File[]) {
+		// Warm up AudioContext on user gesture (send is always click/Enter)
+		if (voice.enabled) warmUpAudio();
 		sending = true;
 		try {
 			// Upload files first, then reference them in the message
