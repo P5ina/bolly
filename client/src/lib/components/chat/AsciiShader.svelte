@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import * as THREE from "three";
 
 	let { thinking = false, mood = "calm", voiceAmplitude = 0 }: { thinking?: boolean; mood?: string; voiceAmplitude?: number } = $props();
 
@@ -47,20 +46,59 @@
 		return "calm";
 	}
 
-	// ── Glass shaders ──────────────────────────────────────────────────
+	// ── Background shader (renders to RT for refraction) ───────────────
+
+	const bgFrag = /* glsl */ `
+		precision highp float;
+		uniform float uTime;
+		varying vec2 vUv;
+
+		float terrain(vec2 uv, float t) {
+			float w = 0.0;
+			w += sin(uv.x * 2.2 + t * 0.8 + uv.y * 0.5) * 0.35;
+			w += sin(uv.x * 1.1 - t * 0.5 + 3.0) * 0.25;
+			w += sin(uv.x * 3.5 + t * 1.2 + uv.y * 1.5 + 1.0) * 0.15;
+			w += sin(uv.x * 0.8 + t * 0.3 - 2.0) * 0.2;
+			w += cos(uv.x * 1.8 + uv.y * 2.0 + t * 0.7) * 0.12;
+			return w;
+		}
+
+		void main() {
+			vec2 uv = vUv;
+			float t = uTime * 0.015;
+			vec3 deep = vec3(0.015, 0.035, 0.14);
+			vec3 mid  = vec3(0.04, 0.07, 0.24);
+			vec3 purp = vec3(0.10, 0.05, 0.26);
+			vec3 lite = vec3(0.08, 0.12, 0.28);
+
+			vec3 c = mix(deep, mid, smoothstep(0.0, 0.4, uv.y));
+			c = mix(c, purp, smoothstep(0.5, 1.0, uv.y));
+
+			float w = terrain(uv, t);
+			c = mix(c, lite, smoothstep(-0.1, 0.3, w - uv.y * 0.8 + 0.2) * 0.3);
+			c = mix(c, deep * 0.6, smoothstep(0.2, -0.1, w - uv.y * 0.6 + 0.1) * 0.35);
+
+			// Caustic
+			float curve = 0.55 + 0.25 * sin(uv.x * 2.5 + t * 0.4) + 0.1 * cos(uv.x * 4.0 - t * 0.6);
+			float dist = abs(uv.y - curve);
+			c += vec3(0.2, 0.22, 0.3) * exp(-dist * dist * 800.0) * 0.25;
+
+			gl_FragColor = vec4(c, 1.0);
+		}
+	`;
+
+	// ── Glass shader with chromatic dispersion ─────────────────────────
 
 	const glassVert = /* glsl */ `
 		varying vec3 vNormal;
 		varying vec3 vViewPos;
 		varying vec3 vWorldNormal;
-		varying float vDisplacement;
 
 		void main() {
 			vNormal = normalize(normalMatrix * normal);
 			vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
 			vViewPos = mvPos.xyz;
 			vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
-			vDisplacement = length(position) - 1.0; // deviation from unit sphere
 			gl_Position = projectionMatrix * mvPos;
 		}
 	`;
@@ -68,74 +106,90 @@
 	const glassFrag = /* glsl */ `
 		precision highp float;
 
+		uniform sampler2D uBackground;
 		uniform vec3 uColor;
 		uniform float uGlow;
 		uniform float uTime;
+		uniform vec2 uResolution;
 
 		varying vec3 vNormal;
 		varying vec3 vViewPos;
 		varying vec3 vWorldNormal;
-		varying float vDisplacement;
 
 		void main() {
 			vec3 N = normalize(vNormal);
 			vec3 V = normalize(-vViewPos);
+			vec2 screenUV = gl_FragCoord.xy / uResolution;
 
-			// --- Fresnel: glass edges glow brighter ---
-			float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.5);
+			// --- Chromatic dispersion: per-channel refraction ---
+			// Different IOR per wavelength (red < green < blue)
+			float iorR = 1.0 / 1.12;
+			float iorG = 1.0 / 1.16;
+			float iorB = 1.0 / 1.22;
 
-			// --- Key light specular (sharp highlight) ---
-			vec3 lightDir = normalize(vec3(3.0, 2.0, 4.0));
-			vec3 H = normalize(lightDir + V);
-			float spec1 = pow(max(dot(N, H), 0.0), 80.0);
+			vec3 refR = refract(-V, N, iorR);
+			vec3 refG = refract(-V, N, iorG);
+			vec3 refB = refract(-V, N, iorB);
 
-			// --- Rim light (back edge definition) ---
-			vec3 rimDir = normalize(vec3(-2.5, 1.5, -3.0));
-			float rim = pow(1.0 - max(dot(N, V), 0.0), 2.5)
-			          * (dot(N, rimDir) * 0.4 + 0.6);
+			// Refraction strength scales with angle
+			float edgeFactor = 1.0 - abs(dot(N, V));
+			float strength = 0.08 + edgeFactor * 0.12;
 
-			// --- Secondary specular (smaller, offset) ---
-			vec3 lightDir2 = normalize(vec3(-1.0, 3.0, 2.0));
-			vec3 H2 = normalize(lightDir2 + V);
-			float spec2 = pow(max(dot(N, H2), 0.0), 120.0) * 0.5;
+			float R = texture2D(uBackground, screenUV + refR.xy * strength).r;
+			float G = texture2D(uBackground, screenUV + refG.xy * strength).g;
+			float B = texture2D(uBackground, screenUV + refB.xy * strength).b;
 
-			// --- Environment fake reflection (normal-based gradient) ---
-			float envUp = vWorldNormal.y * 0.5 + 0.5;
-			vec3 envColor = mix(
-				vec3(0.03, 0.06, 0.18), // dark blue below
-				vec3(0.10, 0.08, 0.22), // purple above
-				envUp
-			);
+			vec3 refracted = vec3(R, G, B);
 
-			// --- Caustic shimmer on surface ---
-			float caustic = sin(vWorldNormal.x * 8.0 + uTime * 1.5)
-			              * cos(vWorldNormal.y * 6.0 + uTime * 1.2)
-			              * sin(vWorldNormal.z * 7.0 + uTime * 0.9);
-			caustic = max(caustic, 0.0) * 0.08;
+			// --- Fresnel ---
+			float fresnel = pow(1.0 - max(dot(N, V), 0.0), 4.0);
 
-			// --- Compose glass ---
-			vec3 glassBase = uColor * 0.08 + envColor * 0.3;
-			vec3 edgeGlow = vec3(0.5, 0.6, 0.85); // cool specular
+			// --- Specular highlights ---
+			vec3 L1 = normalize(vec3(3.0, 2.0, 4.0));
+			vec3 H1 = normalize(L1 + V);
+			float spec1 = pow(max(dot(N, H1), 0.0), 160.0);
 
-			vec3 color = glassBase;
-			color += edgeGlow * fresnel * 0.45;
-			color += vec3(0.9, 0.92, 1.0) * spec1 * 0.7;
+			vec3 L2 = normalize(vec3(-1.5, 3.0, 1.0));
+			vec3 H2 = normalize(L2 + V);
+			float spec2 = pow(max(dot(N, H2), 0.0), 200.0) * 0.4;
+
+			// --- Surface caustic shimmer ---
+			float caustic = max(
+				sin(vWorldNormal.x * 10.0 + uTime * 2.0) *
+				cos(vWorldNormal.y * 8.0 + uTime * 1.5) *
+				sin(vWorldNormal.z * 9.0 + uTime * 1.2),
+				0.0
+			) * 0.04;
+
+			// --- Compose ---
+			vec3 color = refracted;
+
+			// Edge tint (subtle mood color at rim)
+			color = mix(color, color + uColor * 0.15, fresnel);
+
+			// Specular
+			color += vec3(0.9, 0.93, 1.0) * spec1 * 0.6;
 			color += vec3(0.8, 0.85, 1.0) * spec2;
-			color += uColor * rim * 0.2;
+
+			// Surface shimmer
 			color += uColor * caustic;
 
-			// Displacement-based internal glow (brighter where deformed)
-			color += uColor * abs(vDisplacement) * 0.4;
-
 			// Thinking glow
-			color += uColor * uGlow * 0.12;
-			color += edgeGlow * uGlow * fresnel * 0.2;
+			color += uColor * uGlow * fresnel * 0.15;
 
-			// Alpha: transparent center, opaque edges
-			float alpha = 0.08 + fresnel * 0.55 + spec1 * 0.4 + spec2 * 0.2 + caustic;
-			alpha = clamp(alpha, 0.0, 0.85);
+			// Alpha: nearly invisible center, visible at edges
+			float alpha = 0.03 + fresnel * 0.35 + spec1 * 0.5 + spec2 * 0.2 + caustic;
+			alpha = clamp(alpha, 0.0, 0.9);
 
 			gl_FragColor = vec4(color, alpha);
+		}
+	`;
+
+	const quadVert = /* glsl */ `
+		varying vec2 vUv;
+		void main() {
+			vUv = uv;
+			gl_Position = vec4(position, 1.0);
 		}
 	`;
 
@@ -151,26 +205,63 @@
 
 	// ── Mount ──────────────────────────────────────────────────────────
 
-	onMount(() => {
+	onMount(async () => {
 		if (!container) return;
 
-		const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+		// Dynamic import for WebGPU renderer with WebGL fallback
+		let THREE: typeof import("three");
+		let RendererClass: any;
+		let isWebGPU = false;
+
+		try {
+			THREE = await import("three/webgpu");
+			RendererClass = (THREE as any).WebGPURenderer;
+			isWebGPU = true;
+		} catch {
+			THREE = await import("three");
+			RendererClass = THREE.WebGLRenderer;
+		}
+
+		const renderer = new RendererClass({ antialias: true, alpha: true });
+		if (isWebGPU && renderer.init) {
+			await renderer.init();
+		}
 		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 		renderer.setClearColor(0x000000, 0);
 		container.appendChild(renderer.domElement);
 
-		const scene = new THREE.Scene();
+		// ── Background pass (render to RT for refraction sampling) ──
+
+		const bgScene = new THREE.Scene();
+		const bgCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+		const bgUniforms = { uTime: { value: 0 } };
+		const bgMat = new THREE.ShaderMaterial({
+			uniforms: bgUniforms,
+			vertexShader: quadVert,
+			fragmentShader: bgFrag,
+		});
+		bgScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bgMat));
+
+		const bgRT = new THREE.WebGLRenderTarget(512, 512, {
+			minFilter: THREE.LinearFilter,
+			magFilter: THREE.LinearFilter,
+		});
+
+		// ── Glass blob scene ──
+
+		const glassScene = new THREE.Scene();
 		const cam = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
 		cam.position.set(0, 0, 3.0);
 
-		// Creature mesh — glass blob
 		const creatureGeo = new THREE.IcosahedronGeometry(1, 6);
 		const basePositions = new Float32Array(creatureGeo.attributes.position.array);
 
 		const glassUniforms = {
+			uBackground: { value: bgRT.texture },
 			uColor: { value: new THREE.Color(moodColors[matchMood(mood)]) },
 			uGlow: { value: 0 },
 			uTime: { value: 0 },
+			uResolution: { value: new THREE.Vector2() },
 		};
 
 		const glassMat = new THREE.ShaderMaterial({
@@ -183,21 +274,10 @@
 		});
 
 		const creature = new THREE.Mesh(creatureGeo, glassMat);
-		scene.add(creature);
+		glassScene.add(creature);
 
-		// Inner core glow — small bright sphere inside
-		const coreGeo = new THREE.IcosahedronGeometry(0.35, 4);
-		const coreMat = new THREE.ShaderMaterial({
-			uniforms: glassUniforms,
-			vertexShader: glassVert,
-			fragmentShader: glassFrag,
-			transparent: true,
-			depthWrite: false,
-		});
-		const core = new THREE.Mesh(coreGeo, coreMat);
-		scene.add(core);
+		// ── Resize ──
 
-		// Resize
 		function resize() {
 			if (!container) return;
 			const w = container.clientWidth;
@@ -205,12 +285,15 @@
 			renderer.setSize(w, h);
 			cam.aspect = w / h;
 			cam.updateProjectionMatrix();
+			const pr = renderer.getPixelRatio();
+			glassUniforms.uResolution.value.set(w * pr, h * pr);
 		}
 		resize();
 		const ro = new ResizeObserver(resize);
 		ro.observe(container);
 
-		// Animation
+		// ── Animation ──
+
 		let running = true;
 		let skip = false;
 		const clock = new THREE.Clock();
@@ -232,6 +315,7 @@
 			const col = new THREE.Color(moodColors[resolved]);
 
 			// Update uniforms
+			bgUniforms.uTime.value = t;
 			glassUniforms.uColor.value.copy(col);
 			glassUniforms.uTime.value = t;
 			const targetGlow = thinkingRef ? 1.0 : 0.0;
@@ -265,8 +349,15 @@
 			creature.rotation.y += delta * (thinkingRef ? 0.4 : energy.rotSpeed);
 			creature.rotation.x = Math.sin(t * 0.3) * 0.1;
 
-			// Render
-			renderer.render(scene, cam);
+			// Pass 1: background → render target
+			renderer.setRenderTarget(bgRT);
+			renderer.render(bgScene, bgCam);
+
+			// Pass 2: glass blob → screen (samples bgRT for refraction)
+			renderer.setRenderTarget(null);
+			renderer.setClearColor(0x000000, 0);
+			renderer.clear();
+			renderer.render(glassScene, cam);
 		}
 		requestAnimationFrame(animate);
 
@@ -275,8 +366,8 @@
 			ro.disconnect();
 			creatureGeo.dispose();
 			glassMat.dispose();
-			coreGeo.dispose();
-			coreMat.dispose();
+			bgMat.dispose();
+			bgRT.dispose();
 			renderer.dispose();
 			renderer.domElement.remove();
 		};

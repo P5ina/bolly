@@ -7,6 +7,9 @@ export default defineConfig({
 		tailwindcss(),
 		sveltekit(),
 	],
+	build: {
+		target: "esnext",
+	},
 	server: {
 		proxy: {
 			"/api/ws": { target: "ws://localhost:8080", ws: true },
