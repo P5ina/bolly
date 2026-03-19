@@ -66,10 +66,10 @@
 		void main() {
 			vec2 uv = vUv;
 			float t = uTime * 0.015;
-			vec3 deep = vec3(0.015, 0.035, 0.14);
-			vec3 mid  = vec3(0.04, 0.07, 0.24);
-			vec3 purp = vec3(0.10, 0.05, 0.26);
-			vec3 lite = vec3(0.08, 0.12, 0.28);
+			vec3 deep = vec3(0.03, 0.06, 0.20);
+			vec3 mid  = vec3(0.07, 0.12, 0.35);
+			vec3 purp = vec3(0.15, 0.08, 0.38);
+			vec3 lite = vec3(0.12, 0.18, 0.40);
 
 			vec3 c = mix(deep, mid, smoothstep(0.0, 0.4, uv.y));
 			c = mix(c, purp, smoothstep(0.5, 1.0, uv.y));
@@ -177,9 +177,9 @@
 			// Thinking glow
 			color += uColor * uGlow * fresnel * 0.15;
 
-			// Alpha: nearly invisible center, visible at edges
-			float alpha = 0.03 + fresnel * 0.35 + spec1 * 0.5 + spec2 * 0.2 + caustic;
-			alpha = clamp(alpha, 0.0, 0.9);
+			// Alpha: translucent with visible refraction, bright edges
+			float alpha = 0.15 + fresnel * 0.5 + spec1 * 0.6 + spec2 * 0.3 + caustic;
+			alpha = clamp(alpha, 0.0, 0.95);
 
 			gl_FragColor = vec4(color, alpha);
 		}
@@ -208,26 +208,12 @@
 	onMount(async () => {
 		if (!container) return;
 
-		// Dynamic import for WebGPU renderer with WebGL fallback
-		let THREE: typeof import("three");
-		let RendererClass: any;
-		let isWebGPU = false;
+		const THREE = await import("three");
 
-		try {
-			THREE = await import("three/webgpu");
-			RendererClass = (THREE as any).WebGPURenderer;
-			isWebGPU = true;
-		} catch {
-			THREE = await import("three");
-			RendererClass = THREE.WebGLRenderer;
-		}
-
-		const renderer = new RendererClass({ antialias: true, alpha: true });
-		if (isWebGPU && renderer.init) {
-			await renderer.init();
-		}
+		const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 		renderer.setClearColor(0x000000, 0);
+		renderer.autoClear = false;
 		container.appendChild(renderer.domElement);
 
 		// ── Background pass (render to RT for refraction sampling) ──
@@ -296,7 +282,7 @@
 
 		let running = true;
 		let skip = false;
-		const clock = new THREE.Clock();
+		let prevTime = performance.now();
 		let t = 0;
 		let glowSmooth = 0;
 
@@ -307,7 +293,9 @@
 			skip = !skip;
 			if (skip) return;
 
-			const delta = clock.getDelta();
+			const now = performance.now();
+			const delta = (now - prevTime) / 1000;
+			prevTime = now;
 			t += delta;
 
 			const resolved = matchMood(moodRef);
@@ -359,14 +347,17 @@
 			creature.rotation.y += delta * (thinkingRef ? 0.4 : energy.rotSpeed);
 			creature.rotation.x = Math.sin(t * 0.3) * 0.1;
 
-			// Pass 1: background → render target
+			// Pass 1: background → render target (for refraction sampling)
 			renderer.setRenderTarget(bgRT);
+			renderer.clear();
 			renderer.render(bgScene, bgCam);
 
-			// Pass 2: glass blob → screen (samples bgRT for refraction)
+			// Pass 2: background → screen (visible behind the blob)
 			renderer.setRenderTarget(null);
-			renderer.setClearColor(0x000000, 0);
 			renderer.clear();
+			renderer.render(bgScene, bgCam);
+
+			// Pass 3: glass blob → screen on top (samples bgRT for refraction)
 			renderer.render(glassScene, cam);
 		}
 		requestAnimationFrame(animate);
