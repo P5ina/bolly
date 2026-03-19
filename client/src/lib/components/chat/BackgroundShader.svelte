@@ -292,6 +292,10 @@
 		let prevTime = performance.now();
 		let t = 0;
 		let skip = false;
+		let smoothAmp = 0;
+		let smoothSpeed = 0.8;
+		let smoothIntensity = 0.12;
+		let smoothBreatheAdd = 0;
 
 		function animate() {
 			if (!running) return;
@@ -310,13 +314,28 @@
 
 			uMoodColor.value.set(moodColors[resolved]);
 
-			const amp = voiceRef ?? 0;
-			const isSpeaking = amp > 0.01;
-			uSpeed.value = thinkingRef ? 3.0 : isSpeaking ? energy.speed + amp * 3.0 : energy.speed;
-			uIntensity.value = thinkingRef ? 0.25 : isSpeaking ? energy.intensity + amp * 0.3 : energy.intensity;
+			// Smooth voice amplitude — lerp toward target, slow decay
+			const rawAmp = voiceRef ?? 0;
+			const lerpUp = Math.min(delta * 6.0, 1.0);   // attack ~170ms
+			const lerpDown = Math.min(delta * 2.0, 1.0);  // release ~500ms
+			smoothAmp += (rawAmp - smoothAmp) * (rawAmp > smoothAmp ? lerpUp : lerpDown);
+
+			const isSpeaking = smoothAmp > 0.01;
+			const targetSpeed = thinkingRef ? 3.0 : isSpeaking ? energy.speed + smoothAmp * 1.5 : energy.speed;
+			const targetIntensity = thinkingRef ? 0.25 : isSpeaking ? energy.intensity + smoothAmp * 0.15 : energy.intensity;
+			const targetBreatheAdd = isSpeaking ? smoothAmp * 0.06 : 0;
+
+			// Smooth all uniform transitions
+			const uniLerp = Math.min(delta * 3.0, 1.0);
+			smoothSpeed += (targetSpeed - smoothSpeed) * uniLerp;
+			smoothIntensity += (targetIntensity - smoothIntensity) * uniLerp;
+			smoothBreatheAdd += (targetBreatheAdd - smoothBreatheAdd) * uniLerp;
+
+			uSpeed.value = smoothSpeed;
+			uIntensity.value = smoothIntensity;
 			uBreathe.value = 1.0
 				+ Math.sin(t * (thinkingRef ? 2.5 : energy.breatheRate)) * (thinkingRef ? 0.06 : energy.breatheDepth)
-				+ (isSpeaking ? amp * 0.12 : 0);
+				+ smoothBreatheAdd;
 
 			keyLight.color.set(moodColors[resolved]);
 			keyLight.intensity = thinkingRef ? 2.5 : 2.0;
