@@ -82,12 +82,17 @@ pub fn rebuild_catalog_snapshot(workspace_dir: &Path, instance_slug: &str) {
     }
 
     let mut prompt = format!(
-        "## memory\nyou have {} memories:\n",
+        "## memory\nyou have a personal memory library. use `recall` to read memories when relevant.\n\
+         catalog ({} files):\n",
         entries.len()
     );
     for entry in &entries {
-        prompt.push_str(&format!("- {}\n", entry.path));
+        prompt.push_str(&format!("- {} — {}\n", entry.path, entry.summary));
     }
+    prompt.push_str(
+        "\nuse these memories naturally — `recall` what you need. \
+         don't announce that you remember — just know.",
+    );
 
     let path = catalog_snapshot_path(workspace_dir, instance_slug);
     if let Err(e) = std::fs::write(&path, &prompt) {
