@@ -212,6 +212,28 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		const serverStream = messagesToStream(serverMessages);
 		const serverMsgIds = new Set(serverStream.filter(s => s.type === "message").map(s => (s as any).data.id));
 
+		// Detect new assistant messages that we don't have locally
+		const localMsgIds = new Set(
+			stream.filter(s => s.type === "message").map(s => (s as { type: "message"; data: ChatMessage }).data.id)
+		);
+		let hasNew = false;
+		for (const id of serverMsgIds) {
+			if (!localMsgIds.has(id)) {
+				// Check if it's an assistant message
+				const item = serverStream.find(s => s.type === "message" && (s as any).data.id === id);
+				if (item && (item as { type: "message"; data: ChatMessage }).data.role === "assistant") {
+					hasNew = true;
+					break;
+				}
+			}
+		}
+
+		// Play sound for new assistant messages arriving via snapshot
+		if (hasNew && !voice.enabled) {
+			play("message_receive");
+			hapticMedium();
+		}
+
 		// Preserve the actively-streaming message (it's ahead of the snapshot)
 		const streamingItem = streamingMessageId
 			? stream.find(s => s.type === "message" && (s as any).data.id === streamingMessageId)
