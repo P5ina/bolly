@@ -344,7 +344,17 @@
 				pos.setXYZ(i, bx * scale, by * scale, bz * scale);
 			}
 			pos.needsUpdate = true;
-			creatureGeo.computeVertexNormals();
+
+			// Smooth normals: displacement is radial, so normal = normalized position
+			const nrm = creatureGeo.attributes.normal;
+			for (let i = 0; i < pos.count; i++) {
+				const x = pos.getX(i);
+				const y = pos.getY(i);
+				const z = pos.getZ(i);
+				const len = Math.sqrt(x * x + y * y + z * z) || 1;
+				nrm.setXYZ(i, x / len, y / len, z / len);
+			}
+			nrm.needsUpdate = true;
 
 			creature.rotation.y += delta * (thinkingRef ? 0.4 : energy.rotSpeed);
 			creature.rotation.x = Math.sin(t * 0.3) * 0.1;
