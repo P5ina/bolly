@@ -616,7 +616,6 @@ impl LlmBackend {
         prompt: &str,
         history: Vec<Message>,
         tools: Vec<Box<dyn ToolDyn>>,
-        max_turns: usize,
     ) -> Result<(String, u64), Box<dyn std::error::Error + Send + Sync>> {
         if tools.is_empty() {
             return self.chat(system_prompt, prompt, history).await;
@@ -627,7 +626,7 @@ impl LlmBackend {
         let mut messages = history;
         messages.push(Message::user(prompt));
 
-        agent_loop(self, system_blocks, &tool_defs, &tools, &mut messages, max_turns).await
+        agent_loop(self, system_blocks, &tool_defs, &tools, &mut messages).await
     }
 }
 
@@ -650,10 +649,9 @@ async fn agent_loop(
     tool_defs: &[ToolDefinition],
     tools: &[Box<dyn ToolDyn>],
     messages: &mut Vec<Message>,
-    max_turns: usize,
 ) -> Result<(String, u64), Box<dyn std::error::Error + Send + Sync>> {
     let mut total_tokens: u64 = 0;
-    for _turn in 0..max_turns {
+    loop {
         let (text, tool_uses, stop_reason, tokens) = complete_once(backend, system, tool_defs, messages).await?;
         total_tokens += tokens;
 
@@ -695,9 +693,6 @@ async fn agent_loop(
         }
         messages.push(Message::User { content: results });
     }
-
-    // Turn limit reached — extract last text
-    Ok((extract_last_assistant_text(messages), total_tokens))
 }
 
 /// Streaming agent loop. Returns final accumulated text.
@@ -1770,20 +1765,7 @@ async fn openai_stream(
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-fn extract_last_assistant_text(messages: &[Message]) -> String {
-    for msg in messages.iter().rev() {
-        if let Message::Assistant { content } = msg {
-            for block in content {
-                if let ContentBlock::Text { text } = block {
-                    if !text.trim().is_empty() {
-                        return text.clone();
-                    }
-                }
-            }
-        }
-    }
-    String::new()
-}
+
 
 /// How to send PDFs to the LLM provider.
 pub enum PdfStrategy {

@@ -313,9 +313,8 @@ async fn heartbeat_instance(
             let config_path = crate::config::config_path();
             let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google, email_accounts, llm, &config_path);
 
-            let max_turns = 50;
             match llm
-                .chat_with_tools_only(&system, &wake_prompt, vec![], heartbeat_tools, max_turns)
+                .chat_with_tools_only(&system, &wake_prompt, vec![], heartbeat_tools)
                 .await
             {
                 Ok((response, wake_tokens)) => {

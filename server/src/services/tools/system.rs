@@ -1665,7 +1665,6 @@ impl Tool for ExploreCodeTool {
                 &args.question,
                 vec![],
                 tools,
-                16,
             )
             .await
             .map_err(|e| {
@@ -1778,7 +1777,7 @@ impl Tool for DeepResearchTool {
 
         let (result, _tokens) = self
             .llm
-            .chat_with_tools_only(system_prompt, task, vec![], tools, 12)
+            .chat_with_tools_only(system_prompt, task, vec![], tools)
             .await
             .map_err(|e| {
                 log::warn!("[deep_research] sub-agent failed after {:?}: {e}", start.elapsed());
