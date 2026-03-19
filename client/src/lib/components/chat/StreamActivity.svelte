@@ -60,7 +60,7 @@
 	.act-row {
 		display: flex;
 		gap: 0;
-		padding: 0.125rem 0;
+		padding: 0.15rem 0;
 		animation: act-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
 
@@ -78,16 +78,18 @@
 	}
 
 	.act-tool .act-border {
-		background: oklch(0.65 0.12 200 / 50%);
+		background: oklch(0.55 0.1 190 / 45%);
+		box-shadow: 0 0 4px oklch(0.55 0.1 190 / 15%);
 	}
 	.act-mood .act-border {
-		background: oklch(0.72 0.14 75 / 50%);
+		background: oklch(0.65 0.1 75 / 45%);
+		box-shadow: 0 0 4px oklch(0.65 0.1 75 / 15%);
 	}
 	.act-state .act-border {
-		background: oklch(0.60 0.08 280 / 40%);
+		background: oklch(0.5 0.06 200 / 35%);
 	}
 	.act-output .act-border {
-		background: oklch(0.55 0.06 200 / 30%);
+		background: oklch(0.45 0.05 200 / 25%);
 	}
 	.act-body {
 		display: flex;
@@ -102,27 +104,27 @@
 		font-family: var(--font-mono);
 		font-size: 0.68rem;
 		letter-spacing: 0.02em;
-		color: oklch(0.72 0.02 280 / 60%);
+		color: oklch(0.6 0.04 200 / 50%);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 
 	.act-tool .act-label {
-		color: oklch(0.68 0.08 200 / 70%);
+		color: oklch(0.6 0.08 190 / 60%);
 	}
 	.act-mood .act-label {
-		color: oklch(0.75 0.08 75 / 70%);
+		color: oklch(0.68 0.08 75 / 60%);
 	}
 	.act-state .act-label {
-		color: oklch(0.62 0.04 280 / 55%);
+		color: oklch(0.52 0.04 200 / 45%);
 	}
 
 	.act-output-text {
 		font-family: var(--font-mono);
 		font-size: 0.72rem;
 		line-height: 1.5;
-		color: oklch(0.60 0.03 200 / 55%);
+		color: oklch(0.52 0.03 200 / 45%);
 		white-space: pre-wrap;
 		word-break: break-all;
 		margin: 0;
@@ -160,13 +162,13 @@
 	}
 
 	.act-toggle:hover .act-chevron {
-		color: oklch(0.78 0.12 75 / 70%);
+		color: oklch(0.65 0.1 190 / 70%);
 	}
 
 	.act-chevron {
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		color: oklch(0.55 0.04 280 / 40%);
+		color: oklch(0.45 0.04 200 / 35%);
 		flex-shrink: 0;
 		transition: transform 0.2s ease, color 0.2s ease;
 		line-height: 1;
@@ -179,7 +181,7 @@
 	.act-time {
 		font-family: var(--font-mono);
 		font-size: 0.68rem;
-		color: oklch(0.50 0.01 280 / 35%);
+		color: oklch(0.42 0.03 200 / 30%);
 		white-space: nowrap;
 		flex-shrink: 0;
 		align-self: flex-start;

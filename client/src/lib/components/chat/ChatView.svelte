@@ -64,6 +64,10 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	/** Message IDs from the current agent turn (for voice reveal). */
 	let turnMessageIds = $state<string[]>([]);
 
+	/** Streaming rhythm: buffer for character-by-character drip. */
+	let streamBuffer = "";
+	let dripActive = false;
+
 	preload("message_receive", "message_send", "error");
 
 	function handleStreamDelta(messageId: string, delta: string) {
@@ -78,30 +82,95 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 		streamingMessageId = messageId;
 
-		// Find or create the message bubble with this stable ID
+		// Ensure message exists in stream
 		const existingIdx = stream.findIndex(
 			s => s.type === "message" && s.data.id === messageId
 		);
 
-		if (existingIdx >= 0) {
-			const item = stream[existingIdx] as { type: "message"; data: ChatMessage };
-			item.data.content += delta;
-			stream = stream; // trigger reactivity
-		} else {
+		if (existingIdx < 0) {
 			const msg: ChatMessage = {
 				id: messageId,
 				role: "assistant",
-				content: delta,
+				content: "",
 				created_at: String(Date.now()),
 			};
 			stream = [...stream, { type: "message", data: msg }];
 		}
 
+		// Buffer the delta for rhythmic drip
+		streamBuffer += delta;
+		if (!dripActive) startDrip(messageId);
 		scrollToBottomIfNear();
 	}
 
+	/** Drip characters from buffer at ~200 chars/sec with punctuation pauses. */
+	function startDrip(messageId: string) {
+		dripActive = true;
+		let lastTime = performance.now();
+		let pauseUntil = 0;
+
+		function tick(now: number) {
+			if (streamBuffer.length === 0) {
+				if (streamingMessageId === messageId) {
+					requestAnimationFrame(tick);
+					return;
+				}
+				dripActive = false;
+				return;
+			}
+
+			if (now < pauseUntil) {
+				requestAnimationFrame(tick);
+				return;
+			}
+
+			const elapsed = now - lastTime;
+			const budget = Math.max(1, Math.floor((elapsed / 1000) * 200));
+			let chars = "";
+			let consumed = 0;
+
+			for (let i = 0; i < budget && consumed < streamBuffer.length; i++) {
+				const c = streamBuffer[consumed];
+				chars += c;
+				consumed++;
+
+				if (c === "." || c === "!" || c === "?") { pauseUntil = now + 45; break; }
+				if (c === ",") { pauseUntil = now + 20; break; }
+				if (c === ":" || c === ";") { pauseUntil = now + 25; break; }
+				if (c === "\n") { pauseUntil = now + 30; break; }
+			}
+
+			if (chars) {
+				streamBuffer = streamBuffer.slice(consumed);
+				const idx = stream.findIndex(s => s.type === "message" && s.data.id === messageId);
+				if (idx >= 0) {
+					const item = stream[idx] as { type: "message"; data: ChatMessage };
+					item.data.content += chars;
+					stream = stream;
+				}
+				scrollToBottomIfNear();
+			}
+
+			lastTime = now;
+			requestAnimationFrame(tick);
+		}
+
+		requestAnimationFrame(tick);
+	}
+
 	function clearStreaming() {
+		// Flush remaining buffer immediately
+		if (streamBuffer && streamingMessageId) {
+			const idx = stream.findIndex(s => s.type === "message" && s.data.id === streamingMessageId);
+			if (idx >= 0) {
+				const item = stream[idx] as { type: "message"; data: ChatMessage };
+				item.data.content += streamBuffer;
+				stream = stream;
+			}
+			streamBuffer = "";
+		}
 		streamingMessageId = "";
+		dripActive = false;
 	}
 
 	const ws = getWebSocket();
@@ -194,6 +263,8 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			item.data.model = msg.model;
 			item.data.kind = msg.kind;
 			item.data.content = msg.content; // server version is authoritative
+			// Server content arrived — stop dripping for this message
+			if (msg.id === streamingMessageId) { streamBuffer = ""; }
 			stream = stream;
 		} else {
 			// New message — add to stream
@@ -611,8 +682,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	}
 </script>
 
-<div class="chat-space">
-	<div class="chat-glow" class:chat-glow-active={sending || agentRunning}></div>
+<div class="chat-space" class:chat-active={sending || agentRunning}>
 
 	<header class="chat-bar">
 		<div class="bar-left">
@@ -757,34 +827,23 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		overflow: hidden;
 	}
 
-	.chat-glow {
+	/* --- Perimeter ambient glow (Siri-style) --- */
+	.chat-space::before {
+		content: "";
 		position: absolute;
-		top: -80px;
-		left: 50%;
-		width: 600px;
-		height: 400px;
-		transform: translateX(-50%);
-		border-radius: 50%;
-		background: radial-gradient(ellipse, oklch(0.78 0.12 75 / 4%) 0%, transparent 65%);
-		animation: breathe 7s ease-in-out infinite;
+		inset: 0;
 		pointer-events: none;
-		z-index: 0;
+		z-index: 50;
+		opacity: 0;
+		box-shadow:
+			inset 0 0 80px oklch(0.5 0.08 200 / 3%),
+			inset 0 0 160px oklch(0.45 0.06 220 / 1.5%);
+		transition: opacity 0.8s ease;
 	}
 
-	.chat-glow-active {
-		animation: breathe-fast 2.5s ease-in-out infinite;
-		background: radial-gradient(ellipse, oklch(0.78 0.12 75 / 7%) 0%, transparent 65%);
-	}
-
-	@keyframes breathe {
-		0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.6; }
-		50% { transform: translateX(-50%) scale(1.05); opacity: 1; }
-	}
-
-	@keyframes breathe-fast {
-		0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.7; }
-		30% { transform: translateX(-50%) scale(1.1); opacity: 1; }
-		60% { transform: translateX(-50%) scale(0.97); opacity: 0.5; }
+	.chat-space.chat-active::before {
+		opacity: 1;
+		animation: perimeter-breathe-active 3s ease-in-out infinite;
 	}
 
 	/* --- bar --- */
@@ -797,6 +856,10 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		justify-content: space-between;
 		padding: 0.5rem 1.25rem;
 		flex-shrink: 0;
+		background: oklch(0.08 0.015 210 / 40%);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border-bottom: 1px solid oklch(0.5 0.06 200 / 6%);
 	}
 
 	.bar-left {
@@ -818,40 +881,40 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		width: 5px;
 		height: 5px;
 		border-radius: 50%;
-		background: oklch(0.35 0.01 280 / 30%);
+		background: oklch(0.3 0.02 200 / 30%);
 		transition: all 0.4s ease;
 	}
 
 	.bar-led-on {
-		background: oklch(0.70 0.14 145 / 80%);
-		box-shadow: 0 0 6px oklch(0.70 0.14 145 / 20%);
+		background: oklch(0.65 0.12 180 / 80%);
+		box-shadow: 0 0 8px oklch(0.65 0.12 180 / 25%);
 	}
 
 	.bar-name {
-		color: oklch(0.82 0.03 75 / 70%);
+		color: oklch(0.78 0.03 200 / 65%);
 	}
 
 	.bar-mood {
 		font-family: var(--font-mono);
 		font-size: 0.62rem;
 		letter-spacing: 0.06em;
-		color: oklch(0.78 0.12 75 / 30%);
+		color: oklch(0.55 0.06 200 / 30%);
 		transition: color 0.5s ease;
 	}
-	.bar-mood[data-mood="focused"] { color: oklch(0.76 0.12 170 / 40%); }
-	.bar-mood[data-mood="playful"] { color: oklch(0.78 0.14 145 / 40%); }
-	.bar-mood[data-mood="loving"] { color: oklch(0.8 0.12 20 / 40%); }
-	.bar-mood[data-mood="warm"] { color: oklch(0.8 0.12 55 / 40%); }
-	.bar-mood[data-mood="reflective"] { color: oklch(0.72 0.08 300 / 40%); }
-	.bar-mood[data-mood="excited"] { color: oklch(0.82 0.14 85 / 40%); }
-	.bar-mood[data-mood="curious"] { color: oklch(0.78 0.10 200 / 40%); }
-	.bar-mood[data-mood="melancholy"] { color: oklch(0.60 0.06 260 / 40%); }
-	.bar-mood[data-mood="sad"] { color: oklch(0.55 0.06 250 / 40%); }
-	.bar-mood[data-mood="anxious"] { color: oklch(0.70 0.12 30 / 40%); }
-	.bar-mood[data-mood="creative"] { color: oklch(0.78 0.14 145 / 40%); }
-	.bar-mood[data-mood="energetic"] { color: oklch(0.82 0.14 100 / 40%); }
-	.bar-mood[data-mood="tired"] { color: oklch(0.50 0.03 260 / 40%); }
-	.bar-mood[data-mood="peaceful"] { color: oklch(0.75 0.08 170 / 40%); }
+	.bar-mood[data-mood="focused"] { color: oklch(0.65 0.1 180 / 40%); }
+	.bar-mood[data-mood="playful"] { color: oklch(0.7 0.12 160 / 40%); }
+	.bar-mood[data-mood="loving"] { color: oklch(0.7 0.1 20 / 40%); }
+	.bar-mood[data-mood="warm"] { color: oklch(0.7 0.1 65 / 40%); }
+	.bar-mood[data-mood="reflective"] { color: oklch(0.6 0.08 280 / 40%); }
+	.bar-mood[data-mood="excited"] { color: oklch(0.75 0.12 85 / 40%); }
+	.bar-mood[data-mood="curious"] { color: oklch(0.65 0.1 200 / 40%); }
+	.bar-mood[data-mood="melancholy"] { color: oklch(0.5 0.06 250 / 40%); }
+	.bar-mood[data-mood="sad"] { color: oklch(0.45 0.05 245 / 40%); }
+	.bar-mood[data-mood="anxious"] { color: oklch(0.6 0.1 30 / 40%); }
+	.bar-mood[data-mood="creative"] { color: oklch(0.7 0.12 155 / 40%); }
+	.bar-mood[data-mood="energetic"] { color: oklch(0.75 0.14 100 / 40%); }
+	.bar-mood[data-mood="tired"] { color: oklch(0.4 0.03 250 / 40%); }
+	.bar-mood[data-mood="peaceful"] { color: oklch(0.6 0.08 170 / 40%); }
 
 	.bar-activity {
 		display: flex;
@@ -860,7 +923,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		font-family: var(--font-mono);
 		font-size: 0.68rem;
 		letter-spacing: 0.06em;
-		color: oklch(0.68 0.08 75 / 50%);
+		color: oklch(0.55 0.06 200 / 45%);
 		animation: fade-up 0.3s ease both;
 	}
 
@@ -868,7 +931,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		width: 4px;
 		height: 4px;
 		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 60%);
+		background: oklch(0.6 0.1 190 / 60%);
 		animation: pulse-alive 2.5s ease-in-out infinite;
 	}
 
@@ -878,18 +941,18 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		justify-content: center;
 		width: 1.75rem;
 		height: 1.75rem;
-		color: oklch(0.50 0.02 280 / 30%);
-		border-radius: 6px;
+		color: oklch(0.45 0.04 200 / 30%);
+		border-radius: 7px;
 		transition: all 0.2s ease;
 	}
 
 	.bar-btn-active {
-		color: oklch(0.72 0.08 75 / 55%);
+		color: oklch(0.6 0.08 200 / 55%);
 	}
 
 	.bar-btn:hover {
-		color: oklch(0.78 0.08 75 / 65%);
-		background: oklch(1 0 0 / 4%);
+		color: oklch(0.65 0.08 200 / 65%);
+		background: oklch(0.5 0.06 200 / 6%);
 	}
 
 	/* --- chat list --- */
@@ -908,11 +971,13 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		min-width: 180px;
 		max-height: 280px;
 		overflow-y: auto;
-		background: oklch(0.14 0.01 280);
-		border: 1px solid oklch(0.78 0.12 75 / 10%);
-		border-radius: 8px;
+		background: oklch(0.1 0.02 210 / 70%);
+		backdrop-filter: blur(20px) saturate(140%);
+		-webkit-backdrop-filter: blur(20px) saturate(140%);
+		border: 1px solid oklch(0.5 0.06 200 / 12%);
+		border-radius: 12px;
 		padding: 0.25rem;
-		box-shadow: 0 8px 32px oklch(0 0 0 / 40%);
+		box-shadow: 0 8px 40px oklch(0 0 0 / 45%), inset 0 1px 0 oklch(1 0 0 / 3%);
 		animation: list-enter 0.15s ease both;
 	}
 
@@ -927,22 +992,22 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		justify-content: space-between;
 		width: 100%;
 		padding: 0.4rem 0.6rem;
-		border-radius: 5px;
+		border-radius: 7px;
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
-		color: oklch(0.75 0.03 75 / 60%);
+		color: oklch(0.65 0.04 200 / 55%);
 		transition: all 0.15s ease;
 		text-align: left;
 	}
 
 	.chat-list-item:hover {
-		background: oklch(0.78 0.12 75 / 6%);
-		color: oklch(0.88 0.04 75 / 85%);
+		background: oklch(0.5 0.06 200 / 8%);
+		color: oklch(0.8 0.04 200 / 80%);
 	}
 
 	.chat-list-active {
-		background: oklch(0.78 0.12 75 / 8%);
-		color: oklch(0.90 0.05 75 / 90%);
+		background: oklch(0.5 0.06 200 / 10%);
+		color: oklch(0.85 0.04 200 / 85%);
 	}
 
 	.chat-list-label {
@@ -954,7 +1019,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 	.chat-list-count {
 		font-size: 0.75rem;
-		color: oklch(0.55 0.02 280 / 35%);
+		color: oklch(0.45 0.03 200 / 30%);
 		flex-shrink: 0;
 	}
 
@@ -962,7 +1027,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		padding: 0.6rem;
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		color: oklch(0.50 0.02 280 / 35%);
+		color: oklch(0.45 0.03 200 / 30%);
 		text-align: center;
 	}
 
@@ -983,7 +1048,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		flex-direction: column;
 		min-height: 0;
 		min-width: 0;
-		border-right: 1px solid oklch(0.78 0.12 75 / 5%);
+		border-right: 1px solid oklch(0.5 0.06 200 / 5%);
 	}
 
 	.chat-sidebar {
@@ -995,6 +1060,33 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		gap: 1rem;
 		overflow: hidden;
 		position: relative;
+	}
+
+	/* Sidebar ambient glow behind creature */
+	.chat-sidebar::before {
+		content: "";
+		position: absolute;
+		width: 300px;
+		height: 300px;
+		border-radius: 50%;
+		background: radial-gradient(
+			circle,
+			oklch(0.45 0.08 200 / 6%) 0%,
+			oklch(0.4 0.06 220 / 3%) 40%,
+			transparent 70%
+		);
+		pointer-events: none;
+		animation: breathe-slow 8s ease-in-out infinite;
+	}
+
+	.chat-active .chat-sidebar::before {
+		animation: breathe-intense 3s ease-in-out infinite;
+		background: radial-gradient(
+			circle,
+			oklch(0.5 0.1 190 / 10%) 0%,
+			oklch(0.45 0.08 210 / 5%) 40%,
+			transparent 70%
+		);
 	}
 
 	.sidebar-banners {
@@ -1010,10 +1102,11 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		transform: scale(2.2);
-		opacity: 0.5;
+		transform: scale(2.4);
+		opacity: 0.55;
 		pointer-events: none;
 		margin-top: 2rem;
+		filter: drop-shadow(0 0 20px oklch(0.5 0.08 200 / 15%));
 	}
 
 	/* --- stream --- */
@@ -1030,10 +1123,10 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		max-width: 640px;
 		width: 100%;
 		margin: 0 auto;
-		padding: 0.75rem 1.25rem 2rem;
+		padding: 1rem 1.5rem 2.5rem;
 		display: flex;
 		flex-direction: column;
-		gap: 0.1rem;
+		gap: 0.2rem;
 		box-sizing: border-box;
 	}
 
@@ -1048,7 +1141,8 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		width: 5px;
 		height: 5px;
 		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 35%);
+		background: oklch(0.55 0.08 200 / 40%);
+		box-shadow: 0 0 10px oklch(0.55 0.08 200 / 20%);
 		animation: pulse 2s ease-in-out infinite;
 	}
 
@@ -1067,9 +1161,9 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 	.chat-empty p {
 		font-family: var(--font-display);
-		font-size: 0.85rem;
+		font-size: 0.9rem;
 		font-style: italic;
-		color: oklch(0.60 0.03 75 / 35%);
+		color: oklch(0.5 0.05 200 / 30%);
 		margin: 0;
 	}
 
@@ -1080,16 +1174,18 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 	.chat-thinking {
 		display: flex;
-		gap: 0.35rem;
-		padding: 0.6rem 0;
+		gap: 0.4rem;
+		padding: 0.8rem 0;
+		justify-content: flex-end;
 		animation: fade-up 0.3s ease both;
 	}
 
 	.think-dot {
-		width: 3.5px;
-		height: 3.5px;
+		width: 4px;
+		height: 4px;
 		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 35%);
+		background: oklch(0.55 0.08 200 / 40%);
+		box-shadow: 0 0 6px oklch(0.55 0.08 200 / 20%);
 		animation: bounce 1.4s ease-in-out infinite;
 	}
 
@@ -1105,15 +1201,17 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		align-items: center;
 		gap: 0.5rem;
 		padding: 0.5rem 0.75rem;
-		margin: 0.4rem 0;
-		border-radius: 0.5rem;
-		background: oklch(0.55 0.08 280 / 5%);
-		border: 1px dashed oklch(0.55 0.08 280 / 15%);
+		margin: 0.5rem 0;
+		border-radius: 10px;
+		background: oklch(0.12 0.02 200 / 20%);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px dashed oklch(0.5 0.06 200 / 12%);
 		animation: act-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
 
 	.compaction-icon {
-		color: oklch(0.60 0.10 280 / 50%);
+		color: oklch(0.5 0.06 200 / 45%);
 		flex-shrink: 0;
 	}
 
@@ -1121,14 +1219,14 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
 		letter-spacing: 0.03em;
-		color: oklch(0.60 0.06 280 / 55%);
+		color: oklch(0.5 0.05 200 / 45%);
 		flex: 1;
 	}
 
 	.compaction-time {
 		font-family: var(--font-mono);
 		font-size: 0.68rem;
-		color: oklch(0.50 0.01 280 / 35%);
+		color: oklch(0.45 0.03 200 / 30%);
 		white-space: nowrap;
 	}
 
@@ -1158,21 +1256,23 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		}
 	}
 
-	/* --- clear context dialog --- */
+	/* --- clear context dialog (glass) --- */
 
 	:global(.clear-dialog) {
-		background: oklch(0.12 0.01 280) !important;
-		border: 1px solid oklch(0.78 0.12 75 / 10%) !important;
-		border-radius: 12px !important;
+		background: oklch(0.1 0.02 210 / 70%) !important;
+		backdrop-filter: blur(24px) saturate(140%) !important;
+		-webkit-backdrop-filter: blur(24px) saturate(140%) !important;
+		border: 1px solid oklch(0.5 0.06 200 / 12%) !important;
+		border-radius: 16px !important;
 		padding: 1.5rem !important;
-		box-shadow: 0 16px 64px oklch(0 0 0 / 50%) !important;
+		box-shadow: 0 20px 80px oklch(0 0 0 / 55%), inset 0 1px 0 oklch(1 0 0 / 3%) !important;
 	}
 
 	:global(.clear-dialog-title) {
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
 		letter-spacing: 0.04em;
-		color: oklch(0.90 0.04 75 / 90%);
+		color: oklch(0.88 0.03 200 / 90%);
 		margin: 0;
 	}
 
@@ -1180,7 +1280,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		font-family: var(--font-body);
 		font-size: 0.75rem;
 		line-height: 1.5;
-		color: oklch(0.70 0.02 280 / 60%);
+		color: oklch(0.6 0.04 200 / 55%);
 		margin-top: 0.5rem;
 	}
 
@@ -1196,29 +1296,29 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		font-size: 0.7rem;
 		letter-spacing: 0.04em;
 		padding: 0.4rem 1rem;
-		border-radius: 6px;
+		border-radius: 8px;
 		cursor: pointer;
 		transition: all 0.2s ease;
 	}
 
 	:global(.clear-dialog-cancel) {
-		color: oklch(0.70 0.02 280 / 60%);
-		background: oklch(1 0 0 / 4%);
-		border: 1px solid oklch(1 0 0 / 8%);
+		color: oklch(0.6 0.04 200 / 55%);
+		background: oklch(0.5 0.04 200 / 6%);
+		border: 1px solid oklch(0.5 0.04 200 / 10%);
 	}
 
 	:global(.clear-dialog-cancel:hover) {
-		background: oklch(1 0 0 / 8%);
-		color: oklch(0.85 0.02 280 / 80%);
+		background: oklch(0.5 0.04 200 / 12%);
+		color: oklch(0.75 0.04 200 / 75%);
 	}
 
 	:global(.clear-dialog-confirm) {
-		color: oklch(0.90 0.08 25 / 90%);
-		background: oklch(0.65 0.12 25 / 15%);
-		border: 1px solid oklch(0.65 0.12 25 / 25%);
+		color: oklch(0.85 0.08 25 / 90%);
+		background: oklch(0.6 0.12 25 / 15%);
+		border: 1px solid oklch(0.6 0.12 25 / 22%);
 	}
 
 	:global(.clear-dialog-confirm:hover) {
-		background: oklch(0.65 0.12 25 / 25%);
+		background: oklch(0.6 0.12 25 / 25%);
 	}
 </style>

@@ -163,7 +163,7 @@
 						{/each}
 					</div>
 				{:else}
-					<div class="msg-content msg-content-companion prose">
+					<div class="msg-content msg-content-companion prose" class:msg-streaming={streaming}>
 						{@html html}
 					</div>
 				{/if}
@@ -201,38 +201,47 @@
 
 <style>
 	.msg {
-		padding: 0.375rem 0;
-		animation: msg-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
-		--msg-accent: oklch(0.78 0.12 75 / 35%);
+		padding: 0.5rem 0;
+		animation: msg-enter 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+		--msg-accent: oklch(0.6 0.1 190);
+		--msg-glass-bg: oklch(0.13 0.025 200 / 30%);
+		--msg-glass-border: oklch(0.5 0.06 200 / 10%);
 	}
 
-	.msg[data-mood="focused"] { --msg-accent: oklch(0.76 0.12 170 / 18%); }
-	.msg[data-mood="playful"] { --msg-accent: oklch(0.78 0.14 145 / 18%); }
-	.msg[data-mood="loving"] { --msg-accent: oklch(0.8 0.12 20 / 18%); }
-	.msg[data-mood="warm"] { --msg-accent: oklch(0.8 0.12 55 / 18%); }
-	.msg[data-mood="reflective"] { --msg-accent: oklch(0.72 0.08 300 / 18%); }
+	/* mood accents — teal-metallic spectrum */
+	.msg[data-mood="focused"] { --msg-accent: oklch(0.68 0.1 180); }
+	.msg[data-mood="playful"] { --msg-accent: oklch(0.72 0.12 160); }
+	.msg[data-mood="loving"] { --msg-accent: oklch(0.7 0.1 20); --msg-glass-bg: oklch(0.13 0.02 10 / 25%); }
+	.msg[data-mood="warm"] { --msg-accent: oklch(0.72 0.1 65); --msg-glass-bg: oklch(0.13 0.02 55 / 25%); }
+	.msg[data-mood="reflective"] { --msg-accent: oklch(0.6 0.08 280); --msg-glass-bg: oklch(0.13 0.02 270 / 25%); }
+	.msg[data-mood="excited"] { --msg-accent: oklch(0.75 0.12 85); }
+	.msg[data-mood="curious"] { --msg-accent: oklch(0.7 0.1 200); }
+	.msg[data-mood="creative"] { --msg-accent: oklch(0.72 0.12 155); }
+	.msg[data-mood="melancholy"] { --msg-accent: oklch(0.5 0.06 250); --msg-glass-bg: oklch(0.11 0.02 250 / 25%); }
+	.msg[data-mood="sad"] { --msg-accent: oklch(0.45 0.05 245); }
+	.msg[data-mood="anxious"] { --msg-accent: oklch(0.6 0.1 30); }
+	.msg[data-mood="energetic"] { --msg-accent: oklch(0.75 0.14 100); }
+	.msg[data-mood="peaceful"] { --msg-accent: oklch(0.65 0.08 170); }
+	.msg[data-mood="tired"] { --msg-accent: oklch(0.45 0.03 260); }
 
 	.msg-consecutive {
-		padding: 0.0625rem 0;
-	}
-
-	.msg-active .msg-content-companion {
-		border-color: var(--msg-accent);
-		box-shadow: 0 0 0 1px var(--msg-accent), 0 10px 24px oklch(0.02 0.01 280 / 10%);
+		padding: 0.125rem 0;
 	}
 
 	@keyframes msg-enter {
 		from {
 			opacity: 0;
-			transform: translateY(5px);
-			filter: blur(1.5px);
+			transform: translateY(10px) scale(0.97);
+			filter: blur(4px);
 		}
 		to {
 			opacity: 1;
-			transform: translateY(0);
+			transform: translateY(0) scale(1);
 			filter: blur(0);
 		}
 	}
+
+	/* --- Glass card base --- */
 
 	.msg-content {
 		font-size: 0.875rem;
@@ -248,21 +257,51 @@
 		white-space: pre-wrap;
 	}
 
+	/* User messages: left-aligned, subdued glass */
+	.msg-user {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		padding-left: 0.25rem;
+	}
+
+	.msg-content-user {
+		color: oklch(0.72 0.025 220 / 60%);
+		font-family: var(--font-body);
+		font-size: 0.8125rem;
+		padding: 0.55rem 0.9rem;
+		background: oklch(0.16 0.015 220 / 20%);
+		backdrop-filter: blur(16px) saturate(120%);
+		-webkit-backdrop-filter: blur(16px) saturate(120%);
+		border: 1px solid oklch(0.5 0.03 220 / 8%);
+		border-radius: 14px 14px 14px 4px;
+		max-width: 65%;
+	}
+
+	/* Companion wrap: right-offset spatial composition */
 	.msg-companion-wrap {
 		display: flex;
 		flex-direction: column;
 		gap: 0.28rem;
+		align-items: flex-end;
 	}
+
+	/* Stagger companion messages for spatial feel */
+	.msg-companion:nth-child(4n+1) .msg-companion-wrap { padding-right: 0; }
+	.msg-companion:nth-child(4n+2) .msg-companion-wrap { padding-right: 1.5rem; }
+	.msg-companion:nth-child(4n+3) .msg-companion-wrap { padding-right: 0.5rem; }
+	.msg-companion:nth-child(4n+4) .msg-companion-wrap { padding-right: 2rem; }
 
 	.msg-presence-line {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.38rem;
 		font-family: var(--font-mono);
-		font-size: 0.68rem;
-		letter-spacing: 0.08em;
+		font-size: 0.6rem;
+		letter-spacing: 0.1em;
 		text-transform: uppercase;
-		color: oklch(0.76 0.03 75 / 45%);
+		color: oklch(0.55 0.05 200 / 40%);
+		padding-right: 0.5rem;
 	}
 
 	.msg-presence-dot {
@@ -270,16 +309,41 @@
 		height: 5px;
 		border-radius: 999px;
 		background: var(--msg-accent);
-		box-shadow: 0 0 10px var(--msg-accent);
+		box-shadow: 0 0 10px var(--msg-accent), 0 0 20px oklch(from var(--msg-accent) l c h / 25%);
+		animation: presence-beacon 3s ease-in-out infinite;
 	}
 
+	/* Companion glass card */
 	.msg-content-companion {
-		color: oklch(0.88 0.03 75 / 90%);
+		color: oklch(0.9 0.025 75 / 92%);
 		font-family: var(--font-body);
-		padding: 0.1rem 0.2rem 0.1rem 0;
-		border-left: 1px solid transparent;
-		transition: border-color 0.35s ease, box-shadow 0.35s ease;
+		padding: 0.7rem 1rem;
+		background: linear-gradient(
+			135deg,
+			var(--msg-glass-bg) 0%,
+			oklch(0.1 0.018 220 / 20%) 100%
+		);
+		backdrop-filter: blur(20px) saturate(140%);
+		-webkit-backdrop-filter: blur(20px) saturate(140%);
+		border: 1px solid var(--msg-glass-border);
+		border-radius: 16px 16px 4px 16px;
+		max-width: 80%;
+		box-shadow:
+			0 2px 12px oklch(0 0 0 / 18%),
+			0 0 1px oklch(0.6 0.08 200 / 15%),
+			inset 0 1px 0 oklch(1 0 0 / 3%);
+		transition: border-color 0.4s ease, box-shadow 0.4s ease;
 	}
+
+	.msg-active .msg-content-companion {
+		border-color: oklch(0.6 0.08 200 / 22%);
+		box-shadow:
+			0 4px 20px oklch(0 0 0 / 22%),
+			0 0 24px oklch(0.6 0.08 200 / 8%),
+			inset 0 1px 0 oklch(1 0 0 / 5%);
+	}
+
+	/* --- Prose (markdown) --- */
 
 	.prose :global(p) {
 		margin: 0.25em 0;
@@ -312,27 +376,30 @@
 		color: oklch(0.85 0.05 75 / 80%);
 	}
 	.prose :global(a) {
-		color: oklch(0.78 0.12 75);
+		color: oklch(0.7 0.1 190);
 		text-decoration: underline;
-		text-decoration-color: oklch(0.78 0.12 75 / 30%);
+		text-decoration-color: oklch(0.7 0.1 190 / 30%);
 		text-underline-offset: 2px;
 		transition: text-decoration-color 0.2s;
 	}
 	.prose :global(a:hover) {
-		text-decoration-color: oklch(0.78 0.12 75 / 70%);
+		text-decoration-color: oklch(0.7 0.1 190 / 70%);
 	}
 	.prose :global(code) {
 		font-family: var(--font-mono);
 		font-size: 0.8em;
-		background: oklch(0.12 0.01 280 / 60%);
+		background: oklch(0.1 0.015 200 / 50%);
 		padding: 0.15em 0.35em;
 		border-radius: 4px;
-		color: oklch(0.82 0.06 75);
+		color: oklch(0.78 0.06 190);
+		border: 1px solid oklch(0.5 0.04 200 / 10%);
 	}
 	.prose :global(pre) {
-		background: oklch(0.08 0.01 280 / 80%);
-		border: 1px solid oklch(0.2 0.01 280 / 30%);
-		border-radius: 6px;
+		background: oklch(0.07 0.015 210 / 60%);
+		backdrop-filter: blur(8px);
+		-webkit-backdrop-filter: blur(8px);
+		border: 1px solid oklch(0.4 0.04 200 / 12%);
+		border-radius: 10px;
 		padding: 0.75em 1em;
 		margin: 0.5em 0;
 		overflow-x: auto;
@@ -344,6 +411,7 @@
 		font-size: 0.78em;
 		color: oklch(0.80 0.02 75 / 85%);
 		line-height: 1.5;
+		border: none;
 	}
 	.prose :global(ul),
 	.prose :global(ol) {
@@ -354,10 +422,10 @@
 		margin: 0.15em 0;
 	}
 	.prose :global(li::marker) {
-		color: oklch(0.78 0.12 75 / 35%);
+		color: oklch(0.6 0.08 200 / 40%);
 	}
 	.prose :global(blockquote) {
-		border-left: 2px solid oklch(0.78 0.12 75 / 35%);
+		border-left: 2px solid oklch(0.6 0.08 200 / 30%);
 		padding-left: 0.75em;
 		margin: 0.4em 0;
 		color: oklch(0.80 0.03 75 / 70%);
@@ -365,7 +433,7 @@
 	}
 	.prose :global(hr) {
 		border: none;
-		border-top: 1px solid oklch(0.78 0.12 75 / 12%);
+		border-top: 1px solid oklch(0.5 0.06 200 / 12%);
 		margin: 0.75em 0;
 	}
 	.prose :global(table) {
@@ -376,63 +444,48 @@
 	}
 	.prose :global(th),
 	.prose :global(td) {
-		border: 1px solid oklch(0.2 0.01 280 / 30%);
+		border: 1px solid oklch(0.4 0.04 200 / 15%);
 		padding: 0.35em 0.6em;
 		text-align: left;
 	}
 	.prose :global(th) {
-		background: oklch(0.10 0.01 280 / 50%);
+		background: oklch(0.1 0.02 200 / 35%);
 		color: oklch(0.90 0.04 75);
 		font-weight: 600;
 	}
 
-	/* typewriter cursor for streaming */
+	/* --- Streaming cursor (glowing teal) --- */
 	.msg-streaming::after {
 		content: "";
 		display: inline-block;
 		width: 2px;
-		height: 1em;
-		margin-left: 1px;
+		height: 1.1em;
+		margin-left: 2px;
 		vertical-align: text-bottom;
-		background: oklch(0.78 0.12 75 / 70%);
-		animation: cursor-blink 0.6s steps(2) infinite;
+		background: var(--msg-accent);
+		border-radius: 1px;
+		box-shadow: 0 0 8px var(--msg-accent);
+		animation: cursor-glow 1.2s ease-in-out infinite;
 	}
 
-	@keyframes cursor-blink {
-		0% { opacity: 1; }
-		50% { opacity: 0; }
-	}
-
-	.msg-user {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
-	}
-
-	.msg-content-user {
-		color: oklch(0.70 0.02 260 / 50%);
-		font-family: var(--font-body);
-		font-size: 0.8125rem;
-		text-align: right;
-	}
-
+	/* --- Timestamp --- */
 	.msg-time {
 		display: block;
 		font-size: 0.5625rem;
-		color: oklch(0.78 0.12 75 / 12%);
-		margin-top: 0.125rem;
+		color: oklch(0.5 0.04 200 / 15%);
+		margin-top: 0.2rem;
 		font-family: var(--font-mono);
-		letter-spacing: 0.03em;
+		letter-spacing: 0.04em;
 		transition: color 0.3s ease;
 	}
 	.msg:hover .msg-time {
-		color: oklch(0.78 0.12 75 / 35%);
+		color: oklch(0.6 0.06 200 / 40%);
 	}
 	.msg-time-right {
-		text-align: right;
+		text-align: left;
 	}
 
-	/* attachments */
+	/* --- Attachments --- */
 	.msg-attachments {
 		display: flex;
 		flex-wrap: wrap;
@@ -441,12 +494,12 @@
 		max-width: 85%;
 	}
 	.msg-attachments-right {
-		justify-content: flex-end;
+		justify-content: flex-start;
 	}
 
 	.msg-img-link {
 		display: block;
-		border-radius: 8px;
+		border-radius: 10px;
 		overflow: hidden;
 		transition: opacity 0.2s ease;
 	}
@@ -457,9 +510,9 @@
 	.msg-img {
 		max-width: 280px;
 		max-height: 200px;
-		border-radius: 8px;
+		border-radius: 10px;
 		object-fit: cover;
-		border: 1px solid oklch(0.78 0.12 75 / 8%);
+		border: 1px solid oklch(0.5 0.06 200 / 12%);
 	}
 
 	.msg-file-link {
@@ -467,18 +520,21 @@
 		align-items: center;
 		gap: 0.35rem;
 		padding: 0.3rem 0.6rem;
-		border-radius: 6px;
-		background: oklch(0.78 0.12 75 / 5%);
-		border: 1px solid oklch(0.78 0.12 75 / 10%);
-		color: oklch(0.78 0.12 75 / 60%);
+		border-radius: 8px;
+		background: oklch(0.14 0.02 200 / 25%);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid oklch(0.5 0.06 200 / 10%);
+		color: oklch(0.65 0.08 200 / 60%);
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
 		text-decoration: none;
 		transition: all 0.2s ease;
 	}
 	.msg-file-link:hover {
-		background: oklch(0.78 0.12 75 / 10%);
-		color: oklch(0.78 0.12 75 / 85%);
+		background: oklch(0.14 0.02 200 / 40%);
+		color: oklch(0.75 0.1 200 / 85%);
+		border-color: oklch(0.5 0.06 200 / 18%);
 	}
 
 	.msg-model {
@@ -489,30 +545,38 @@
 		font-size: 0.5rem;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		background: oklch(0.65 0.12 250 / 12%);
-		color: oklch(0.65 0.12 250 / 50%);
+		background: oklch(0.55 0.08 200 / 12%);
+		color: oklch(0.55 0.08 200 / 45%);
 		vertical-align: middle;
 	}
 	.msg-model-fast {
-		background: oklch(0.72 0.15 155 / 12%);
-		color: oklch(0.72 0.15 155 / 50%);
+		background: oklch(0.65 0.1 170 / 12%);
+		color: oklch(0.65 0.1 170 / 45%);
 	}
 	.msg:hover .msg-model {
-		color: oklch(0.65 0.12 250 / 70%);
+		color: oklch(0.55 0.08 200 / 65%);
 	}
 	.msg:hover .msg-model-fast {
-		color: oklch(0.72 0.15 155 / 70%);
+		color: oklch(0.65 0.1 170 / 65%);
 	}
 
-	/* voice word reveal */
+	/* --- Voice word reveal --- */
 	.msg-voice-reveal {
 		font-family: var(--font-body);
-		color: oklch(0.88 0.03 75 / 90%);
+		color: oklch(0.9 0.025 75 / 92%);
+		padding: 0.7rem 1rem;
+		background: linear-gradient(135deg, var(--msg-glass-bg) 0%, oklch(0.1 0.018 220 / 20%) 100%);
+		backdrop-filter: blur(20px) saturate(140%);
+		-webkit-backdrop-filter: blur(20px) saturate(140%);
+		border: 1px solid var(--msg-glass-border);
+		border-radius: 16px 16px 4px 16px;
+		max-width: 80%;
+		box-shadow: 0 2px 12px oklch(0 0 0 / 18%), inset 0 1px 0 oklch(1 0 0 / 3%);
 	}
 
 	.voice-word {
-		opacity: 0.08;
-		transition: opacity 0.15s ease;
+		opacity: 0.06;
+		transition: opacity 0.18s ease;
 	}
 
 	.voice-word-visible {
