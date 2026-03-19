@@ -86,7 +86,11 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 	function handleStreamDelta(delta: string) {
 		streamingContent += delta;
-		if (voice.enabled) voiceText += delta;
+		if (voice.enabled) {
+			voiceText += delta;
+			scrollToBottomIfNear();
+			return; // Don't create streaming bubbles in voice mode
+		}
 		const { completed: completedParts, pending } = splitPreservingCode(streamingContent);
 
 		// Promote completed parts to real bubbles
@@ -440,8 +444,11 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					scrollToBottomIfNear();
 				} else {
 					if (msg.role === "assistant") {
-						play("message_receive"); hapticMedium();
-						if (voice.enabled) turnMessageIds = [...turnMessageIds, msg.id];
+						if (voice.enabled) {
+							turnMessageIds = [...turnMessageIds, msg.id];
+						} else {
+							play("message_receive"); hapticMedium();
+						}
 					}
 					addMessage(msg);
 					refreshChatList();
@@ -469,6 +476,10 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					const ids = [...turnMessageIds];
 					voiceText = "";
 					turnMessageIds = [];
+					// Set speaking state immediately so messages reveal instead of flash
+					voice.speakingIds = new Set(ids);
+					voice.revealProgress = 0;
+					voice.speaking = true;
 					speak(currentSlug, text, voice, ids);
 				} else {
 					voiceText = "";
@@ -594,6 +605,11 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		await clearContext(slug, activeChatId);
 		messages = [];
 		stream = [];
+	}
+
+	/** Hide assistant messages in voice mode until TTS starts speaking. */
+	function shouldHideForVoice(msgId: string): boolean {
+		return voice.enabled && turnMessageIds.includes(msgId) && !voice.speaking;
 	}
 
 	/** Compute per-message reveal progress based on word distribution across all speaking messages. */
@@ -724,7 +740,9 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					{:else}
 						{#each stream as item, i (streamKey(item))}
 							{#if item.type === "message"}
-								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} nextMessage={getNext(item, i)} speaking={voice.speakingIds.has(item.data.id)} revealProgress={getMessageRevealProgress(item.data.id)} />
+								{#if !shouldHideForVoice(item.data.id)}
+									<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} nextMessage={getNext(item, i)} speaking={voice.speakingIds.has(item.data.id)} revealProgress={getMessageRevealProgress(item.data.id)} />
+								{/if}
 							{:else if item.type === "mcp_app"}
 								<McpAppViewer
 									html={item.html}
