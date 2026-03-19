@@ -106,7 +106,7 @@
 		</nav>
 		{/if}
 
-		<div class="instance-content">
+		<div class="instance-content" class:instance-content-backdrop={activeTab !== "chat"}>
 			{@render children()}
 		</div>
 	</div>
@@ -261,10 +261,27 @@
 	}
 
 	.instance-content {
+		position: relative;
 		flex: 1;
 		min-height: 0;
 		min-width: 0;
 		overflow: hidden;
+	}
+
+	.instance-content-backdrop::before {
+		content: "";
+		position: absolute;
+		inset: 0;
+		z-index: 0;
+		background: oklch(0.02 0.01 260 / 65%);
+		backdrop-filter: blur(20px) saturate(120%);
+		-webkit-backdrop-filter: blur(20px) saturate(120%);
+		pointer-events: none;
+	}
+
+	.instance-content-backdrop > :global(*) {
+		position: relative;
+		z-index: 1;
 	}
 
 	.instance-tab-spacer {

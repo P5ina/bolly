@@ -301,6 +301,7 @@
 		let smoothAmp = 0;
 		let smoothSpeed = 0.8;
 		let smoothIntensity = 0.08;
+		let lastMode: string = "";
 
 		function animate() {
 			if (!running) return;
@@ -318,6 +319,16 @@
 
 			const m = store.mode;
 			const sel = store.selectedSlug;
+
+			// Reset smooth shader values when leaving chat
+			if (m !== lastMode) {
+				if (lastMode === "chat" || m === "home") {
+					smoothSpeed = 0.8;
+					smoothIntensity = 0.08;
+					smoothAmp = 0;
+				}
+				lastMode = m;
+			}
 
 			// ── Per-orb animation ──
 			// In selecting/intro the easing functions already produce smooth curves,
