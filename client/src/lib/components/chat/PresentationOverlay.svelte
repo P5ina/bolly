@@ -40,7 +40,10 @@
 	};
 
 	let visible = $state<VisibleBubble[]>([]);
-	let seenIds = new Set<string>();
+	// Seed with all existing message IDs so history doesn't fly in on mount
+	let seenIds = new Set<string>(
+		stream.filter(s => s.type === "message").map(s => (s as { type: "message"; data: ChatMessage }).data.id)
+	);
 
 	// Vertical slot allocator: divide screen into zones, pick least-used
 	const SLOTS = [18, 28, 38, 48, 58, 68, 78];
