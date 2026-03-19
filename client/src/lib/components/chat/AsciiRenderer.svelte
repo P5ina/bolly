@@ -123,14 +123,20 @@
 		asciiOutput = result;
 	}
 
-	// Render loop
+	// Render loop — throttled to ~20fps to avoid layout thrashing
 	$effect(() => {
 		if (!containerRef) return;
 
 		let running = true;
-		function loop() {
+		let lastFrame = 0;
+		const FRAME_INTERVAL = 50; // ms (~20fps)
+
+		function loop(now: number) {
 			if (!running) return;
-			renderAscii();
+			if (now - lastFrame >= FRAME_INTERVAL) {
+				renderAscii();
+				lastFrame = now;
+			}
 			requestAnimationFrame(loop);
 		}
 		setTimeout(() => requestAnimationFrame(loop), 100);
@@ -192,6 +198,8 @@
 		opacity: 0.6;
 		transition: color 0.8s ease, text-shadow 0.8s ease, opacity 0.8s ease;
 		white-space: pre;
+		will-change: contents;
+		contain: layout style paint;
 	}
 
 	.ascii-thinking {
