@@ -171,7 +171,7 @@
 
 		const creatureScene = new THREE.Scene();
 		const cam = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-		cam.position.set(0, 0, 2.4);
+		cam.position.set(0, 0, 3.0);
 
 		creatureScene.add(new THREE.AmbientLight(0xffffff, 0.05));
 
