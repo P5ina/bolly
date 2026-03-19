@@ -82,10 +82,10 @@
 			const st = uv();
 			const t = time.mul(0.015);
 
-			const deep = vec3(0.03, 0.06, 0.20);
-			const mid = vec3(0.07, 0.12, 0.35);
-			const purp = vec3(0.15, 0.08, 0.38);
-			const lite = vec3(0.12, 0.18, 0.40);
+			const deep = vec3(0.04, 0.08, 0.25);
+			const mid = vec3(0.10, 0.16, 0.45);
+			const purp = vec3(0.22, 0.12, 0.48);
+			const lite = vec3(0.18, 0.25, 0.52);
 
 			// Base vertical gradient
 			let c = mix(deep, mid, smoothstep(float(0.0), float(0.4), st.y));
@@ -116,19 +116,24 @@
 
 		// ── Lighting ──
 
-		scene.add(new THREE.AmbientLight(0x4466aa, 0.4));
+		scene.add(new THREE.AmbientLight(0x4466aa, 0.6));
 
-		const keyLight = new THREE.DirectionalLight(0xffffff, 3.0);
+		const keyLight = new THREE.DirectionalLight(0xffffff, 5.0);
 		keyLight.position.set(3, 2, 4);
 		scene.add(keyLight);
 
-		const rimLight = new THREE.PointLight(0x8899cc, 1.5);
+		const rimLight = new THREE.PointLight(0xaabbee, 3.0);
 		rimLight.position.set(-3, 1.5, -2);
 		scene.add(rimLight);
 
-		const fillLight = new THREE.PointLight(0x6677aa, 0.5);
+		const fillLight = new THREE.PointLight(0x6677aa, 1.0);
 		fillLight.position.set(0, -3, 1);
 		scene.add(fillLight);
+
+		// Top accent light for specular highlight
+		const topLight = new THREE.PointLight(0xffffff, 2.0);
+		topLight.position.set(0, 4, 2);
+		scene.add(topLight);
 
 		// ── Glass blob ──
 
@@ -154,22 +159,30 @@
 			return pos.mul(scale);
 		});
 
+		// Generate environment map from the scene background
+		// (gives reflections something to show)
+		const pmrem = new THREE.PMREMGenerator(renderer);
+		const envRT = pmrem.fromScene(scene);
+		scene.environment = envRT.texture;
+
 		const glassMat = new THREE.MeshPhysicalNodeMaterial();
 		glassMat.positionNode = displacedPos();
 
-		// Glass properties
-		glassMat.colorNode = uMoodColor.mul(0.15).add(vec3(0.02, 0.04, 0.08));
-		glassMat.transmission = 0.97;
-		glassMat.ior = 1.45;
-		glassMat.thickness = 1.2;
-		glassMat.roughness = 0.03;
+		// Glass properties — visible on dark backgrounds
+		glassMat.colorNode = uMoodColor.mul(0.08).add(vec3(0.01, 0.02, 0.06));
+		glassMat.transmission = 0.95;
+		glassMat.ior = 1.5;
+		glassMat.thickness = 1.5;
+		glassMat.roughness = 0.02;
 		glassMat.metalness = 0.0;
-		glassMat.dispersion = 0.4; // chromatic aberration!
-		glassMat.attenuationColor = new THREE.Color(0x8888ff);
-		glassMat.attenuationDistance = 3.0;
-		glassMat.clearcoat = 0.3;
-		glassMat.clearcoatRoughness = 0.08;
-		glassMat.envMapIntensity = 1.0;
+		glassMat.dispersion = 0.5;
+		glassMat.attenuationColor = new THREE.Color(0x6677cc);
+		glassMat.attenuationDistance = 2.0;
+		glassMat.clearcoat = 1.0;
+		glassMat.clearcoatRoughness = 0.05;
+		glassMat.specularIntensity = 2.0;
+		glassMat.specularColor = new THREE.Color(0xccddff);
+		glassMat.envMapIntensity = 2.5;
 		glassMat.transparent = true;
 		glassMat.side = THREE.DoubleSide;
 
