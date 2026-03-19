@@ -85,4 +85,11 @@ pub enum ServerEvent {
         chat_id: String,
         delta: String,
     },
+    /// Full chat state snapshot — client reconciles against this.
+    ChatSnapshot {
+        instance_slug: String,
+        chat_id: String,
+        messages: Vec<ChatMessage>,
+        agent_running: bool,
+    },
 }

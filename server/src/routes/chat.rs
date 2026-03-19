@@ -365,10 +365,28 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         tasks.remove(&key);
     }
 
+    // Final snapshot — client gets complete state before agent_stopped
+    send_snapshot(&state, &instance_slug, &chat_id, false);
+
     let _ = state.events.send(ServerEvent::AgentStopped {
         instance_slug: instance_slug.clone(),
         chat_id: chat_id.clone(),
     });
+}
+
+/// Send a full chat state snapshot so all clients converge to the same state.
+fn send_snapshot(state: &AppState, instance_slug: &str, chat_id: &str, agent_running: bool) {
+    match chat::load_messages(&state.workspace_dir, instance_slug, chat_id) {
+        Ok(resp) => {
+            let _ = state.events.send(ServerEvent::ChatSnapshot {
+                instance_slug: instance_slug.to_string(),
+                chat_id: chat_id.to_string(),
+                messages: resp.messages,
+                agent_running,
+            });
+        }
+        Err(e) => log::warn!("[snapshot] failed to load messages: {e}"),
+    }
 }
 
 /// Check if the last message in the chat is from the user (meaning they sent something

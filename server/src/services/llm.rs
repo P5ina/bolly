@@ -821,6 +821,16 @@ async fn streaming_agent_loop(
         let id_fn = || format!("tool_{}", super::tools::unix_millis());
         let entries = merge_with_timestamps(&old_entries, messages, ts_fn, id_fn);
         super::chat::save_rig_history(&rig_path, &entries);
+
+        // Snapshot after each tool cycle — all clients converge to ground truth
+        if let Ok(resp) = super::chat::load_messages(workspace_dir, instance_slug, chat_id) {
+            let _ = events.send(ServerEvent::ChatSnapshot {
+                instance_slug: instance_slug.to_string(),
+                chat_id: chat_id.to_string(),
+                messages: resp.messages,
+                agent_running: true,
+            });
+        }
     }
 
     Ok((all_text, Some(current_message_id), total_tokens))

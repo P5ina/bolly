@@ -207,6 +207,37 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		}
 	}
 
+	/** Reconcile local state with a server snapshot — game-style sync. */
+	function reconcileSnapshot(serverMessages: ChatMessage[], serverAgentRunning: boolean) {
+		const serverStream = messagesToStream(serverMessages);
+		const serverMsgIds = new Set(serverStream.filter(s => s.type === "message").map(s => (s as any).data.id));
+
+		// Preserve the actively-streaming message (it's ahead of the snapshot)
+		const streamingItem = streamingMessageId
+			? stream.find(s => s.type === "message" && (s as any).data.id === streamingMessageId)
+			: null;
+
+		// Build new stream: server items + any local-only streaming message
+		const newStream: StreamItem[] = [...serverStream];
+
+		if (streamingItem && !serverMsgIds.has(streamingMessageId)) {
+			newStream.push(streamingItem);
+		}
+
+		// Preserve local activity items that aren't in the snapshot (live tool output, thinking state)
+		for (const item of stream) {
+			if (item.type === "activity" && item.id.startsWith("__live_")) {
+				newStream.push(item);
+			}
+		}
+
+		stream = newStream;
+		messages = serverMessages.filter((m) => !isToolActivity(m));
+		agentRunning = serverAgentRunning;
+
+		scrollToBottomIfNear();
+	}
+
 	function isToolActivity(msg: ChatMessage): boolean {
 		if (msg.kind === "tool_call" || msg.kind === "tool_output" || msg.kind === "mcp_app" || msg.kind === "compaction") return true;
 		if (msg.content.startsWith("[restart]")) return true;
@@ -362,11 +393,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			if ((event as any).type === "resync") {
 				fetchMessages(currentSlug, currentChat)
 					.then((res) => {
-						messages = res.messages.filter((m) => !isToolActivity(m));
-						stream = messagesToStream(res.messages);
-						agentRunning = res.agent_running;
-						if (agentRunning) pushActivity("state", "thinking...");
-						scrollToBottomIfNear();
+						reconcileSnapshot(res.messages, res.agent_running);
 					})
 					.catch(() => {});
 				return;
@@ -512,6 +539,9 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
 				}];
 				scrollToBottomIfNear();
+			} else if ((event as any).type === "chat_snapshot") {
+				const snap = event as any;
+				reconcileSnapshot(snap.messages, snap.agent_running);
 			}
 		});
 		return unsub;
