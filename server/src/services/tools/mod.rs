@@ -140,6 +140,7 @@ fn secret_values() -> &'static Vec<String> {
             "STRIPE_SECRET_KEY",
             "GITHUB_TOKEN",
             "GOOGLE_CLIENT_SECRET",
+            "ELEVENLABS_API_KEY",
         ];
         env_keys
             .iter()
