@@ -281,6 +281,13 @@ export type ServerEvent =
 			html: string;
 	  }
 	| {
+			type: "chat_audio_ready";
+			instance_slug: string;
+			chat_id: string;
+			audio_base64: string;
+			message_ids: string[];
+	  }
+	| {
 			type: "mcp_app_input_delta";
 			instance_slug: string;
 			chat_id: string;

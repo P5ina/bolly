@@ -70,6 +70,15 @@ pub enum ServerEvent {
         tool_name: String,
         html: String,
     },
+    /// Server-generated TTS audio ready for playback.
+    ChatAudioReady {
+        instance_slug: String,
+        chat_id: String,
+        /// Base64-encoded MP3 audio bytes.
+        audio_base64: String,
+        /// Message IDs that this audio covers (for word reveal).
+        message_ids: Vec<String>,
+    },
     /// Streaming: partial tool arguments delta for an MCP App.
     McpAppInputDelta {
         instance_slug: String,

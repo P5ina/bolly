@@ -6,6 +6,7 @@ use axum::{
     routing::post,
 };
 use serde::Deserialize;
+use std::path::Path;
 
 use crate::{app::state::AppState, config::InstanceConfig};
 
@@ -22,6 +23,55 @@ struct TtsRequest {
     instance_slug: String,
 }
 
+/// Resolve ElevenLabs voice ID: instance config > env var > default.
+pub fn resolve_voice_id(workspace_dir: &Path, instance_slug: &str) -> String {
+    if !instance_slug.is_empty() {
+        let inst = InstanceConfig::load(workspace_dir, instance_slug);
+        if !inst.elevenlabs_voice_id.is_empty() {
+            return inst.elevenlabs_voice_id;
+        }
+    }
+    std::env::var("ELEVENLABS_VOICE_ID").unwrap_or_else(|_| DEFAULT_VOICE_ID.into())
+}
+
+/// Synthesize speech and return raw MP3 bytes.
+pub async fn synthesize_bytes(
+    http: &reqwest::Client,
+    api_key: &str,
+    voice_id: &str,
+    text: &str,
+) -> Result<Vec<u8>, String> {
+    let url = format!(
+        "https://api.elevenlabs.io/v1/text-to-speech/{}/stream?output_format=mp3_44100_128",
+        voice_id
+    );
+
+    let body = serde_json::json!({
+        "text": text,
+        "model_id": "eleven_v3",
+    });
+
+    let response = http
+        .post(&url)
+        .header("xi-api-key", api_key)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("ElevenLabs request failed: {e}"))?;
+
+    if !response.status().is_success() {
+        let status = response.status().as_u16();
+        let err_text = response.text().await.unwrap_or_default();
+        return Err(format!("ElevenLabs API error ({status}): {err_text}"));
+    }
+
+    response
+        .bytes()
+        .await
+        .map(|b| b.to_vec())
+        .map_err(|e| format!("failed to read audio bytes: {e}"))
+}
+
 async fn synthesize(
     State(state): State<AppState>,
     Json(request): Json<TtsRequest>,
@@ -32,62 +82,21 @@ async fn synthesize(
     };
 
     if api_key.is_empty() {
-        return Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            "ElevenLabs API key not configured".into(),
-        ));
+        return Err((StatusCode::SERVICE_UNAVAILABLE, "ElevenLabs API key not configured".into()));
     }
-
     if request.text.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "text is required".into()));
     }
 
-    // Resolve voice ID: instance config > env var > default
-    let voice_id = if !request.instance_slug.is_empty() {
-        let inst = InstanceConfig::load(&state.workspace_dir, &request.instance_slug);
-        if !inst.elevenlabs_voice_id.is_empty() {
-            inst.elevenlabs_voice_id
-        } else {
-            std::env::var("ELEVENLABS_VOICE_ID").unwrap_or_else(|_| DEFAULT_VOICE_ID.into())
-        }
-    } else {
-        std::env::var("ELEVENLABS_VOICE_ID").unwrap_or_else(|_| DEFAULT_VOICE_ID.into())
-    };
+    let voice_id = resolve_voice_id(&state.workspace_dir, &request.instance_slug);
 
-    let url = format!(
-        "https://api.elevenlabs.io/v1/text-to-speech/{}/stream?output_format=mp3_44100_128",
-        voice_id
-    );
-
-    let body = serde_json::json!({
-        "text": request.text,
-        "model_id": "eleven_v3",
-    });
-
-    let response = state
-        .http_client
-        .post(&url)
-        .header("xi-api-key", &api_key)
-        .json(&body)
-        .send()
+    let bytes = synthesize_bytes(&state.http_client, &api_key, &voice_id, &request.text)
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("ElevenLabs request failed: {e}")))?;
-
-    if !response.status().is_success() {
-        let status = response.status().as_u16();
-        let text = response.text().await.unwrap_or_default();
-        return Err((
-            StatusCode::BAD_GATEWAY,
-            format!("ElevenLabs API error ({status}): {text}"),
-        ));
-    }
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))?;
 
     let mut headers = HeaderMap::new();
     headers.insert("content-type", HeaderValue::from_static("audio/mpeg"));
     headers.insert("cache-control", HeaderValue::from_static("no-cache"));
 
-    let stream = response.bytes_stream();
-    let body = Body::from_stream(stream);
-
-    Ok((headers, body))
+    Ok((headers, Body::from(bytes)))
 }

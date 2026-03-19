@@ -1,5 +1,3 @@
-import { getAuthToken } from "$lib/api/client.js";
-
 interface VoiceState {
 	speaking: boolean;
 	amplitude: number;
@@ -35,46 +33,13 @@ export function stopTts(voice: VoiceState) {
 	voice.speakingIds = new Set();
 }
 
-/** Speak text via ElevenLabs TTS proxy. Returns when audio finishes. */
-export async function speak(
-	slug: string,
-	text: string,
+/** Play an AudioBuffer with amplitude tracking and word reveal. */
+function playBuffer(
+	audioBuffer: AudioBuffer,
 	voice: VoiceState,
 	messageIds: string[],
 ): Promise<void> {
-	if (!text.trim()) return;
-
-	// Stop any previous playback
-	stopTts(voice);
-
 	const ac = getContext();
-	if (ac.state === "suspended") await ac.resume();
-
-	const token = getAuthToken();
-	const headers: Record<string, string> = { "Content-Type": "application/json" };
-	if (token) headers["Authorization"] = `Bearer ${token}`;
-
-	const res = await fetch("/api/tts", {
-		method: "POST",
-		headers,
-		body: JSON.stringify({ text, instance_slug: slug }),
-	});
-
-	if (!res.ok) {
-		console.warn("[tts] failed:", res.status, await res.text().catch(() => ""));
-		return;
-	}
-
-	const arrayBuffer = await res.arrayBuffer();
-	if (arrayBuffer.byteLength === 0) return;
-
-	let audioBuffer: AudioBuffer;
-	try {
-		audioBuffer = await ac.decodeAudioData(arrayBuffer);
-	} catch (e) {
-		console.warn("[tts] failed to decode audio:", e);
-		return;
-	}
 
 	const source = ac.createBufferSource();
 	source.buffer = audioBuffer;
@@ -121,4 +86,32 @@ export async function speak(
 			resolve();
 		};
 	});
+}
+
+/** Play base64-encoded MP3 audio received from the server via WebSocket. */
+export async function playBase64Audio(
+	base64: string,
+	voice: VoiceState,
+	messageIds: string[],
+): Promise<void> {
+	stopTts(voice);
+
+	const ac = getContext();
+	if (ac.state === "suspended") await ac.resume();
+
+	const binaryString = atob(base64);
+	const bytes = new Uint8Array(binaryString.length);
+	for (let i = 0; i < binaryString.length; i++) {
+		bytes[i] = binaryString.charCodeAt(i);
+	}
+
+	let audioBuffer: AudioBuffer;
+	try {
+		audioBuffer = await ac.decodeAudioData(bytes.buffer);
+	} catch (e) {
+		console.warn("[tts] failed to decode base64 audio:", e);
+		return;
+	}
+
+	return playBuffer(audioBuffer, voice, messageIds);
 }

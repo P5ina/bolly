@@ -122,6 +122,10 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
     // Persist marker so we can detect interrupted agents across restarts
     chat::set_agent_running(&state.workspace_dir, &instance_slug, &chat_id);
 
+    // Accumulate assistant text + IDs for TTS when voice_mode is on
+    let mut voice_texts: Vec<String> = Vec::new();
+    let mut voice_message_ids: Vec<String> = Vec::new();
+
     const MAX_ITERATIONS: usize = 5;
     let mut iteration = 0;
 
@@ -224,6 +228,10 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                         chat_id: chat_id.clone(),
                         message: msg.clone(),
                     });
+                    if voice_mode && msg.role == ChatRole::Assistant && !msg.content.trim().is_empty() {
+                        voice_texts.push(msg.content.clone());
+                        voice_message_ids.push(msg.id.clone());
+                    }
                 }
 
                 // Record usage for rate limiting — heavy model costs ~10x more
@@ -319,6 +327,31 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                     let title = title.trim().trim_matches('"').to_string();
                     let _ = chat::update_chat_title(&state.workspace_dir, &instance_slug, &chat_id, &title);
                 }
+            }
+        }
+    }
+
+    // Generate TTS audio before signaling agent stopped
+    if voice_mode && !voice_texts.is_empty() {
+        let api_key = {
+            let cfg = state.config.read().await;
+            cfg.llm.tokens.elevenlabs.clone()
+        };
+        if !api_key.is_empty() {
+            let voice_id = crate::routes::tts::resolve_voice_id(&state.workspace_dir, &instance_slug);
+            let full_text = voice_texts.join(" ");
+            match crate::routes::tts::synthesize_bytes(&state.http_client, &api_key, &voice_id, &full_text).await {
+                Ok(audio_bytes) => {
+                    use base64::Engine;
+                    let audio_base64 = base64::engine::general_purpose::STANDARD.encode(&audio_bytes);
+                    let _ = state.events.send(ServerEvent::ChatAudioReady {
+                        instance_slug: instance_slug.clone(),
+                        chat_id: chat_id.clone(),
+                        audio_base64,
+                        message_ids: voice_message_ids.clone(),
+                    });
+                }
+                Err(e) => log::warn!("[agent] {instance_slug}/{chat_id} — TTS failed: {e}"),
             }
         }
     }

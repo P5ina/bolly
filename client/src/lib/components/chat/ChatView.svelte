@@ -16,7 +16,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	import { hapticMedium, hapticDouble, hapticError } from "$lib/haptics.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import { getVoiceState } from "$lib/stores/voice.svelte.js";
-	import { speak, stopTts } from "$lib/tts.js";
+	import { playBase64Audio, stopTts } from "$lib/tts.js";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 	import TerminalSquare from "@lucide/svelte/icons/terminal-square";
 	import BarChart3 from "@lucide/svelte/icons/bar-chart-3";
@@ -416,25 +416,25 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			} else if (event.type === "agent_running") {
 				agentRunning = true;
 				pushActivity("state", "thinking...");
+			} else if (event.type === "chat_audio_ready") {
+				// Server-generated TTS audio — play immediately
+				const ids = event.message_ids;
+				voice.speakingIds = new Set(ids);
+				voice.revealProgress = 0;
+				voice.speaking = true;
+				voiceText = "";
+				turnMessageIds = [];
+				playBase64Audio(event.audio_base64, voice, ids);
 			} else if (event.type === "agent_stopped") {
 				agentRunning = false;
 				sending = false;
 				clearStreaming();
-				// Trigger TTS when voice is enabled
-				if (voice.enabled && voiceText.trim()) {
-					const text = voiceText.trim();
-					const ids = [...turnMessageIds];
-					voiceText = "";
-					turnMessageIds = [];
-					// Set speaking state immediately so messages reveal instead of flash
-					voice.speakingIds = new Set(ids);
-					voice.revealProgress = 0;
-					voice.speaking = true;
-					speak(currentSlug, text, voice, ids);
-				} else {
-					voiceText = "";
+				// If voice mode but no audio arrived (TTS failed or not configured),
+				// reveal messages immediately
+				if (voice.enabled && turnMessageIds.length > 0 && !voice.speaking) {
 					turnMessageIds = [];
 				}
+				voiceText = "";
 			} else if (event.type === "tool_activity") {
 				if (event.summary.startsWith("mood →")) return;
 				const isOutput = event.tool_name.endsWith("_output");
