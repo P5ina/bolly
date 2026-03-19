@@ -107,31 +107,33 @@
 			vec2 cellSize = uResolution / cellCount;
 			vec2 cell = floor(gl_FragCoord.xy / cellSize);
 
-			// Sample creature at cell center
+			// Sample creature at cell center (no Y flip — GL coords match RT coords)
 			vec2 sceneUV = (cell + 0.5) / cellCount;
-			sceneUV.y = 1.0 - sceneUV.y;
 			vec4 sc = texture2D(tScene, sceneUV);
 
 			float lum = dot(sc.rgb, vec3(0.299, 0.587, 0.114));
 
 			// Empty cell — no creature here
-			if (lum < 0.015) discard;
+			if (lum < 0.01) discard;
 
-			// Map luminance to ramp index
-			// Apply gamma curve for better distribution across the ramp
-			float n = pow(lum, 0.65);
-			float fi = n * (uRampLen - 1.0);
+			// Stretch contrast: remap the actual luminance range to full 0–1
+			// The creature's lit areas typically sit in 0.01–0.4 range
+			lum = smoothstep(0.01, 0.32, lum);
+
+			// Map to ramp index
+			float fi = lum * (uRampLen - 1.0);
 			int idx = int(clamp(fi, 0.0, uRampLen - 1.0));
 
 			// Space character → discard
 			if (idx == 0) discard;
 
-			// UV within cell
+			// UV within cell — flip Y for font atlas (canvas top-down vs GL bottom-up)
 			vec2 cellUV = fract(gl_FragCoord.xy / cellSize);
+			cellUV.y = 1.0 - cellUV.y;
 
 			// Sample font atlas
 			float atlasX = (float(idx) + cellUV.x) / uRampLen;
-			float ch = texture2D(tFont, vec2(atlasX, 1.0 - cellUV.y)).r;
+			float ch = texture2D(tFont, vec2(atlasX, cellUV.y)).r;
 
 			if (ch < 0.08) discard;
 
