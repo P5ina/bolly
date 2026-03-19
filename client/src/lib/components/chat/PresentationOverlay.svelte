@@ -116,8 +116,7 @@
 
 	function showInput() {
 		inputVisible = true;
-		// Wait for DOM update then focus
-		requestAnimationFrame(() => inputEl?.focus());
+		requestAnimationFrame(() => inputEl?.focus({ preventScroll: true }));
 	}
 
 	// Any keypress on the page opens the input bar
@@ -168,11 +167,12 @@
 				bind:this={inputEl}
 				bind:value={inputValue}
 				onkeydown={handleKeydown}
-				onfocus={() => inputFocused = true}
+				onfocus={(e) => { inputFocused = true; e.currentTarget.scrollTop = 0; }}
 				onblur={() => { inputFocused = false; if (!inputValue) inputVisible = false; }}
 				class="present-textarea"
 				placeholder="..."
 				rows={1}
+				autocomplete="off"
 				aria-label="Chat input"
 			></textarea>
 		</div>
@@ -185,6 +185,8 @@
 		inset: 0;
 		z-index: 200;
 		overflow: hidden;
+		overscroll-behavior: none;
+		touch-action: none;
 	}
 
 	.present-creature {
