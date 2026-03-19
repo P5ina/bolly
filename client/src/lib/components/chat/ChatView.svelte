@@ -764,16 +764,18 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		pointer-events: none;
 		z-index: 0;
 		background:
-			/* top-left: deep navy bloom */
-			radial-gradient(ellipse 60% 50% at 15% 10%, oklch(0.14 0.04 250 / 70%) 0%, transparent 70%),
+			/* top-left: navy bloom */
+			radial-gradient(ellipse 65% 55% at 12% 8%, oklch(0.22 0.06 250) 0%, transparent 70%),
 			/* center-right: indigo wash */
-			radial-gradient(ellipse 50% 60% at 80% 35%, oklch(0.12 0.035 280 / 55%) 0%, transparent 65%),
-			/* bottom-left: dark teal field */
-			radial-gradient(ellipse 55% 45% at 25% 85%, oklch(0.11 0.03 210 / 50%) 0%, transparent 60%),
-			/* bottom-right: subtle warm undertone */
-			radial-gradient(ellipse 40% 50% at 90% 80%, oklch(0.10 0.025 300 / 35%) 0%, transparent 55%),
-			/* center: faint brightening for depth */
-			radial-gradient(circle at 50% 50%, oklch(0.09 0.02 230 / 30%) 0%, transparent 50%);
+			radial-gradient(ellipse 55% 65% at 82% 32%, oklch(0.18 0.05 280) 0%, transparent 65%),
+			/* bottom-left: teal field */
+			radial-gradient(ellipse 60% 50% at 20% 88%, oklch(0.17 0.05 210) 0%, transparent 60%),
+			/* bottom-right: warm undertone */
+			radial-gradient(ellipse 45% 55% at 88% 75%, oklch(0.15 0.04 300) 0%, transparent 55%),
+			/* center: depth brightening */
+			radial-gradient(circle at 50% 50%, oklch(0.13 0.03 230) 0%, transparent 55%),
+			/* base fill so it's not pure black */
+			oklch(0.08 0.02 240);
 	}
 
 	/* --- Perimeter ambient glow (Siri-style) --- */
@@ -1010,8 +1012,8 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		overflow: hidden;
 		position: relative;
 		background:
-			radial-gradient(ellipse 70% 60% at 50% 45%, oklch(0.1 0.03 240 / 40%) 0%, transparent 70%),
-			radial-gradient(ellipse 50% 40% at 30% 70%, oklch(0.09 0.025 200 / 30%) 0%, transparent 60%);
+			radial-gradient(ellipse 70% 60% at 50% 45%, oklch(0.18 0.05 240) 0%, transparent 70%),
+			radial-gradient(ellipse 50% 40% at 30% 70%, oklch(0.15 0.04 200) 0%, transparent 60%);
 	}
 
 	/* Sidebar ambient glow behind creature */
