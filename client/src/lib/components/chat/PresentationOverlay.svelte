@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { ChatMessage } from "$lib/api/types.js";
-	import AsciiShader from "./AsciiShader.svelte";
 	import BackgroundShader from "./BackgroundShader.svelte";
 	import PresentationBubble from "./PresentationBubble.svelte";
 
@@ -103,11 +102,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="present-root" onclick={showInput} onkeydown={handleGlobalKey} role="application">
-	<BackgroundShader {mood} {thinking} />
-
-	<div class="present-creature">
-		<AsciiShader {thinking} {mood} {voiceAmplitude} />
-	</div>
+	<BackgroundShader {mood} {thinking} {voiceAmplitude} />
 
 	<div class="present-column" bind:this={messageColumn}>
 		<div class="present-spacer"></div>
@@ -161,21 +156,6 @@
 		touch-action: none;
 		display: flex;
 		flex-direction: column;
-	}
-
-	.present-creature {
-		position: absolute;
-		inset: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		pointer-events: none;
-		opacity: 0.45;
-	}
-
-	.present-creature :global(.ascii-shader) {
-		width: 60vh !important;
-		height: 60vh !important;
 	}
 
 	/* Bottom-anchored message column — no overlap, ever */

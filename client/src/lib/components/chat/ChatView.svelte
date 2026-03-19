@@ -6,7 +6,6 @@
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
 	import MessageBubble from "./MessageBubble.svelte";
 	import ChatInput from "./ChatInput.svelte";
-	import AsciiShader from "./AsciiShader.svelte";
 	import BackgroundShader from "./BackgroundShader.svelte";
 	import PresentationOverlay from "./PresentationOverlay.svelte";
 	import { getPresentationState } from "$lib/stores/presentation.svelte.js";
@@ -688,7 +687,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 {:else}
 
 <div class="chat-space" class:chat-active={sending || agentRunning}>
-	<BackgroundShader {mood} thinking={sending || agentRunning} />
+	<BackgroundShader {mood} thinking={sending || agentRunning} voiceAmplitude={voice.amplitude} />
 
 	<header class="chat-bar">
 		<div class="bar-left">
@@ -810,9 +809,6 @@ import McpAppViewer from "./McpAppViewer.svelte";
 						<a href="/{slug}/settings">settings</a>.
 					</CreatureBubble>
 				{/if}
-			</div>
-			<div class="chat-creature">
-				<AsciiShader thinking={sending || agentRunning} {mood} voiceAmplitude={voice.amplitude} />
 			</div>
 		</aside>
 	</div>
@@ -1109,11 +1105,6 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		z-index: 2;
 	}
 
-	.chat-creature {
-		width: 420px;
-		height: 380px;
-		pointer-events: none;
-	}
 
 	/* --- stream --- */
 
