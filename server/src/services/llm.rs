@@ -1169,18 +1169,11 @@ async fn anthropic_stream(
 
     const STREAM_TIMEOUT: Duration = Duration::from_secs(480);
 
-    let dripper = StreamDripper::new(
-        events.clone(),
-        instance_slug.to_string(),
-        chat_id.to_string(),
-        message_id.to_string(),
-    );
-
     loop {
         let chunk = tokio::time::timeout(STREAM_TIMEOUT, stream.next()).await;
         let chunk = match chunk {
             Ok(Some(Ok(c))) => c,
-            Ok(Some(Err(e))) => { dripper.flush().await; return Err(e.into()); }
+            Ok(Some(Err(e))) => return Err(e.into()),
             Ok(None) => break,
             Err(_) => {
                 log::warn!("stream timed out after {}s", STREAM_TIMEOUT.as_secs());
@@ -1271,7 +1264,12 @@ async fn anthropic_stream(
                                         current_compaction_text.push_str(t);
                                     } else {
                                         text.push_str(t);
-                                        dripper.push(t);
+                                        let _ = events.send(ServerEvent::ChatStreamDelta {
+                                            instance_slug: instance_slug.to_string(),
+                                            chat_id: chat_id.to_string(),
+                                            message_id: message_id.to_string(),
+                                            delta: t.to_string(),
+                                        });
                                     }
                                 }
                             }
@@ -1349,7 +1347,6 @@ async fn anthropic_stream(
                     // Stream complete
                 }
                 "error" => {
-                    dripper.flush().await;
                     let error_msg = ev["error"]["message"]
                         .as_str()
                         .unwrap_or("unknown error");
@@ -1360,130 +1357,9 @@ async fn anthropic_stream(
         }
     }
 
-    // Flush remaining buffered text before returning
-    dripper.flush().await;
-
     // Only count uncached input + output for rate limiting.
     let tokens_used = input_tokens + output_tokens;
     Ok((text, tool_uses, stop_reason, compaction_summary, tokens_used))
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// StreamDripper — paces ChatStreamDelta events for smooth client rendering
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Buffers raw LLM text deltas and emits paced `ChatStreamDelta` events at
-/// ~200 chars/sec, pausing slightly at sentence-ending punctuation.
-/// All connected clients receive the same rhythm.
-struct StreamDripper {
-    tx: tokio::sync::mpsc::UnboundedSender<Option<String>>,
-    handle: tokio::task::JoinHandle<()>,
-}
-
-impl StreamDripper {
-    fn new(
-        events: broadcast::Sender<ServerEvent>,
-        instance_slug: String,
-        chat_id: String,
-        message_id: String,
-    ) -> Self {
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Option<String>>();
-
-        let handle = tokio::spawn(async move {
-            let mut buf = String::new();
-            const CHARS_PER_SEC: f64 = 200.0;
-
-            loop {
-                // Drain all pending messages into buffer
-                loop {
-                    match rx.try_recv() {
-                        Ok(Some(text)) => buf.push_str(&text),
-                        Ok(None) => {
-                            // Flush signal — send everything remaining
-                            if !buf.is_empty() {
-                                let _ = events.send(ServerEvent::ChatStreamDelta {
-                                    instance_slug,
-                                    chat_id,
-                                    message_id,
-                                    delta: buf,
-                                });
-                            }
-                            return;
-                        }
-                        Err(_) => break,
-                    }
-                }
-
-                if buf.is_empty() {
-                    // Wait for data
-                    match rx.recv().await {
-                        Some(Some(text)) => buf.push_str(&text),
-                        _ => return,
-                    }
-                    continue;
-                }
-
-                // Determine batch size: up to 4 chars, break after punctuation
-                let batch_end = drip_batch_size(&buf, 4);
-                let chunk: String = buf.drain(..batch_end).collect();
-                let last_char = chunk.chars().next_back();
-
-                let _ = events.send(ServerEvent::ChatStreamDelta {
-                    instance_slug: instance_slug.clone(),
-                    chat_id: chat_id.clone(),
-                    message_id: message_id.clone(),
-                    delta: chunk,
-                });
-
-                // Variable delay: pause at punctuation, steady pace otherwise
-                let delay = match last_char {
-                    Some('.' | '!' | '?') => Duration::from_millis(45),
-                    Some(',') => Duration::from_millis(20),
-                    Some(':' | ';') => Duration::from_millis(25),
-                    Some('\n') => Duration::from_millis(30),
-                    _ => Duration::from_micros((batch_end as f64 / CHARS_PER_SEC * 1_000_000.0) as u64),
-                };
-
-                tokio::time::sleep(delay).await;
-            }
-        });
-
-        Self { tx, handle }
-    }
-
-    /// Push raw text from the LLM into the drip buffer.
-    fn push(&self, text: &str) {
-        let _ = self.tx.send(Some(text.to_string()));
-    }
-
-    /// Flush remaining buffer and wait for the drip task to complete.
-    async fn flush(self) {
-        let _ = self.tx.send(None);
-        let _ = self.handle.await;
-    }
-}
-
-/// Determine how many bytes to drain: up to `target` chars, but prefer
-/// breaking right after sentence-ending punctuation.
-fn drip_batch_size(buf: &str, target: usize) -> usize {
-    let mut byte_end = 0;
-    let mut char_count = 0;
-
-    for (i, c) in buf.char_indices() {
-        char_count += 1;
-        byte_end = i + c.len_utf8();
-
-        // Break early after sentence-ending punctuation or newlines
-        if matches!(c, '.' | '!' | '?' | '\n') && char_count >= 1 {
-            break;
-        }
-
-        if char_count >= target {
-            break;
-        }
-    }
-
-    byte_end
 }
 
 /// Result of a single streaming turn.
@@ -1804,18 +1680,11 @@ async fn openai_stream(
 
     const STREAM_TIMEOUT: Duration = Duration::from_secs(480);
 
-    let dripper = StreamDripper::new(
-        events.clone(),
-        instance_slug.to_string(),
-        chat_id.to_string(),
-        message_id.to_string(),
-    );
-
     loop {
         let chunk = tokio::time::timeout(STREAM_TIMEOUT, stream.next()).await;
         let chunk = match chunk {
             Ok(Some(Ok(c))) => c,
-            Ok(Some(Err(e))) => { dripper.flush().await; return Err(e.into()); }
+            Ok(Some(Err(e))) => return Err(e.into()),
             Ok(None) => break,
             Err(_) => {
                 log::warn!("OpenAI stream timed out");
@@ -1844,7 +1713,12 @@ async fn openai_stream(
                 // Text delta
                 if let Some(content) = choice["delta"]["content"].as_str() {
                     text.push_str(content);
-                    dripper.push(content);
+                    let _ = events.send(ServerEvent::ChatStreamDelta {
+                        instance_slug: instance_slug.to_string(),
+                        chat_id: chat_id.to_string(),
+                        message_id: message_id.to_string(),
+                        delta: content.to_string(),
+                    });
                 }
 
                 // Tool call deltas
@@ -1877,9 +1751,6 @@ async fn openai_stream(
             }
         }
     }
-
-    // Flush remaining buffered text before returning
-    dripper.flush().await;
 
     // Finalize tool calls
     for (_, (id, name, args_json)) in tool_call_map {
