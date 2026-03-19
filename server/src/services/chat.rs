@@ -290,9 +290,13 @@ pub async fn run_single_turn(
     if voice_mode {
         system_prompt.push_str(
             "\n\n## voice mode\n\
-             your responses will be read aloud. reply conversationally — \
-             no markdown, no code blocks, no lists. \
-             if asked about code, explain in plain words."
+             your responses will be spoken aloud via TTS. rules:\n\
+             - no markdown formatting (bold, italic, headers, lists). write plain text only.\n\
+             - no code blocks or inline code in messages. NEVER include code in your reply text.\n\
+             - if the user asks for code: write it to a file using your file tools, \
+               then tell them you wrote/updated the file. describe what the code does in plain words.\n\
+             - keep responses short and conversational — 1-3 sentences.\n\
+             - use natural speech patterns. contractions, pauses, casual tone."
         );
     }
 
