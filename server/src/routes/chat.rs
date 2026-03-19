@@ -122,6 +122,61 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
     // Persist marker so we can detect interrupted agents across restarts
     chat::set_agent_running(&state.workspace_dir, &instance_slug, &chat_id);
 
+    // Background TTS: subscribe to events and voice ALL assistant messages
+    let tts_cancel = cancel.clone();
+    let tts_handle = if voice_mode {
+        let mut rx = state.events.subscribe();
+        let tts_state = state.clone();
+        let tts_slug = instance_slug.clone();
+        let tts_chat = chat_id.clone();
+        Some(tokio::spawn(async move {
+            let api_key = {
+                let cfg = tts_state.config.read().await;
+                cfg.llm.tokens.elevenlabs.clone()
+            };
+            if api_key.is_empty() { return; }
+            let voice_id = crate::routes::tts::resolve_voice_id(&tts_state.workspace_dir, &tts_slug);
+
+            while !tts_cancel.is_cancelled() {
+                let event = match rx.recv().await {
+                    Ok(e) => e,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(_) => break,
+                };
+                if let ServerEvent::ChatMessageCreated {
+                    instance_slug: ref slug,
+                    chat_id: ref cid,
+                    ref message,
+                } = event {
+                    if slug != &tts_slug || cid != &tts_chat { continue; }
+                    if message.role != ChatRole::Assistant { continue; }
+                    if message.content.trim().is_empty() { continue; }
+                    // Skip tool activity messages
+                    if message.kind == crate::domain::chat::MessageKind::ToolCall
+                        || message.kind == crate::domain::chat::MessageKind::ToolOutput { continue; }
+
+                    let idir = tts_state.workspace_dir.join("instances").join(&tts_slug);
+                    let mood = crate::services::tools::companion::load_mood_state(&idir).companion_mood;
+                    match crate::routes::tts::synthesize_bytes(&tts_state.http_client, &api_key, &voice_id, &message.content, &mood).await {
+                        Ok(audio_bytes) => {
+                            use base64::Engine;
+                            let audio_base64 = base64::engine::general_purpose::STANDARD.encode(&audio_bytes);
+                            let _ = tts_state.events.send(ServerEvent::ChatAudioReady {
+                                instance_slug: tts_slug.clone(),
+                                chat_id: tts_chat.clone(),
+                                audio_base64,
+                                message_ids: vec![message.id.clone()],
+                            });
+                        }
+                        Err(e) => log::warn!("[tts] failed for {}: {e}", message.id),
+                    }
+                }
+            }
+        }))
+    } else {
+        None
+    };
+
     const MAX_ITERATIONS: usize = 5;
     let mut iteration = 0;
 
@@ -224,31 +279,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                         chat_id: chat_id.clone(),
                         message: msg.clone(),
                     });
-                    if voice_mode && msg.role == ChatRole::Assistant && !msg.content.trim().is_empty() {
-                        // Synthesize TTS immediately for each assistant message
-                        let tts_key = {
-                            let cfg = state.config.read().await;
-                            cfg.llm.tokens.elevenlabs.clone()
-                        };
-                        if !tts_key.is_empty() {
-                            let vid = crate::routes::tts::resolve_voice_id(&state.workspace_dir, &instance_slug);
-                            let idir = state.workspace_dir.join("instances").join(&instance_slug);
-                            let m = crate::services::tools::companion::load_mood_state(&idir).companion_mood;
-                            match crate::routes::tts::synthesize_bytes(&state.http_client, &tts_key, &vid, &msg.content, &m).await {
-                                Ok(audio_bytes) => {
-                                    use base64::Engine;
-                                    let audio_base64 = base64::engine::general_purpose::STANDARD.encode(&audio_bytes);
-                                    let _ = state.events.send(ServerEvent::ChatAudioReady {
-                                        instance_slug: instance_slug.clone(),
-                                        chat_id: chat_id.clone(),
-                                        audio_base64,
-                                        message_ids: vec![msg.id.clone()],
-                                    });
-                                }
-                                Err(e) => log::warn!("[agent] TTS failed for {}: {e}", msg.id),
-                            }
-                        }
-                    }
+                    // TTS handled by background subscriber task
                 }
 
                 // Record usage for rate limiting — heavy model costs ~10x more
@@ -364,6 +395,12 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         instance_slug: instance_slug.clone(),
         chat_id: chat_id.clone(),
     });
+
+    // Wait briefly for TTS task to process the last message, then drop it
+    if let Some(handle) = tts_handle {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        handle.abort();
+    }
 }
 
 /// Send a full chat state snapshot so all clients converge to the same state.
