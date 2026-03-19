@@ -171,7 +171,7 @@
 
 		const creatureScene = new THREE.Scene();
 		const cam = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-		cam.position.set(0, 0, 3.2);
+		cam.position.set(0, 0, 2.4);
 
 		creatureScene.add(new THREE.AmbientLight(0xffffff, 0.05));
 
@@ -187,8 +187,8 @@
 		fillLight.position.set(0, -3, 1);
 		creatureScene.add(fillLight);
 
-		// Creature mesh
-		const creatureGeo = new THREE.IcosahedronGeometry(1, 4);
+		// Creature mesh — subdivision 6 for smooth silhouette
+		const creatureGeo = new THREE.IcosahedronGeometry(1, 6);
 		const basePositions = new Float32Array(creatureGeo.attributes.position.array);
 		const creatureMat = new THREE.MeshStandardMaterial({
 			roughness: 0.55, metalness: 0.15, transparent: true, opacity: 0.92,

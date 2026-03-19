@@ -1033,10 +1033,9 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	}
 
 	.chat-creature {
-		width: 320px;
-		height: 280px;
+		width: 420px;
+		height: 380px;
 		pointer-events: none;
-		margin-top: 1rem;
 	}
 
 	/* --- stream --- */
