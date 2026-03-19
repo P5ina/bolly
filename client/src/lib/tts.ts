@@ -20,6 +20,15 @@ function getContext(): AudioContext {
 	return ctx;
 }
 
+/**
+ * Warm up AudioContext from a user gesture (click/tap).
+ * Must be called before any playback to satisfy autoplay policy.
+ */
+export function warmUpAudio(): void {
+	const ac = getContext();
+	if (ac.state === "suspended") ac.resume();
+}
+
 /** Stop any currently playing TTS audio. */
 export function stopTts(voice: VoiceState) {
 	if (currentSource) {

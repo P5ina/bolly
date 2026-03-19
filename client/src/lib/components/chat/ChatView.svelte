@@ -17,7 +17,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	import { hapticMedium, hapticDouble, hapticError } from "$lib/haptics.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import { getVoiceState } from "$lib/stores/voice.svelte.js";
-	import { playBase64Audio, stopTts } from "$lib/tts.js";
+	import { playBase64Audio, stopTts, warmUpAudio } from "$lib/tts.js";
 	import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 	import TerminalSquare from "@lucide/svelte/icons/terminal-square";
 	import BarChart3 from "@lucide/svelte/icons/bar-chart-3";
@@ -628,7 +628,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			{/if}
 		</div>
 		<div class="bar-right">
-			<button onclick={() => { voice.toggle(); if (!voice.enabled && voice.speaking) stopTts(voice); }} onmousedown={(e) => e.preventDefault()} class="bar-btn" class:bar-btn-active={voice.enabled} title={voice.enabled ? "Mute voice" : "Enable voice"}>
+			<button onclick={() => { voice.toggle(); if (voice.enabled) warmUpAudio(); if (!voice.enabled && voice.speaking) stopTts(voice); }} onmousedown={(e) => e.preventDefault()} class="bar-btn" class:bar-btn-active={voice.enabled} title={voice.enabled ? "Mute voice" : "Enable voice"}>
 				{#if voice.enabled}
 					<Volume2 size={13} />
 				{:else}
