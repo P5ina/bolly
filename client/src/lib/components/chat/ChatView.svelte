@@ -64,10 +64,6 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	/** Message IDs from the current agent turn (for voice reveal). */
 	let turnMessageIds = $state<string[]>([]);
 
-	/** Streaming rhythm: buffer for character-by-character drip. */
-	let streamBuffer = "";
-	let dripActive = false;
-
 	preload("message_receive", "message_send", "error");
 
 	function handleStreamDelta(messageId: string, delta: string) {
@@ -82,95 +78,30 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 		streamingMessageId = messageId;
 
-		// Ensure message exists in stream
+		// Find or create the message bubble with this stable ID
 		const existingIdx = stream.findIndex(
 			s => s.type === "message" && s.data.id === messageId
 		);
 
-		if (existingIdx < 0) {
+		if (existingIdx >= 0) {
+			const item = stream[existingIdx] as { type: "message"; data: ChatMessage };
+			item.data.content += delta;
+			stream = stream; // trigger reactivity
+		} else {
 			const msg: ChatMessage = {
 				id: messageId,
 				role: "assistant",
-				content: "",
+				content: delta,
 				created_at: String(Date.now()),
 			};
 			stream = [...stream, { type: "message", data: msg }];
 		}
 
-		// Buffer the delta for rhythmic drip
-		streamBuffer += delta;
-		if (!dripActive) startDrip(messageId);
 		scrollToBottomIfNear();
 	}
 
-	/** Drip characters from buffer at ~200 chars/sec with punctuation pauses. */
-	function startDrip(messageId: string) {
-		dripActive = true;
-		let lastTime = performance.now();
-		let pauseUntil = 0;
-
-		function tick(now: number) {
-			if (streamBuffer.length === 0) {
-				if (streamingMessageId === messageId) {
-					requestAnimationFrame(tick);
-					return;
-				}
-				dripActive = false;
-				return;
-			}
-
-			if (now < pauseUntil) {
-				requestAnimationFrame(tick);
-				return;
-			}
-
-			const elapsed = now - lastTime;
-			const budget = Math.max(1, Math.floor((elapsed / 1000) * 200));
-			let chars = "";
-			let consumed = 0;
-
-			for (let i = 0; i < budget && consumed < streamBuffer.length; i++) {
-				const c = streamBuffer[consumed];
-				chars += c;
-				consumed++;
-
-				if (c === "." || c === "!" || c === "?") { pauseUntil = now + 45; break; }
-				if (c === ",") { pauseUntil = now + 20; break; }
-				if (c === ":" || c === ";") { pauseUntil = now + 25; break; }
-				if (c === "\n") { pauseUntil = now + 30; break; }
-			}
-
-			if (chars) {
-				streamBuffer = streamBuffer.slice(consumed);
-				const idx = stream.findIndex(s => s.type === "message" && s.data.id === messageId);
-				if (idx >= 0) {
-					const item = stream[idx] as { type: "message"; data: ChatMessage };
-					item.data.content += chars;
-					stream = stream;
-				}
-				scrollToBottomIfNear();
-			}
-
-			lastTime = now;
-			requestAnimationFrame(tick);
-		}
-
-		requestAnimationFrame(tick);
-	}
-
 	function clearStreaming() {
-		// Flush remaining buffer immediately
-		if (streamBuffer && streamingMessageId) {
-			const idx = stream.findIndex(s => s.type === "message" && s.data.id === streamingMessageId);
-			if (idx >= 0) {
-				const item = stream[idx] as { type: "message"; data: ChatMessage };
-				item.data.content += streamBuffer;
-				stream = stream;
-			}
-			streamBuffer = "";
-		}
 		streamingMessageId = "";
-		dripActive = false;
 	}
 
 	const ws = getWebSocket();
@@ -263,8 +194,6 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			item.data.model = msg.model;
 			item.data.kind = msg.kind;
 			item.data.content = msg.content; // server version is authoritative
-			// Server content arrived — stop dripping for this message
-			if (msg.id === streamingMessageId) { streamBuffer = ""; }
 			stream = stream;
 		} else {
 			// New message — add to stream
