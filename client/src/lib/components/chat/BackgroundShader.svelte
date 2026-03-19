@@ -56,83 +56,102 @@
 
 		varying vec2 vUv;
 
-		float hash(vec2 p) {
-			return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+		// Smooth wave function — stacked sine curves for organic landscape
+		float wave(vec2 uv, float freq, float speed, float phase) {
+			return sin(uv.x * freq + uTime * speed + phase)
+			     * cos(uv.x * freq * 0.7 + uTime * speed * 0.6 + phase * 1.3)
+			     * 0.5 + 0.5;
 		}
 
-		float noise(vec2 p) {
-			vec2 i = floor(p);
-			vec2 f = fract(p);
-			f = f * f * (3.0 - 2.0 * f);
-			float a = hash(i);
-			float b = hash(i + vec2(1.0, 0.0));
-			float c = hash(i + vec2(0.0, 1.0));
-			float d = hash(i + vec2(1.0, 1.0));
-			return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+		// Layered wave field for terrain-like shapes
+		float terrain(vec2 uv) {
+			float t = uTime * 0.015;
+			float w = 0.0;
+			w += sin(uv.x * 2.2 + t * 0.8 + uv.y * 0.5) * 0.35;
+			w += sin(uv.x * 1.1 - t * 0.5 + 3.0) * 0.25;
+			w += sin(uv.x * 3.5 + t * 1.2 + uv.y * 1.5 + 1.0) * 0.15;
+			w += sin(uv.x * 0.8 + t * 0.3 - 2.0) * 0.2;
+			w += cos(uv.x * 1.8 + uv.y * 2.0 + t * 0.7) * 0.12;
+			return w;
 		}
 
-		float fbm(vec2 p) {
-			float v = 0.0;
-			float a = 0.5;
-			mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
-			for (int i = 0; i < 5; i++) {
-				v += a * noise(p);
-				p = rot * p * 2.0;
-				a *= 0.5;
-			}
-			return v;
+		// Specular caustic line — distance to a parametric curve
+		float causticLine(vec2 uv) {
+			float t = uTime * 0.02;
+			// Main curve
+			float curve = 0.55 + 0.25 * sin(uv.x * 2.5 + t * 0.6)
+			                    + 0.1 * cos(uv.x * 4.0 - t * 0.9 + 1.5)
+			                    + 0.08 * sin(uv.x * 6.0 + t * 1.2 + 3.0);
+			float dist = abs(uv.y - curve);
+			// Thin bright line with soft falloff
+			float line = exp(-dist * dist * 800.0) * 0.9;
+			// Broader soft glow around line
+			float glow = exp(-dist * dist * 40.0) * 0.25;
+			return line + glow;
 		}
 
 		void main() {
 			vec2 uv = vUv;
-			float t = uTime * (0.025 + uEnergy * 0.02);
+			float t = uTime * 0.02 + uEnergy * 0.01;
 
-			// Domain warp — organic flow
-			vec2 warp = vec2(
-				fbm(uv * 3.0 + t * 0.7),
-				fbm(uv * 3.0 + t * 0.7 + 5.2)
-			);
+			// --- Base gradient: deep blue bottom → purple/indigo top ---
+			vec3 deepBlue  = vec3(0.02, 0.06, 0.22);
+			vec3 midBlue   = vec3(0.06, 0.10, 0.38);
+			vec3 purple    = vec3(0.18, 0.08, 0.42);
+			vec3 indigo    = vec3(0.12, 0.06, 0.35);
+			vec3 lightBlue = vec3(0.20, 0.30, 0.55);
+			vec3 mist      = vec3(0.35, 0.42, 0.60);
 
-			// Layered noise fields
-			float n1 = fbm(uv * 2.0 + warp * 0.5 + t * 0.4);
-			float n2 = fbm(uv * 3.5 - t * 0.25 + 10.0);
-			float n3 = fbm(uv * 1.8 + warp * 0.3 + t * 0.15 + 20.0);
+			// Vertical gradient
+			vec3 base = mix(deepBlue, midBlue, smoothstep(0.0, 0.4, uv.y));
+			base = mix(base, indigo, smoothstep(0.3, 0.7, uv.y));
+			base = mix(base, purple, smoothstep(0.6, 1.0, uv.y));
 
-			// Dark palette
-			vec3 abyss  = vec3(0.008, 0.008, 0.018);
-			vec3 navy   = vec3(0.035, 0.05, 0.14);
-			vec3 indigo = vec3(0.065, 0.03, 0.15);
-			vec3 teal   = vec3(0.02, 0.085, 0.10);
-			vec3 deep   = vec3(0.04, 0.02, 0.08);
+			// --- Flowing wave layers ---
+			float w = terrain(uv);
 
-			// Composite
-			vec3 color = abyss;
-			color = mix(color, navy,   smoothstep(0.28, 0.68, n1) * 0.75);
-			color = mix(color, indigo,  smoothstep(0.35, 0.78, n2) * 0.50);
-			color = mix(color, teal,    smoothstep(0.30, 0.72, n3) * 0.45);
-			color = mix(color, deep,    smoothstep(0.5, 0.9, n1 * n2) * 0.30);
+			// Lower mist/light area
+			float mistMask = smoothstep(-0.1, 0.3, w - uv.y * 0.8 + 0.2);
+			base = mix(base, lightBlue, mistMask * 0.45);
 
-			// Mood accent — Bolly's warmth bleeds through the environment
-			float accentMask = smoothstep(0.3, 0.75, n1) * smoothstep(0.25, 0.65, n3);
-			vec3 moodGlow = uAccent * uAccent; // square for richer saturation in darks
-			color += moodGlow * 0.09 * accentMask;
-			// Secondary diffuse wash at larger scale
-			float accentWash = smoothstep(0.2, 0.6, fbm(uv * 1.2 + t * 0.08 + 30.0));
-			color += uAccent * 0.03 * accentWash;
+			// Upper wave crest
+			float crest = smoothstep(-0.05, 0.15, w - uv.y * 1.2 + 0.5);
+			base = mix(base, mist, crest * 0.3);
 
-			// Vignette
-			float vig = 1.0 - length((vUv - 0.5) * 1.4);
-			vig = smoothstep(0.0, 0.65, vig);
-			color *= 0.6 + vig * 0.4;
+			// Deep shadow in wave valleys
+			float valley = smoothstep(0.2, -0.1, w - uv.y * 0.6 + 0.1);
+			base = mix(base, deepBlue * 0.7, valley * 0.4);
 
-			// Energy boost
-			color *= 1.0 + uEnergy * 0.25;
+			// Secondary wave layer (slower, larger)
+			float w2 = terrain(uv * 0.6 + vec2(5.0, 0.0));
+			float fold = smoothstep(-0.05, 0.2, w2 - uv.y * 0.9 + 0.35);
+			base = mix(base, midBlue * 1.3, fold * 0.25);
 
-			// Film grain
-			float grain = (hash(vUv * 500.0 + fract(uTime * 100.0)) - 0.5) * 0.012;
-			color += grain;
+			// --- Specular caustic line ---
+			float caustic = causticLine(uv);
+			vec3 lineColor = vec3(0.7, 0.75, 0.95); // cool white
+			base += lineColor * caustic;
 
-			gl_FragColor = vec4(max(color, 0.0), 1.0);
+			// Secondary faint caustic
+			float caustic2 = causticLine(uv * vec2(1.0, 1.0) + vec2(0.15, -0.2));
+			base += lineColor * caustic2 * 0.15;
+
+			// --- Mood accent bleed ---
+			float accentMask = smoothstep(0.3, 0.7, uv.y) * smoothstep(0.3, 0.6, 0.5 + 0.5 * sin(uv.x * 3.0 + uTime * 0.03));
+			base += uAccent * uAccent * 0.06 * accentMask;
+
+			// --- Energy boost (thinking) ---
+			base *= 1.0 + uEnergy * 0.15;
+			// Speed up caustic shimmer when thinking
+			float energyCaustic = exp(-pow(abs(uv.y - 0.5 - 0.3 * sin(uv.x * 3.0 + uTime * 0.15)), 2.0) * 200.0);
+			base += vec3(0.5, 0.6, 0.9) * energyCaustic * uEnergy * 0.3;
+
+			// --- Subtle vignette ---
+			float vig = 1.0 - length((uv - 0.5) * vec2(1.2, 1.4));
+			vig = smoothstep(-0.1, 0.6, vig);
+			base *= 0.75 + vig * 0.25;
+
+			gl_FragColor = vec4(max(base, 0.0), 1.0);
 		}
 	`;
 
