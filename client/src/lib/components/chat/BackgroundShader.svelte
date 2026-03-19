@@ -66,7 +66,7 @@
 		const TSL = await import("three/tsl");
 		const {
 			Fn, uniform, float, vec3, vec4,
-			uv, positionLocal, time,
+			uv, positionLocal, time, screenUV,
 			sin, cos, abs, mix, smoothstep, pow,
 		} = TSL;
 
@@ -85,7 +85,7 @@
 		// ── Background (TSL wave shader as scene.backgroundNode) ──
 
 		const bgNode = Fn(() => {
-			const st = uv();
+			const st = screenUV;
 			const t = time.mul(0.015);
 
 			const deep = vec3(0.015, 0.035, 0.14);
