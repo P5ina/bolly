@@ -486,6 +486,8 @@
 <div class="settings-page">
 	<h2 class="settings-title">settings</h2>
 
+	<div class="settings-grid">
+
 	<div class="update-section">
 		<div class="update-row">
 			<span class="update-current">v{updateInfo?.current?.replace('v','') ?? '...'}</span>
@@ -552,7 +554,7 @@
 							<span class="usage-window-value">{formatTokens(usage.tokens_last_4h)} / {formatTokens(usage.tokens_4h_limit)}</span>
 						</div>
 						<div class="usage-window-track">
-							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.78 0.12 75 / 50%)'}"></div>
+							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.55 0.08 240 / 50%)'}"></div>
 						</div>
 					</div>
 				{/if}
@@ -564,7 +566,7 @@
 							<span class="usage-window-value">{formatTokens(usage.tokens_this_week)} / {formatTokens(usage.tokens_week_limit)}</span>
 						</div>
 						<div class="usage-window-track">
-							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.78 0.12 75 / 50%)'}"></div>
+							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.55 0.08 240 / 50%)'}"></div>
 						</div>
 					</div>
 				{/if}
@@ -576,7 +578,7 @@
 							<span class="usage-window-value">{formatTokens(usage.tokens_this_month)} / {formatTokens(usage.tokens_month_limit)}</span>
 						</div>
 						<div class="usage-window-track">
-							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.78 0.12 75 / 50%)'}"></div>
+							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.55 0.08 240 / 50%)'}"></div>
 						</div>
 					</div>
 				{/if}
@@ -792,7 +794,7 @@
 	</section>
 
 	<!-- Google Accounts -->
-	<section class="settings-section" style="margin-top: 1rem;">
+	<section class="settings-section">
 		<div class="section-header">
 			<div class="section-icon">
 				<svg width="18" height="18" viewBox="0 0 24 24"
@@ -860,7 +862,7 @@
 	</section>
 
 	<!-- Email (SMTP/IMAP) -->
-	<section class="settings-section" style="margin-top: 1rem;">
+	<section class="settings-section">
 		<div class="section-header">
 			<div class="section-icon email-icon">
 				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -953,7 +955,7 @@
 	</section>
 
 	<!-- GitHub -->
-	<section class="settings-section" style="margin-top: 1rem;">
+	<section class="settings-section">
 		<div class="section-header">
 			<div class="section-icon gh-icon">
 				<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -1023,7 +1025,7 @@
 	</section>
 
 	<!-- Voice -->
-	<section class="settings-section" style="margin-top: 1rem;">
+	<section class="settings-section">
 		<div class="section-header">
 			<div class="section-icon voice-icon">
 				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1105,6 +1107,8 @@
 			<p class="error-msg">{importError}</p>
 		{/if}
 	</section>
+
+	</div><!-- settings-grid -->
 </div>
 
 <style>
@@ -1128,7 +1132,7 @@
 	.usage-window-value {
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
-		color: oklch(0.78 0.12 75 / 30%);
+		color: oklch(0.55 0.08 240 / 30%);
 	}
 	.usage-window-track {
 		height: 4px;
@@ -1143,12 +1147,15 @@
 	}
 
 	.settings-page {
-		padding: 2rem 1.5rem;
+		padding: 2rem 2.5rem;
 		padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
-		max-width: 560px;
+		max-width: 1200px;
 		margin: 0 auto;
 		height: 100%;
 		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
 	}
 
 	.settings-title {
@@ -1156,8 +1163,27 @@
 		font-style: italic;
 		font-size: 1.25rem;
 		font-weight: 400;
-		color: oklch(0.88 0.02 75 / 80%);
-		margin-bottom: 2rem;
+		color: oklch(0.88 0.02 240 / 80%);
+		margin-bottom: 0.5rem;
+	}
+
+	.settings-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1rem;
+		align-items: start;
+	}
+
+	@media (max-width: 900px) {
+		.settings-grid {
+			grid-template-columns: 1fr;
+		}
+	}
+
+	@media (max-width: 768px) {
+		.settings-page {
+			padding: 1.5rem 1rem;
+		}
 	}
 
 	.update-section {
@@ -1172,7 +1198,7 @@
 	.update-current {
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 30%);
+		color: oklch(0.55 0.08 240 / 30%);
 	}
 	.channel-select {
 		font-family: var(--font-mono);
@@ -1253,10 +1279,34 @@
 	}
 
 	.settings-section {
+		position: relative;
 		padding: 1.25rem;
-		border-radius: 0.75rem;
-		border: 1px solid oklch(1 0 0 / 6%);
-		background: oklch(1 0 0 / 2%);
+		border-radius: 1rem;
+		border: 1px solid oklch(1 0 0 / 10%);
+		border-top-color: oklch(1 0 0 / 18%);
+		background: linear-gradient(
+			150deg,
+			oklch(1 0 0 / 5%) 0%,
+			oklch(0.5 0.02 250 / 8%) 40%,
+			oklch(1 0 0 / 3%) 100%
+		);
+		backdrop-filter: blur(20px) saturate(150%) brightness(1.05);
+		-webkit-backdrop-filter: blur(20px) saturate(150%) brightness(1.05);
+		box-shadow:
+			0 2px 12px oklch(0 0 0 / 12%),
+			inset 0 1px 0 oklch(1 0 0 / 8%),
+			inset 0 -1px 0 oklch(0 0 0 / 4%);
+		overflow: hidden;
+	}
+	.settings-section::before {
+		content: "";
+		position: absolute;
+		top: 0;
+		left: 10%;
+		right: 10%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 20%), transparent);
+		pointer-events: none;
 	}
 
 	.section-header {
@@ -1269,17 +1319,19 @@
 	.section-icon {
 		width: 2.25rem;
 		height: 2.25rem;
-		border-radius: 0.5rem;
+		border-radius: 0.625rem;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: oklch(0.5 0 0 / 8%);
-		border: 1px solid oklch(1 0 0 / 6%);
+		background: linear-gradient(145deg, oklch(1 0 0 / 6%) 0%, oklch(0.5 0.02 240 / 8%) 100%);
+		border: 1px solid oklch(1 0 0 / 10%);
+		border-top-color: oklch(1 0 0 / 16%);
 		flex-shrink: 0;
+		box-shadow: inset 0 1px 0 oklch(1 0 0 / 6%);
 	}
 
 	.ext-icon {
-		color: oklch(0.78 0.12 75 / 60%);
+		color: oklch(0.55 0.08 240 / 60%);
 	}
 
 	.tz-icon {
@@ -1307,7 +1359,7 @@
 		cursor: pointer;
 	}
 	.tz-select:focus {
-		border-color: oklch(0.78 0.12 75 / 30%);
+		border-color: oklch(0.55 0.08 240 / 30%);
 	}
 	.tz-select option {
 		background: oklch(0.10 0.015 280);
@@ -1363,8 +1415,8 @@
 	}
 
 	.ext-card-active {
-		border-color: oklch(0.78 0.12 75 / 15%);
-		background: oklch(0.78 0.12 75 / 4%);
+		border-color: oklch(0.55 0.08 240 / 15%);
+		background: oklch(0.55 0.08 240 / 4%);
 	}
 
 	.ext-card-icon {
@@ -1374,14 +1426,14 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: oklch(0.78 0.12 75 / 6%);
-		color: oklch(0.78 0.12 75 / 50%);
+		background: oklch(0.55 0.08 240 / 6%);
+		color: oklch(0.55 0.08 240 / 50%);
 		flex-shrink: 0;
 	}
 
 	.ext-card-active .ext-card-icon {
-		background: oklch(0.78 0.12 75 / 10%);
-		color: oklch(0.78 0.12 75 / 70%);
+		background: oklch(0.55 0.08 240 / 10%);
+		color: oklch(0.55 0.08 240 / 70%);
 	}
 
 	.ext-card-body {
@@ -1415,14 +1467,14 @@
 		cursor: pointer;
 		transition: all 0.2s ease;
 		flex-shrink: 0;
-		color: oklch(0.78 0.12 75 / 70%);
-		background: oklch(0.78 0.12 75 / 8%);
-		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		color: oklch(0.55 0.08 240 / 70%);
+		background: oklch(0.55 0.08 240 / 8%);
+		border: 1px solid oklch(0.55 0.08 240 / 15%);
 	}
 
 	.ext-toggle:hover:not(:disabled) {
-		background: oklch(0.78 0.12 75 / 14%);
-		border-color: oklch(0.78 0.12 75 / 35%);
+		background: oklch(0.55 0.08 240 / 14%);
+		border-color: oklch(0.55 0.08 240 / 35%);
 	}
 
 	.ext-toggle-active {
@@ -1446,8 +1498,8 @@
 		display: inline-block;
 		width: 10px;
 		height: 10px;
-		border: 1.5px solid oklch(0.78 0.12 75 / 35%);
-		border-top-color: oklch(0.78 0.12 75 / 70%);
+		border: 1.5px solid oklch(0.55 0.08 240 / 35%);
+		border-top-color: oklch(0.55 0.08 240 / 70%);
 		border-radius: 50%;
 		animation: spin 0.6s linear infinite;
 	}
@@ -1535,7 +1587,7 @@
 		letter-spacing: 0.03em;
 	}
 	.ext-advanced-toggle:hover {
-		color: oklch(0.78 0.12 75 / 55%);
+		color: oklch(0.55 0.08 240 / 55%);
 	}
 
 	.ext-custom-form {
@@ -1568,7 +1620,7 @@
 		transition: border-color 0.2s ease;
 	}
 	.ext-input:focus {
-		border-color: oklch(0.78 0.12 75 / 30%);
+		border-color: oklch(0.55 0.08 240 / 30%);
 	}
 	.ext-input::placeholder {
 		color: oklch(0.88 0.02 75 / 20%);
@@ -1590,13 +1642,13 @@
 	}
 
 	.ext-form-add {
-		color: oklch(0.78 0.12 75 / 70%);
-		background: oklch(0.78 0.12 75 / 8%);
-		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		color: oklch(0.55 0.08 240 / 70%);
+		background: oklch(0.55 0.08 240 / 8%);
+		border: 1px solid oklch(0.55 0.08 240 / 15%);
 	}
 	.ext-form-add:hover:not(:disabled) {
-		background: oklch(0.78 0.12 75 / 14%);
-		border-color: oklch(0.78 0.12 75 / 35%);
+		background: oklch(0.55 0.08 240 / 14%);
+		border-color: oklch(0.55 0.08 240 / 35%);
 	}
 	.ext-form-add:disabled {
 		opacity: 0.4;
@@ -1621,16 +1673,16 @@
 		gap: 0.5rem;
 		padding: 0.625rem 0.75rem;
 		border-radius: 0.5rem;
-		background: oklch(0.78 0.12 75 / 6%);
-		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		background: oklch(0.55 0.08 240 / 6%);
+		border: 1px solid oklch(0.55 0.08 240 / 15%);
 		margin-bottom: 0.75rem;
 	}
 	.reconnect-icon {
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
 		font-weight: 700;
-		color: oklch(0.78 0.12 75 / 70%);
-		background: oklch(0.78 0.12 75 / 15%);
+		color: oklch(0.55 0.08 240 / 70%);
+		background: oklch(0.55 0.08 240 / 15%);
 		width: 16px;
 		height: 16px;
 		border-radius: 50%;
@@ -1682,7 +1734,7 @@
 		width: 6px;
 		height: 6px;
 		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 30%);
+		background: oklch(0.55 0.08 240 / 30%);
 		animation: pulse 1.5s ease-in-out infinite;
 	}
 	@keyframes pulse {
@@ -1792,13 +1844,13 @@
 		border-radius: 0.375rem;
 		cursor: pointer;
 		transition: all 0.2s ease;
-		color: oklch(0.78 0.12 75 / 70%);
-		background: oklch(0.78 0.12 75 / 8%);
-		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		color: oklch(0.55 0.08 240 / 70%);
+		background: oklch(0.55 0.08 240 / 8%);
+		border: 1px solid oklch(0.55 0.08 240 / 15%);
 	}
 	.data-btn:hover {
-		background: oklch(0.78 0.12 75 / 14%);
-		border-color: oklch(0.78 0.12 75 / 25%);
+		background: oklch(0.55 0.08 240 / 14%);
+		border-color: oklch(0.55 0.08 240 / 25%);
 	}
 	.data-hint {
 		font-family: var(--font-mono);
@@ -1835,11 +1887,11 @@
 		border-color: oklch(1 0 0 / 10%);
 	}
 	.mode-active {
-		background: oklch(0.78 0.12 75 / 8%);
-		border-color: oklch(0.78 0.12 75 / 25%);
+		background: oklch(0.55 0.08 240 / 8%);
+		border-color: oklch(0.55 0.08 240 / 25%);
 	}
 	.mode-active:hover:not(:disabled) {
-		background: oklch(0.78 0.12 75 / 12%);
+		background: oklch(0.55 0.08 240 / 12%);
 	}
 	.mode-name {
 		font-family: var(--font-mono);
@@ -1848,7 +1900,7 @@
 		color: oklch(0.88 0.02 75 / 80%);
 	}
 	.mode-active .mode-name {
-		color: oklch(0.78 0.12 75);
+		color: oklch(0.55 0.08 240);
 	}
 	.mode-desc {
 		font-family: var(--font-mono);
