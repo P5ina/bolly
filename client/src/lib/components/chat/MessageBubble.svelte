@@ -190,7 +190,7 @@
 		</div>
 	{/if}
 	{#if isLastInGroup()}
-		<span class="msg-time" class:msg-time-right={isUser}>
+		<span class="msg-time" class:msg-time-right={!isUser}>
 			{time()}
 			{#if modelLabel && !isUser}
 				<span class="msg-model" class:msg-model-fast={modelLabel === "fast"}>{modelLabel}</span>
