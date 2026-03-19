@@ -124,7 +124,7 @@
 						ctx!.beginPath();
 						ctx!.moveTo(a.x, a.y);
 						ctx!.lineTo(b.x, b.y);
-						ctx!.strokeStyle = `rgba(210, 180, 120, ${alpha})`;
+						ctx!.strokeStyle = `rgba(120, 140, 200, ${alpha})`;
 						ctx!.lineWidth = 0.5;
 						ctx!.stroke();
 					}
@@ -134,7 +134,7 @@
 			for (const p of particles) {
 				ctx!.beginPath();
 				ctx!.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-				ctx!.fillStyle = `rgba(210, 180, 120, ${Math.max(0, p.opacity)})`;
+				ctx!.fillStyle = `rgba(120, 140, 200, ${Math.max(0, p.opacity)})`;
 				ctx!.fill();
 			}
 
@@ -658,7 +658,6 @@
 		flex-direction: column;
 		overflow: hidden;
 		position: relative;
-		background: radial-gradient(ellipse 80% 70% at 50% 45%, oklch(0.09 0.02 75 / 40%) 0%, transparent 70%);
 	}
 
 	.particle-canvas {
@@ -674,18 +673,18 @@
 	.memory-loading-orb { position: relative; width: 48px; height: 48px; }
 	.memory-loading-ring {
 		position: absolute; inset: 0; border-radius: 50%;
-		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		border: 1px solid oklch(0.55 0.08 240 / 15%);
 		animation: loading-spin 3s linear infinite;
 	}
 	.memory-loading-ring::after {
 		content: ""; position: absolute; top: -1px; left: 50%;
-		width: 6px; height: 2px; background: oklch(0.78 0.12 75 / 60%);
+		width: 6px; height: 2px; background: oklch(0.55 0.08 240 / 60%);
 		border-radius: 1px; transform: translateX(-50%);
 	}
-	.memory-loading-ring-2 { inset: 8px; animation-direction: reverse; animation-duration: 2s; border-color: oklch(0.78 0.12 75 / 10%); }
+	.memory-loading-ring-2 { inset: 8px; animation-direction: reverse; animation-duration: 2s; border-color: oklch(0.55 0.08 240 / 10%); }
 	.memory-loading-dot {
 		position: absolute; top: 50%; left: 50%; width: 4px; height: 4px;
-		border-radius: 50%; background: oklch(0.78 0.12 75 / 40%);
+		border-radius: 50%; background: oklch(0.55 0.08 240 / 40%);
 		transform: translate(-50%, -50%); animation: pulse-alive 1.5s ease-in-out infinite;
 	}
 	@keyframes loading-spin { to { transform: rotate(360deg); } }
@@ -699,15 +698,15 @@
 	.memory-empty-orbs { position: relative; width: 80px; height: 60px; }
 	.empty-orb {
 		position: absolute; border-radius: 50%;
-		border: 1px solid oklch(0.78 0.12 75 / 12%);
-		background: radial-gradient(circle at 35% 35%, oklch(0.78 0.12 75 / 8%), transparent 70%);
+		border: 1px solid oklch(0.55 0.08 240 / 12%);
+		background: radial-gradient(circle at 35% 35%, oklch(0.55 0.08 240 / 8%), transparent 70%);
 	}
 	.empty-orb-1 { width: 40px; height: 40px; left: 20px; top: 0; animation: breathe-slow 4s ease-in-out infinite; }
 	.empty-orb-2 { width: 24px; height: 24px; left: 0; top: 28px; animation: breathe-slow 5s ease-in-out infinite 0.5s; }
 	.empty-orb-3 { width: 18px; height: 18px; right: 4px; top: 34px; animation: breathe-slow 3.5s ease-in-out infinite 1s; }
 	@keyframes breathe-slow { 0%, 100% { opacity: 0.4; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.08); } }
-	.memory-empty-text { font-family: var(--font-display); font-size: 0.95rem; font-style: italic; color: oklch(0.78 0.12 75 / 40%); }
-	.memory-empty-hint { font-size: 0.7rem; color: oklch(0.78 0.12 75 / 35%); max-width: 26ch; line-height: 1.5; }
+	.memory-empty-text { font-family: var(--font-display); font-size: 0.95rem; font-style: italic; color: oklch(0.55 0.08 240 / 40%); }
+	.memory-empty-hint { font-size: 0.7rem; color: oklch(0.55 0.08 240 / 35%); max-width: 26ch; line-height: 1.5; }
 
 	/* ═══════ Header ═══════ */
 
@@ -717,31 +716,33 @@
 	}
 	.memory-back {
 		display: flex; align-items: center; justify-content: center;
-		width: 28px; height: 28px; color: oklch(0.78 0.12 75 / 35%);
-		background: oklch(1 0 0 / 3%); border: 1px solid oklch(1 0 0 / 6%);
+		width: 28px; height: 28px; color: oklch(0.65 0.04 240 / 50%);
+		background: linear-gradient(145deg, oklch(1 0 0 / 6%) 0%, oklch(0.5 0.02 240 / 8%) 100%);
+		border: 1px solid oklch(1 0 0 / 10%); border-top-color: oklch(1 0 0 / 16%);
 		border-radius: 50%; cursor: pointer; transition: all 0.25s ease;
+		box-shadow: inset 0 1px 0 oklch(1 0 0 / 8%);
 	}
 	.memory-back:hover {
-		color: oklch(0.78 0.12 75 / 70%);
-		border-color: oklch(0.78 0.12 75 / 28%);
-		background: oklch(0.78 0.12 75 / 6%);
+		color: oklch(0.80 0.04 240 / 75%);
+		border-color: oklch(1 0 0 / 18%);
+		background: linear-gradient(145deg, oklch(1 0 0 / 9%) 0%, oklch(0.5 0.02 240 / 12%) 100%);
 	}
-	.memory-breadcrumb { font-family: var(--font-mono); font-size: 0.68rem; color: oklch(0.78 0.12 75 / 50%); }
-	.memory-count { font-family: var(--font-mono); font-size: 0.7rem; color: oklch(0.78 0.12 75 / 28%); letter-spacing: 0.04em; margin-left: auto; }
+	.memory-breadcrumb { font-family: var(--font-mono); font-size: 0.68rem; color: oklch(0.55 0.08 240 / 50%); }
+	.memory-count { font-family: var(--font-mono); font-size: 0.7rem; color: oklch(0.55 0.08 240 / 28%); letter-spacing: 0.04em; margin-left: auto; }
 
 	/* ═══════ Search ═══════ */
 
 	.search-toggle {
 		display: flex; align-items: center; justify-content: center;
-		width: 28px; height: 28px; color: oklch(0.78 0.12 75 / 30%);
+		width: 28px; height: 28px; color: oklch(0.55 0.08 240 / 30%);
 		background: none; border: 1px solid oklch(1 0 0 / 6%);
 		border-radius: 50%; cursor: pointer; transition: all 0.25s ease;
 		flex-shrink: 0;
 	}
 	.search-toggle:hover, .search-toggle-active {
-		color: oklch(0.78 0.12 75 / 65%);
-		border-color: oklch(0.78 0.12 75 / 28%);
-		background: oklch(0.78 0.12 75 / 6%);
+		color: oklch(0.55 0.08 240 / 65%);
+		border-color: oklch(0.55 0.08 240 / 28%);
+		background: oklch(0.55 0.08 240 / 6%);
 	}
 
 	.search-bar {
@@ -750,16 +751,20 @@
 	}
 	.search-input {
 		flex: 1; font-family: var(--font-mono); font-size: 0.7rem;
-		background: oklch(1 0 0 / 3%); border: 1px solid oklch(1 0 0 / 8%);
-		border-radius: 0.5rem; padding: 0.4rem 0.75rem;
+		background: linear-gradient(155deg, oklch(1 0 0 / 5%) 0%, oklch(0.5 0.02 250 / 8%) 50%, oklch(1 0 0 / 3%) 100%);
+		backdrop-filter: blur(16px) saturate(140%);
+		-webkit-backdrop-filter: blur(16px) saturate(140%);
+		border: 1px solid oklch(1 0 0 / 10%); border-top-color: oklch(1 0 0 / 16%);
+		border-radius: 0.625rem; padding: 0.4rem 0.75rem;
 		color: oklch(0.90 0.02 75 / 80%); outline: none;
 		transition: border-color 0.2s ease;
+		box-shadow: inset 0 1px 0 oklch(1 0 0 / 6%);
 	}
-	.search-input:focus { border-color: oklch(0.78 0.12 75 / 35%); }
-	.search-input::placeholder { color: oklch(0.78 0.12 75 / 35%); }
+	.search-input:focus { border-color: oklch(1 0 0 / 18%); box-shadow: 0 0 0 3px oklch(0.5 0.06 240 / 8%), inset 0 1px 0 oklch(1 0 0 / 8%); }
+	.search-input::placeholder { color: oklch(0.55 0.08 240 / 35%); }
 	.search-count {
 		font-family: var(--font-mono); font-size: 0.75rem;
-		color: oklch(0.78 0.12 75 / 30%); white-space: nowrap;
+		color: oklch(0.55 0.08 240 / 30%); white-space: nowrap;
 	}
 
 	.search-results {
@@ -767,14 +772,20 @@
 		padding: 0.25rem 1.5rem 1.5rem; display: flex; flex-direction: column; gap: 0.35rem;
 	}
 	.search-result {
-		padding: 0.6rem 0.75rem; border-radius: 0.5rem;
-		border: 1px solid oklch(1 0 0 / 5%); background: oklch(1 0 0 / 2%);
+		position: relative;
+		padding: 0.6rem 0.75rem; border-radius: 0.75rem;
+		border: 1px solid oklch(1 0 0 / 8%); border-top-color: oklch(1 0 0 / 14%);
+		background: linear-gradient(150deg, oklch(1 0 0 / 5%) 0%, oklch(0.5 0.02 250 / 6%) 50%, oklch(1 0 0 / 3%) 100%);
+		backdrop-filter: blur(12px) saturate(140%);
+		-webkit-backdrop-filter: blur(12px) saturate(140%);
 		cursor: pointer; transition: all 0.2s ease;
 		display: flex; flex-direction: column; gap: 0.15rem;
+		box-shadow: inset 0 1px 0 oklch(1 0 0 / 6%);
+		overflow: hidden;
 	}
 	.search-result:hover {
-		border-color: color-mix(in srgb, var(--c) 20%, transparent);
-		background: color-mix(in srgb, var(--c) 4%, transparent);
+		border-color: oklch(1 0 0 / 14%);
+		background: linear-gradient(150deg, oklch(1 0 0 / 7%) 0%, color-mix(in srgb, var(--c) 8%, transparent) 50%, oklch(1 0 0 / 4%) 100%);
 	}
 	.search-result-path {
 		font-family: var(--font-mono); font-size: 0.75rem;
@@ -790,11 +801,11 @@
 	}
 	.search-result-meta {
 		font-family: var(--font-mono); font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 15%);
+		color: oklch(0.55 0.08 240 / 15%);
 	}
 	.search-empty {
 		font-family: var(--font-mono); font-size: 0.75rem;
-		color: oklch(0.78 0.12 75 / 28%); text-align: center;
+		color: oklch(0.55 0.08 240 / 28%); text-align: center;
 		padding: 2rem; z-index: 2;
 	}
 
@@ -811,7 +822,7 @@
 	.doc-loading {
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
-		color: oklch(0.78 0.12 75 / 35%);
+		color: oklch(0.55 0.08 240 / 35%);
 		padding: 2rem;
 		text-align: center;
 	}
@@ -870,28 +881,51 @@
 		align-items: center;
 		justify-content: center;
 		gap: 2px;
-		background: radial-gradient(
-			circle at 38% 32%,
-			color-mix(in srgb, var(--c) 14%, transparent) 0%,
-			color-mix(in srgb, var(--c) 6%, transparent) 50%,
-			transparent 80%
+		background: linear-gradient(
+			145deg,
+			oklch(1 0 0 / 8%) 0%,
+			color-mix(in srgb, var(--c) 8%, transparent) 40%,
+			oklch(1 0 0 / 4%) 70%,
+			color-mix(in srgb, var(--c) 5%, transparent) 100%
 		);
-		border: 1px solid color-mix(in srgb, var(--c) 18%, transparent);
+		backdrop-filter: blur(16px) saturate(150%) brightness(1.05);
+		-webkit-backdrop-filter: blur(16px) saturate(150%) brightness(1.05);
+		border: 1px solid oklch(1 0 0 / 10%);
+		border-top-color: oklch(1 0 0 / 20%);
 		box-shadow:
-			0 0 40px color-mix(in srgb, var(--c) 6%, transparent),
-			inset 0 0 30px color-mix(in srgb, var(--c) 4%, transparent);
+			0 4px 24px oklch(0 0 0 / 15%),
+			0 0 40px color-mix(in srgb, var(--c) 5%, transparent),
+			inset 0 1px 0 oklch(1 0 0 / 10%),
+			inset 0 -1px 0 oklch(0 0 0 / 5%);
 		animation: bubble-float var(--float-dur) ease-in-out infinite var(--float-delay);
 		transition: border-color 0.3s ease, box-shadow 0.3s ease;
+		overflow: hidden;
+	}
+
+	/* Specular highlight on glass sphere */
+	.bubble::before {
+		content: "";
+		position: absolute;
+		top: 8%;
+		left: 20%;
+		width: 35%;
+		height: 20%;
+		border-radius: 50%;
+		background: radial-gradient(ellipse, oklch(1 0 0 / 15%) 0%, transparent 70%);
+		transform: rotate(-20deg);
+		pointer-events: none;
 	}
 
 	.bubble-clickable { cursor: pointer; }
 
 	.bubble-hovered {
-		border-color: color-mix(in srgb, var(--c) 35%, transparent);
+		border-color: oklch(1 0 0 / 18%);
+		border-top-color: oklch(1 0 0 / 28%);
 		box-shadow:
-			0 0 60px color-mix(in srgb, var(--c) 12%, transparent),
-			0 0 120px color-mix(in srgb, var(--c) 5%, transparent),
-			inset 0 0 40px color-mix(in srgb, var(--c) 8%, transparent);
+			0 4px 32px oklch(0 0 0 / 20%),
+			0 0 60px color-mix(in srgb, var(--c) 10%, transparent),
+			0 0 120px color-mix(in srgb, var(--c) 4%, transparent),
+			inset 0 1px 0 oklch(1 0 0 / 14%);
 		z-index: 5;
 	}
 
@@ -954,12 +988,16 @@
 		position: absolute; bottom: 1.25rem; left: 50%;
 		transform: translateX(-50%); display: flex; gap: 0.625rem;
 		align-items: flex-start;
-		background: oklch(0.08 0.01 280 / 85%); backdrop-filter: blur(16px);
-		border: 1px solid oklch(1 0 0 / 7%); border-radius: 0.875rem;
+		background: linear-gradient(155deg, oklch(1 0 0 / 6%) 0%, oklch(0.5 0.02 250 / 10%) 40%, oklch(1 0 0 / 4%) 100%);
+		backdrop-filter: blur(28px) saturate(160%) brightness(1.06);
+		-webkit-backdrop-filter: blur(28px) saturate(160%) brightness(1.06);
+		border: 1px solid oklch(1 0 0 / 10%); border-top-color: oklch(1 0 0 / 18%);
+		border-radius: 1rem;
 		padding: 0.75rem 1rem; max-width: 340px; min-width: 180px;
 		animation: tooltip-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 		pointer-events: none; z-index: 20;
-		box-shadow: 0 8px 32px oklch(0 0 0 / 40%), 0 0 60px color-mix(in srgb, var(--c) 6%, transparent);
+		box-shadow: 0 8px 32px oklch(0 0 0 / 30%), inset 0 1px 0 oklch(1 0 0 / 8%);
+		overflow: hidden;
 	}
 	@keyframes tooltip-enter {
 		from { opacity: 0; transform: translateX(-50%) translateY(8px) scale(0.96); }
@@ -970,14 +1008,14 @@
 	.memory-tooltip-body { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
 	.memory-tooltip-name { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500; letter-spacing: 0.03em; color: oklch(0.92 0.02 75 / 85%); }
 	.memory-tooltip-summary { font-family: var(--font-body); font-size: 0.66rem; color: oklch(0.88 0.02 75 / 45%); line-height: 1.4; }
-	.memory-tooltip-meta { font-family: var(--font-mono); font-size: 0.75rem; color: oklch(0.78 0.12 75 / 28%); }
+	.memory-tooltip-meta { font-family: var(--font-mono); font-size: 0.75rem; color: oklch(0.55 0.08 240 / 28%); }
 	.memory-tooltip-files { margin-top: 0.2rem; display: flex; flex-wrap: wrap; gap: 0.25rem; }
 	.memory-tooltip-file {
 		font-family: var(--font-mono); font-size: 0.7rem; color: oklch(0.88 0.02 75 / 30%);
 		background: oklch(1 0 0 / 3%); padding: 0.1rem 0.35rem; border-radius: 0.25rem;
 		border: 1px solid oklch(1 0 0 / 4%);
 	}
-	.memory-tooltip-more { color: oklch(0.78 0.12 75 / 35%); font-style: italic; border: none; background: none; padding: 0.1rem 0; }
+	.memory-tooltip-more { color: oklch(0.55 0.08 240 / 35%); font-style: italic; border: none; background: none; padding: 0.1rem 0; }
 
 	@media (max-width: 640px) {
 		.memory-header { padding: 0.5rem 0.75rem 0; }
