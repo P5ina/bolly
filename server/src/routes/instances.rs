@@ -25,6 +25,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/email", get(get_email_config))
         .route("/api/instances/{instance_slug}/email", put(set_email_config))
         .route("/api/instances/{instance_slug}/email", delete(delete_email_config))
+        .route("/api/instances/{instance_slug}/voice", get(get_voice_id))
+        .route("/api/instances/{instance_slug}/voice", put(set_voice_id))
         .route("/api/instances/{instance_slug}/export", get(export_instance))
         .route("/api/instances/{instance_slug}/import", post(import_instance))
 }
@@ -197,6 +199,36 @@ pub fn read_timezone(instance_dir: &std::path::Path) -> Option<String> {
     let state: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let tz = state.get("timezone")?.as_str()?;
     if tz.is_empty() { None } else { Some(tz.to_string()) }
+}
+
+// ---------------------------------------------------------------------------
+// Voice ID (ElevenLabs)
+// ---------------------------------------------------------------------------
+
+async fn get_voice_id(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> Json<serde_json::Value> {
+    let inst = crate::config::InstanceConfig::load(&state.workspace_dir, &instance_slug);
+    Json(serde_json::json!({ "voice_id": inst.elevenlabs_voice_id }))
+}
+
+#[derive(Deserialize)]
+struct SetVoiceIdRequest {
+    voice_id: String,
+}
+
+async fn set_voice_id(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+    Json(req): Json<SetVoiceIdRequest>,
+) -> StatusCode {
+    let mut inst = crate::config::InstanceConfig::load(&state.workspace_dir, &instance_slug);
+    inst.elevenlabs_voice_id = req.voice_id;
+    match inst.save(&state.workspace_dir, &instance_slug) {
+        Ok(_) => StatusCode::OK,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
 }
 
 // ---------------------------------------------------------------------------

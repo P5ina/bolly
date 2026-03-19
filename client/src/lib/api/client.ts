@@ -283,6 +283,18 @@ export async function clearContext(slug: string, chatId = "default"): Promise<vo
 	await authedFetch(`/api/chat/${encodeURIComponent(slug)}/${encodeURIComponent(chatId)}/context`, { method: "DELETE" });
 }
 
+export function fetchVoiceId(slug: string): Promise<{ voice_id: string }> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/voice`);
+}
+
+export function updateVoiceId(slug: string, voiceId: string): Promise<void> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/voice`, {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ voice_id: voiceId }),
+	});
+}
+
 export function fetchMood(slug: string): Promise<{ mood: string }> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/mood`);
 }

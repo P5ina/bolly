@@ -16,6 +16,8 @@
 		updateGithubToken,
 		fetchTimezone,
 		updateTimezone,
+		fetchVoiceId,
+		updateVoiceId,
 		fetchEmailAccounts,
 		saveEmailAccounts,
 		deleteAllEmailAccounts,
@@ -92,6 +94,50 @@
 	let ghSaving = $state(false);
 	let ghError = $state("");
 	let ghEditing = $state(false);
+
+	// Voice state
+	let voiceId = $state("");
+	let voiceLoading = $state(true);
+	let voiceSaving = $state(false);
+	let voiceInput = $state("");
+
+	async function loadVoice() {
+		voiceLoading = true;
+		try {
+			const res = await fetchVoiceId(slug);
+			voiceId = res.voice_id || "";
+			voiceInput = voiceId;
+		} catch {
+			// not critical
+		} finally {
+			voiceLoading = false;
+		}
+	}
+
+	async function saveVoice() {
+		voiceSaving = true;
+		try {
+			await updateVoiceId(slug, voiceInput.trim());
+			voiceId = voiceInput.trim();
+		} catch {
+			// ignore
+		} finally {
+			voiceSaving = false;
+		}
+	}
+
+	async function clearVoice() {
+		voiceSaving = true;
+		try {
+			await updateVoiceId(slug, "");
+			voiceId = "";
+			voiceInput = "";
+		} catch {
+			// ignore
+		} finally {
+			voiceSaving = false;
+		}
+	}
 
 	async function loadGithub() {
 		ghLoading = true;
@@ -433,6 +479,7 @@
 		loadGithub();
 		loadTimezone();
 		loadEmail();
+		loadVoice();
 	});
 </script>
 
@@ -972,6 +1019,59 @@
 
 		{#if ghError}
 			<p class="error-msg">{ghError}</p>
+		{/if}
+	</section>
+
+	<!-- Voice -->
+	<section class="settings-section" style="margin-top: 1rem;">
+		<div class="section-header">
+			<div class="section-icon voice-icon">
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+					<path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+					<path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+				</svg>
+			</div>
+			<div>
+				<h3 class="section-label">voice</h3>
+				<p class="section-desc">
+					ElevenLabs voice ID for text-to-speech. Leave empty to use the default voice.
+				</p>
+			</div>
+		</div>
+
+		{#if voiceLoading}
+			<div class="ext-loading">
+				<div class="loading-dot"></div>
+			</div>
+		{:else}
+			<div class="gh-token-form">
+				<input
+					class="ext-input"
+					type="text"
+					placeholder="e.g. TWutjvRaJqAX89preB4e"
+					bind:value={voiceInput}
+					onkeydown={(e) => e.key === "Enter" && saveVoice()}
+				/>
+				<div class="ext-form-actions">
+					<button
+						class="ext-form-btn ext-form-add"
+						disabled={voiceSaving || voiceInput.trim() === voiceId}
+						onclick={saveVoice}
+					>
+						{voiceSaving ? "saving..." : "save"}
+					</button>
+					{#if voiceId}
+						<button
+							class="ext-form-btn ext-form-cancel"
+							disabled={voiceSaving}
+							onclick={clearVoice}
+						>
+							reset to default
+						</button>
+					{/if}
+				</div>
+			</div>
 		{/if}
 	</section>
 
@@ -1602,6 +1702,10 @@
 
 	.gh-icon {
 		color: oklch(0.88 0 0 / 60%);
+	}
+
+	.voice-icon {
+		color: oklch(0.78 0.10 200 / 60%);
 	}
 
 	.gh-status {
