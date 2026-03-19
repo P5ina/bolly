@@ -73,34 +73,33 @@
 		renderer.domElement.style.pointerEvents = "auto";
 
 		const scene = new THREE.Scene();
-		scene.background = new THREE.Color(0x010210);
+		scene.background = new THREE.Color(0x000206);
 
 		const cam = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
 		cam.position.set(0, 0, 5);
 		cam.lookAt(0, 0, 0);
 
-		// ── Skybox ──
+		// ── Skybox — dark gradient with subtle color for envmap reflections ──
 		const skyGeo = new THREE.SphereGeometry(30, 64, 32);
 		const skyMat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide });
 		const skyShader = Fn(() => {
 			const st = uv();
-			const t = time.mul(0.02);
-			const abyss = vec3(0.005, 0.01, 0.04);
-			const deep = vec3(0.01, 0.02, 0.07);
-			const purp = vec3(0.03, 0.015, 0.08);
-			const c = mix(abyss, deep, smoothstep(float(0), float(0.5), st.y)).toVar();
-			c.assign(mix(c, purp, smoothstep(float(0.5), float(1), st.y)));
+			const t = time.mul(0.012);
+			const E = float(2.718);
+			// Dark base
+			const c = vec3(0.003, 0.005, 0.018).toVar();
+			c.addAssign(vec3(0.002, 0.003, 0.010).mul(st.y));
+			// Soft aurora bands for envmap color
 			const TAU = float(6.2832);
 			const sx = st.x.mul(TAU);
-			const addCaustic = (base: number, f1: number, s1: number, f2: number, s2: number, coreStr: number, glowStr: number) => {
-				const curve = float(base).add(sin(sx.mul(f1).add(t.mul(s1))).mul(0.18)).add(cos(sx.mul(f2).sub(t.mul(s2)).add(1.5)).mul(0.10));
-				const d = abs(st.y.sub(curve));
-				c.addAssign(vec3(0.55, 0.60, 0.85).mul(pow(float(2.718), d.mul(d).mul(-2000)).mul(coreStr)));
-				c.addAssign(vec3(0.20, 0.25, 0.50).mul(pow(float(2.718), d.mul(d).mul(-40)).mul(glowStr)));
+			const band = (baseY: number, drift: number, phase: number, w: number, col: [number, number, number], bright: number) => {
+				const wy = float(baseY).add(sin(sx.mul(0.8).add(t.mul(drift)).add(phase)).mul(0.06));
+				const d = st.y.sub(wy);
+				c.addAssign(vec3(col[0], col[1], col[2]).mul(pow(E, d.mul(d).negate().div(float(w * w * 2)))).mul(bright));
 			};
-			addCaustic(0.50, 1, 0.6, 1, 0.9, 0.7, 0.12);
-			addCaustic(0.35, 1, 0.4, 2, 0.7, 0.5, 0.08);
-			addCaustic(0.68, 1, 0.8, 1, 0.5, 0.35, 0.06);
+			band(0.6, 0.4, 0, 0.14, [0.04, 0.12, 0.18], 0.12);
+			band(0.4, 0.3, 2, 0.16, [0.06, 0.05, 0.15], 0.08);
+			band(0.25, 0.5, 4, 0.10, [0.10, 0.03, 0.12], 0.06);
 			return vec4(c, float(1));
 		});
 		skyMat.colorNode = skyShader();
@@ -108,27 +107,56 @@
 		skybox.visible = false;
 		scene.add(skybox);
 
-		// ── Flat background ──
+		// ── Flat background — very dark, nearly black ──
 		const flatBg = Fn(() => {
 			const st = screenUV;
-			const t = time.mul(0.02);
-			const abyss = vec3(0.005, 0.01, 0.04);
-			const deep = vec3(0.01, 0.02, 0.07);
-			const purp = vec3(0.03, 0.015, 0.08);
-			const c = mix(abyss, deep, smoothstep(float(0), float(0.5), st.y)).toVar();
-			c.assign(mix(c, purp, smoothstep(float(0.5), float(1), st.y)));
-			const addLine = (base: number, freq1: number, sp1: number, freq2: number, sp2: number, cStr: number, gStr: number) => {
-				const curve = float(base).add(sin(st.x.mul(freq1).add(t.mul(sp1))).mul(0.18)).add(cos(st.x.mul(freq2).sub(t.mul(sp2)).add(1.5)).mul(0.10));
-				const d = abs(st.y.sub(curve));
-				c.addAssign(vec3(0.55, 0.60, 0.85).mul(pow(float(2.718), d.mul(d).mul(-2000)).mul(cStr)));
-				c.addAssign(vec3(0.20, 0.25, 0.50).mul(pow(float(2.718), d.mul(d).mul(-40)).mul(gStr)));
-			};
-			addLine(0.50, 2.5, 0.6, 4.5, 0.9, 0.7, 0.12);
-			addLine(0.32, 3.0, 0.4, 5.5, 0.7, 0.5, 0.08);
-			addLine(0.70, 2.0, 0.8, 3.5, 0.5, 0.35, 0.06);
+			const c = vec3(0.002, 0.003, 0.012).toVar();
+			c.addAssign(vec3(0.001, 0.002, 0.006).mul(st.y));
 			return c;
 		});
 		scene.backgroundNode = flatBg();
+
+		// ── Star particles — real 3D points for parallax + glass refraction ──
+		const STAR_COUNT = 1500;
+		const starPositions = new Float32Array(STAR_COUNT * 3);
+		const starSizes = new Float32Array(STAR_COUNT);
+		const starColors = new Float32Array(STAR_COUNT * 3);
+
+		for (let i = 0; i < STAR_COUNT; i++) {
+			// Distribute in a sphere shell (radius 8..25)
+			const theta = Math.random() * Math.PI * 2;
+			const phi = Math.acos(2 * Math.random() - 1);
+			const r = 8 + Math.random() * 17;
+			starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+			starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+			starPositions[i * 3 + 2] = r * Math.cos(phi);
+			// Size variation — mostly small, few bright
+			const rnd = Math.random();
+			starSizes[i] = rnd < 0.95 ? 1.0 + Math.random() * 2.0 : 3.0 + Math.random() * 4.0;
+			// Color — cool blue-white to warm
+			const warmth = Math.random();
+			starColors[i * 3] = 0.6 + warmth * 0.4;
+			starColors[i * 3 + 1] = 0.7 + warmth * 0.2;
+			starColors[i * 3 + 2] = 1.0 - warmth * 0.3;
+		}
+
+		const starGeo = new THREE.BufferGeometry();
+		starGeo.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
+		starGeo.setAttribute("size", new THREE.BufferAttribute(starSizes, 1));
+		starGeo.setAttribute("color", new THREE.BufferAttribute(starColors, 3));
+
+		const starMat = new THREE.PointsMaterial({
+			size: 0.06,
+			sizeAttenuation: true,
+			vertexColors: true,
+			transparent: true,
+			opacity: 0.85,
+			depthWrite: false,
+			blending: THREE.AdditiveBlending,
+		});
+
+		const stars = new THREE.Points(starGeo, starMat);
+		scene.add(stars);
 
 		// ── Lighting ──
 		scene.add(new THREE.AmbientLight(0x334477, 0.3));
@@ -158,17 +186,18 @@
 		const glassMat = new THREE.MeshPhysicalNodeMaterial();
 		glassMat.positionNode = displacedPos();
 		glassMat.color = new THREE.Color(0xffffff);
-		glassMat.transmission = 0.99;
-		glassMat.ior = 1.2;
-		glassMat.thickness = 0.5;
-		glassMat.roughness = 0.05;
+		glassMat.transmission = 1.0;
+		glassMat.ior = 1.45;
+		glassMat.thickness = 1.5;
+		glassMat.roughness = 0.0;
+		glassMat.metalness = 0.0;
 		glassMat.dispersion = 0.15;
 		glassMat.attenuationColor = new THREE.Color(0xffffff);
 		glassMat.attenuationDistance = Infinity;
-		glassMat.clearcoat = 0.1;
-		glassMat.specularIntensity = 1.0;
+		glassMat.clearcoat = 0.0;
+		glassMat.specularIntensity = 0.2;
 		glassMat.specularColor = new THREE.Color(0xffffff);
-		glassMat.envMapIntensity = 25;
+		glassMat.envMapIntensity = 1.0;
 		glassMat.transparent = true;
 		glassMat.side = THREE.FrontSide;
 
@@ -486,6 +515,10 @@
 				envDone = true;
 			}
 
+			// Slow star field rotation for subtle parallax
+			stars.rotation.y = t * 0.01;
+			stars.rotation.x = t * 0.003;
+
 			renderer.render(scene, cam);
 		}
 		requestAnimationFrame(animate);
@@ -500,6 +533,8 @@
 			glassMat.dispose();
 			skyGeo.dispose();
 			skyMat.dispose();
+			starGeo.dispose();
+			starMat.dispose();
 			pmrem.dispose();
 			renderer.dispose();
 			renderer.domElement.remove();
