@@ -82,7 +82,8 @@
 		cam.position.set(0, 0, 5);
 		cam.lookAt(0, 0, 0);
 
-		// ── Background (TSL wave shader as scene.backgroundNode) ──
+		// Fallback background color — prevents black artifacts in transmission RT
+		scene.background = new THREE.Color(0x010210);
 
 		// ── Skybox sphere — wraps around the blob for real 3D reflections ──
 
@@ -93,45 +94,121 @@
 			const st = uv();
 			const t = time.mul(0.02);
 
-			const deepBlue  = vec3(0.015, 0.035, 0.14);
-			const midBlue   = vec3(0.04, 0.07, 0.24);
-			const purple    = vec3(0.10, 0.05, 0.26);
-			const indigo    = vec3(0.07, 0.04, 0.22);
-			const lightBlue = vec3(0.08, 0.12, 0.28);
-			const mist      = vec3(0.12, 0.16, 0.30);
+			// Very dark base — almost black
+			const abyss = vec3(0.005, 0.01, 0.04);
+			const deep  = vec3(0.01, 0.02, 0.07);
+			const purp  = vec3(0.03, 0.015, 0.08);
 
-			const c = mix(deepBlue, midBlue, smoothstep(float(0.0), float(0.4), st.y)).toVar();
-			c.assign(mix(c, indigo, smoothstep(float(0.3), float(0.7), st.y)));
-			c.assign(mix(c, purple, smoothstep(float(0.6), float(1.0), st.y)));
+			const c = mix(abyss, deep, smoothstep(float(0.0), float(0.5), st.y)).toVar();
+			c.assign(mix(c, purp, smoothstep(float(0.5), float(1.0), st.y)));
 
-			// Terrain waves — x frequencies are multiples of 2π for seamless sphere wrap
 			const TAU = float(6.2832);
-			const sx = st.x.mul(TAU); // 0→2π wraps seamlessly
-			const w = sin(sx.mul(1.0).add(t.mul(0.8)).add(st.y.mul(3.0))).mul(0.35)
-				.add(sin(sx.mul(2.0).sub(t.mul(0.5)).add(3.0)).mul(0.25))
-				.add(sin(sx.mul(3.0).add(t.mul(1.2)).add(st.y.mul(5.0)).add(1.0)).mul(0.15))
-				.add(sin(sx.mul(0.5).add(t.mul(0.3)).sub(2.0)).mul(0.2))
-				.add(cos(sx.mul(2.0).add(st.y.mul(6.0)).add(t.mul(0.7))).mul(0.12));
+			const sx = st.x.mul(TAU);
 
-			c.assign(mix(c, lightBlue, smoothstep(float(-0.1), float(0.3), w.sub(st.y.mul(0.8)).add(0.2)).mul(0.3)));
-			c.assign(mix(c, mist, smoothstep(float(-0.05), float(0.15), w.sub(st.y.mul(1.2)).add(0.5)).mul(0.2)));
+			// Caustic lines — lower frequency for smoother reflections in glass
+			const curve1 = float(0.50)
+				.add(sin(sx.mul(1.0).add(t.mul(0.6))).mul(0.20))
+				.add(cos(sx.mul(1.0).sub(t.mul(0.9)).add(1.5)).mul(0.12));
+			const dist1 = abs(st.y.sub(curve1));
+			const core1 = pow(float(2.718), dist1.mul(dist1).mul(-2000.0)).mul(0.7);
+			const glow1 = pow(float(2.718), dist1.mul(dist1).mul(-40.0)).mul(0.12);
+			const halo1 = pow(float(2.718), dist1.mul(dist1).mul(-8.0)).mul(0.04);
 
-			// Caustic line — seamless x frequencies
-			const curve = float(0.55)
-				.add(sin(sx.mul(1.0).add(t.mul(0.6))).mul(0.15))
-				.add(cos(sx.mul(2.0).sub(t.mul(0.9)).add(1.5)).mul(0.08))
-				.add(sin(sx.mul(3.0).add(t.mul(1.2)).add(3.0)).mul(0.05));
-			const dist = abs(st.y.sub(curve));
-			const line = pow(float(2.718), dist.mul(dist).mul(-1200.0)).mul(0.35);
-			const glw = pow(float(2.718), dist.mul(dist).mul(-60.0)).mul(0.08);
-			c.addAssign(vec3(0.35, 0.40, 0.55).mul(line.add(glw)));
+			const curve2 = float(0.35)
+				.add(sin(sx.mul(1.0).add(t.mul(0.4)).add(2.0)).mul(0.17))
+				.add(cos(sx.mul(2.0).sub(t.mul(0.7))).mul(0.09));
+			const dist2 = abs(st.y.sub(curve2));
+			const core2 = pow(float(2.718), dist2.mul(dist2).mul(-2000.0)).mul(0.5);
+			const glow2 = pow(float(2.718), dist2.mul(dist2).mul(-40.0)).mul(0.08);
+			const halo2 = pow(float(2.718), dist2.mul(dist2).mul(-8.0)).mul(0.03);
+
+			const curve3 = float(0.68)
+				.add(sin(sx.mul(1.0).add(t.mul(0.8)).sub(1.0)).mul(0.15))
+				.add(cos(sx.mul(1.0).add(t.mul(0.5)).add(4.0)).mul(0.08));
+			const dist3 = abs(st.y.sub(curve3));
+			const core3 = pow(float(2.718), dist3.mul(dist3).mul(-2000.0)).mul(0.35);
+			const glow3 = pow(float(2.718), dist3.mul(dist3).mul(-40.0)).mul(0.06);
+
+			const curve4 = float(0.22)
+				.add(sin(sx.mul(2.0).add(t.mul(0.3)).add(3.5)).mul(0.12))
+				.add(cos(sx.mul(1.0).sub(t.mul(0.6)).add(1.0)).mul(0.07));
+			const dist4 = abs(st.y.sub(curve4));
+			const core4 = pow(float(2.718), dist4.mul(dist4).mul(-2000.0)).mul(0.25);
+			const glow4 = pow(float(2.718), dist4.mul(dist4).mul(-40.0)).mul(0.04);
+
+			// Bright core: white-blue, glow: tinted, halo: subtle color wash
+			const coreColor = vec3(0.55, 0.60, 0.85);
+			const glowColor = vec3(0.20, 0.25, 0.50);
+			const haloColor = vec3(0.08, 0.10, 0.25);
+
+			c.addAssign(coreColor.mul(core1.add(core2).add(core3).add(core4)));
+			c.addAssign(glowColor.mul(glow1.add(glow2).add(glow3).add(glow4)));
+			c.addAssign(haloColor.mul(halo1.add(halo2)));
 
 			return vec4(c, float(1.0));
 		});
 
 		skyMat.colorNode = skyColor();
 		const skybox = new THREE.Mesh(skyGeo, skyMat);
+		skybox.visible = false;
 		scene.add(skybox);
+
+		// ── Flat background (what you actually see on screen) ──
+
+		const flatBg = Fn(() => {
+			const st = screenUV;
+			const t = time.mul(0.02);
+
+			const abyss = vec3(0.005, 0.01, 0.04);
+			const deep  = vec3(0.01, 0.02, 0.07);
+			const purp  = vec3(0.03, 0.015, 0.08);
+
+			const c = mix(abyss, deep, smoothstep(float(0.0), float(0.5), st.y)).toVar();
+			c.assign(mix(c, purp, smoothstep(float(0.5), float(1.0), st.y)));
+
+			// Caustic lines — same curves but using screen UV (not stretched)
+			const curve1 = float(0.50)
+				.add(sin(st.x.mul(2.5).add(t.mul(0.6))).mul(0.20))
+				.add(cos(st.x.mul(4.5).sub(t.mul(0.9)).add(1.5)).mul(0.12))
+				.add(sin(st.x.mul(7.0).add(t.mul(1.2)).add(3.0)).mul(0.07));
+			const dist1 = abs(st.y.sub(curve1));
+			const core1 = pow(float(2.718), dist1.mul(dist1).mul(-2000.0)).mul(0.7);
+			const glow1 = pow(float(2.718), dist1.mul(dist1).mul(-40.0)).mul(0.12);
+			const halo1 = pow(float(2.718), dist1.mul(dist1).mul(-8.0)).mul(0.04);
+
+			const curve2 = float(0.32)
+				.add(sin(st.x.mul(3.0).add(t.mul(0.4)).add(2.0)).mul(0.17))
+				.add(cos(st.x.mul(5.5).sub(t.mul(0.7))).mul(0.09));
+			const dist2 = abs(st.y.sub(curve2));
+			const core2 = pow(float(2.718), dist2.mul(dist2).mul(-2000.0)).mul(0.5);
+			const glow2 = pow(float(2.718), dist2.mul(dist2).mul(-40.0)).mul(0.08);
+			const halo2 = pow(float(2.718), dist2.mul(dist2).mul(-8.0)).mul(0.03);
+
+			const curve3 = float(0.70)
+				.add(sin(st.x.mul(2.0).add(t.mul(0.8)).sub(1.0)).mul(0.14))
+				.add(cos(st.x.mul(3.5).add(t.mul(0.5)).add(4.0)).mul(0.08));
+			const dist3 = abs(st.y.sub(curve3));
+			const core3 = pow(float(2.718), dist3.mul(dist3).mul(-2000.0)).mul(0.35);
+			const glow3 = pow(float(2.718), dist3.mul(dist3).mul(-40.0)).mul(0.06);
+
+			const curve4 = float(0.18)
+				.add(sin(st.x.mul(4.0).add(t.mul(0.3)).add(3.5)).mul(0.11))
+				.add(cos(st.x.mul(6.0).sub(t.mul(0.6)).add(1.0)).mul(0.06));
+			const dist4 = abs(st.y.sub(curve4));
+			const core4 = pow(float(2.718), dist4.mul(dist4).mul(-2000.0)).mul(0.25);
+			const glow4 = pow(float(2.718), dist4.mul(dist4).mul(-40.0)).mul(0.04);
+
+			const coreColor = vec3(0.55, 0.60, 0.85);
+			const glowColor = vec3(0.20, 0.25, 0.50);
+			const haloColor = vec3(0.08, 0.10, 0.25);
+
+			c.addAssign(coreColor.mul(core1.add(core2).add(core3).add(core4)));
+			c.addAssign(glowColor.mul(glow1.add(glow2).add(glow3).add(glow4)));
+			c.addAssign(haloColor.mul(halo1.add(halo2)));
+
+			return c;
+		});
+		scene.backgroundNode = flatBg();
 
 		// ── Lighting ──
 
@@ -171,13 +248,13 @@
 		glassMat.positionNode = displacedPos();
 		glassMat.color = new THREE.Color(0xffffff);
 		glassMat.transmission = 0.99;
-		glassMat.ior = 1.3;
-		glassMat.thickness = 2.0;
+		glassMat.ior = 1.2;
+		glassMat.thickness = 0.5;
 		glassMat.roughness = 0.05;
 		glassMat.metalness = 0.0;
-		glassMat.dispersion = 0.4;
-		glassMat.attenuationColor = new THREE.Color(0xeeeeff);
-		glassMat.attenuationDistance = 5.0;
+		glassMat.dispersion = 0.15;
+		glassMat.attenuationColor = new THREE.Color(0xffffff);
+		glassMat.attenuationDistance = Infinity;
 		glassMat.clearcoat = 0.1;
 		glassMat.clearcoatRoughness = 0.0;
 		glassMat.specularIntensity = 1.0;
@@ -187,7 +264,7 @@
 		glassMat.side = THREE.FrontSide;
 
 		const creature = new THREE.Mesh(creatureGeo, glassMat);
-		creature.scale.setScalar(0.7);
+		creature.scale.setScalar(1.2);
 		creature.position.set(1.8, -0.1, 0);
 		scene.add(creature);
 
@@ -250,11 +327,12 @@
 
 			glassMat.dispersion = thinkingRef ? 0.6 : 0.4;
 
-			// Generate envmap from background on first frame
 			if (envNeedsUpdate) {
 				creature.visible = false;
+				skybox.visible = true;
 				const envRT = pmrem.fromScene(scene);
 				scene.environment = envRT.texture;
+				skybox.visible = false;
 				creature.visible = true;
 				envNeedsUpdate = false;
 			}
