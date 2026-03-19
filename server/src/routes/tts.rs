@@ -55,21 +55,19 @@ async fn synthesize(
     };
 
     let url = format!(
-        "https://api.elevenlabs.io/v1/text-to-speech/{}/stream",
+        "https://api.elevenlabs.io/v1/text-to-speech/{}/stream?output_format=mp3_44100_128",
         voice_id
     );
 
     let body = serde_json::json!({
         "text": request.text,
-        "model_id": "eleven_turbo_v2_5",
-        "output_format": "mp3_44100_128",
+        "model_id": "eleven_v3",
     });
 
     let response = state
         .http_client
         .post(&url)
         .header("xi-api-key", &api_key)
-        .header("Content-Type", "application/json")
         .json(&body)
         .send()
         .await
