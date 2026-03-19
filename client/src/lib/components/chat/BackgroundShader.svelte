@@ -83,10 +83,10 @@
 			                    + 0.1 * cos(uv.x * 4.0 - t * 0.9 + 1.5)
 			                    + 0.08 * sin(uv.x * 6.0 + t * 1.2 + 3.0);
 			float dist = abs(uv.y - curve);
-			// Thin bright line with soft falloff
-			float line = exp(-dist * dist * 800.0) * 0.9;
+			// Thin line with controlled brightness
+			float line = exp(-dist * dist * 1200.0) * 0.35;
 			// Broader soft glow around line
-			float glow = exp(-dist * dist * 40.0) * 0.25;
+			float glow = exp(-dist * dist * 60.0) * 0.08;
 			return line + glow;
 		}
 
@@ -95,12 +95,12 @@
 			float t = uTime * 0.02 + uEnergy * 0.01;
 
 			// --- Base gradient: deep blue bottom → purple/indigo top ---
-			vec3 deepBlue  = vec3(0.02, 0.06, 0.22);
-			vec3 midBlue   = vec3(0.06, 0.10, 0.38);
-			vec3 purple    = vec3(0.18, 0.08, 0.42);
-			vec3 indigo    = vec3(0.12, 0.06, 0.35);
-			vec3 lightBlue = vec3(0.20, 0.30, 0.55);
-			vec3 mist      = vec3(0.35, 0.42, 0.60);
+			vec3 deepBlue  = vec3(0.015, 0.035, 0.14);
+			vec3 midBlue   = vec3(0.04, 0.07, 0.24);
+			vec3 purple    = vec3(0.10, 0.05, 0.26);
+			vec3 indigo    = vec3(0.07, 0.04, 0.22);
+			vec3 lightBlue = vec3(0.08, 0.12, 0.28);
+			vec3 mist      = vec3(0.12, 0.16, 0.30);
 
 			// Vertical gradient
 			vec3 base = mix(deepBlue, midBlue, smoothstep(0.0, 0.4, uv.y));
@@ -112,44 +112,43 @@
 
 			// Lower mist/light area
 			float mistMask = smoothstep(-0.1, 0.3, w - uv.y * 0.8 + 0.2);
-			base = mix(base, lightBlue, mistMask * 0.45);
+			base = mix(base, lightBlue, mistMask * 0.3);
 
 			// Upper wave crest
 			float crest = smoothstep(-0.05, 0.15, w - uv.y * 1.2 + 0.5);
-			base = mix(base, mist, crest * 0.3);
+			base = mix(base, mist, crest * 0.2);
 
 			// Deep shadow in wave valleys
 			float valley = smoothstep(0.2, -0.1, w - uv.y * 0.6 + 0.1);
-			base = mix(base, deepBlue * 0.7, valley * 0.4);
+			base = mix(base, deepBlue * 0.6, valley * 0.4);
 
 			// Secondary wave layer (slower, larger)
 			float w2 = terrain(uv * 0.6 + vec2(5.0, 0.0));
 			float fold = smoothstep(-0.05, 0.2, w2 - uv.y * 0.9 + 0.35);
-			base = mix(base, midBlue * 1.3, fold * 0.25);
+			base = mix(base, midBlue * 1.1, fold * 0.2);
 
 			// --- Specular caustic line ---
 			float caustic = causticLine(uv);
-			vec3 lineColor = vec3(0.7, 0.75, 0.95); // cool white
+			vec3 lineColor = vec3(0.35, 0.40, 0.55);
 			base += lineColor * caustic;
 
 			// Secondary faint caustic
 			float caustic2 = causticLine(uv * vec2(1.0, 1.0) + vec2(0.15, -0.2));
-			base += lineColor * caustic2 * 0.15;
+			base += lineColor * caustic2 * 0.1;
 
 			// --- Mood accent bleed ---
 			float accentMask = smoothstep(0.3, 0.7, uv.y) * smoothstep(0.3, 0.6, 0.5 + 0.5 * sin(uv.x * 3.0 + uTime * 0.03));
-			base += uAccent * uAccent * 0.06 * accentMask;
+			base += uAccent * uAccent * 0.04 * accentMask;
 
 			// --- Energy boost (thinking) ---
-			base *= 1.0 + uEnergy * 0.15;
-			// Speed up caustic shimmer when thinking
-			float energyCaustic = exp(-pow(abs(uv.y - 0.5 - 0.3 * sin(uv.x * 3.0 + uTime * 0.15)), 2.0) * 200.0);
-			base += vec3(0.5, 0.6, 0.9) * energyCaustic * uEnergy * 0.3;
+			base *= 1.0 + uEnergy * 0.1;
+			float energyCaustic = exp(-pow(abs(uv.y - 0.5 - 0.3 * sin(uv.x * 3.0 + uTime * 0.15)), 2.0) * 300.0);
+			base += vec3(0.2, 0.25, 0.4) * energyCaustic * uEnergy * 0.2;
 
-			// --- Subtle vignette ---
+			// --- Vignette ---
 			float vig = 1.0 - length((uv - 0.5) * vec2(1.2, 1.4));
 			vig = smoothstep(-0.1, 0.6, vig);
-			base *= 0.75 + vig * 0.25;
+			base *= 0.7 + vig * 0.3;
 
 			gl_FragColor = vec4(max(base, 0.0), 1.0);
 		}
