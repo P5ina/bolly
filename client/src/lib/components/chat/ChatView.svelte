@@ -763,7 +763,8 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		inset: 0;
 		pointer-events: none;
 		z-index: 0;
-		background:
+		background-color: oklch(0.08 0.02 240);
+		background-image:
 			/* top-left: navy bloom */
 			radial-gradient(ellipse 65% 55% at 12% 8%, oklch(0.22 0.06 250) 0%, transparent 70%),
 			/* center-right: indigo wash */
@@ -773,9 +774,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			/* bottom-right: warm undertone */
 			radial-gradient(ellipse 45% 55% at 88% 75%, oklch(0.15 0.04 300) 0%, transparent 55%),
 			/* center: depth brightening */
-			radial-gradient(circle at 50% 50%, oklch(0.13 0.03 230) 0%, transparent 55%),
-			/* base fill so it's not pure black */
-			oklch(0.08 0.02 240);
+			radial-gradient(circle at 50% 50%, oklch(0.13 0.03 230) 0%, transparent 55%);
 	}
 
 	/* --- Perimeter ambient glow (Siri-style) --- */

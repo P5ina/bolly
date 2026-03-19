@@ -6,31 +6,16 @@
 	import { AuthError } from "$lib/api/client.js";
 	import type { ServerEvent } from "$lib/api/types.js";
 	import { onMount } from "svelte";
-	import { pwaInfo } from "virtual:pwa-info";
 	import AuthGate from "$lib/components/auth/AuthGate.svelte";
 	import Toast from "$lib/components/layout/Toast.svelte";
 	import SecretDialog from "$lib/components/layout/SecretDialog.svelte";
 
 	let { children } = $props();
 
-	onMount(async () => {
-		if (pwaInfo) {
-			const { registerSW } = await import("virtual:pwa-register");
-			updateSW = registerSW({
-				immediate: true,
-				onNeedRefresh() {
-					updateAvailable = true;
-				},
-			});
-		}
-	});
-
 	const instances = getInstances();
 	const ws = getWebSocket();
 
 	let needsAuth = $state(false);
-	let updateAvailable = $state(false);
-	let updateSW: ((reloadPage?: boolean) => Promise<void>) | undefined;
 
 	// Secret request state
 	let secretRequest = $state<{
@@ -90,19 +75,6 @@
 		<AuthGate onauth={handleAuth} />
 	{:else}
 		{@render children()}
-	{/if}
-
-	<!-- update available banner -->
-	{#if updateAvailable}
-		<div class="update-banner">
-			<span class="update-banner-text">update available</span>
-			<button class="update-banner-btn" onclick={() => updateSW?.(true)}>refresh</button>
-			<button class="update-banner-dismiss" onclick={() => updateAvailable = false} aria-label="Dismiss">
-				<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" class="w-2.5 h-2.5">
-					<path d="M2 2l8 8M10 2l-8 8" stroke-linecap="round"/>
-				</svg>
-			</button>
-		</div>
 	{/if}
 
 	<Toast />
