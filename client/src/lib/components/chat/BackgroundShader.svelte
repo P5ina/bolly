@@ -112,9 +112,13 @@
 			color = mix(color, teal,    smoothstep(0.30, 0.72, n3) * 0.45);
 			color = mix(color, deep,    smoothstep(0.5, 0.9, n1 * n2) * 0.30);
 
-			// Mood accent tint
-			float accentMask = smoothstep(0.4, 0.8, n1) * smoothstep(0.3, 0.7, n3);
-			color += uAccent * 0.025 * accentMask;
+			// Mood accent — Bolly's warmth bleeds through the environment
+			float accentMask = smoothstep(0.3, 0.75, n1) * smoothstep(0.25, 0.65, n3);
+			vec3 moodGlow = uAccent * uAccent; // square for richer saturation in darks
+			color += moodGlow * 0.09 * accentMask;
+			// Secondary diffuse wash at larger scale
+			float accentWash = smoothstep(0.2, 0.6, fbm(uv * 1.2 + t * 0.08 + 30.0));
+			color += uAccent * 0.03 * accentWash;
 
 			// Vignette
 			float vig = 1.0 - length((vUv - 0.5) * 1.4);
