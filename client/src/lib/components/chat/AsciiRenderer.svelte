@@ -62,8 +62,8 @@
 		const ctx = canvasRef.getContext("2d", { willReadFrequently: true });
 		if (!ctx) return;
 
-		const threlteCanvas = containerRef?.querySelector("canvas");
-		if (!threlteCanvas) return;
+		const threlteCanvas = containerRef?.querySelector("canvas") as HTMLCanvasElement | null;
+		if (!threlteCanvas || !threlteCanvas.width || !threlteCanvas.height) return;
 
 		canvasRef.width = COLS;
 		canvasRef.height = ROWS;
