@@ -596,6 +596,28 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		stream = [];
 	}
 
+	/** Compute per-message reveal progress based on word distribution across all speaking messages. */
+	function getMessageRevealProgress(msgId: string): number {
+		if (!voice.speaking || !voice.speakingIds.has(msgId)) return 1;
+
+		const speakingMsgs = stream
+			.filter(s => s.type === "message" && voice.speakingIds.has(s.data.id))
+			.map(s => (s as { type: "message"; data: ChatMessage }).data);
+
+		const wordCounts = speakingMsgs.map(m => m.content.split(/\s+/).filter(w => w).length);
+		const totalWords = wordCounts.reduce((a, b) => a + b, 0);
+		if (totalWords === 0) return 1;
+
+		const msgIndex = speakingMsgs.findIndex(m => m.id === msgId);
+		if (msgIndex < 0) return 1;
+
+		const wordsBefore = wordCounts.slice(0, msgIndex).reduce((a, b) => a + b, 0);
+		const wordsInMsg = wordCounts[msgIndex];
+		const revealedWords = voice.revealProgress * totalWords;
+		const localRevealed = Math.max(0, Math.min(wordsInMsg, revealedWords - wordsBefore));
+		return localRevealed / wordsInMsg;
+	}
+
 	function streamKey(item: StreamItem): string {
 		return item.type === "message" ? item.data.id : item.id;
 	}
@@ -702,7 +724,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					{:else}
 						{#each stream as item, i (streamKey(item))}
 							{#if item.type === "message"}
-								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} nextMessage={getNext(item, i)} speaking={voice.speakingIds.has(item.data.id)} revealProgress={voice.revealProgress} />
+								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} nextMessage={getNext(item, i)} speaking={voice.speakingIds.has(item.data.id)} revealProgress={getMessageRevealProgress(item.data.id)} />
 							{:else if item.type === "mcp_app"}
 								<McpAppViewer
 									html={item.html}
