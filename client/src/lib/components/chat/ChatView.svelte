@@ -8,6 +8,8 @@
 	import ChatInput from "./ChatInput.svelte";
 	import AsciiShader from "./AsciiShader.svelte";
 	import BackgroundShader from "./BackgroundShader.svelte";
+	import PresentationOverlay from "./PresentationOverlay.svelte";
+	import { getPresentationState } from "$lib/stores/presentation.svelte.js";
 	import CreatureBubble from "./CreatureBubble.svelte";
 	import StreamActivity from "./StreamActivity.svelte";
 	import ContextStats from "./ContextStats.svelte";
@@ -28,6 +30,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 	const toast = getToasts();
 	const voice = getVoiceState();
+	const presentation = getPresentationState();
 
 	let { slug, chatId }: { slug: string; chatId: string } = $props();
 
@@ -662,7 +665,30 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		if (chat.id === "default") return "default";
 		return chat.id.replace("chat_", "#");
 	}
+
+	function handlePresentationSend(content: string) {
+		handleSend(content);
+	}
 </script>
+
+<svelte:window onkeydown={(e) => {
+	if ((e.metaKey || e.ctrlKey) && e.key === "p") {
+		e.preventDefault();
+		presentation.toggle();
+	}
+}} />
+
+{#if presentation.active}
+	<PresentationOverlay
+		{stream}
+		{mood}
+		thinking={sending || agentRunning}
+		voiceAmplitude={voice.amplitude}
+		{streamingMessageId}
+		onSend={handlePresentationSend}
+		onStop={handleStop}
+	/>
+{:else}
 
 <div class="chat-space" class:chat-active={sending || agentRunning}>
 	<BackgroundShader {mood} thinking={sending || agentRunning} />
@@ -798,6 +824,8 @@ import McpAppViewer from "./McpAppViewer.svelte";
 {#if showContextStats}
 	<ContextStats {slug} chatId={activeChatId} onclose={() => showContextStats = false} />
 {/if}
+
+{/if}<!-- end presentation else -->
 
 <style>
 	.chat-space {
