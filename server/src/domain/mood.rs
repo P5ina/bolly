@@ -21,4 +21,7 @@ pub struct MoodState {
     /// Unix timestamp of last autonomous reach-out (to prevent spam).
     #[serde(default)]
     pub last_reach_out: i64,
+    /// Recent mood transitions (newest first, max 8). Format: "mood (reason)".
+    #[serde(default)]
+    pub mood_history: Vec<String>,
 }

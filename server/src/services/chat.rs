@@ -1583,22 +1583,45 @@ async fn extract_sentiment(
     // Truncate assistant response for the prompt (avoid huge tool-heavy replies)
     let assistant_preview: String = assistant_response.chars().take(500).collect();
 
+    // Build mood history context
+    let history_context = if current_mood.mood_history.is_empty() {
+        String::from("(no recent changes)")
+    } else {
+        current_mood.mood_history.iter().enumerate()
+            .map(|(i, h)| format!("  {}. {}", i + 1, h))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
     let prompt = format!(
         r#"analyze this exchange and decide the companion's emotional response.
 
-current companion mood: {}
+current companion mood: {current_mood}
+emotional context: {context}
+recent mood history (newest first):
+{history}
 
 user: "{user_message}"
 
 companion: "{assistant_preview}"
 
+IMPORTANT — emotional inertia rules:
+- moods should be STABLE. real people don't flip emotions every sentence.
+- only change mood if the conversation has a genuine emotional shift.
+- if the exchange is neutral/routine (greetings, factual questions, small talk), keep SAME.
+- a mood should typically last at least 3-5 exchanges before changing.
+- prefer subtle shifts between adjacent moods (e.g. calm→curious, warm→happy) over dramatic jumps (calm→excited).
+
 respond with exactly three lines:
-SENTIMENT: <user's emotional state in 1-2 words, e.g. "excited", "frustrated", "neutral">
+SENTIMENT: <user's emotional state in 1-2 words>
 CONTEXT: <one short sentence about the emotional context>
-MOOD: <the mood that best matches the companion's emotional tone in this response — one of: {allowed}. write SAME only if the current mood already fits. judge by the actual emotions expressed, ignoring any meta-commentary about mood or system messages.>
+MOOD: <one of: {allowed}. write SAME unless there is a clear emotional reason to shift. when in doubt, SAME.>
 
 respond ONLY with those three lines."#,
-        current_mood.companion_mood
+        current_mood = current_mood.companion_mood,
+        context = if current_mood.emotional_context.is_empty() { "none" } else { &current_mood.emotional_context },
+        history = history_context,
+        allowed = allowed,
     );
 
     let response = match llm
@@ -1635,11 +1658,21 @@ respond ONLY with those three lines."#,
         }
     }
 
+    let mood_changed = new_companion_mood.is_some();
+
     if let Some(ref new_mood) = new_companion_mood {
+        // Record transition in history
+        let reason = mood.emotional_context.clone();
+        let entry = if reason.is_empty() {
+            format!("{} → {new_mood}", mood.companion_mood)
+        } else {
+            format!("{} → {new_mood} ({reason})", mood.companion_mood)
+        };
+        mood.mood_history.insert(0, entry);
+        mood.mood_history.truncate(8); // keep last 8
+
         mood.companion_mood = new_mood.clone();
     }
-
-    let mood_changed = new_companion_mood.is_some();
 
     mood.updated_at = chrono::Utc::now().timestamp();
     tools::save_mood_state(&instance_dir, &mood);
