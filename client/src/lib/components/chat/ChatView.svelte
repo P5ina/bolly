@@ -58,8 +58,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			? (localStorage.getItem("bolly:showToolActivity") ?? "false") === "true"
 			: false,
 	);
-	let streamingContent = $state("");
-	let streamingBubbles = $state<string[]>([]);
+	let streamingMessageId = $state("");
 	/** Accumulates streamed text for TTS when voice is enabled. */
 	let voiceText = $state("");
 	/** Message IDs from the current agent turn (for voice reveal). */
@@ -67,73 +66,42 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 	preload("message_receive", "message_send", "error");
 
-	/** Split text by \n\n but keep code blocks (``` fences) intact */
-	function splitPreservingCode(text: string): { completed: string[]; pending: string } {
-		const parts: string[] = [];
-		let current = "";
-		let inCode = false;
-		for (const line of text.split("\n")) {
-			if (line.trim().startsWith("```")) inCode = !inCode;
-			if (!inCode && line.trim() === "" && current.trim()) {
-				parts.push(current.trim());
-				current = "";
-			} else {
-				current += line + "\n";
-			}
-		}
-		return { completed: parts, pending: current };
-	}
-
-	function handleStreamDelta(delta: string) {
-		streamingContent += delta;
+	function handleStreamDelta(messageId: string, delta: string) {
 		if (voice.enabled) {
 			voiceText += delta;
-			scrollToBottomIfNear();
-			return; // Don't create streaming bubbles in voice mode
-		}
-		const { completed: completedParts, pending } = splitPreservingCode(streamingContent);
-
-		// Promote completed parts to real bubbles
-		while (completedParts.length > streamingBubbles.length) {
-			const newPart = completedParts[streamingBubbles.length];
-			streamingBubbles = [...streamingBubbles, newPart];
-			// Add as a real message bubble
-			const msg: ChatMessage = {
-				id: `__stream_${Date.now()}_${streamingBubbles.length}`,
-				role: "assistant",
-				content: newPart,
-				created_at: String(Date.now()),
-			};
-			// Remove streaming bubble, add real one
-			stream = stream.filter(s => !(s.type === "message" && s.data.id === "__streaming__"));
-			stream = [...stream, { type: "message", data: msg }];
-			play("message_receive");
-		}
-
-		// Update or create streaming bubble for pending text
-		const trimmedPending = pending.trim();
-		if (trimmedPending) {
-			const streamIdx = stream.findIndex(s => s.type === "message" && s.data.id === "__streaming__");
-			const streamingMsg: ChatMessage = {
-				id: "__streaming__",
-				role: "assistant",
-				content: trimmedPending,
-				created_at: String(Date.now()),
-			};
-			if (streamIdx >= 0) {
-				stream[streamIdx] = { type: "message", data: streamingMsg };
-				stream = stream;
-			} else {
-				stream = [...stream, { type: "message", data: streamingMsg }];
+			if (!turnMessageIds.includes(messageId)) {
+				turnMessageIds = [...turnMessageIds, messageId];
 			}
+			scrollToBottomIfNear();
+			return;
 		}
+
+		streamingMessageId = messageId;
+
+		// Find or create the message bubble with this stable ID
+		const existingIdx = stream.findIndex(
+			s => s.type === "message" && s.data.id === messageId
+		);
+
+		if (existingIdx >= 0) {
+			const item = stream[existingIdx] as { type: "message"; data: ChatMessage };
+			item.data.content += delta;
+			stream = stream; // trigger reactivity
+		} else {
+			const msg: ChatMessage = {
+				id: messageId,
+				role: "assistant",
+				content: delta,
+				created_at: String(Date.now()),
+			};
+			stream = [...stream, { type: "message", data: msg }];
+		}
+
 		scrollToBottomIfNear();
 	}
 
 	function clearStreaming() {
-		streamingContent = "";
-		streamingBubbles = [];
-		stream = stream.filter(s => !(s.type === "message" && s.data.id === "__streaming__"));
+		streamingMessageId = "";
 	}
 
 	const ws = getWebSocket();
@@ -214,28 +182,27 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	}
 
 	function addMessage(msg: ChatMessage) {
-		if (!messages.some((m) => m.id === msg.id)) {
-			// Clear streaming state when first real assistant message arrives
-			if (msg.role === "assistant" && streamingContent) {
-				clearStreaming();
-			}
-			// Replace streaming/promoted placeholder with the real message if content matches
-			if (msg.role === "assistant") {
-				const placeholderIdx = stream.findIndex((s) =>
-					s.type === "message" &&
-					(s.data.id.startsWith("__promoted_") || s.data.id.startsWith("__stream_")) &&
-					s.data.content === msg.content
-				);
-				if (placeholderIdx >= 0) {
-					stream[placeholderIdx] = { type: "message", data: msg };
-					stream = stream;
-					messages = [...messages, msg];
-					return;
-				}
-			}
-			messages = [...messages, msg];
+		// Check if this message already exists (was created during streaming)
+		const existingIdx = stream.findIndex(
+			s => s.type === "message" && s.data.id === msg.id
+		);
+
+		if (existingIdx >= 0) {
+			// Message already exists — update metadata from server (model, timestamp, content)
+			const item = stream[existingIdx] as { type: "message"; data: ChatMessage };
+			item.data.created_at = msg.created_at;
+			item.data.model = msg.model;
+			item.data.kind = msg.kind;
+			item.data.content = msg.content; // server version is authoritative
+			stream = stream;
+		} else {
+			// New message — add to stream
 			stream = [...stream, { type: "message", data: msg }];
 			scrollToBottomIfNear();
+		}
+
+		if (!messages.some(m => m.id === msg.id)) {
+			messages = [...messages, msg];
 		}
 	}
 
@@ -348,7 +315,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 			stream = [];
 			loading = true;
 			isConnected = false;
-			streamingContent = "";
+			streamingMessageId = "";
 
 			refreshChatList();
 
@@ -409,19 +376,6 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					}];
 					scrollToBottomIfNear();
 				} else if (isToolActivity(msg)) {
-					// Promote streaming bubble to a real message so it doesn't vanish
-					if (streamingContent) {
-						const pending = streamingContent.split("\n\n").pop()?.trim() ?? "";
-						if (pending) {
-							const snapshotId = `__promoted_${Date.now()}`;
-							stream = stream.map((s) =>
-								s.type === "message" && s.data.id === "__streaming__"
-									? { type: "message" as const, data: { id: snapshotId, role: "assistant" as const, content: pending, created_at: String(Date.now()) } }
-									: s
-							);
-						}
-						clearStreaming();
-					}
 					const item = toolActivityToStreamItem(msg);
 					if (item) {
 						// If this is a tool_output and we have a live-streamed output,
@@ -466,10 +420,6 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				agentRunning = false;
 				sending = false;
 				clearStreaming();
-				// Clean up any promoted streaming messages stuck in wrong position
-				stream = stream.filter((s) =>
-					!(s.type === "message" && typeof s.data.id === "string" && s.data.id.startsWith("__promoted_"))
-				);
 				// Trigger TTS when voice is enabled
 				if (voice.enabled && voiceText.trim()) {
 					const text = voiceText.trim();
@@ -507,7 +457,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				}
 				scrollToBottomIfNear();
 			} else if (event.type === "chat_stream_delta") {
-				handleStreamDelta(event.delta);
+				handleStreamDelta(event.message_id, event.delta);
 			} else if (event.type === "mcp_app_start") {
 				// MCP App tool call starting — show iframe immediately
 				stream = [...stream, {

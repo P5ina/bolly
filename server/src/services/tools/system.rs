@@ -2128,6 +2128,7 @@ impl Tool for ExportProfileTool {
         let _ = self.events.send(ServerEvent::ChatStreamDelta {
             instance_slug: self.instance_slug.clone(),
             chat_id: "default".to_string(),
+            message_id: String::new(),
             delta: String::new(),
         });
 

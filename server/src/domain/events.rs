@@ -41,6 +41,7 @@ pub enum ServerEvent {
     ChatStreamDelta {
         instance_slug: String,
         chat_id: String,
+        message_id: String,
         delta: String,
     },
     SecretRequest {

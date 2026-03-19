@@ -398,6 +398,8 @@ pub struct ToolChatResult {
     pub text: String,
     /// Full message history including tool call/result entries.
     pub rig_history: Option<Vec<Message>>,
+    /// The message ID used during streaming (so the saved message can reuse it).
+    pub message_id: Option<String>,
     /// Total tokens used (input + output) across all turns, from API usage.
     /// 0 if provider doesn't report usage (OpenAI streaming).
     pub tokens_used: u64,
@@ -600,9 +602,10 @@ impl LlmBackend {
         .await;
 
         match result {
-            Ok((text, tokens_used)) => Ok(ToolChatResult {
+            Ok((text, message_id, tokens_used)) => Ok(ToolChatResult {
                 text,
                 rig_history: Some(messages),
+                message_id,
                 tokens_used,
             }),
             Err(e) => Err(e),
@@ -695,7 +698,7 @@ async fn agent_loop(
     }
 }
 
-/// Streaming agent loop. Returns final accumulated text.
+/// Streaming agent loop. Returns (final text, message_id, total tokens).
 async fn streaming_agent_loop(
     backend: &LlmBackend,
     system: &[&str],
@@ -707,14 +710,15 @@ async fn streaming_agent_loop(
     chat_id: &str,
     workspace_dir: &Path,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
-) -> Result<(String, u64), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, Option<String>, u64), Box<dyn std::error::Error + Send + Sync>> {
     let mut all_text = String::new();
     let mut total_tokens: u64 = 0;
+    let mut current_message_id = super::chat::next_id();
 
     loop {
         let turn = stream_once(
             backend, system, tool_defs, messages, events,
-            instance_slug, chat_id, mcp_snapshot,
+            instance_slug, chat_id, &current_message_id, mcp_snapshot,
         ).await?;
 
         total_tokens += turn.tokens_used;
@@ -779,11 +783,11 @@ async fn streaming_agent_loop(
             break;
         }
 
-        // Save intermediate text before tool execution
+        // Save intermediate text before tool execution — reuse the streaming message_id
         if !turn_text.trim().is_empty() {
             let ts = super::tools::unix_millis();
             let msg = ChatMessage {
-                id: format!("im_{ts}"),
+                id: current_message_id.clone(),
                 role: ChatRole::Assistant,
                 content: turn_text.trim().to_string(),
                 created_at: ts.to_string(),
@@ -792,12 +796,13 @@ async fn streaming_agent_loop(
                 mcp_app_html: None,
                 mcp_app_input: None, model: None,
             };
-            // Intermediate text is in rig_history via assistant blocks — only broadcast for UI
             let _ = events.send(ServerEvent::ChatMessageCreated {
                 instance_slug: instance_slug.to_string(),
                 chat_id: chat_id.to_string(),
                 message: msg,
             });
+            // Generate new ID for the next streaming turn
+            current_message_id = super::chat::next_id();
         }
 
         // Execute tools
@@ -818,7 +823,7 @@ async fn streaming_agent_loop(
         super::chat::save_rig_history(&rig_path, &entries);
     }
 
-    Ok((all_text, total_tokens))
+    Ok((all_text, Some(current_message_id), total_tokens))
 }
 
 async fn execute_tool(tools: &[Box<dyn ToolDyn>], name: &str, input: &serde_json::Value) -> String {
@@ -1103,6 +1108,7 @@ async fn anthropic_stream(
     events: &broadcast::Sender<ServerEvent>,
     instance_slug: &str,
     chat_id: &str,
+    message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
 ) -> Result<(String, Vec<ToolUseBlock>, String, Option<String>, u64), Box<dyn std::error::Error + Send + Sync>> {
     let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, api_key);
@@ -1261,6 +1267,7 @@ async fn anthropic_stream(
                                         let _ = events.send(ServerEvent::ChatStreamDelta {
                                             instance_slug: instance_slug.to_string(),
                                             chat_id: chat_id.to_string(),
+                                            message_id: message_id.to_string(),
                                             delta: t.to_string(),
                                         });
                                     }
@@ -1373,6 +1380,7 @@ async fn stream_once(
     events: &broadcast::Sender<ServerEvent>,
     instance_slug: &str,
     chat_id: &str,
+    message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
 ) -> Result<StreamOnceResult, Box<dyn std::error::Error + Send + Sync>> {
     match backend {
@@ -1384,7 +1392,7 @@ async fn stream_once(
             let (text, tool_uses, stop_reason, compaction, tokens_used) =
                 anthropic_stream(
                     http, api_key, model, system, tool_defs, messages,
-                    16384, events, instance_slug, chat_id, mcp_snapshot,
+                    16384, events, instance_slug, chat_id, message_id, mcp_snapshot,
                 ).await?;
             Ok(StreamOnceResult { text, tool_uses, stop_reason, compaction, tokens_used })
         }
@@ -1397,7 +1405,7 @@ async fn stream_once(
             let joined = system.join("\n\n");
             let (text, tool_uses, stop_reason) = openai_stream(
                 http, api_key, base_url, model, &joined, tool_defs, messages,
-                16384, events, instance_slug, chat_id,
+                16384, events, instance_slug, chat_id, message_id,
             ).await?;
             Ok(StreamOnceResult { text, tool_uses, stop_reason, compaction: None, tokens_used: 0 })
         }
@@ -1642,6 +1650,7 @@ async fn openai_stream(
     events: &broadcast::Sender<ServerEvent>,
     instance_slug: &str,
     chat_id: &str,
+    message_id: &str,
 ) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
     let body = build_openai_request(model, system, tool_defs, messages, max_tokens, true);
 
@@ -1707,6 +1716,7 @@ async fn openai_stream(
                     let _ = events.send(ServerEvent::ChatStreamDelta {
                         instance_slug: instance_slug.to_string(),
                         chat_id: chat_id.to_string(),
+                        message_id: message_id.to_string(),
                         delta: content.to_string(),
                     });
                 }

@@ -494,7 +494,7 @@ pub async fn run_single_turn(
                 log::error!("LLM error details: {e:?}");
                 "something went wrong on my end — try again?".to_string()
             };
-            llm::ToolChatResult { text, rig_history: None, tokens_used: 0 }
+            llm::ToolChatResult { text, rig_history: None, message_id: None, tokens_used: 0 }
         });
 
     // Strip any leaked tool-call JSON the model may have output as text
@@ -510,35 +510,21 @@ pub async fn run_single_turn(
         full_reply.push_str(&file_markers.join("\n"));
     }
 
-    // Split reply into separate messages by blank lines (like texting),
-    // but don't split inside code fences (``` blocks).
+    // Build single assistant message — reuse the streaming message_id so the
+    // client can match it to the bubble already created during streaming.
     let mut assistant_messages = Vec::new();
     if !full_reply.is_empty() {
         let model_name = Some(llm.model_name().to_string());
-        let parts = split_preserving_code_blocks(&full_reply);
-        if parts.len() > 1 {
-            for part in parts {
-                assistant_messages.push(ChatMessage {
-                    id: next_id(),
-                    role: ChatRole::Assistant,
-                    content: part,
-                    created_at: timestamp(),
-                    kind: Default::default(),
-                    tool_name: None, mcp_app_html: None, mcp_app_input: None,
-                    model: model_name.clone(),
-                });
-            }
-        } else {
-            assistant_messages.push(ChatMessage {
-                id: next_id(),
-                role: ChatRole::Assistant,
-                content: full_reply,
-                created_at: timestamp(),
-                kind: Default::default(),
-                tool_name: None, mcp_app_html: None, mcp_app_input: None,
-                model: model_name,
-            });
-        }
+        let msg_id = tool_result.message_id.clone().unwrap_or_else(next_id);
+        assistant_messages.push(ChatMessage {
+            id: msg_id,
+            role: ChatRole::Assistant,
+            content: full_reply,
+            created_at: timestamp(),
+            kind: Default::default(),
+            tool_name: None, mcp_app_html: None, mcp_app_input: None,
+            model: model_name,
+        });
     }
 
     // Save rig history to disk FIRST, before background tasks that also write to it.
@@ -1302,7 +1288,7 @@ fn sanitize_slug(input: &str) -> String {
         .collect()
 }
 
-fn next_id() -> String {
+pub(crate) fn next_id() -> String {
     format!(
         "msg_{}_{}",
         unix_millis(),

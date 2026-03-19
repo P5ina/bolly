@@ -250,6 +250,7 @@ export type ServerEvent =
 			type: "chat_stream_delta";
 			instance_slug: string;
 			chat_id: string;
+			message_id: string;
 			delta: string;
 	  }
 	| {
