@@ -6,22 +6,20 @@
 	let {
 		message,
 		side = "right",
-		y = 40,
 		streaming = false,
 		onexpire,
 	}: {
 		message: ChatMessage;
 		side?: "left" | "right";
-		y?: number;
 		streaming?: boolean;
 		onexpire?: () => void;
 	} = $props();
 
 	const marked = new Marked({ breaks: true, gfm: true });
 
-	let el: HTMLDivElement | undefined = $state();
 	let fading = $state(false);
 	let expired = false;
+	let entered = $state(false);
 
 	const isUser = $derived(message.role === "user");
 	const html = $derived(
@@ -29,40 +27,42 @@
 	);
 
 	onMount(() => {
-		// Start expiration timer only when not streaming
-		let timer: ReturnType<typeof setTimeout>;
+		// Trigger enter animation on next frame
+		requestAnimationFrame(() => { entered = true; });
+
+		let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+		let streamCheckInterval: ReturnType<typeof setInterval> | undefined;
 
 		function startExpiry() {
-			timer = setTimeout(() => {
+			if (expiryTimer) return;
+			expiryTimer = setTimeout(() => {
 				fading = true;
 				setTimeout(() => {
 					if (!expired) { expired = true; onexpire?.(); }
-				}, 1800);
-			}, 14000);
+				}, 1500);
+			}, 12000);
 		}
 
 		if (!streaming) startExpiry();
 
-		// Watch for streaming to finish
-		const interval = setInterval(() => {
-			if (!streaming && !timer) startExpiry();
+		streamCheckInterval = setInterval(() => {
+			if (!streaming && !expiryTimer) startExpiry();
 		}, 500);
 
 		return () => {
-			clearTimeout(timer);
-			clearInterval(interval);
+			clearTimeout(expiryTimer);
+			clearInterval(streamCheckInterval);
 		};
 	});
 </script>
 
 <div
-	bind:this={el}
 	class="pbubble"
 	class:pbubble-left={side === "left"}
 	class:pbubble-right={side === "right"}
+	class:pbubble-entered={entered}
 	class:pbubble-fading={fading}
 	class:pbubble-streaming={streaming}
-	style="--fly-y: {y}vh"
 >
 	<div class="pbubble-glass">
 		{#if isUser}
@@ -75,49 +75,44 @@
 
 <style>
 	.pbubble {
-		position: absolute;
-		top: var(--fly-y);
-		max-width: 48vw;
+		width: fit-content;
+		max-width: 55vw;
+		opacity: 0;
+		transform: translateX(80px) scale(0.92);
+		transition:
+			opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+			transform 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+			filter 0.7s ease;
 		pointer-events: none;
-		will-change: transform, opacity;
 	}
 
 	.pbubble-left {
-		left: 3vw;
-		animation: fly-in-left 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+		align-self: flex-start;
+		transform: translateX(-80px) scale(0.92);
 	}
 
 	.pbubble-right {
-		right: 3vw;
-		animation: fly-in-right 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+		align-self: flex-end;
+	}
+
+	.pbubble-entered {
+		opacity: 1;
+		transform: translateX(0) scale(1);
 	}
 
 	.pbubble-fading {
-		animation: bubble-fade-out 1.8s ease-out forwards !important;
-	}
-
-	@keyframes fly-in-left {
-		from { transform: translateX(-110vw) scale(0.8) rotate(-2deg); opacity: 0; }
-		to { transform: translateX(0) scale(1) rotate(0); opacity: 1; }
-	}
-
-	@keyframes fly-in-right {
-		from { transform: translateX(110vw) scale(0.8) rotate(2deg); opacity: 0; }
-		to { transform: translateX(0) scale(1) rotate(0); opacity: 1; }
-	}
-
-	@keyframes bubble-fade-out {
-		0% { opacity: 1; transform: scale(1); filter: blur(0); }
-		100% { opacity: 0; transform: scale(0.92); filter: blur(6px); }
+		opacity: 0 !important;
+		transform: scale(0.9) translateY(-10px) !important;
+		filter: blur(4px);
 	}
 
 	.pbubble-glass {
-		padding: 1.2rem 1.8rem;
+		padding: 1rem 1.5rem;
 		background: oklch(0.1 0.025 210 / 50%);
 		backdrop-filter: blur(28px) saturate(140%);
 		-webkit-backdrop-filter: blur(28px) saturate(140%);
 		border: 1px solid oklch(0.5 0.06 200 / 12%);
-		border-radius: 24px;
+		border-radius: 20px;
 		box-shadow:
 			0 4px 24px oklch(0 0 0 / 25%),
 			0 0 1px oklch(0.6 0.08 200 / 20%),
@@ -125,37 +120,37 @@
 	}
 
 	.pbubble-left .pbubble-glass {
-		border-radius: 24px 24px 24px 6px;
-		background: oklch(0.12 0.015 220 / 40%);
+		border-radius: 20px 20px 20px 4px;
+		background: oklch(0.1 0.015 220 / 35%);
+		border-color: oklch(0.4 0.04 220 / 10%);
 	}
 
 	.pbubble-right .pbubble-glass {
-		border-radius: 24px 24px 6px 24px;
+		border-radius: 20px 20px 4px 20px;
 	}
 
 	.pbubble-streaming .pbubble-glass {
 		box-shadow:
 			0 4px 24px oklch(0 0 0 / 25%),
-			0 0 20px oklch(0.55 0.08 200 / 10%),
+			0 0 24px oklch(0.55 0.08 200 / 10%),
 			inset 0 1px 0 oklch(1 0 0 / 4%);
 	}
 
 	.pbubble-text {
 		font-family: var(--font-body);
-		font-size: clamp(1.4rem, 2.8vw, 2.2rem);
-		line-height: 1.5;
+		font-size: clamp(1.3rem, 2.5vw, 2rem);
+		line-height: 1.55;
 		letter-spacing: 0.01em;
 		color: oklch(0.95 0.02 75);
-		white-space: pre-wrap;
 		word-break: break-word;
 	}
 
 	.pbubble-left .pbubble-text {
-		color: oklch(0.78 0.02 220 / 70%);
-		font-size: clamp(1.1rem, 2.2vw, 1.6rem);
+		color: oklch(0.7 0.02 220 / 65%);
+		font-size: clamp(1rem, 2vw, 1.4rem);
 	}
 
-	/* Prose overrides for large text */
+	/* Prose */
 	.pbubble-prose :global(p) { margin: 0.3em 0; }
 	.pbubble-prose :global(p:first-child) { margin-top: 0; }
 	.pbubble-prose :global(p:last-child) { margin-bottom: 0; }

@@ -30,47 +30,19 @@
 
 	let inputValue = $state("");
 	let inputEl: HTMLTextAreaElement | undefined = $state();
-	let inputFocused = $state(false);
 	let inputVisible = $state(false);
+	let messageColumn: HTMLDivElement | undefined = $state();
 
-	// Track visible bubbles — only show recent messages, auto-expire
+	// Track visible bubbles
 	type VisibleBubble = {
 		id: string;
-		message: ChatMessage;
 		side: "left" | "right";
-		y: number;
 	};
 
 	let visible = $state<VisibleBubble[]>([]);
-	// Seed with all existing message IDs so history doesn't fly in on mount
 	let seenIds = new Set<string>(
 		stream.filter(s => s.type === "message").map(s => (s as { type: "message"; data: ChatMessage }).data.id)
 	);
-
-	// Vertical slot allocator: divide screen into zones, pick least-used
-	const SLOTS = [18, 28, 38, 48, 58, 68, 78];
-	let slotUsage = $state<Record<number, number>>({});
-
-	function pickSlot(): number {
-		let best = SLOTS[0];
-		let bestCount = Infinity;
-		for (const s of SLOTS) {
-			const count = slotUsage[s] ?? 0;
-			if (count < bestCount) {
-				bestCount = count;
-				best = s;
-			}
-		}
-		slotUsage[best] = (slotUsage[best] ?? 0) + 1;
-		return best;
-	}
-
-	function freeSlot(y: number) {
-		if (slotUsage[y]) {
-			slotUsage[y]--;
-			if (slotUsage[y] <= 0) delete slotUsage[y];
-		}
-	}
 
 	// Watch stream for new messages
 	$effect(() => {
@@ -80,19 +52,21 @@
 			if (seenIds.has(item.data.id)) continue;
 			seenIds.add(item.data.id);
 
-			const y = pickSlot();
 			visible = [...visible, {
 				id: item.data.id,
-				message: item.data,
 				side: item.data.role === "user" ? "left" : "right",
-				y,
 			}];
+
+			// Auto-scroll to bottom
+			requestAnimationFrame(() => {
+				if (messageColumn) {
+					messageColumn.scrollTop = messageColumn.scrollHeight;
+				}
+			});
 		}
 	});
 
 	function removeBubble(id: string) {
-		const bubble = visible.find(b => b.id === id);
-		if (bubble) freeSlot(bubble.y);
 		visible = visible.filter(b => b.id !== id);
 	}
 
@@ -103,7 +77,6 @@
 			if (trimmed) {
 				onSend?.(trimmed);
 				inputValue = "";
-				// Hide input after send with a short delay
 				setTimeout(() => { inputVisible = false; }, 300);
 			}
 		}
@@ -119,7 +92,6 @@
 		requestAnimationFrame(() => inputEl?.focus({ preventScroll: true }));
 	}
 
-	// Any keypress on the page opens the input bar
 	function handleGlobalKey(e: KeyboardEvent) {
 		if (e.metaKey || e.ctrlKey || e.altKey) return;
 		if (e.key === "Escape") return;
@@ -137,28 +109,28 @@
 		<AsciiShader {thinking} {mood} {voiceAmplitude} />
 	</div>
 
-	<div class="present-messages" aria-live="polite">
+	<div class="present-column" bind:this={messageColumn}>
+		<div class="present-spacer"></div>
 		{#each visible as bubble (bubble.id)}
 			{@const msg = stream.find(s => s.type === "message" && s.data.id === bubble.id)}
 			{#if msg && msg.type === "message"}
 				<PresentationBubble
 					message={msg.data}
 					side={bubble.side}
-					y={bubble.y}
 					streaming={msg.data.id === streamingMessageId}
 					onexpire={() => removeBubble(bubble.id)}
 				/>
 			{/if}
 		{/each}
-	</div>
 
-	{#if thinking}
-		<div class="present-thinking">
-			<div class="pt-dot" style="animation-delay: 0ms"></div>
-			<div class="pt-dot" style="animation-delay: 200ms"></div>
-			<div class="pt-dot" style="animation-delay: 400ms"></div>
-		</div>
-	{/if}
+		{#if thinking && visible.length === 0}
+			<div class="present-thinking">
+				<div class="pt-dot" style="animation-delay: 0ms"></div>
+				<div class="pt-dot" style="animation-delay: 200ms"></div>
+				<div class="pt-dot" style="animation-delay: 400ms"></div>
+			</div>
+		{/if}
+	</div>
 
 	<div class="present-bar" class:present-bar-visible={inputVisible}>
 		<div class="present-bar-glass">
@@ -167,8 +139,8 @@
 				bind:this={inputEl}
 				bind:value={inputValue}
 				onkeydown={handleKeydown}
-				onfocus={(e) => { inputFocused = true; e.currentTarget.scrollTop = 0; }}
-				onblur={() => { inputFocused = false; if (!inputValue) inputVisible = false; }}
+				onfocus={(e) => { e.currentTarget.scrollTop = 0; }}
+				onblur={() => { if (!inputValue) inputVisible = false; }}
 				class="present-textarea"
 				placeholder="..."
 				rows={1}
@@ -187,6 +159,8 @@
 		overflow: hidden;
 		overscroll-behavior: none;
 		touch-action: none;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.present-creature {
@@ -196,28 +170,43 @@
 		align-items: center;
 		justify-content: center;
 		pointer-events: none;
-		opacity: 0.5;
+		opacity: 0.45;
 	}
 
 	.present-creature :global(.ascii-shader) {
-		width: 65vh !important;
-		height: 65vh !important;
+		width: 60vh !important;
+		height: 60vh !important;
 	}
 
-	.present-messages {
-		position: absolute;
-		inset: 0;
+	/* Bottom-anchored message column — no overlap, ever */
+	.present-column {
+		position: relative;
+		z-index: 10;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 1.2vh;
+		padding: 3vh 6vw 14vh;
+		overflow-y: auto;
+		overflow-x: hidden;
 		pointer-events: none;
+		/* Hide scrollbar */
+		scrollbar-width: none;
+	}
+	.present-column::-webkit-scrollbar {
+		display: none;
+	}
+
+	/* Push messages to the bottom */
+	.present-spacer {
+		flex: 1;
 	}
 
 	.present-thinking {
-		position: absolute;
-		bottom: 6vh;
-		left: 50%;
-		transform: translateX(-50%);
 		display: flex;
 		gap: 0.6rem;
-		transition: bottom 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+		align-self: center;
+		padding: 1rem 0;
 	}
 
 	.pt-dot {
@@ -234,13 +223,14 @@
 		30% { transform: translateY(-10px); opacity: 1; }
 	}
 
-	/* --- Animated input bar --- */
+	/* --- Input bar --- */
 
 	.present-bar {
 		position: absolute;
 		bottom: 0;
 		left: 0;
 		right: 0;
+		z-index: 20;
 		padding: 2vh 8vw 4vh;
 		transform: translateY(100%);
 		opacity: 0;
