@@ -35,7 +35,12 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
                             break;
                         }
                     }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        log::warn!("[ws] client lagged, dropped {n} events — sending resync hint");
+                        let hint = r#"{"type":"resync","reason":"lagged"}"#;
+                        let _ = socket.send(Message::Text(hint.into())).await;
+                        continue;
+                    }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }

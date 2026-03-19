@@ -357,6 +357,21 @@ import McpAppViewer from "./McpAppViewer.svelte";
 
 		const unsub = ws.subscribe((event: ServerEvent) => {
 			isConnected = true;
+
+			// Server says we missed events — re-fetch everything
+			if ((event as any).type === "resync") {
+				fetchMessages(currentSlug, currentChat)
+					.then((res) => {
+						messages = res.messages.filter((m) => !isToolActivity(m));
+						stream = messagesToStream(res.messages);
+						agentRunning = res.agent_running;
+						if (agentRunning) pushActivity("state", "thinking...");
+						scrollToBottomIfNear();
+					})
+					.catch(() => {});
+				return;
+			}
+
 			if (event.type === "instance_discovered") return;
 			if (event.instance_slug !== currentSlug) return;
 

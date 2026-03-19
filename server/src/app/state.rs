@@ -41,7 +41,7 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(mut config: Config) -> Self {
-        let (events, _) = broadcast::channel(256);
+        let (events, _) = broadcast::channel(4096);
         let llm = LlmBackend::from_config(&config);
 
         // Connect to configured MCP servers
