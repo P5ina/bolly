@@ -313,8 +313,7 @@ async fn heartbeat_instance(
             let config_path = crate::config::config_path();
             let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google, email_accounts, llm, &config_path);
 
-            let is_memory_task = task.contains("memory") || task.contains("cleanup") || task.contains("consolidat");
-            let max_turns = if triage_line.contains("nighttime memory maintenance") || is_memory_task { 15 } else { 5 };
+            let max_turns = 50;
             match llm
                 .chat_with_tools_only(&system, &wake_prompt, vec![], heartbeat_tools, max_turns)
                 .await
