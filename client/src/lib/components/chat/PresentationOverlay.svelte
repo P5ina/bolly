@@ -30,6 +30,8 @@
 
 	let inputValue = $state("");
 	let inputEl: HTMLTextAreaElement | undefined = $state();
+	let inputFocused = $state(false);
+	let inputVisible = $state(false);
 
 	// Track visible bubbles — only show recent messages, auto-expire
 	type VisibleBubble = {
@@ -101,21 +103,35 @@
 			if (trimmed) {
 				onSend?.(trimmed);
 				inputValue = "";
+				// Hide input after send with a short delay
+				setTimeout(() => { inputVisible = false; }, 300);
 			}
 		}
-		if (e.key === "Escape" && thinking) {
-			onStop?.();
+		if (e.key === "Escape") {
+			if (thinking) onStop?.();
+			inputVisible = false;
+			inputEl?.blur();
 		}
 	}
 
-	// Auto-focus the hidden input
-	$effect(() => {
-		if (inputEl) inputEl.focus();
-	});
+	function showInput() {
+		inputVisible = true;
+		// Wait for DOM update then focus
+		requestAnimationFrame(() => inputEl?.focus());
+	}
+
+	// Any keypress on the page opens the input bar
+	function handleGlobalKey(e: KeyboardEvent) {
+		if (e.metaKey || e.ctrlKey || e.altKey) return;
+		if (e.key === "Escape") return;
+		if (e.key.length === 1 && !inputVisible) {
+			showInput();
+		}
+	}
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="present-root" onclick={() => inputEl?.focus()}>
+<div class="present-root" onclick={showInput} onkeydown={handleGlobalKey} role="application">
 	<BackgroundShader {mood} {thinking} />
 
 	<div class="present-creature">
@@ -145,13 +161,22 @@
 		</div>
 	{/if}
 
-	<textarea
-		bind:this={inputEl}
-		bind:value={inputValue}
-		onkeydown={handleKeydown}
-		class="present-input"
-		aria-label="Chat input"
-	></textarea>
+	<div class="present-bar" class:present-bar-visible={inputVisible}>
+		<div class="present-bar-glass">
+			<div class="present-bar-glow"></div>
+			<textarea
+				bind:this={inputEl}
+				bind:value={inputValue}
+				onkeydown={handleKeydown}
+				onfocus={() => inputFocused = true}
+				onblur={() => { inputFocused = false; if (!inputValue) inputVisible = false; }}
+				class="present-textarea"
+				placeholder="..."
+				rows={1}
+				aria-label="Chat input"
+			></textarea>
+		</div>
+	</div>
 </div>
 
 <style>
@@ -160,7 +185,6 @@
 		inset: 0;
 		z-index: 200;
 		overflow: hidden;
-		cursor: none;
 	}
 
 	.present-creature {
@@ -191,6 +215,7 @@
 		transform: translateX(-50%);
 		display: flex;
 		gap: 0.6rem;
+		transition: bottom 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	.pt-dot {
@@ -207,13 +232,80 @@
 		30% { transform: translateY(-10px); opacity: 1; }
 	}
 
-	.present-input {
+	/* --- Animated input bar --- */
+
+	.present-bar {
 		position: absolute;
 		bottom: 0;
 		left: 0;
-		width: 1px;
-		height: 1px;
+		right: 0;
+		padding: 2vh 8vw 4vh;
+		transform: translateY(100%);
 		opacity: 0;
+		transition:
+			transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+			opacity 0.4s ease;
+		pointer-events: none;
+	}
+
+	.present-bar-visible {
+		transform: translateY(0);
+		opacity: 1;
 		pointer-events: auto;
+	}
+
+	.present-bar-glass {
+		position: relative;
+		max-width: 800px;
+		margin: 0 auto;
+		overflow: hidden;
+		border-radius: 20px;
+		background: oklch(0.08 0.02 210 / 45%);
+		backdrop-filter: blur(32px) saturate(150%);
+		-webkit-backdrop-filter: blur(32px) saturate(150%);
+		border: 1px solid oklch(0.5 0.06 200 / 12%);
+		box-shadow:
+			0 8px 40px oklch(0 0 0 / 30%),
+			0 0 1px oklch(0.6 0.08 200 / 20%),
+			inset 0 1px 0 oklch(1 0 0 / 4%);
+	}
+
+	.present-bar-glow {
+		position: absolute;
+		bottom: -20px;
+		left: 50%;
+		transform: translateX(-50%);
+		width: 60%;
+		height: 40px;
+		border-radius: 50%;
+		background: radial-gradient(ellipse, oklch(0.5 0.08 200 / 15%) 0%, transparent 70%);
+		animation: bar-glow-pulse 3s ease-in-out infinite;
+		pointer-events: none;
+	}
+
+	@keyframes bar-glow-pulse {
+		0%, 100% { opacity: 0.5; width: 60%; }
+		50% { opacity: 1; width: 75%; }
+	}
+
+	.present-textarea {
+		display: block;
+		width: 100%;
+		padding: 1.2rem 1.6rem;
+		font-family: var(--font-body);
+		font-size: clamp(1.2rem, 2.2vw, 1.6rem);
+		line-height: 1.5;
+		color: oklch(0.95 0.02 75);
+		background: transparent;
+		border: none;
+		outline: none;
+		resize: none;
+		caret-color: oklch(0.7 0.1 190);
+	}
+
+	.present-textarea::placeholder {
+		color: oklch(0.45 0.04 200 / 30%);
+		font-style: italic;
+		font-family: var(--font-display);
 	}
 </style>
