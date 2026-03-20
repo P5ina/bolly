@@ -203,6 +203,7 @@
 		flex-shrink: 0;
 		z-index: 10;
 		overflow-x: auto;
+		overflow-y: hidden;
 		scrollbar-width: none;
 		-webkit-overflow-scrolling: touch;
 		background: var(--glass-bg);
