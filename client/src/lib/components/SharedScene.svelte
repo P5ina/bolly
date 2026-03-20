@@ -202,8 +202,21 @@
 		const VIZ_Z_BEHIND = -2; // behind the blob (blob is at z=0)
 		const barGeo = new THREE.BoxGeometry(1, 1, 1);
 		const vizGroup = new THREE.Group();
-		// Position group at blob's chat position so columns stay behind it
-		vizGroup.position.set(FINAL_X, FINAL_Y, 0);
+		// Place columns behind the blob along the camera→blob vector.
+		// Camera is at (0,0,5), blob at (FINAL_X, FINAL_Y, 0).
+		// Direction: normalize(blob - cam), then offset blob by ~2.5 units along it.
+		{
+			const dx = FINAL_X - 0, dy = FINAL_Y - 0, dz = FINAL_Z - 5;
+			const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+			const VIZ_DEPTH = 2.5;
+			vizGroup.position.set(
+				FINAL_X + (dx / len) * VIZ_DEPTH,
+				FINAL_Y + (dy / len) * VIZ_DEPTH,
+				FINAL_Z + (dz / len) * VIZ_DEPTH,
+			);
+		}
+		// Orient the group to face the camera
+		vizGroup.lookAt(0, 0, 5);
 		vizGroup.visible = false;
 		scene.add(vizGroup);
 
@@ -222,8 +235,9 @@
 				opacity: 0.9,
 			});
 			const mesh = new THREE.Mesh(barGeo, mat);
+			// Columns spread along local X, in the group's plane facing camera
 			const x = -VIZ_WIDTH / 2 + i * barSpacing + barSpacing / 2;
-			mesh.position.set(x, 0, VIZ_Z_BEHIND);
+			mesh.position.set(x, 0, 0);
 			mesh.scale.set(barWidth, 0.01, 0.4);
 			vizGroup.add(mesh);
 			vizBars.push(mesh);
