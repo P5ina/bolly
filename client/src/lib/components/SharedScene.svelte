@@ -56,6 +56,8 @@
 
 	onMount(async () => {
 		if (!container) return;
+		// Skip 3D scene on mobile — cards are shown instead
+		if (window.innerWidth < 640) return;
 
 		const THREE = await import("three/webgpu");
 		const TSL = await import("three/tsl");
@@ -728,5 +730,8 @@
 		display: block;
 		width: 100% !important;
 		height: 100% !important;
+	}
+	@media (max-width: 640px) {
+		.scene-root { display: none; }
 	}
 </style>
