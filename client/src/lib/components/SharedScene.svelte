@@ -561,12 +561,12 @@
 				const isSpeaking = smoothAmp > 0.01;
 				const thk = store.thinking;
 
-				// Music mode: low noise displacement, strong scale pulse from beat
+				// Music mode: zero noise displacement — clean sphere pulsing with beat
 				const tgtSpeed = isMusic
-					? 1.0 + mAmp * 0.8
+					? 0.3
 					: thk ? 3.0 : isSpeaking ? energy.speed + smoothAmp * 1.5 : energy.speed;
 				const tgtInt = isMusic
-					? 0.06 + mAmp * 0.06
+					? 0.01
 					: thk ? 0.25 : isSpeaking ? energy.intensity + smoothAmp * 0.15 : energy.intensity;
 
 				const uLerp = Math.min(delta * 3, 1);
@@ -579,15 +579,14 @@
 				if (isMusic) {
 					const bpm = store.musicBpm;
 					if (bpm > 0) {
-						// BPM-synced pulse: sin wave at beat frequency
-						// bpm/60 = beats per second, *2π = angular frequency
-						const beatPhase = Math.sin(t * (bpm / 60) * Math.PI * 2);
-						// Expand on beat (phase=1), contract between (phase=-1)
-						// Amplitude driven by music loudness
-						uBreathe.value = 1.0 + (beatPhase * 0.5 + 0.5) * mAmp * 0.15;
+						// BPM-synced pulse: sharp beat shape (pow for punch)
+						const phase = (t * (bpm / 60)) % 1; // 0→1 per beat
+						const beat = Math.pow(Math.max(0, Math.cos(phase * Math.PI * 2)), 4);
+						// Strong scale pulse: 0.85→1.15 range
+						uBreathe.value = 0.85 + beat * 0.3;
 					} else {
-						// No BPM yet — fall back to amplitude-driven pulse
-						uBreathe.value = 1.0 + mAmp * 0.15;
+						// No BPM yet — amplitude-driven pulse
+						uBreathe.value = 0.85 + mAmp * 0.3;
 					}
 				} else {
 					uBreathe.value = 1.0
