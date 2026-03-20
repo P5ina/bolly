@@ -561,12 +561,12 @@
 				const isSpeaking = smoothAmp > 0.01;
 				const thk = store.thinking;
 
-				// Music mode: zero noise displacement — clean sphere pulsing with beat
+				// Music mode: subtle noise + strong BPM pulse
 				const tgtSpeed = isMusic
-					? 0.3
+					? 0.6
 					: thk ? 3.0 : isSpeaking ? energy.speed + smoothAmp * 1.5 : energy.speed;
 				const tgtInt = isMusic
-					? 0.01
+					? 0.03 + mAmp * 0.02
 					: thk ? 0.25 : isSpeaking ? energy.intensity + smoothAmp * 0.15 : energy.intensity;
 
 				const uLerp = Math.min(delta * 3, 1);
