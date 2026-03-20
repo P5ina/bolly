@@ -470,31 +470,62 @@
 				const lerpDown = Math.min(delta * 2, 1);
 				smoothAmp += (rawAmp - smoothAmp) * (rawAmp > smoothAmp ? lerpUp : lerpDown);
 
+				// Music visualizer amplitude
+				const mAmp = store.musicAmplitude;
+				const isMusic = store.musicPlaying && mAmp > 0.01;
+
 				const isSpeaking = smoothAmp > 0.01;
 				const thk = store.thinking;
-				const tgtSpeed = thk ? 3.0 : isSpeaking ? energy.speed + smoothAmp * 1.5 : energy.speed;
-				const tgtInt = thk ? 0.25 : isSpeaking ? energy.intensity + smoothAmp * 0.15 : energy.intensity;
 
-				const uLerp = Math.min(delta * 3, 1);
+				// Music mode overrides: energetic displacement driven by beat
+				const tgtSpeed = isMusic
+					? 2.5 + mAmp * 3.0
+					: thk ? 3.0 : isSpeaking ? energy.speed + smoothAmp * 1.5 : energy.speed;
+				const tgtInt = isMusic
+					? 0.15 + mAmp * 0.25
+					: thk ? 0.25 : isSpeaking ? energy.intensity + smoothAmp * 0.15 : energy.intensity;
+
+				const uLerp = Math.min(delta * (isMusic ? 8 : 3), 1);
 				smoothSpeed += (tgtSpeed - smoothSpeed) * uLerp;
 				smoothIntensity += (tgtInt - smoothIntensity) * uLerp;
 
 				uSpeed.value = smoothSpeed;
 				uIntensity.value = smoothIntensity;
 				uBreathe.value = 1.0
-					+ Math.sin(t * (thk ? 2.5 : energy.breatheRate)) * (thk ? 0.06 : energy.breatheDepth)
-					+ (isSpeaking ? smoothAmp * 0.06 : 0);
+					+ Math.sin(t * (thk ? 2.5 : isMusic ? 3.0 : energy.breatheRate)) * (thk ? 0.06 : isMusic ? 0.05 + mAmp * 0.08 : energy.breatheDepth)
+					+ (isSpeaking ? smoothAmp * 0.06 : 0)
+					+ (isMusic ? mAmp * 0.10 : 0);
 
-				keyLight.color.set(moodColors[resolved]);
-				keyLight.intensity = thk ? 2.5 : 2.0;
-				fillLight.color.set(moodColors[resolved]);
-				glassMat.dispersion = thk ? 0.6 : 0.4;
+				// Disco color cycling when music plays
+				if (isMusic) {
+					const hue = (t * 0.4) % 1; // Slow hue rotation
+					const boost = 0.5 + mAmp * 0.5;
+					const r = Math.sin(hue * Math.PI * 2) * 0.5 + 0.5;
+					const g = Math.sin((hue + 0.333) * Math.PI * 2) * 0.5 + 0.5;
+					const b = Math.sin((hue + 0.666) * Math.PI * 2) * 0.5 + 0.5;
+					keyLight.color.setRGB(r * boost, g * boost, b * boost);
+					keyLight.intensity = 2.5 + mAmp * 2.0;
+					fillLight.color.setRGB(b * boost, r * boost, g * boost); // offset color
+					fillLight.intensity = 0.8 + mAmp * 1.5;
+					rimLight.color.setRGB(g * boost, b * boost, r * boost);
+					rimLight.intensity = 1.0 + mAmp * 2.0;
+					glassMat.dispersion = 0.5 + mAmp * 0.5;
+				} else {
+					keyLight.color.set(moodColors[resolved]);
+					keyLight.intensity = thk ? 2.5 : 2.0;
+					fillLight.color.set(moodColors[resolved]);
+					fillLight.intensity = 0.4;
+					rimLight.color.set(0x8899cc);
+					rimLight.intensity = 1.0;
+					glassMat.dispersion = thk ? 0.6 : 0.4;
+				}
 
 				// Override rotation for selected orb in chat
 				const selOrb = sel ? orbMap.get(sel) : null;
 				if (selOrb) {
-					selOrb.mesh.rotation.y += delta * (thk ? 0.4 : energy.rotSpeed);
-					selOrb.mesh.rotation.x = Math.sin(t * 0.3) * 0.1;
+					const rotSpeed = isMusic ? 0.5 + mAmp * 1.5 : thk ? 0.4 : energy.rotSpeed;
+					selOrb.mesh.rotation.y += delta * rotSpeed;
+					selOrb.mesh.rotation.x = Math.sin(t * (isMusic ? 1.5 : 0.3)) * (isMusic ? 0.25 : 0.1);
 				}
 			} else {
 				// Home / selecting — gentle defaults

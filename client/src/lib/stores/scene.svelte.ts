@@ -29,6 +29,8 @@ export interface SceneStore {
 	readonly mood: string;
 	readonly thinking: boolean;
 	readonly voiceAmplitude: number;
+	readonly musicAmplitude: number;
+	readonly musicPlaying: boolean;
 	readonly musicEnabled: boolean;
 
 	setInstances(list: InstanceSummary[]): void;
@@ -67,7 +69,50 @@ export function createSceneStore(): SceneStore {
 	let mood = $state("calm");
 	let thinking = $state(false);
 	let voiceAmplitude = $state(0);
+	let musicAmplitude = $state(0);
+	let musicPlaying = $state(false);
 	let musicEnabled = $state(true);
+
+	// Audio analyser for custom music visualizer
+	let musicAudioCtx: AudioContext | null = null;
+	let musicAnalyser: AnalyserNode | null = null;
+	let musicSourceNode: MediaElementAudioSourceNode | null = null;
+	let musicDataArray: Uint8Array<ArrayBuffer> | null = null;
+	let musicRafId: number | null = null;
+
+	function setupMusicAnalyser(audio: HTMLAudioElement) {
+		cleanupMusicAnalyser();
+		musicAudioCtx = new AudioContext();
+		musicAnalyser = musicAudioCtx.createAnalyser();
+		musicAnalyser.fftSize = 256;
+		musicSourceNode = musicAudioCtx.createMediaElementSource(audio);
+		musicSourceNode.connect(musicAnalyser);
+		musicAnalyser.connect(musicAudioCtx.destination);
+		musicDataArray = new Uint8Array(musicAnalyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
+		musicPlaying = true;
+
+		function updateAmplitude() {
+			if (!musicAnalyser || !musicDataArray) return;
+			musicAnalyser.getByteFrequencyData(musicDataArray);
+			let sum = 0;
+			for (let i = 0; i < musicDataArray.length; i++) {
+				sum += musicDataArray[i];
+			}
+			musicAmplitude = sum / (musicDataArray.length * 255);
+			musicRafId = requestAnimationFrame(updateAmplitude);
+		}
+		updateAmplitude();
+	}
+
+	function cleanupMusicAnalyser() {
+		if (musicRafId !== null) { cancelAnimationFrame(musicRafId); musicRafId = null; }
+		if (musicSourceNode) { try { musicSourceNode.disconnect(); } catch {} musicSourceNode = null; }
+		if (musicAnalyser) { try { musicAnalyser.disconnect(); } catch {} musicAnalyser = null; }
+		if (musicAudioCtx) { musicAudioCtx.close().catch(() => {}); musicAudioCtx = null; }
+		musicDataArray = null;
+		musicAmplitude = 0;
+		musicPlaying = false;
+	}
 
 	let selectStartTime = 0;
 	let introStartTime = 0;
@@ -183,6 +228,7 @@ export function createSceneStore(): SceneStore {
 		if (loopAudio) { loopAudio.pause(); loopAudio = null; }
 		if (ambientAudio) { ambientAudio.pause(); ambientAudio = null; }
 		if (customAudio) { customAudio.pause(); customAudio = null; }
+		cleanupMusicAnalyser();
 	}
 
 	function getTrackAudio(track: string): HTMLAudioElement | null {
@@ -246,6 +292,8 @@ export function createSceneStore(): SceneStore {
 		get mood() { return mood; },
 		get thinking() { return thinking; },
 		get voiceAmplitude() { return voiceAmplitude; },
+		get musicAmplitude() { return musicAmplitude; },
+		get musicPlaying() { return musicPlaying; },
 		get musicEnabled() { return musicEnabled; },
 
 		setInstances(list) { instances = list; },
@@ -343,9 +391,12 @@ export function createSceneStore(): SceneStore {
 						if (token) audioUrl += `${track.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
 					}
 					customAudio = new Audio(audioUrl);
+					customAudio.crossOrigin = "anonymous";
 					customAudio.loop = true;
 					customAudio.volume = vol;
-					customAudio.play().catch(() => {});
+					customAudio.play().then(() => {
+						setupMusicAnalyser(customAudio!);
+					}).catch(() => {});
 				} else {
 					// Built-in track
 					const builtIn: Record<string, () => void> = {
