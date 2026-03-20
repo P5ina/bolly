@@ -391,12 +391,13 @@ export function createSceneStore(): SceneStore {
 						if (token) audioUrl += `${track.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
 					}
 					customAudio = new Audio(audioUrl);
-					customAudio.crossOrigin = "anonymous";
 					customAudio.loop = true;
 					customAudio.volume = vol;
 					customAudio.play().then(() => {
 						setupMusicAnalyser(customAudio!);
-					}).catch(() => {});
+					}).catch((e) => {
+						console.warn("[music] play failed:", e);
+					});
 				} else {
 					// Built-in track
 					const builtIn: Record<string, () => void> = {
