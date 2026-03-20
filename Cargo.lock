@@ -2576,7 +2576,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "axum",
  "base64 0.22.1",
