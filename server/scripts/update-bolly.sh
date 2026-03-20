@@ -61,6 +61,7 @@ if [ -f "$VERSION_FILE" ] && [ "$(cat "$VERSION_FILE")" = "$VERSION" ] && [ -f "
 fi
 
 echo "[update] downloading bolly $VERSION ($CHANNEL) for $TARGET..."
+echo "[update] release_token: $([ -n "$RELEASE_TOKEN" ] && echo 'set' || echo 'NOT SET'), jq: $(command -v jq >/dev/null 2>&1 && echo 'available' || echo 'NOT FOUND')"
 
 # For private repos, browser_download_url returns 404.
 # Use GitHub API asset endpoint with Accept: application/octet-stream instead.

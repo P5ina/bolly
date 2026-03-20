@@ -189,34 +189,28 @@ export const actions: Actions = {
 			.from(tenants)
 			.where(eq(tenants.status, 'running'));
 
-		// Platform API keys — only for non-BYOK machines
-		const platformEnv: Record<string, string> = {};
-		if (env.ANTHROPIC_API_KEY) platformEnv.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
-		if (env.OPENAI_API_KEY) platformEnv.OPENAI_API_KEY = env.OPENAI_API_KEY;
-		if (env.OPENROUTER_API_KEY) platformEnv.OPENROUTER_API_KEY = env.OPENROUTER_API_KEY;
-		if (env.BRAVE_SEARCH_API_KEY) platformEnv.BRAVE_SEARCH_API_KEY = env.BRAVE_SEARCH_API_KEY;
-
-		// Non-secret env vars — safe for all machines
-		const sharedEnv: Record<string, string> = {};
-		if (env.GOOGLE_CLIENT_ID) sharedEnv.GOOGLE_CLIENT_ID = env.GOOGLE_CLIENT_ID;
-		if (env.GOOGLE_CLIENT_SECRET) sharedEnv.GOOGLE_CLIENT_SECRET = env.GOOGLE_CLIENT_SECRET;
-
 		let updated = 0;
 		const errors: string[] = [];
 
 		for (const t of allTenants) {
 			if (!t.flyAppId || !t.flyMachineId) continue;
 			try {
-				// BYOK machines get only shared env vars, not platform API keys
-				const envPatch = t.byokProvider
-					? { ...sharedEnv }
-					: { ...platformEnv, ...sharedEnv };
-				if (Object.keys(envPatch).length > 0) {
-					await fly.updateMachineEnv(t.flyAppId, t.flyMachineId, envPatch);
-				}
-				// Then update image
 				const image = fly.imageForChannel((t.imageChannel as fly.ImageChannel) ?? 'stable');
-				await fly.updateMachineImage(t.flyAppId, t.flyMachineId, image);
+				// Single atomic update: image + env together to avoid race conditions.
+				// updateMachineEnv then updateMachineImage can lose env vars if the
+				// GET in updateMachineImage returns stale config.
+				await fly.updateMachineImageAndEnv(t.flyAppId, t.flyMachineId, image, {
+					BOLLY_RELEASE_TOKEN: env.BOLLY_RELEASE_TOKEN ?? '',
+					GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID ?? '',
+					GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET ?? '',
+					...(t.byokProvider ? {} : {
+						ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
+						OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
+						OPENROUTER_API_KEY: env.OPENROUTER_API_KEY ?? '',
+						BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY ?? '',
+						ELEVENLABS_API_KEY: env.ELEVENLABS_API_KEY ?? '',
+					}),
+				});
 				updated++;
 			} catch (e) {
 				const msg = e instanceof Error ? e.message : 'Unknown error';

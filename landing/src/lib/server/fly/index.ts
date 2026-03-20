@@ -211,6 +211,33 @@ export async function destroyMachine(appName: string, machineId: string): Promis
 	}
 }
 
+/** Atomic update: image + env in a single POST to avoid race conditions. */
+export async function updateMachineImageAndEnv(
+	appName: string,
+	machineId: string,
+	image: string,
+	envPatch: Record<string, string>,
+): Promise<void> {
+	const getRes = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}`, {
+		headers: headers(),
+	});
+	if (!getRes.ok) throw new Error(`Fly getMachine failed: ${getRes.status} ${await getRes.text()}`);
+	const machine = await getRes.json();
+
+	const res = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}`, {
+		method: 'POST',
+		headers: headers(),
+		body: JSON.stringify({
+			config: {
+				...machine.config,
+				image,
+				env: { ...machine.config.env, ...envPatch },
+			},
+		}),
+	});
+	if (!res.ok) throw new Error(`Fly updateMachine failed: ${res.status} ${await res.text()}`);
+}
+
 export async function updateMachineImage(appName: string, machineId: string, image: string): Promise<void> {
 	// Get current config
 	const getRes = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}`, {
