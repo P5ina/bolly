@@ -658,9 +658,10 @@
 						const h = vizSmooth[i];
 
 						// Small height — glass sphere magnifies via refraction
+						// Base at y=-0.21 so max column center aligns with sphere center
 						const barHeight = 0.02 + h * 0.4;
 						vizBars[i].scale.y = barHeight;
-						vizBars[i].position.y = -0.12 + barHeight / 2;
+						vizBars[i].position.y = -0.21 + barHeight / 2;
 
 						// Rainbow hue offset per column
 						const barHue = (hue + i / VIZ_BARS) % 1;
