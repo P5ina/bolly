@@ -94,7 +94,9 @@ pub fn save_upload(
 
     let ts = unix_millis();
     let id = format!("upload_{ts}");
-    let stored_name = format!("{id}.{ext}");
+    // Use _blob suffix to prevent collision with .json metadata sidecar
+    // (e.g. uploading a .json file would overwrite its own metadata)
+    let stored_name = format!("{id}_blob.{ext}");
     let mime_type = mime_from_ext(&ext).to_string();
 
     // Write the file
