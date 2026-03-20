@@ -404,12 +404,11 @@ export function createSceneStore(): SceneStore {
 					customAudio = new Audio(audioUrl);
 					customAudio.loop = true;
 					customAudio.volume = vol;
-					// Connect analyser BEFORE play — audio goes through AudioContext
-					// from the start, avoiding redirect issues
-					setupMusicAnalyser(customAudio).then(() => {
-						customAudio?.play().catch((e) => {
-							console.warn("[music] play failed:", e);
-						});
+					// Play first, then attach analyser as best-effort for visualizer
+					customAudio.play().then(() => {
+						if (customAudio) setupMusicAnalyser(customAudio);
+					}).catch((e) => {
+						console.warn("[music] play failed:", e);
 					});
 				} else {
 					// Built-in track
