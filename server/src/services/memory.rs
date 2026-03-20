@@ -81,16 +81,37 @@ pub fn rebuild_catalog_snapshot(workspace_dir: &Path, instance_slug: &str) {
         return;
     }
 
+    let dir = memory_dir(workspace_dir, instance_slug);
+
+    // Separate pinned memories (full content in prompt) from regular (catalog only)
+    let (pinned, regular): (Vec<_>, Vec<_>) = entries
+        .iter()
+        .partition(|e| e.path.starts_with("pinned/"));
+
     let mut prompt = format!(
-        "## memory\nyou have a personal memory library. use `recall` to read memories when relevant.\n\
-         catalog ({} files):\n",
-        entries.len()
+        "## memory\nyou have a personal memory library. use `memory_read` to read memories when relevant.\n"
     );
-    for entry in &entries {
-        prompt.push_str(&format!("- {} — {}\n", entry.path, entry.summary));
+
+    // Pinned memories: always-loaded, full content inline
+    if !pinned.is_empty() {
+        prompt.push_str("\n### pinned (always loaded)\n");
+        for entry in &pinned {
+            let full_path = dir.join(&entry.path);
+            let content = std::fs::read_to_string(&full_path).unwrap_or_default();
+            prompt.push_str(&format!("\n**{}**\n{}\n", entry.path, content.trim()));
+        }
     }
+
+    // Regular catalog: paths + summaries
+    if !regular.is_empty() {
+        prompt.push_str(&format!("\ncatalog ({} files):\n", regular.len()));
+        for entry in &regular {
+            prompt.push_str(&format!("- {} — {}\n", entry.path, entry.summary));
+        }
+    }
+
     prompt.push_str(
-        "\nuse these memories naturally — `recall` what you need. \
+        "\nuse these memories naturally — `memory_read` what you need. \
          don't announce that you remember — just know.",
     );
 
@@ -98,7 +119,10 @@ pub fn rebuild_catalog_snapshot(workspace_dir: &Path, instance_slug: &str) {
     if let Err(e) = std::fs::write(&path, &prompt) {
         log::warn!("[memory] failed to write catalog snapshot: {e}");
     } else {
-        log::info!("[memory] catalog snapshot rebuilt: {} files", entries.len());
+        log::info!(
+            "[memory] catalog snapshot rebuilt: {} pinned, {} catalog",
+            pinned.len(), regular.len()
+        );
     }
 }
 
@@ -110,30 +134,11 @@ pub fn load_catalog_snapshot(workspace_dir: &Path, instance_slug: &str) -> Strin
 }
 
 /// Build the memory prompt for the system prompt.
-/// For small libraries (< 6000 chars total), inline all file contents.
-/// For larger ones, show a catalog with summaries + inline the smallest files.
 /// NOTE: this scans disk on every call — use load_catalog_snapshot() for the static version.
 pub fn build_memory_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
-    let entries = scan_library(workspace_dir, instance_slug);
-    if entries.is_empty() {
-        return String::new();
-    }
-
-    let mut prompt = String::from(
-        "## memory\nyou have a personal memory library. use `recall` to read memories when relevant.\n\
-         catalog ({} files):\n",
-    )
-    .replace("{}", &entries.len().to_string());
-
-    for entry in &entries {
-        prompt.push_str(&format!("- {} — {}\n", entry.path, entry.summary));
-    }
-
-    prompt.push_str(
-        "\nuse these memories naturally — `recall` what you need. \
-         don't announce that you remember — just know.",
-    );
-    prompt
+    // Delegate to rebuild logic (same format as cached version)
+    rebuild_catalog_snapshot(workspace_dir, instance_slug);
+    load_catalog_snapshot(workspace_dir, instance_slug)
 }
 
 /// Build a full library catalog for memory maintenance (heartbeat).

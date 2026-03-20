@@ -47,7 +47,8 @@ impl Tool for MemoryWriteTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "memory_write".into(),
-            description: "Create or update a memory file. Organize by folder (about/, preferences/, etc).".into(),
+            description: "Create or update a memory file. Organize by folder (about/, preferences/, moments/, etc). \
+                Files in pinned/ are always loaded into your context — use for triggers, rituals, critical references.".into(),
             parameters: openai_schema::<MemoryWriteArgs>(),
         }
     }
