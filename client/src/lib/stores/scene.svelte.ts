@@ -9,6 +9,7 @@
  */
 
 import { getContext, setContext } from "svelte";
+import { getAuthToken } from "$lib/api/client.js";
 import type { InstanceSummary } from "$lib/api/types.js";
 
 const SCENE_KEY = Symbol("scene");
@@ -335,7 +336,13 @@ export function createSceneStore(): SceneStore {
 				if (!isBuiltIn) {
 					// Custom audio — URL or relative path (e.g. /api/instances/.../file)
 					if (customAudio) { customAudio.pause(); }
-					customAudio = new Audio(track);
+					// Append auth token for same-origin upload URLs
+					let audioUrl = track;
+					if (track.startsWith("/api/")) {
+						const token = getAuthToken();
+						if (token) audioUrl += `${track.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
+					}
+					customAudio = new Audio(audioUrl);
 					customAudio.loop = true;
 					customAudio.volume = vol;
 					customAudio.play().catch(() => {});
