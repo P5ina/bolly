@@ -408,6 +408,8 @@
 		let skipFrame = false;
 		let smoothAmp = 0;
 		let smoothMusicAmp = 0;
+		let beatPulse = 0;       // 0→1 on beat hit, decays to 0
+		let prevBassEnergy = 0;  // for onset detection
 		let smoothSpeed = 0.8;
 		let smoothIntensity = 0.08;
 		let lastMode: string = "";
@@ -577,17 +579,25 @@
 				uIntensity.value = smoothIntensity;
 
 				if (isMusic) {
-					const bpm = store.musicBpm;
-					if (bpm > 0) {
-						// BPM-synced pulse: sharp beat shape (pow for punch)
-						const phase = (t * (bpm / 60)) % 1; // 0→1 per beat
-						const beat = Math.pow(Math.max(0, Math.cos(phase * Math.PI * 2)), 4);
-						// Strong scale pulse: 0.85→1.15 range
-						uBreathe.value = 0.85 + beat * 0.3;
-					} else {
-						// No BPM yet — amplitude-driven pulse
-						uBreathe.value = 0.85 + mAmp * 0.3;
+					// Onset detection: detect bass energy spikes → trigger pulse
+					const freqData = store.getMusicFrequencyData();
+					if (freqData) {
+						const bassEnd = Math.floor(freqData.length * 0.06);
+						let bassSum = 0;
+						for (let j = 0; j < bassEnd; j++) bassSum += freqData[j];
+						const bassEnergy = bassEnd > 0 ? bassSum / (bassEnd * 255) : 0;
+						// Onset = energy jump above previous frame
+						const onset = bassEnergy - prevBassEnergy;
+						if (onset > 0.05 && bassEnergy > 0.15) {
+							// Beat hit — fire pulse
+							beatPulse = 1.0;
+						}
+						prevBassEnergy = bassEnergy;
 					}
+					// Decay pulse quickly for punchy feel
+					beatPulse *= Math.pow(0.04, delta); // ~96% decay per second
+					// Scale: base 0.88, expand to 1.18 on beat
+					uBreathe.value = 0.88 + beatPulse * 0.30;
 				} else {
 					uBreathe.value = 1.0
 						+ Math.sin(t * (thk ? 2.5 : energy.breatheRate)) * (thk ? 0.06 : energy.breatheDepth)
@@ -680,10 +690,10 @@
 						const h = vizSmooth[i];
 
 						// Small height — glass sphere magnifies via refraction
-						// Base at y=-0.21 so max column center aligns with sphere center
+						// Center columns at y=0 (sphere center)
 						const barHeight = 0.02 + h * 0.4;
 						vizBars[i].scale.y = barHeight;
-						vizBars[i].position.y = -0.21 + barHeight / 2;
+						vizBars[i].position.y = 0;
 
 						// Purely emissive — no diffuse color, no dark silhouettes.
 						// Transmission pass sees bright glowing bars; refraction

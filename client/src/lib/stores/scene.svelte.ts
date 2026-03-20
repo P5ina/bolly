@@ -31,7 +31,6 @@ export interface SceneStore {
 	readonly thinking: boolean;
 	readonly voiceAmplitude: number;
 	readonly musicAmplitude: number;
-	readonly musicBpm: number;
 	readonly musicPlaying: boolean;
 	readonly musicEnabled: boolean;
 	presenting: boolean;
@@ -76,7 +75,6 @@ export function createSceneStore(): SceneStore {
 	let thinking = $state(false);
 	let voiceAmplitude = $state(0);
 	let musicAmplitude = $state(0);
-	let musicBpm = $state(0);
 	let musicPlaying = $state(false);
 	let musicEnabled = $state(true);
 	let presenting = $state(false);
@@ -86,7 +84,6 @@ export function createSceneStore(): SceneStore {
 	let musicAnalyser: AnalyserNode | null = null;
 	let musicGainNode: GainNode | null = null;
 	let musicSourceNode: MediaElementAudioSourceNode | null = null;
-	let bpmDetecting = false;
 	let musicDataArray: Uint8Array<ArrayBuffer> | null = null;
 	let musicRafId: number | null = null;
 
@@ -151,35 +148,11 @@ export function createSceneStore(): SceneStore {
 		}
 	}
 
-	/** Fetch audio file, decode, and detect BPM once via web-audio-beat-detector. */
-	async function analyzeBpm(audioUrl: string) {
-		if (bpmDetecting) return;
-		bpmDetecting = true;
-		try {
-			const { guess } = await import("web-audio-beat-detector");
-			const ac = getAudioContext();
-			const response = await fetch(audioUrl);
-			const arrayBuffer = await response.arrayBuffer();
-			const audioBuffer = await ac.decodeAudioData(arrayBuffer);
-			// Analyze first 30s for speed
-			const duration = Math.min(audioBuffer.duration, 30);
-			const result = await guess(audioBuffer, 0, duration);
-			musicBpm = result.bpm;
-			console.log("[music] BPM detected:", musicBpm, "offset:", result.offset.toFixed(2));
-		} catch (e) {
-			console.warn("[music] BPM detection failed:", e);
-		} finally {
-			bpmDetecting = false;
-		}
-	}
-
 	function disconnectMusicSource() {
 		if (musicRafId !== null) { cancelAnimationFrame(musicRafId); musicRafId = null; }
 		if (musicSourceNode) { try { musicSourceNode.disconnect(); } catch {} musicSourceNode = null; }
 		musicAmplitude = 0;
-		musicBpm = 0;
 		musicPlaying = false;
-		bpmDetecting = false;
 	}
 
 	let selectStartTime = 0;
@@ -363,7 +336,6 @@ export function createSceneStore(): SceneStore {
 		get thinking() { return thinking; },
 		get voiceAmplitude() { return voiceAmplitude; },
 		get musicAmplitude() { return musicAmplitude; },
-		get musicBpm() { return musicBpm; },
 		get musicPlaying() { return musicPlaying; },
 		get musicEnabled() { return musicEnabled; },
 		get presenting() { return presenting; },
@@ -513,8 +485,6 @@ export function createSceneStore(): SceneStore {
 					connectMusicSource(customAudio);
 					customAudio.play().then(() => {
 						console.log("[music] playing, context state:", getAudioContext().state);
-						// Detect BPM in background (fetches audio separately, analyzes offline)
-						analyzeBpm(audioUrl);
 					}).catch((e) => {
 						console.warn("[music] play() failed:", e);
 					});
