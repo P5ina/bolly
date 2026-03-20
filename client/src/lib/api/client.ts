@@ -295,6 +295,25 @@ export function updateVoiceId(slug: string, voiceId: string): Promise<void> {
 	});
 }
 
+export interface ScheduledMessage {
+	id: string;
+	message: string;
+	deliver_at: number;
+	created_at: number;
+}
+
+export function fetchScheduledMessages(slug: string): Promise<ScheduledMessage[]> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/scheduled`);
+}
+
+export async function cancelScheduledMessage(slug: string, messageId: string): Promise<void> {
+	const res = await authedFetch(
+		`/api/instances/${encodeURIComponent(slug)}/scheduled/${encodeURIComponent(messageId)}`,
+		{ method: "DELETE" },
+	);
+	if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
+}
+
 export function fetchMusicEnabled(slug: string): Promise<{ music_enabled: boolean }> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/music`);
 }

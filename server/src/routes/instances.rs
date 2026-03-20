@@ -31,6 +31,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/music", put(set_music_enabled))
         .route("/api/instances/{instance_slug}/voice-mode", get(get_voice_enabled))
         .route("/api/instances/{instance_slug}/voice-mode", put(set_voice_enabled))
+        .route("/api/instances/{instance_slug}/scheduled", get(list_scheduled))
+        .route("/api/instances/{instance_slug}/scheduled/{message_id}", delete(cancel_scheduled))
         .route("/api/instances/{instance_slug}/export", get(export_instance))
         .route("/api/instances/{instance_slug}/import", post(import_instance))
 }
@@ -602,6 +604,58 @@ async fn delete_email_config(
         }
     } else {
         StatusCode::NO_CONTENT
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Scheduled messages
+// ---------------------------------------------------------------------------
+
+async fn list_scheduled(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> Json<Vec<serde_json::Value>> {
+    let dir = state.workspace_dir
+        .join("instances")
+        .join(&instance_slug)
+        .join("scheduled");
+    let mut items = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") { continue; }
+            if let Ok(raw) = std::fs::read_to_string(&path) {
+                if let Ok(msg) = serde_json::from_str::<tools::ScheduledMessage>(&raw) {
+                    items.push(serde_json::json!({
+                        "id": msg.id,
+                        "message": msg.message,
+                        "deliver_at": msg.deliver_at,
+                        "created_at": msg.created_at,
+                    }));
+                }
+            }
+        }
+    }
+    items.sort_by_key(|v| v["deliver_at"].as_i64().unwrap_or(0));
+    Json(items)
+}
+
+async fn cancel_scheduled(
+    State(state): State<AppState>,
+    Path((instance_slug, message_id)): Path<(String, String)>,
+) -> StatusCode {
+    let file = state.workspace_dir
+        .join("instances")
+        .join(&instance_slug)
+        .join("scheduled")
+        .join(format!("{message_id}.json"));
+    if file.exists() {
+        match std::fs::remove_file(&file) {
+            Ok(_) => StatusCode::OK,
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    } else {
+        StatusCode::NOT_FOUND
     }
 }
 

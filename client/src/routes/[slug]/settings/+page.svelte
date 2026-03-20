@@ -29,6 +29,9 @@
 		updateModelMode,
 		exportInstanceUrl,
 		importInstance,
+		fetchScheduledMessages,
+		cancelScheduledMessage,
+		type ScheduledMessage,
 	} from "$lib/api/client.js";
 	import type { McpServerInfo, EmailConfig } from "$lib/api/client.js";
 	import type { Usage } from "$lib/api/types.js";
@@ -516,7 +519,51 @@
 		loadEmail();
 		loadVoice();
 		loadMusic();
+		loadScheduled();
 	});
+
+	// Scheduled messages
+	let scheduledMessages = $state<ScheduledMessage[]>([]);
+	let scheduledLoading = $state(true);
+	let cancellingId = $state<string | null>(null);
+
+	async function loadScheduled() {
+		scheduledLoading = true;
+		try {
+			scheduledMessages = await fetchScheduledMessages(slug);
+		} catch {
+			// not critical
+		} finally {
+			scheduledLoading = false;
+		}
+	}
+
+	async function cancelMessage(id: string) {
+		cancellingId = id;
+		try {
+			await cancelScheduledMessage(slug, id);
+			scheduledMessages = scheduledMessages.filter((m) => m.id !== id);
+		} catch {
+			// ignore
+		} finally {
+			cancellingId = null;
+		}
+	}
+
+	function formatDeliverAt(ts: number): string {
+		const d = new Date(ts * 1000);
+		const now = Date.now();
+		const diff = ts * 1000 - now;
+		if (diff <= 0) return "delivering...";
+		if (diff < 60_000) return `in ${Math.ceil(diff / 1000)}s`;
+		if (diff < 3600_000) return `in ${Math.ceil(diff / 60_000)}m`;
+		if (diff < 86400_000) {
+			const h = Math.floor(diff / 3600_000);
+			const m = Math.ceil((diff % 3600_000) / 60_000);
+			return m > 0 ? `in ${h}h ${m}m` : `in ${h}h`;
+		}
+		return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+	}
 </script>
 
 <div class="settings-page">
@@ -1181,6 +1228,41 @@
 			</div>
 		{/if}
 	</section>
+
+	<!-- Scheduled messages -->
+	{#if !scheduledLoading && scheduledMessages.length > 0}
+		<section class="settings-section">
+			<div class="section-header">
+				<div class="section-icon">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<circle cx="12" cy="12" r="10"/>
+						<polyline points="12 6 12 12 16 14"/>
+					</svg>
+				</div>
+				<div>
+					<h3 class="section-label">scheduled</h3>
+					<p class="section-desc">{scheduledMessages.length} pending message{scheduledMessages.length === 1 ? "" : "s"}</p>
+				</div>
+			</div>
+			<div class="sched-list">
+				{#each scheduledMessages as msg (msg.id)}
+					<div class="sched-item">
+						<div class="sched-content">
+							<span class="sched-text">{msg.message.length > 80 ? msg.message.slice(0, 80) + "…" : msg.message}</span>
+							<span class="sched-time">{formatDeliverAt(msg.deliver_at)}</span>
+						</div>
+						<button
+							class="sched-cancel"
+							disabled={cancellingId === msg.id}
+							onclick={() => cancelMessage(msg.id)}
+						>
+							{cancellingId === msg.id ? "…" : "cancel"}
+						</button>
+					</div>
+				{/each}
+			</div>
+		</section>
+	{/if}
 
 	<!-- Export / Import -->
 	<section class="settings-section">
@@ -2161,6 +2243,65 @@
 		background: oklch(0.55 0.08 240 / 14%);
 		border-color: oklch(0.55 0.08 240 / 25%);
 	}
+	/* Scheduled messages */
+	.sched-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+	.sched-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0.625rem;
+		border-radius: 0.5rem;
+		background: oklch(0.4 0.04 220 / 6%);
+		border: 1px solid oklch(0.5 0.06 220 / 6%);
+	}
+	.sched-content {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+	.sched-text {
+		font-family: var(--font-body);
+		font-size: 0.72rem;
+		color: oklch(0.85 0.02 220 / 65%);
+		line-height: 1.35;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.sched-time {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: oklch(0.65 0.08 220 / 40%);
+		letter-spacing: 0.04em;
+	}
+	.sched-cancel {
+		flex-shrink: 0;
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		padding: 0.2rem 0.5rem;
+		border-radius: 0.3rem;
+		background: none;
+		border: 1px solid oklch(0.65 0.10 25 / 20%);
+		color: oklch(0.65 0.10 25 / 55%);
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+	.sched-cancel:hover:not(:disabled) {
+		border-color: oklch(0.65 0.14 25 / 40%);
+		color: oklch(0.65 0.14 25 / 80%);
+		background: oklch(0.65 0.10 25 / 8%);
+	}
+	.sched-cancel:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+
 	.data-hint {
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
