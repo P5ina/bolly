@@ -123,16 +123,20 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
     chat::set_agent_running(&state.workspace_dir, &instance_slug, &chat_id);
 
     // Background TTS: subscribe to events and voice ALL assistant messages
+    // TTS pipeline: forwarder task → mpsc channel → synthesizer task.
+    // Forwarder stops when cancel fires. Synthesizer drains remaining
+    // messages in the channel before exiting (no abort, no message loss).
     let tts_cancel = cancel.clone();
-    let tts_handle = if voice_mode {
-        // Use mpsc channel instead of broadcast to avoid losing messages on lag.
-        // A forwarding task drains the broadcast into mpsc with unbounded buffer.
+    let (tts_fwd_handle, tts_synth_handle) = if voice_mode {
         let (tts_tx, mut tts_rx) = tokio::sync::mpsc::unbounded_channel::<ChatMessage>();
         let mut rx = state.events.subscribe();
         let fwd_slug = instance_slug.clone();
         let fwd_chat = chat_id.clone();
         let fwd_cancel = tts_cancel.clone();
-        tokio::spawn(async move {
+
+        // Forwarder: drains broadcast into mpsc. Stops when cancel fires,
+        // dropping tts_tx so the synthesizer's recv() returns None.
+        let fwd = tokio::spawn(async move {
             while !fwd_cancel.is_cancelled() {
                 let event = match rx.recv().await {
                     Ok(e) => e,
@@ -155,12 +159,16 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                     let _ = tts_tx.send(message.clone());
                 }
             }
+            // tts_tx is dropped here → synthesizer's recv() will return None
+            // after processing remaining queued messages
         });
 
         let tts_state = state.clone();
         let tts_slug = instance_slug.clone();
         let tts_chat = chat_id.clone();
-        Some(tokio::spawn(async move {
+
+        // Synthesizer: processes all messages until channel is drained
+        let synth = tokio::spawn(async move {
             let api_key = {
                 let cfg = tts_state.config.read().await;
                 cfg.llm.tokens.elevenlabs.clone()
@@ -168,9 +176,6 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             if api_key.is_empty() { return; }
 
             while let Some(message) = tts_rx.recv().await {
-                if tts_cancel.is_cancelled() { break; }
-
-                // Re-resolve voice_id per message — agent may change it via set_voice tool
                 let voice_id = crate::routes::tts::resolve_voice_id(&tts_state.workspace_dir, &tts_slug);
                 let idir = tts_state.workspace_dir.join("instances").join(&tts_slug);
                 let mood = crate::services::tools::companion::load_mood_state(&idir).companion_mood;
@@ -188,9 +193,11 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                     Err(e) => log::warn!("[tts] failed for {}: {e}", message.id),
                 }
             }
-        }))
+        });
+
+        (Some(fwd), Some(synth))
     } else {
-        None
+        (None, None)
     };
 
     const MAX_ITERATIONS: usize = 5;
@@ -412,10 +419,16 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         chat_id: chat_id.clone(),
     });
 
-    // Wait briefly for TTS task to process the last message, then drop it
-    if let Some(handle) = tts_handle {
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        handle.abort();
+    // Stop the TTS forwarder (drops sender → synthesizer drains remaining queue)
+    if let Some(fwd) = tts_fwd_handle {
+        fwd.abort(); // forwarder can be killed immediately
+    }
+    // Wait for synthesizer to finish processing queued messages (up to 30s)
+    if let Some(synth) = tts_synth_handle {
+        let _ = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            synth,
+        ).await;
     }
 }
 
