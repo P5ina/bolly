@@ -638,26 +638,29 @@
 			if (isDiscoNow) {
 				const freqData = store.getMusicFrequencyData();
 				if (freqData) {
-					// Logarithmic frequency bands — more bins for bass, fewer for treble.
-					// This gives each column roughly equal perceived energy.
+					// Frequency bands tuned so each column gets similar energy.
+					// Skip sub-bass (0-2%), spread usable range more evenly.
 					const total = freqData.length;
-					const bandEdges = [0, 0.04, 0.12, 0.3, 0.6, 1.0]; // 5 bands
+					const bandEdges = [0.02, 0.06, 0.14, 0.28, 0.50, 0.85]; // 5 bands
 					const hue = (t * 0.4) % 1;
 					for (let i = 0; i < VIZ_BARS; i++) {
 						const lo = Math.floor(bandEdges[i] * total);
 						const hi = Math.floor(bandEdges[i + 1] * total);
-						let sum = 0;
+						// Use peak (max bin) instead of average for punchier response
+						let peak = 0;
 						for (let j = lo; j < hi; j++) {
-							sum += freqData[j];
+							if (freqData[j] > peak) peak = freqData[j];
 						}
-						const raw = sum / ((hi - lo) * 255);
-						vizSmooth[i] += (raw - vizSmooth[i]) * (raw > vizSmooth[i] ? 0.5 : 0.12);
+						const raw = peak / 255;
+						// Compress with sqrt so loud doesn't dominate
+						const compressed = Math.sqrt(raw);
+						vizSmooth[i] += (compressed - vizSmooth[i]) * (compressed > vizSmooth[i] ? 0.4 : 0.15);
 						const h = vizSmooth[i];
 
-						// Columns grow upward from bottom of blob
-						const barHeight = 0.1 + h * 4.0;
+						// Height capped at 2.0 so columns stay in frame
+						const barHeight = 0.08 + h * 2.0;
 						vizBars[i].scale.y = barHeight;
-						vizBars[i].position.y = -0.8 + barHeight / 2;
+						vizBars[i].position.y = -0.6 + barHeight / 2;
 
 						// Rainbow hue offset per column
 						const barHue = (hue + i / VIZ_BARS) % 1;
