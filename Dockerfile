@@ -21,8 +21,8 @@ RUN apt-get update -qq && \
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null && \
     echo "deb [arch=${DARCH} signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && \
     apt-get update -qq && apt-get install -y gh && \
-    # Chromium via apt (more stable than Playwright's bundled headless shell)
-    apt-get install -y chromium-browser || apt-get install -y chromium || true && \
+    # Chromium — install via Playwright (apt chromium is a snap stub on 24.04)
+    npx playwright install --with-deps chromium > /dev/null 2>&1 && \
     # Cleanup
     rm -rf /var/lib/apt/lists/* /root/.cache/ms-playwright/.links /tmp/*
 

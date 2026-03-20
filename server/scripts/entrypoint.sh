@@ -20,16 +20,23 @@ else
 fi
 
 # --- Ensure Chromium is available ---
-CHROMIUM_BIN=$(command -v chromium-browser 2>/dev/null || command -v chromium 2>/dev/null || echo "")
+# Playwright installs chromium to ~/.cache/ms-playwright/
+CHROMIUM_BIN=$(find /root/.cache/ms-playwright -name "chrome" -o -name "chromium" 2>/dev/null | head -1)
+# Fallback: system chromium (if not a snap stub)
 if [ -z "$CHROMIUM_BIN" ]; then
-    echo "[entrypoint] installing Chromium..."
-    apt-get update -qq 2>/dev/null
-    apt-get install -y --no-install-recommends chromium-browser 2>/dev/null || \
-    apt-get install -y --no-install-recommends chromium 2>/dev/null || true
-    rm -rf /var/lib/apt/lists/*
     CHROMIUM_BIN=$(command -v chromium-browser 2>/dev/null || command -v chromium 2>/dev/null || echo "")
+    # Test if it's a snap stub
+    if [ -n "$CHROMIUM_BIN" ] && "$CHROMIUM_BIN" --version 2>&1 | grep -qi "snap"; then
+        CHROMIUM_BIN=""
+    fi
 fi
-export CHROMIUM_PATH="$CHROMIUM_BIN"
+if [ -z "$CHROMIUM_BIN" ]; then
+    echo "[entrypoint] installing Chromium via Playwright..."
+    npx playwright install --with-deps chromium 2>/dev/null || true
+    CHROMIUM_BIN=$(find /root/.cache/ms-playwright -name "chrome" -o -name "chromium" 2>/dev/null | head -1)
+fi
+export CHROMIUM_PATH="${CHROMIUM_BIN:-}"
+echo "[entrypoint] chromium: ${CHROMIUM_PATH:-NOT FOUND}"
 
 # --- Restore user-installed packages ---
 if [ -f "$PERSIST_DIR/.apt-packages" ] && [ -s "$PERSIST_DIR/.apt-packages" ]; then
