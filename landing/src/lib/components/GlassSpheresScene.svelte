@@ -51,7 +51,10 @@
 	const htmlRenderer = new HtmlRenderer();
 	const backingPlanes: { mesh: THREE.Mesh; el: HTMLElement }[] = [];
 
-	scene.background = new THREE.Color(0x000206);
+	// Gradient background matching client: dark bottom → slightly lighter top
+	// Client uses rgb(0.002, 0.003, 0.012) → rgb(0.003, 0.005, 0.018)
+	// We approximate with a vertical gradient via a large background plane
+	scene.background = new THREE.Color(0x0a0a14); // dark indigo fallback
 
 	const CAM_Z = 14;
 	const FOV = 50;
@@ -69,6 +72,26 @@
 	const text = '#e6dcc8';
 	const dim = '#8a8070';
 	const ghost = '#55504a';
+
+	// ── Background gradient (matching client flat background) ──
+	const bgGradientMat = new THREE.ShaderMaterial({
+		vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+		fragmentShader: `
+			varying vec2 vUv;
+			void main() {
+				// Dark indigo gradient matching client screenshot
+				vec3 bottom = vec3(0.04, 0.04, 0.08);  // dark indigo
+				vec3 top = vec3(0.06, 0.06, 0.12);      // slightly lighter indigo
+				vec3 col = mix(bottom, top, vUv.y);
+				// Subtle purple-blue aurora band
+				col += vec3(0.01, 0.008, 0.025) * exp(-pow((vUv.y - 0.5) / 0.2, 2.0));
+				// Subtle warm accent near bottom
+				col += vec3(0.008, 0.005, 0.002) * exp(-pow((vUv.y - 0.2) / 0.15, 2.0));
+				gl_FragColor = vec4(col, 1.0);
+			}
+		`,
+		depthWrite: false,
+	});
 
 	// ── Starfield ──
 	const STAR_COUNT = 1500;
@@ -221,6 +244,7 @@
 
 	const sphereMeshes: THREE.Mesh[] = [];
 	let starsRef: THREE.Points | undefined;
+	let bgPlane: THREE.Mesh | undefined;
 
 	// ── Features data ──
 	const features = [
@@ -250,6 +274,15 @@
 
 	// ── Auto-capture all HTML elements after mount ──
 	onMount(() => {
+		// Create background gradient plane
+		bgPlane = new THREE.Mesh(
+			new THREE.PlaneGeometry(200, 200),
+			bgGradientMat
+		);
+		bgPlane.position.set(0, 0, -10);
+		bgPlane.renderOrder = -100;
+		scene.add(bgPlane);
+
 		// Create sphere meshes immediately
 		for (const conf of sphereConfs) {
 			const geo = conf.size === 'l' ? geoLarge : conf.size === 'm' ? geoMedium : geoSmall;
@@ -349,26 +382,28 @@
 		refractionMat.uniforms.uTime.value = t;
 		refractionMat.uniforms.uBreathe.value = 1.0 + breathe * 0.5;
 
-		// Spheres: orbit around content column on scroll
+		// Spheres: orbit on scroll + lazy floating drift
 		for (const mesh of sphereMeshes) {
 			const conf = mesh.userData as SphereConf;
-			// Scroll drives the orbit angle — each sphere has unique phase
-			const orbitAngle = scrollProgress * Math.PI * 4 + conf.phase;
-			const orbitRadius = Math.abs(conf.x); // use initial x as orbit radius
-			mesh.position.x = orbitRadius * Math.cos(orbitAngle) + mouseX * 0.15;
-			mesh.position.y = conf.y; // stays at its Y position
-			mesh.position.z = orbitRadius * 0.5 * Math.sin(orbitAngle); // z oscillates
-			// Self-rotation also from scroll
-			mesh.rotation.set(
-				orbitAngle * 0.3,
-				orbitAngle * 0.5,
-				0
-			);
+			const p = conf.phase;
+			// Scroll drives orbit around content
+			const orbitAngle = scrollProgress * Math.PI * 4 + p;
+			const orbitRadius = Math.abs(conf.x);
+			// Lazy figure-8 drift
+			const driftX = Math.sin(t * 0.2 + p) * 1.5 + Math.sin(t * 0.5 + p * 2.3) * 0.5;
+			const driftY = Math.sin(t * 0.15 + p * 1.7) * 0.8 + Math.cos(t * 0.35 + p * 0.9) * 0.4;
+			const driftZ = Math.sin(t * 0.25 + p * 3.1) * 1.0;
+
+			mesh.position.x = orbitRadius * Math.cos(orbitAngle) + driftX + mouseX * 0.2;
+			mesh.position.y = conf.y + driftY;
+			mesh.position.z = orbitRadius * 0.4 * Math.sin(orbitAngle) + driftZ;
 			// Breathing scale
-			mesh.scale.setScalar(1 + Math.sin(t * 0.8 + conf.phase) * 0.03);
+			mesh.scale.setScalar(1 + Math.sin(t * 0.8 + p) * 0.04);
 		}
 
 		if (starsRef) starsRef.rotation.y = t * 0.005 + mouseX * 0.02;
+
+		if (bgPlane) bgPlane.position.y = smoothCamY;
 
 		// ── Two-pass render ──
 		if (fbo && sphereMeshes.length > 0) {
