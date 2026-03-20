@@ -149,6 +149,8 @@ export function createSceneStore(): SceneStore {
 	let loopAudio: HTMLAudioElement | null = null;
 	let ambientAudio: HTMLAudioElement | null = null;
 	let customAudio: HTMLAudioElement | null = null;
+	let customAudioBaseVolume = 0.5; // Original volume before ducking
+	let isDucked = false;
 
 	// Pending audio start — retried on first user interaction if autoplay blocked
 	let pendingAudioFn: (() => void) | null = null;
@@ -391,7 +393,20 @@ export function createSceneStore(): SceneStore {
 
 		setMood(m) { mood = m; },
 		setThinking(v) { thinking = v; },
-		setVoiceAmplitude(v) { voiceAmplitude = v; },
+		setVoiceAmplitude(v) {
+			voiceAmplitude = v;
+			// Auto-duck custom music when TTS is speaking
+			if (customAudio) {
+				const speaking = v > 0.01;
+				if (speaking && !isDucked) {
+					isDucked = true;
+					fadeAudio(customAudio, customAudioBaseVolume * 0.15, 300);
+				} else if (!speaking && isDucked) {
+					isDucked = false;
+					fadeAudio(customAudio, customAudioBaseVolume, 500);
+				}
+			}
+		},
 
 		musicControl(action: string, track?: string, volume?: number) {
 			if (action === "pause") {
@@ -401,7 +416,11 @@ export function createSceneStore(): SceneStore {
 			if (action === "set_volume" && track) {
 				const audio = getTrackAudio(track);
 				if (audio && volume !== undefined) {
-					fadeAudio(audio, Math.max(0, Math.min(1, volume)), 500);
+					const v = Math.max(0, Math.min(1, volume));
+					if (track === "custom" || (!["ambient", "intro", "loop"].includes(track))) {
+						customAudioBaseVolume = v;
+					}
+					fadeAudio(audio, isDucked ? v * 0.15 : v, 500);
 				}
 				return;
 			}
@@ -420,6 +439,8 @@ export function createSceneStore(): SceneStore {
 					customAudio = new Audio(audioUrl);
 					customAudio.loop = true;
 					customAudio.volume = vol;
+					customAudioBaseVolume = vol;
+					isDucked = false;
 					console.log("[music] starting:", audioUrl);
 					// Connect to shared AudioContext for visualizer, then play.
 					// createMediaElementSource captures output — audio goes
