@@ -8,20 +8,12 @@
 
 	// ── HTML → Texture (exact copy of three-html-render approach) ──
 	class HtmlRenderer {
-		private canvas = document.createElement('canvas');
-		private context = this.canvas.getContext('2d')!;
-		private textures = new Map<HTMLElement, THREE.CanvasTexture>();
-
 		async update(node: HTMLElement): Promise<THREE.CanvasTexture> {
 			const w = node.clientWidth;
 			const h = node.clientHeight;
 
-			// Use XMLSerializer for proper XHTML serialization (handles quotes, entities, namespaces)
 			const serialized = new XMLSerializer().serializeToString(node);
-
 			const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%">${serialized}</foreignObject></svg>`;
-
-			// encodeURIComponent preserves quotes correctly (unlike svgUrl which replaces " with ')
 			const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 
 			const image = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -31,19 +23,19 @@
 				img.src = dataUrl;
 			});
 
-			let canvasTexture = this.textures.get(node);
-			if (!canvasTexture || this.canvas.width !== w || this.canvas.height !== h) {
-				canvasTexture?.dispose();
-				this.canvas.width = w;
-				this.canvas.height = h;
-				canvasTexture = new THREE.CanvasTexture(this.canvas);
-				this.textures.set(node, canvasTexture);
-			}
+			// Each texture gets its OWN canvas (no shared reference)
+			const canvas = document.createElement('canvas');
+			canvas.width = w;
+			canvas.height = h;
+			const ctx = canvas.getContext('2d')!;
+			// Draw dark background first (HTML has transparent backgrounds)
+			ctx.fillStyle = '#0a0a14';
+			ctx.fillRect(0, 0, w, h);
+			ctx.drawImage(image, 0, 0, w, h);
 
-			this.context.clearRect(0, 0, w, h);
-			this.context.drawImage(image, 0, 0, w, h);
-			canvasTexture.needsUpdate = true;
-			return canvasTexture;
+			const tex = new THREE.CanvasTexture(canvas);
+			tex.needsUpdate = true;
+			return tex;
 		}
 	}
 
@@ -125,7 +117,7 @@
 
 				// Snell refraction
 				vec3 refr = refract(V, N, 1.0 / uIOR);
-				vec2 offset = refr.xy * 0.15;
+				vec2 offset = refr.xy * 0.03;
 
 				// Chromatic aberration
 				float r = texture2D(uSceneTex, vScreenUV + offset * (1.0 + uChroma)).r;
@@ -151,8 +143,8 @@
 		`,
 		uniforms: {
 			uSceneTex: { value: null },
-			uIOR: { value: 1.45 },
-			uChroma: { value: 0.12 },
+			uIOR: { value: 1.05 },
+			uChroma: { value: 0.02 },
 			uFresnelPow: { value: 3.0 },
 		},
 	});
@@ -194,65 +186,49 @@
 	// ── Auto-capture all HTML elements after mount ──
 	onMount(() => {
 		setTimeout(async () => {
-			htmlRenderer.pageStyles = '';
-
-			// ── Sanity test: can we render ANY SVG foreignObject to Image? ──
-			try {
-				const testSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="50"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="color:white;background:#333;padding:10px;font-family:sans-serif;">Hello from SVG!</div></foreignObject></svg>';
-				const testUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(testSvg);
-				const testImg = await new Promise<HTMLImageElement>((resolve, reject) => {
-					const img = new Image();
-					img.onload = () => resolve(img);
-					img.onerror = reject;
-					img.src = testUrl;
-				});
-				console.log('[GlassScene] SANITY TEST PASSED — SVG foreignObject → Image works!', testImg.width, testImg.height);
-			} catch (e) {
-				console.error('[GlassScene] SANITY TEST FAILED — foreignObject → Image broken:', e);
-				return; // No point continuing
-			}
-
+			// ── Capture HTML elements and place backing planes at known 3D positions ──
 			const canvasParent = renderer.domElement.parentElement;
 			if (!canvasParent) return;
 
-			const allDivs = canvasParent.querySelectorAll<HTMLElement>('div');
-			const wrappers: HTMLElement[] = [];
-			allDivs.forEach(d => {
-				if (d.style.transform?.includes('matrix3d')) wrappers.push(d);
-			});
-			console.log(`[GlassScene] Found ${wrappers.length} matrix3d wrappers`);
+			// ── Capture by data-backing attribute ──
+			const pxToUnit = 0.024;
+
+			const backingDefs: { id: string; x: number; y: number; s: number }[] = [];
+			for (let i = 0; i < 6; i++) {
+				const col = i % 3, row = Math.floor(i / 3);
+				backingDefs.push({ id: `feature-${i}`, x: -6 + col * 6, y: Y.features - row * 4.5, s: 0.6 });
+			}
+			backingDefs.push({ id: 'demo', x: -4, y: Y.demo + 1, s: 0.7 });
+			for (let i = 0; i < 3; i++) backingDefs.push({ id: `step-${i}`, x: -5 + i * 5, y: Y.how - 0.5, s: 0.5 });
+			for (let i = 0; i < 3; i++) backingDefs.push({ id: `price-${i}`, x: -5 + i * 5, y: Y.pricing - 0.5, s: 0.5 });
 
 			let count = 0;
-			for (const wrapper of wrappers) {
-				const content = wrapper.children[0] as HTMLElement;
-				if (!content || content.clientWidth === 0) continue;
-
-				const m = wrapper.style.transform.match(/matrix3d\(([^)]+)\)/);
-				if (!m) continue;
-				const vals = m[1].split(',').map(Number);
-				const x = vals[12], y = vals[13], z = vals[14];
+			for (const def of backingDefs) {
+				const el = document.querySelector<HTMLElement>(`[data-backing="${def.id}"]`);
+				if (!el) { console.warn(`[GlassScene] ✗ ${def.id}: not found`); continue; }
 
 				try {
-					const tex = await htmlRenderer.update(content);
-					const pxToUnit = (CAM_Z * 2 * Math.tan((FOV / 2) * Math.PI / 180)) / window.innerHeight;
-					const pw = content.clientWidth * pxToUnit;
-					const ph = content.clientHeight * pxToUnit;
+					const tex = await htmlRenderer.update(el);
+					const pw = el.clientWidth * pxToUnit * def.s;
+					const ph = el.clientHeight * pxToUnit * def.s;
 
-					const geo = new THREE.PlaneGeometry(pw, ph);
-					const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
-					const mesh = new THREE.Mesh(geo, mat);
-					mesh.position.set(x, y, z);
-					mesh.visible = false;
+					const mesh = new THREE.Mesh(
+						new THREE.PlaneGeometry(pw, ph),
+						new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })
+					);
+					mesh.position.set(def.x, def.y, 0.5);
+					mesh.visible = false; // only visible during FBO pass
 					scene.add(mesh);
-					backingPlanes.push({ mesh, el: content });
+					backingPlanes.push({ mesh, el });
 					count++;
-					console.log(`[GlassScene] Captured wrapper at (${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)})`);
+					console.log(`[GlassScene] ✓ ${def.id}: ${pw.toFixed(1)}x${ph.toFixed(1)} at (${def.x}, ${def.y})`);
 				} catch (e) {
-					console.warn('[GlassScene] Capture failed:', e);
+					console.warn(`[GlassScene] ✗ ${def.id}:`, e);
 				}
 			}
+			console.log(`[GlassScene] Captured ${count}/${backingDefs.length}. Scene children:`, scene.children.length);
 
-			console.log(`[GlassScene] Total captured: ${count} HTML backing planes`);
+
 		}, 2500);
 	});
 
@@ -296,7 +272,10 @@
 
 		const cy = smoothCamY;
 		if (mainSphere) {
-			mainSphere.position.set(6 * Math.cos(t * 0.3) + mouseX * 0.5, cy + Math.sin(t * 0.4) * 2, 3 * Math.sin(t * 0.3));
+			// Follow cursor for testing
+			const visH = 2 * CAM_Z * Math.tan((FOV / 2) * Math.PI / 180);
+			const visW = visH * (window.innerWidth / window.innerHeight);
+			mainSphere.position.set(mouseX * visW * 0.5, cy - mouseY * visH * 0.5, 2);
 		}
 		if (smallSphere) {
 			smallSphere.position.set(-5 * Math.cos(t * 0.4 + 1) + mouseX * 0.3, cy - 1.5 + Math.sin(t * 0.5 + 1) * 1.5, 2.5 * Math.sin(t * 0.4 + 1));
@@ -382,7 +361,7 @@
 	{@const col = i % 3}
 	{@const row = Math.floor(i / 3)}
 	<HTML transform occlude="blending" pointerEvents="none" position={[-6 + col * 6, Y.features - row * 4.5, 0]} scale={0.6}>
-		<div style="width:380px;height:160px;padding:2rem;border-radius:0;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(12px);display:flex;flex-direction:column;justify-content:center;">
+		<div data-backing="feature-{i}" style="width:380px;height:160px;padding:2rem;border-radius:0;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(12px);display:flex;flex-direction:column;justify-content:center;">
 			<h3 style="font-family:'Fraunces',serif;font-style:italic;font-size:1.25rem;color:#e6dcc8;margin:0 0 0.75rem;">{f.title}</h3>
 			<p style="font-family:'Bricolage Grotesque',sans-serif;font-size:0.9rem;color:#8a8070;line-height:1.6;margin:0;">{f.desc}</p>
 		</div>
@@ -400,7 +379,7 @@
 
 <!-- Demo video/chat placeholder — replace src with your video -->
 <HTML transform occlude="blending" pointerEvents="none" position={[-4, Y.demo + 1, 0]} scale={0.7}>
-	<div style="width:500px;height:380px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(12px);overflow:hidden;display:flex;align-items:center;justify-content:center;">
+	<div data-backing="demo" style="width:500px;height:380px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(12px);overflow:hidden;display:flex;align-items:center;justify-content:center;">
 		<!-- Replace this div with <video> when ready -->
 		<div style="width:100%;height:100%;display:flex;flex-direction:column;">
 			<div style="display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;border-bottom:1px solid rgba(255,255,255,0.05);">
@@ -427,7 +406,7 @@
 
 {#each steps as step, i}
 	<HTML transform occlude="blending" pointerEvents="none" position={[-5 + i * 5, Y.how - 0.5, 0]} scale={0.5}>
-		<div style="width:300px;padding:1.5rem;border-radius:0;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(12px);">
+		<div data-backing="step-{i}" style="width:300px;padding:1.5rem;border-radius:0;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(12px);">
 			<div style="font-family:'Fraunces',serif;font-style:italic;font-size:2.5rem;color:rgba(255,255,255,0.05);line-height:1;margin-bottom:0.75rem;">{step.num}</div>
 			<h3 style="font-family:'Fraunces',serif;font-style:italic;font-size:1.15rem;color:#e6dcc8;margin:0 0 0.5rem;">{step.title}</h3>
 			<p style="font-family:'Bricolage Grotesque',sans-serif;font-size:0.8rem;color:#8a8070;line-height:1.5;margin:0;">{step.desc}</p>
@@ -444,7 +423,7 @@
 
 {#each plans as plan, i}
 	<HTML transform occlude="blending" pointerEvents="auto" position={[-5 + i * 5, Y.pricing - 0.5, 0]} scale={0.5}>
-		<div style="width:300px;padding:1.75rem;border-radius:0;background:rgba(255,255,255,{plan.featured ? '0.05' : '0.03'});border:1px solid {plan.featured ? 'rgba(196,162,101,0.15)' : 'rgba(255,255,255,0.06)'};backdrop-filter:blur(12px);position:relative;">
+		<div data-backing="price-{i}" style="width:300px;padding:1.75rem;border-radius:0;background:rgba(255,255,255,{plan.featured ? '0.05' : '0.03'});border:1px solid {plan.featured ? 'rgba(196,162,101,0.15)' : 'rgba(255,255,255,0.06)'};backdrop-filter:blur(12px);position:relative;">
 			{#if plan.featured}
 				<div style="position:absolute;top:0.4rem;left:50%;transform:translateX(-50%);font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;padding:0.2rem 0.7rem;border-radius:0;background:rgba(196,162,101,0.1);border:1px solid rgba(196,162,101,0.15);color:#c4a265;font-family:'Bricolage Grotesque',sans-serif;">popular</div>
 			{/if}
