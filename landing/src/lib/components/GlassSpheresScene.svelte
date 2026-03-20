@@ -12,25 +12,16 @@
 			const w = node.clientWidth;
 			const h = node.clientHeight;
 
-			// Clone and fix styles for foreignObject rendering
 			const clone = node.cloneNode(true) as HTMLElement;
-			// Add box-sizing: border-box (page has it from Tailwind, but foreignObject doesn't)
-			clone.style.boxSizing = 'border-box';
-			clone.querySelectorAll<HTMLElement>('*').forEach(el => {
+			// Fix styles for foreignObject context
+			const fixEl = (el: HTMLElement) => {
 				el.style.boxSizing = 'border-box';
 				el.style.backdropFilter = 'none';
 				el.style.webkitBackdropFilter = 'none';
-				const bg = el.style.background;
-				if (bg && bg.includes('rgba') && bg.includes('0.0')) {
-					el.style.background = '#0a0a14';
-				}
-			});
-			// Fix the root element too
-			clone.style.backdropFilter = 'none';
-			clone.style.webkitBackdropFilter = 'none';
-			if (clone.style.background?.includes('rgba')) {
-				clone.style.background = '#0a0a14';
-			}
+				if (el.style.background?.includes('rgba')) el.style.background = '#0a0a14';
+			};
+			fixEl(clone);
+			clone.querySelectorAll<HTMLElement>('*').forEach(fixEl);
 
 			const serialized = new XMLSerializer().serializeToString(clone);
 			const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="${w}" height="${h}">${serialized}</foreignObject></svg>`;
