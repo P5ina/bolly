@@ -198,7 +198,7 @@
 		// ── Visualizer columns (party mode) ──
 		// 5 columns placed directly behind the blob so refraction shows them
 		const VIZ_BARS = 5;
-		const VIZ_WIDTH = 3.5;   // spread around the blob center
+		const VIZ_WIDTH = 0.7;   // small — glass refraction magnifies them
 		const VIZ_Z_BEHIND = -2; // behind the blob (blob is at z=0)
 		const barGeo = new THREE.BoxGeometry(1, 1, 1);
 		const vizGroup = new THREE.Group();
@@ -208,7 +208,7 @@
 		{
 			const dx = FINAL_X - 0, dy = FINAL_Y - 0, dz = FINAL_Z - 5;
 			const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-			const VIZ_DEPTH = 2.5;
+			const VIZ_DEPTH = 1.8; // closer to blob so they hide behind it
 			vizGroup.position.set(
 				FINAL_X + (dx / len) * VIZ_DEPTH,
 				FINAL_Y + (dy / len) * VIZ_DEPTH,
@@ -238,7 +238,7 @@
 			// Columns spread along local X, in the group's plane facing camera
 			const x = -VIZ_WIDTH / 2 + i * barSpacing + barSpacing / 2;
 			mesh.position.set(x, 0, 0);
-			mesh.scale.set(barWidth, 0.01, 0.4);
+			mesh.scale.set(barWidth, 0.01, 0.08);
 			vizGroup.add(mesh);
 			vizBars.push(mesh);
 			vizMats.push(mat);
@@ -657,10 +657,10 @@
 						vizSmooth[i] += (compressed - vizSmooth[i]) * (compressed > vizSmooth[i] ? 0.4 : 0.15);
 						const h = vizSmooth[i];
 
-						// Height capped at 2.0 so columns stay in frame
-						const barHeight = 0.08 + h * 2.0;
+						// Small height — glass sphere magnifies via refraction
+						const barHeight = 0.02 + h * 0.4;
 						vizBars[i].scale.y = barHeight;
-						vizBars[i].position.y = -0.6 + barHeight / 2;
+						vizBars[i].position.y = -0.12 + barHeight / 2;
 
 						// Rainbow hue offset per column
 						const barHue = (hue + i / VIZ_BARS) % 1;
