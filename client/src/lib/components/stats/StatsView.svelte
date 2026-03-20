@@ -54,24 +54,13 @@
 		return Math.floor((Date.now() - first) / 86400000) + 1;
 	});
 
-	// Heatmap: 7 rows (days) x 24 cols (hours) — need to derive from daily_history
-	// For now, use hourly_activity × daily_activity as a rough 2D heatmap
 	let heatmapMax = $derived.by(() => {
 		if (!stats) return 1;
 		return Math.max(...stats.hourly_activity, 1);
 	});
 
-	// Activity sparkline from daily_history (last 60 days)
-	let sparkline = $derived.by(() => {
-		if (!stats) return [];
-		const last60 = stats.daily_history.slice(-60);
-		const max = Math.max(...last60.map(([, c]) => c), 1);
-		return last60.map(([date, count]) => ({ date, count, pct: count / max }));
-	});
-
 	const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-	/** Format a Date as YYYY-MM-DD in local time (matching server-side dates). */
 	function localDateStr(d: Date): string {
 		const y = d.getFullYear();
 		const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -79,16 +68,14 @@
 		return `${y}-${m}-${day}`;
 	}
 
-	// Contribution heatmap (GitHub-style) — last 52 weeks
 	let contributionWeeks = $derived.by(() => {
 		if (!stats) return [];
 		const map = new Map(stats.daily_history.map(([d, c]) => [d, c]));
 		const maxCount = Math.max(...stats.daily_history.map(([, c]) => c), 1);
 		const weeks: { date: string; count: number; level: number }[][] = [];
 		const today = new Date();
-		// Start from 52 weeks ago, aligned to Monday
 		const start = new Date(today);
-		const daysSinceMonday = (start.getDay() + 6) % 7; // Mon=0, Sun=6
+		const daysSinceMonday = (start.getDay() + 6) % 7;
 		start.setDate(start.getDate() - 52 * 7 - daysSinceMonday);
 
 		let currentWeek: { date: string; count: number; level: number }[] = [];
@@ -106,7 +93,6 @@
 		return weeks;
 	});
 
-	// Month labels for heatmap columns
 	let monthLabels = $derived.by(() => {
 		if (contributionWeeks.length === 0) return [];
 		const labels: { label: string; col: number }[] = [];
@@ -124,16 +110,18 @@
 	});
 
 	const moodColors: Record<string, string> = {
-		calm: "#5ba8d4", curious: "#5bb8d0", excited: "#d4a55a",
-		warm: "#d4a55a", happy: "#7bc47a", playful: "#6bc4a0",
-		thoughtful: "#8888b8", focused: "#7090c0", tender: "#d07888",
-		loving: "#d46b8a", creative: "#c475d4", energetic: "#d4b040",
-		melancholic: "#8080a0", anxious: "#c09060", grateful: "#70b880",
-		nostalgic: "#a08890",
+		calm: "oklch(0.68 0.12 220)", curious: "oklch(0.65 0.14 200)",
+		excited: "oklch(0.75 0.14 75)", warm: "oklch(0.75 0.14 75)",
+		happy: "oklch(0.72 0.16 145)", playful: "oklch(0.68 0.14 170)",
+		thoughtful: "oklch(0.60 0.10 270)", focused: "oklch(0.62 0.12 240)",
+		tender: "oklch(0.65 0.14 350)", loving: "oklch(0.62 0.16 340)",
+		creative: "oklch(0.65 0.16 300)", energetic: "oklch(0.75 0.14 90)",
+		melancholic: "oklch(0.55 0.06 260)", anxious: "oklch(0.65 0.10 50)",
+		grateful: "oklch(0.68 0.14 155)", nostalgic: "oklch(0.58 0.08 320)",
 	};
 
 	function getMoodColor(mood: string): string {
-		return moodColors[mood] ?? "#8888a0";
+		return moodColors[mood] ?? "oklch(0.55 0.06 240)";
 	}
 
 	function formatInterval(secs: number): string {
@@ -150,25 +138,27 @@
 		<div class="stats-scroll">
 			<!-- Hero numbers -->
 			<div class="stats-hero">
-				<div class="hero-stat">
+				<div class="hero-card" style="animation-delay: 0ms">
 					<span class="hero-value">{stats.total_messages.toLocaleString()}</span>
 					<span class="hero-label">messages</span>
 				</div>
-				<div class="hero-stat">
+				<div class="hero-card" style="animation-delay: 60ms">
 					<span class="hero-value">{daysSinceFirst}</span>
 					<span class="hero-label">days together</span>
 				</div>
-				<div class="hero-stat">
+				<div class="hero-card" style="animation-delay: 120ms">
 					<span class="hero-value">{stats.streak_days}</span>
 					<span class="hero-label">day streak</span>
+					{#if stats.streak_days > 0}
+						<div class="streak-glow"></div>
+					{/if}
 				</div>
 			</div>
 
 			<!-- Contribution heatmap -->
-			<div class="stats-section">
-				<h3 class="section-title">activity</h3>
+			<section class="glass-card" style="animation-delay: 150ms">
+				<h3 class="card-title">activity</h3>
 				<div class="heatmap-container">
-					<!-- Month labels -->
 					<div class="heatmap-months">
 						{#each monthLabels as { label, col }, i}
 							{@const nextCol = i + 1 < monthLabels.length ? monthLabels[i + 1].col : contributionWeeks.length}
@@ -179,7 +169,6 @@
 						{/each}
 					</div>
 					<div class="heatmap-with-days">
-						<!-- Day labels (Mon, Wed, Fri) -->
 						<div class="heatmap-day-labels">
 							<span class="heatmap-day-label"></span>
 							<span class="heatmap-day-label">Mon</span>
@@ -217,57 +206,61 @@
 						<span class="heatmap-legend-label">more</span>
 					</div>
 				</div>
-			</div>
+			</section>
 
 			<!-- Hourly activity -->
-			<div class="stats-section">
-				<h3 class="section-title">
+			<section class="glass-card" style="animation-delay: 200ms">
+				<h3 class="card-title">
 					peak hours
-					<span class="section-hint">most active at {HOUR_LABELS[peakHour]}</span>
+					<span class="card-hint">most active at {HOUR_LABELS[peakHour]}</span>
 				</h3>
 				<div class="bar-chart">
 					{#each stats.hourly_activity as count, i}
 						{@const pct = count / heatmapMax}
 						<div class="bar-col" title="{HOUR_LABELS[i]}: {count} messages">
-							<div class="bar-fill" style="height: {pct * 100}%; opacity: {0.3 + pct * 0.7}"></div>
+							<div
+								class="bar-fill"
+								class:bar-fill-peak={i === peakHour}
+								style="height: {Math.max(pct * 100, 2)}%"
+							></div>
 							{#if i % 3 === 0}
 								<span class="bar-label">{HOUR_LABELS[i]}</span>
 							{/if}
 						</div>
 					{/each}
 				</div>
-			</div>
+			</section>
 
 			<!-- Day of week -->
-			<div class="stats-section">
-				<h3 class="section-title">
+			<section class="glass-card" style="animation-delay: 250ms">
+				<h3 class="card-title">
 					day of week
-					<span class="section-hint">{DAY_LABELS[peakDay]} is your day</span>
+					<span class="card-hint">{DAY_LABELS[peakDay]} is your day</span>
 				</h3>
 				<div class="day-bars">
 					{#each stats.daily_activity as count, i}
 						{@const max = Math.max(...stats.daily_activity, 1)}
 						{@const pct = count / max}
 						<div class="day-row">
-							<span class="day-label">{DAY_LABELS[i]}</span>
+							<span class="day-label" class:day-label-peak={i === peakDay}>{DAY_LABELS[i]}</span>
 							<div class="day-track">
-								<div class="day-fill" style="width: {pct * 100}%"></div>
+								<div class="day-fill" class:day-fill-peak={i === peakDay} style="width: {pct * 100}%"></div>
 							</div>
 							<span class="day-count">{count}</span>
 						</div>
 					{/each}
 				</div>
-			</div>
+			</section>
 
 			<!-- Mood distribution -->
 			{#if topMoods.length > 0}
-				<div class="stats-section">
-					<h3 class="section-title">mood palette</h3>
+				<section class="glass-card" style="animation-delay: 300ms">
+					<h3 class="card-title">mood palette</h3>
 					<div class="mood-chart">
 						{#each topMoods as [mood, count]}
 							{@const pct = (count / totalMoodCount) * 100}
 							<div class="mood-row">
-								<div class="mood-dot" style="background: {getMoodColor(mood)}"></div>
+								<div class="mood-dot" style="background: {getMoodColor(mood)}; box-shadow: 0 0 8px {getMoodColor(mood)}"></div>
 								<span class="mood-name">{mood}</span>
 								<div class="mood-track">
 									<div class="mood-fill" style="width: {pct}%; background: {getMoodColor(mood)}"></div>
@@ -276,20 +269,20 @@
 							</div>
 						{/each}
 					</div>
-				</div>
+				</section>
 			{/if}
 
 			<!-- Quick stats -->
-			<div class="stats-section">
-				<h3 class="section-title">details</h3>
+			<section class="glass-card" style="animation-delay: 350ms">
+				<h3 class="card-title">details</h3>
 				<div class="detail-grid">
 					<div class="detail-item">
 						<span class="detail-value">{Math.round(stats.avg_message_length)}</span>
-						<span class="detail-label">avg chars/message</span>
+						<span class="detail-label">avg chars/msg</span>
 					</div>
 					<div class="detail-item">
 						<span class="detail-value">{formatInterval(stats.avg_response_interval_secs)}</span>
-						<span class="detail-label">avg between messages</span>
+						<span class="detail-label">avg interval</span>
 					</div>
 					<div class="detail-item">
 						<span class="detail-value">{stats.daily_history.length}</span>
@@ -297,10 +290,10 @@
 					</div>
 					<div class="detail-item">
 						<span class="detail-value">{stats.total_messages > 0 && stats.daily_history.length > 0 ? (stats.total_messages / stats.daily_history.length).toFixed(1) : "0"}</span>
-						<span class="detail-label">msgs/active day</span>
+						<span class="detail-label">msgs/day</span>
 					</div>
 				</div>
-			</div>
+			</section>
 		</div>
 	{:else}
 		<div class="stats-empty">no data yet</div>
@@ -315,30 +308,102 @@
 	}
 
 	.stats-loading {
-		display: flex; align-items: center; justify-content: center; height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 100%;
 	}
 
 	.stats-loading-dot {
-		width: 6px; height: 6px; border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 30%);
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: oklch(0.55 0.12 220 / 40%);
 		animation: pulse-alive 2s ease-in-out infinite;
 	}
 
 	.stats-empty {
-		display: flex; align-items: center; justify-content: center; height: 100%;
-		font-family: var(--font-mono); font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 35%);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 100%;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		color: oklch(0.55 0.08 220 / 40%);
 	}
 
 	.stats-scroll {
 		height: 100%;
 		overflow-y: auto;
 		padding: 1.5rem;
-		max-width: 520px;
+		max-width: 560px;
 		margin: 0 auto;
 		display: flex;
 		flex-direction: column;
-		gap: 2rem;
+		gap: 1rem;
+		scrollbar-width: none;
+	}
+	.stats-scroll::-webkit-scrollbar { display: none; }
+
+	/* ═══ Glass card ═══ */
+
+	.glass-card {
+		position: relative;
+		padding: 1.125rem 1.25rem;
+		border-radius: 1rem;
+		border: 1px solid oklch(0.5 0.08 220 / 8%);
+		border-top-color: oklch(0.6 0.10 220 / 14%);
+		background: linear-gradient(
+			165deg,
+			oklch(0.5 0.06 220 / 6%) 0%,
+			oklch(0.4 0.04 230 / 4%) 50%,
+			oklch(0.5 0.06 220 / 5%) 100%
+		);
+		backdrop-filter: blur(16px) saturate(140%) brightness(1.04);
+		-webkit-backdrop-filter: blur(16px) saturate(140%) brightness(1.04);
+		box-shadow:
+			0 2px 16px oklch(0 0 0 / 20%),
+			0 8px 32px oklch(0.3 0.06 220 / 6%),
+			inset 0 1px 0 oklch(1 0 0 / 5%);
+		display: flex;
+		flex-direction: column;
+		gap: 0.875rem;
+		animation: card-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	/* Specular top highlight */
+	.glass-card::before {
+		content: "";
+		position: absolute;
+		top: 0;
+		left: 15%;
+		right: 15%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(0.6 0.10 220 / 20%), transparent);
+		pointer-events: none;
+	}
+
+	@keyframes card-enter {
+		from { opacity: 0; transform: translateY(12px); filter: blur(4px); }
+		to { opacity: 1; transform: translateY(0); filter: blur(0px); }
+	}
+
+	.card-title {
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		font-weight: 400;
+		color: oklch(0.70 0.08 220 / 50%);
+		letter-spacing: 0.06em;
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+	}
+
+	.card-hint {
+		font-family: var(--font-body);
+		font-size: 0.68rem;
+		color: oklch(0.65 0.06 220 / 35%);
+		font-style: italic;
 	}
 
 	/* ═══ Hero ═══ */
@@ -346,56 +411,78 @@
 	.stats-hero {
 		display: flex;
 		justify-content: center;
-		gap: 2.5rem;
-		padding: 1rem 0;
+		gap: 0.75rem;
+		padding: 0.5rem 0;
 	}
 
-	.hero-stat {
+	.hero-card {
+		position: relative;
+		flex: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.25rem;
+		gap: 0.375rem;
+		padding: 1.25rem 0.75rem;
+		border-radius: 1rem;
+		border: 1px solid oklch(0.5 0.08 220 / 8%);
+		border-top-color: oklch(0.6 0.10 220 / 14%);
+		background: linear-gradient(
+			170deg,
+			oklch(0.5 0.06 220 / 6%) 0%,
+			oklch(0.4 0.04 230 / 3%) 100%
+		);
+		backdrop-filter: blur(16px) saturate(140%) brightness(1.04);
+		-webkit-backdrop-filter: blur(16px) saturate(140%) brightness(1.04);
+		box-shadow:
+			0 2px 16px oklch(0 0 0 / 20%),
+			0 8px 32px oklch(0.3 0.06 220 / 6%),
+			inset 0 1px 0 oklch(1 0 0 / 5%);
+		animation: card-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+		overflow: hidden;
+	}
+
+	.hero-card::before {
+		content: "";
+		position: absolute;
+		top: 0;
+		left: 20%;
+		right: 20%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(0.6 0.10 220 / 20%), transparent);
+		pointer-events: none;
 	}
 
 	.hero-value {
 		font-family: var(--font-display);
-		font-size: 1.8rem;
+		font-size: 1.75rem;
 		font-weight: 300;
-		color: oklch(0.78 0.12 75 / 70%);
+		color: oklch(0.82 0.08 220 / 80%);
 		line-height: 1;
 	}
 
 	.hero-label {
 		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: oklch(0.78 0.12 75 / 35%);
-		letter-spacing: 0.06em;
-	}
-
-	/* ═══ Sections ═══ */
-
-	.stats-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-
-	.section-title {
-		font-family: var(--font-mono);
-		font-size: 0.72rem;
-		font-weight: 400;
-		color: oklch(0.78 0.12 75 / 35%);
-		letter-spacing: 0.06em;
-		display: flex;
-		align-items: baseline;
-		gap: 0.5rem;
-	}
-
-	.section-hint {
-		font-family: var(--font-body);
 		font-size: 0.68rem;
-		color: oklch(0.78 0.12 75 / 35%);
-		font-style: italic;
+		color: oklch(0.65 0.06 220 / 40%);
+		letter-spacing: 0.06em;
+	}
+
+	.streak-glow {
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		background: radial-gradient(
+			ellipse at 50% 30%,
+			oklch(0.60 0.14 220 / 8%) 0%,
+			transparent 70%
+		);
+		pointer-events: none;
+		animation: streak-pulse 3s ease-in-out infinite;
+	}
+
+	@keyframes streak-pulse {
+		0%, 100% { opacity: 0.5; }
+		50% { opacity: 1; }
 	}
 
 	/* ═══ Heatmap ═══ */
@@ -412,7 +499,6 @@
 		overflow-x: auto;
 		scrollbar-width: none;
 	}
-
 	.heatmap-grid::-webkit-scrollbar { display: none; }
 
 	.heatmap-months {
@@ -423,8 +509,8 @@
 
 	.heatmap-month-label {
 		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: oklch(0.78 0.12 75 / 30%);
+		font-size: 0.68rem;
+		color: oklch(0.65 0.06 220 / 35%);
 		flex-shrink: 0;
 	}
 
@@ -443,8 +529,8 @@
 
 	.heatmap-day-label {
 		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 35%);
+		font-size: 0.62rem;
+		color: oklch(0.65 0.06 220 / 35%);
 		height: 9px;
 		line-height: 9px;
 		text-align: right;
@@ -459,14 +545,15 @@
 	.heatmap-cell {
 		width: 9px;
 		height: 9px;
-		border-radius: 2px;
+		border-radius: 2.5px;
+		transition: background 0.2s ease;
 	}
 
-	.heatmap-0 { background: oklch(1 0 0 / 4%); }
-	.heatmap-1 { background: oklch(0.78 0.12 75 / 12%); }
-	.heatmap-2 { background: oklch(0.78 0.12 75 / 35%); }
-	.heatmap-3 { background: oklch(0.78 0.12 75 / 45%); }
-	.heatmap-4 { background: oklch(0.78 0.12 75 / 70%); }
+	.heatmap-0 { background: oklch(0.4 0.04 220 / 8%); }
+	.heatmap-1 { background: oklch(0.55 0.12 220 / 20%); }
+	.heatmap-2 { background: oklch(0.58 0.14 220 / 38%); }
+	.heatmap-3 { background: oklch(0.62 0.16 220 / 55%); }
+	.heatmap-4 { background: oklch(0.68 0.18 220 / 75%); box-shadow: 0 0 4px oklch(0.60 0.14 220 / 25%); }
 
 	.heatmap-legend {
 		display: flex;
@@ -477,8 +564,8 @@
 
 	.heatmap-legend-label {
 		font-family: var(--font-mono);
-		font-size: 0.68rem;
-		color: oklch(0.78 0.12 75 / 35%);
+		font-size: 0.62rem;
+		color: oklch(0.65 0.06 220 / 30%);
 		margin: 0 2px;
 	}
 
@@ -493,7 +580,9 @@
 		display: flex;
 		align-items: flex-end;
 		gap: 2px;
-		height: 80px;
+		height: 88px;
+		padding-bottom: 16px;
+		position: relative;
 	}
 
 	.bar-col {
@@ -509,17 +598,22 @@
 	.bar-fill {
 		width: 100%;
 		border-radius: 2px 2px 0 0;
-		background: oklch(0.78 0.12 75);
-		min-height: 1px;
-		transition: height 0.3s ease;
+		background: oklch(0.58 0.14 220 / 35%);
+		min-height: 2px;
+		transition: height 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.bar-fill-peak {
+		background: oklch(0.65 0.18 220 / 65%);
+		box-shadow: 0 0 8px oklch(0.60 0.14 220 / 20%);
 	}
 
 	.bar-label {
 		position: absolute;
 		bottom: -14px;
 		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 35%);
+		font-size: 0.62rem;
+		color: oklch(0.65 0.06 220 / 30%);
 	}
 
 	/* ═══ Day bars ═══ */
@@ -527,7 +621,7 @@
 	.day-bars {
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		gap: 0.375rem;
 	}
 
 	.day-row {
@@ -538,31 +632,41 @@
 
 	.day-label {
 		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: oklch(0.78 0.12 75 / 30%);
+		font-size: 0.68rem;
+		color: oklch(0.65 0.06 220 / 35%);
 		width: 28px;
 		text-align: right;
+		transition: color 0.2s ease;
+	}
+
+	.day-label-peak {
+		color: oklch(0.72 0.10 220 / 65%);
 	}
 
 	.day-track {
 		flex: 1;
 		height: 8px;
 		border-radius: 4px;
-		background: oklch(1 0 0 / 3%);
+		background: oklch(0.4 0.04 220 / 8%);
 		overflow: hidden;
 	}
 
 	.day-fill {
 		height: 100%;
 		border-radius: 4px;
-		background: oklch(0.78 0.12 75 / 40%);
+		background: oklch(0.58 0.14 220 / 40%);
 		transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.day-fill-peak {
+		background: oklch(0.65 0.18 220 / 60%);
+		box-shadow: 0 0 6px oklch(0.60 0.14 220 / 15%);
 	}
 
 	.day-count {
 		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 28%);
+		font-size: 0.62rem;
+		color: oklch(0.65 0.06 220 / 30%);
 		width: 28px;
 	}
 
@@ -581,8 +685,8 @@
 	}
 
 	.mood-dot {
-		width: 6px;
-		height: 6px;
+		width: 7px;
+		height: 7px;
 		border-radius: 50%;
 		flex-shrink: 0;
 	}
@@ -590,7 +694,7 @@
 	.mood-name {
 		font-family: var(--font-mono);
 		font-size: 0.68rem;
-		color: oklch(0.88 0.02 75 / 50%);
+		color: oklch(0.80 0.02 220 / 50%);
 		width: 72px;
 	}
 
@@ -598,21 +702,21 @@
 		flex: 1;
 		height: 6px;
 		border-radius: 3px;
-		background: oklch(1 0 0 / 3%);
+		background: oklch(0.4 0.04 220 / 8%);
 		overflow: hidden;
 	}
 
 	.mood-fill {
 		height: 100%;
 		border-radius: 3px;
-		opacity: 0.5;
+		opacity: 0.55;
 		transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	.mood-pct {
 		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 30%);
+		font-size: 0.62rem;
+		color: oklch(0.65 0.06 220 / 35%);
 		width: 28px;
 		text-align: right;
 	}
@@ -622,36 +726,40 @@
 	.detail-grid {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
-		gap: 0.75rem;
+		gap: 0.625rem;
 	}
 
 	.detail-item {
 		display: flex;
 		flex-direction: column;
-		gap: 0.15rem;
-		padding: 0.625rem;
-		border-radius: 0.5rem;
-		background: oklch(1 0 0 / 2%);
-		border: 1px solid oklch(1 0 0 / 4%);
+		gap: 0.2rem;
+		padding: 0.75rem;
+		border-radius: 0.625rem;
+		background: oklch(0.4 0.04 220 / 6%);
+		border: 1px solid oklch(0.5 0.06 220 / 6%);
 	}
 
 	.detail-value {
 		font-family: var(--font-display);
 		font-size: 1.1rem;
 		font-weight: 300;
-		color: oklch(0.78 0.12 75 / 55%);
+		color: oklch(0.75 0.10 220 / 65%);
 	}
 
 	.detail-label {
 		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 28%);
+		font-size: 0.62rem;
+		color: oklch(0.65 0.06 220 / 30%);
 		letter-spacing: 0.04em;
 	}
 
+	/* ═══ Responsive ═══ */
+
 	@media (max-width: 640px) {
 		.stats-scroll { padding: 1rem; }
-		.stats-hero { gap: 1.5rem; }
+		.stats-hero { gap: 0.5rem; }
 		.hero-value { font-size: 1.4rem; }
+		.hero-card { padding: 1rem 0.5rem; }
+		.glass-card { padding: 1rem; }
 	}
 </style>
