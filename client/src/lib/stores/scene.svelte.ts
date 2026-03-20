@@ -82,20 +82,27 @@ export function createSceneStore(): SceneStore {
 	// Audio analyser for custom music visualizer.
 	// Uses the shared AudioContext (one per app, from audio-context.ts).
 	let musicAnalyser: AnalyserNode | null = null;
+	let musicGainNode: GainNode | null = null;
 	let musicSourceNode: MediaElementAudioSourceNode | null = null;
 	let musicDataArray: Uint8Array<ArrayBuffer> | null = null;
 	let musicRafId: number | null = null;
 
-	function ensureMusicAnalyser(): AnalyserNode {
+	function ensureMusicPipeline(): { analyser: AnalyserNode; gain: GainNode } {
+		const ac = getAudioContext();
+		if (!musicGainNode) {
+			musicGainNode = ac.createGain();
+			musicGainNode.gain.value = 1.0;
+		}
 		if (!musicAnalyser) {
-			const ac = getAudioContext();
 			musicAnalyser = ac.createAnalyser();
 			musicAnalyser.fftSize = 256;
 			musicAnalyser.smoothingTimeConstant = 0.8;
+			// Pipeline: source → gain → analyser → destination
+			musicGainNode.connect(musicAnalyser);
 			musicAnalyser.connect(ac.destination);
 			musicDataArray = new Uint8Array(musicAnalyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
 		}
-		return musicAnalyser;
+		return { analyser: musicAnalyser, gain: musicGainNode };
 	}
 
 	function connectMusicSource(audio: HTMLAudioElement) {
@@ -106,7 +113,7 @@ export function createSceneStore(): SceneStore {
 		}
 
 		const ac = getAudioContext();
-		const analyser = ensureMusicAnalyser();
+		const { gain } = ensureMusicPipeline();
 
 		// Resume context if needed (should already be running from user gesture)
 		if (ac.state === "suspended") {
@@ -116,7 +123,9 @@ export function createSceneStore(): SceneStore {
 
 		try {
 			musicSourceNode = ac.createMediaElementSource(audio);
-			musicSourceNode.connect(analyser);
+			// Connect source to gain node (not directly to analyser)
+			musicSourceNode.connect(gain);
+			gain.gain.value = customAudioBaseVolume;
 			musicPlaying = true;
 			console.log("[music] source connected to shared context, state:", ac.state);
 
@@ -411,14 +420,20 @@ export function createSceneStore(): SceneStore {
 		setThinking(v) { thinking = v; },
 		setVoiceAmplitude(v) { voiceAmplitude = v; },
 		duckMusic(speaking: boolean) {
-			if (!customAudio) return;
+			if (!musicGainNode) return;
+			const ac = getAudioContext();
 			if (speaking && !isDucked) {
 				isDucked = true;
-				// Duck to 5% — near-silent so voice is clearly audible
-				customAudio.volume = customAudioBaseVolume * 0.05;
+				// Duck to 5% via GainNode — customAudio.volume doesn't work
+				// after createMediaElementSource in Chrome
+				musicGainNode.gain.cancelScheduledValues(ac.currentTime);
+				musicGainNode.gain.setValueAtTime(musicGainNode.gain.value, ac.currentTime);
+				musicGainNode.gain.linearRampToValueAtTime(0.05, ac.currentTime + 0.15);
 			} else if (!speaking && isDucked) {
 				isDucked = false;
-				fadeAudio(customAudio, customAudioBaseVolume, 800);
+				musicGainNode.gain.cancelScheduledValues(ac.currentTime);
+				musicGainNode.gain.setValueAtTime(musicGainNode.gain.value, ac.currentTime);
+				musicGainNode.gain.linearRampToValueAtTime(1.0, ac.currentTime + 0.8);
 			}
 		},
 
@@ -428,13 +443,20 @@ export function createSceneStore(): SceneStore {
 				return;
 			}
 			if (action === "set_volume" && track) {
-				const audio = getTrackAudio(track);
-				if (audio && volume !== undefined) {
-					const v = Math.max(0, Math.min(1, volume));
-					if (track === "custom" || (!["ambient", "intro", "loop"].includes(track))) {
-						customAudioBaseVolume = v;
-					}
-					fadeAudio(audio, isDucked ? v * 0.15 : v, 500);
+				if (volume === undefined) return;
+				const v = Math.max(0, Math.min(1, volume));
+				const isCustom = track === "custom" || !["ambient", "intro", "loop"].includes(track);
+				if (isCustom && musicGainNode) {
+					customAudioBaseVolume = v;
+					const ac = getAudioContext();
+					musicGainNode.gain.cancelScheduledValues(ac.currentTime);
+					musicGainNode.gain.linearRampToValueAtTime(
+						isDucked ? v * 0.05 : v,
+						ac.currentTime + 0.3
+					);
+				} else {
+					const audio = getTrackAudio(track);
+					if (audio) fadeAudio(audio, v, 500);
 				}
 				return;
 			}
@@ -452,7 +474,7 @@ export function createSceneStore(): SceneStore {
 					}
 					customAudio = new Audio(audioUrl);
 					customAudio.loop = true;
-					customAudio.volume = vol;
+					customAudio.volume = 1.0; // volume controlled via GainNode
 					customAudioBaseVolume = vol;
 					isDucked = false;
 					console.log("[music] starting:", audioUrl);
