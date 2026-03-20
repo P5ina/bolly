@@ -407,6 +407,7 @@
 		let t = 0;
 		let skipFrame = false;
 		let smoothAmp = 0;
+		let smoothMusicAmp = 0;
 		let smoothSpeed = 0.8;
 		let smoothIntensity = 0.08;
 		let lastMode: string = "";
@@ -549,46 +550,50 @@
 				const lerpDown = Math.min(delta * 2, 1);
 				smoothAmp += (rawAmp - smoothAmp) * (rawAmp > smoothAmp ? lerpUp : lerpDown);
 
-				// Music visualizer amplitude
-				const mAmp = store.musicAmplitude;
+				// Music visualizer amplitude — smoothed to prevent jitter
+				const rawMusic = store.musicAmplitude;
+				const musicLerpUp = Math.min(delta * 4, 1);   // moderate attack
+				const musicLerpDown = Math.min(delta * 1.5, 1); // slow decay
+				smoothMusicAmp += (rawMusic - smoothMusicAmp) * (rawMusic > smoothMusicAmp ? musicLerpUp : musicLerpDown);
+				const mAmp = smoothMusicAmp;
 				const isMusic = store.musicPlaying && mAmp > 0.01;
 
 				const isSpeaking = smoothAmp > 0.01;
 				const thk = store.thinking;
 
-				// Music mode overrides: energetic displacement driven by beat
+				// Music mode: gentler multipliers to prevent violent displacement
 				const tgtSpeed = isMusic
-					? 2.5 + mAmp * 3.0
+					? 1.5 + mAmp * 1.5
 					: thk ? 3.0 : isSpeaking ? energy.speed + smoothAmp * 1.5 : energy.speed;
 				const tgtInt = isMusic
-					? 0.15 + mAmp * 0.25
+					? 0.10 + mAmp * 0.12
 					: thk ? 0.25 : isSpeaking ? energy.intensity + smoothAmp * 0.15 : energy.intensity;
 
-				const uLerp = Math.min(delta * (isMusic ? 8 : 3), 1);
+				const uLerp = Math.min(delta * 3, 1);
 				smoothSpeed += (tgtSpeed - smoothSpeed) * uLerp;
 				smoothIntensity += (tgtInt - smoothIntensity) * uLerp;
 
 				uSpeed.value = smoothSpeed;
 				uIntensity.value = smoothIntensity;
 				uBreathe.value = 1.0
-					+ Math.sin(t * (thk ? 2.5 : isMusic ? 3.0 : energy.breatheRate)) * (thk ? 0.06 : isMusic ? 0.05 + mAmp * 0.08 : energy.breatheDepth)
+					+ Math.sin(t * (thk ? 2.5 : isMusic ? 2.0 : energy.breatheRate)) * (thk ? 0.06 : isMusic ? 0.03 + mAmp * 0.04 : energy.breatheDepth)
 					+ (isSpeaking ? smoothAmp * 0.06 : 0)
-					+ (isMusic ? mAmp * 0.10 : 0);
+					+ (isMusic ? mAmp * 0.05 : 0);
 
 				// Disco color cycling when music plays
 				if (isMusic) {
-					const hue = (t * 0.4) % 1; // Slow hue rotation
+					const hue = (t * 0.4) % 1;
 					const boost = 0.5 + mAmp * 0.5;
 					const r = Math.sin(hue * Math.PI * 2) * 0.5 + 0.5;
 					const g = Math.sin((hue + 0.333) * Math.PI * 2) * 0.5 + 0.5;
 					const b = Math.sin((hue + 0.666) * Math.PI * 2) * 0.5 + 0.5;
 					keyLight.color.setRGB(r * boost, g * boost, b * boost);
-					keyLight.intensity = 2.5 + mAmp * 2.0;
+					keyLight.intensity = 2.0 + mAmp * 1.0;
 					fillLight.color.setRGB(b * boost, r * boost, g * boost);
-					fillLight.intensity = 0.8 + mAmp * 1.5;
+					fillLight.intensity = 0.6 + mAmp * 0.8;
 					rimLight.color.setRGB(g * boost, b * boost, r * boost);
-					rimLight.intensity = 1.0 + mAmp * 2.0;
-					glassMat.dispersion = 0.5 + mAmp * 0.5;
+					rimLight.intensity = 0.8 + mAmp * 1.0;
+					glassMat.dispersion = 0.4 + mAmp * 0.3;
 
 					// Drive background shader uniforms
 					uDiscoActive.value = 1.0;
@@ -611,9 +616,9 @@
 				// Override rotation for selected orb in chat
 				const selOrb = sel ? orbMap.get(sel) : null;
 				if (selOrb) {
-					const rotSpeed = isMusic ? 0.5 + mAmp * 1.5 : thk ? 0.4 : energy.rotSpeed;
+					const rotSpeed = isMusic ? 0.3 + mAmp * 0.5 : thk ? 0.4 : energy.rotSpeed;
 					selOrb.mesh.rotation.y += delta * rotSpeed;
-					selOrb.mesh.rotation.x = Math.sin(t * (isMusic ? 1.5 : 0.3)) * (isMusic ? 0.25 : 0.1);
+					selOrb.mesh.rotation.x = Math.sin(t * (isMusic ? 0.8 : 0.3)) * (isMusic ? 0.12 : 0.1);
 				}
 			} else {
 				// Home / selecting — gentle defaults
