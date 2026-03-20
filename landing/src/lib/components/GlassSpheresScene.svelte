@@ -12,7 +12,28 @@
 			const w = node.clientWidth;
 			const h = node.clientHeight;
 
-			const serialized = new XMLSerializer().serializeToString(node);
+			// Clone and fix styles for foreignObject rendering
+			const clone = node.cloneNode(true) as HTMLElement;
+			// Remove backdrop-filter (renders gray in SVG) and fix backgrounds
+			clone.querySelectorAll<HTMLElement>('*').forEach(el => {
+				el.style.backdropFilter = 'none';
+				el.style.webkitBackdropFilter = 'none';
+				const bg = el.style.background;
+				if (bg && bg.includes('rgba') && bg.includes('0.0')) {
+					el.style.background = '#0a0a14';
+				}
+			});
+			// Fix the root element too
+			clone.style.backdropFilter = 'none';
+			clone.style.webkitBackdropFilter = 'none';
+			if (clone.style.background?.includes('rgba')) {
+				clone.style.background = '#0a0a14';
+			}
+
+			const serialized = new XMLSerializer().serializeToString(clone);
+			if (backingPlanes.length === 0) {
+				console.log('[HtmlRenderer] Serialized (first 500):', serialized.substring(0, 500));
+			}
 			const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%">${serialized}</foreignObject></svg>`;
 			const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 
@@ -215,8 +236,8 @@
 						new THREE.PlaneGeometry(pw, ph),
 						new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })
 					);
-					mesh.position.set(def.x, def.y, 0.5);
-					mesh.visible = false; // only visible during FBO pass
+					mesh.position.set(def.x, def.y, 2);
+					mesh.visible = false;
 					scene.add(mesh);
 					backingPlanes.push({ mesh, el });
 					count++;
