@@ -1,3 +1,5 @@
+import { getAudioContext, resumeAudioContext } from "./audio-context.js";
+
 interface VoiceState {
 	speaking: boolean;
 	amplitude: number;
@@ -5,19 +7,18 @@ interface VoiceState {
 	speakingIds: Set<string>;
 }
 
-let ctx: AudioContext | null = null;
 let analyser: AnalyserNode | null = null;
 let currentSource: AudioBufferSourceNode | null = null;
 let rafId = 0;
 
-function getContext(): AudioContext {
-	if (!ctx) {
-		ctx = new AudioContext();
-		analyser = ctx.createAnalyser();
+function getAnalyser(): AnalyserNode {
+	if (!analyser) {
+		const ac = getAudioContext();
+		analyser = ac.createAnalyser();
 		analyser.fftSize = 256;
 		analyser.smoothingTimeConstant = 0.8;
 	}
-	return ctx;
+	return analyser;
 }
 
 /**
@@ -25,8 +26,7 @@ function getContext(): AudioContext {
  * Must be called before any playback to satisfy autoplay policy.
  */
 export function warmUpAudio(): void {
-	const ac = getContext();
-	if (ac.state === "suspended") ac.resume();
+	resumeAudioContext();
 }
 
 /** Stop any currently playing TTS audio. */
@@ -48,11 +48,12 @@ function playBuffer(
 	voice: VoiceState,
 	messageIds: string[],
 ): Promise<void> {
-	const ac = getContext();
+	const ac = getAudioContext();
+	const an = getAnalyser();
 
 	const source = ac.createBufferSource();
 	source.buffer = audioBuffer;
-	source.connect(analyser!).connect(ac.destination);
+	source.connect(an).connect(ac.destination);
 	currentSource = source;
 
 	voice.speaking = true;
@@ -60,7 +61,7 @@ function playBuffer(
 	voice.speakingIds = new Set(messageIds);
 
 	const totalDuration = audioBuffer.duration;
-	const dataArray = new Uint8Array(analyser!.frequencyBinCount);
+	const dataArray = new Uint8Array(an.frequencyBinCount);
 	const startTime = ac.currentTime;
 
 	function update() {
@@ -70,7 +71,7 @@ function playBuffer(
 		voice.revealProgress = Math.min(elapsed / totalDuration, 1);
 
 		// RMS amplitude from time-domain data
-		analyser!.getByteTimeDomainData(dataArray);
+		an.getByteTimeDomainData(dataArray);
 		let sum = 0;
 		for (let i = 0; i < dataArray.length; i++) {
 			const v = (dataArray[i] - 128) / 128;
@@ -109,7 +110,7 @@ async function processQueue(voice: VoiceState): Promise<void> {
 	while (audioQueue.length > 0) {
 		const entry = audioQueue.shift()!;
 
-		const ac = getContext();
+		const ac = getAudioContext();
 		if (ac.state === "suspended") await ac.resume();
 
 		const binaryString = atob(entry.base64);

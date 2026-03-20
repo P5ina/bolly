@@ -10,6 +10,7 @@
 
 import { getContext, setContext } from "svelte";
 import { getAuthToken } from "$lib/api/client.js";
+import { getAudioContext } from "$lib/audio-context.js";
 import type { InstanceSummary } from "$lib/api/types.js";
 
 const SCENE_KEY = Symbol("scene");
@@ -74,52 +75,45 @@ export function createSceneStore(): SceneStore {
 	let musicEnabled = $state(true);
 
 	// Audio analyser for custom music visualizer.
-	// Uses a persistent AudioContext to avoid autoplay policy issues.
-	// Only the source node is recreated for each new audio element.
-	let musicAudioCtx: AudioContext | null = null;
+	// Uses the shared AudioContext (one per app, from audio-context.ts).
 	let musicAnalyser: AnalyserNode | null = null;
 	let musicSourceNode: MediaElementAudioSourceNode | null = null;
 	let musicDataArray: Uint8Array<ArrayBuffer> | null = null;
 	let musicRafId: number | null = null;
 
-	function ensureMusicContext(): { ctx: AudioContext; analyser: AnalyserNode } {
-		if (!musicAudioCtx || musicAudioCtx.state === "closed") {
-			musicAudioCtx = new AudioContext();
-			musicAnalyser = null; // recreate with new context
-		}
+	function ensureMusicAnalyser(): AnalyserNode {
 		if (!musicAnalyser) {
-			musicAnalyser = musicAudioCtx.createAnalyser();
+			const ac = getAudioContext();
+			musicAnalyser = ac.createAnalyser();
 			musicAnalyser.fftSize = 256;
 			musicAnalyser.smoothingTimeConstant = 0.8;
-			musicAnalyser.connect(musicAudioCtx.destination);
+			musicAnalyser.connect(ac.destination);
 			musicDataArray = new Uint8Array(musicAnalyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
 		}
-		return { ctx: musicAudioCtx, analyser: musicAnalyser };
+		return musicAnalyser;
 	}
 
-	async function connectMusicSource(audio: HTMLAudioElement): Promise<boolean> {
+	function connectMusicSource(audio: HTMLAudioElement) {
+		// Disconnect old source if any
+		if (musicSourceNode) {
+			try { musicSourceNode.disconnect(); } catch {}
+			musicSourceNode = null;
+		}
+
+		const ac = getAudioContext();
+		const analyser = ensureMusicAnalyser();
+
+		// Resume context if needed (should already be running from user gesture)
+		if (ac.state === "suspended") {
+			console.log("[music] resuming shared AudioContext");
+			ac.resume().catch(() => {});
+		}
+
 		try {
-			// Disconnect old source if any
-			if (musicSourceNode) {
-				try { musicSourceNode.disconnect(); } catch {}
-				musicSourceNode = null;
-			}
-
-			const { ctx, analyser } = ensureMusicContext();
-			console.log("[music] AudioContext state:", ctx.state);
-
-			// MUST await resume before createMediaElementSource —
-			// once connected, audio only goes through the context pipeline
-			if (ctx.state === "suspended") {
-				console.log("[music] resuming AudioContext...");
-				await ctx.resume();
-				console.log("[music] AudioContext resumed:", ctx.state);
-			}
-
-			musicSourceNode = ctx.createMediaElementSource(audio);
+			musicSourceNode = ac.createMediaElementSource(audio);
 			musicSourceNode.connect(analyser);
 			musicPlaying = true;
-			console.log("[music] source connected, analyser active");
+			console.log("[music] source connected to shared context, state:", ac.state);
 
 			// Start amplitude tracking loop
 			if (musicRafId !== null) cancelAnimationFrame(musicRafId);
@@ -134,10 +128,9 @@ export function createSceneStore(): SceneStore {
 				musicRafId = requestAnimationFrame(updateAmplitude);
 			}
 			updateAmplitude();
-			return true;
 		} catch (e) {
-			console.warn("[music] analyser connect failed:", e);
-			return false;
+			console.warn("[music] createMediaElementSource failed:", e);
+			// Audio will play natively without visualizer
 		}
 	}
 
@@ -146,7 +139,6 @@ export function createSceneStore(): SceneStore {
 		if (musicSourceNode) { try { musicSourceNode.disconnect(); } catch {} musicSourceNode = null; }
 		musicAmplitude = 0;
 		musicPlaying = false;
-		// Keep musicAudioCtx and musicAnalyser alive for reuse
 	}
 
 	let selectStartTime = 0;
@@ -428,16 +420,16 @@ export function createSceneStore(): SceneStore {
 					customAudio = new Audio(audioUrl);
 					customAudio.loop = true;
 					customAudio.volume = vol;
-					console.log("[music] starting playback:", audioUrl);
-					// Try to connect analyser first (audio goes through AudioContext).
-					// If that fails, play natively without visualizer.
-					connectMusicSource(customAudio).then((connected) => {
-						console.log("[music] analyser connected:", connected);
-						customAudio?.play().then(() => {
-							console.log("[music] playing OK");
-						}).catch((e) => {
-							console.warn("[music] play() failed:", e);
-						});
+					console.log("[music] starting:", audioUrl);
+					// Connect to shared AudioContext for visualizer, then play.
+					// createMediaElementSource captures output — audio goes
+					// through context pipeline. Context is already running
+					// (resumed on user gesture via audio-context.ts).
+					connectMusicSource(customAudio);
+					customAudio.play().then(() => {
+						console.log("[music] playing, context state:", getAudioContext().state);
+					}).catch((e) => {
+						console.warn("[music] play() failed:", e);
 					});
 				} else {
 					// Built-in track

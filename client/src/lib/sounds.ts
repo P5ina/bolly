@@ -1,5 +1,6 @@
+import { getAudioContext } from "./audio-context.js";
+
 const buffers = new Map<string, AudioBuffer>();
-let ctx: AudioContext | null = null;
 
 const volumes: Record<string, number> = {
 	message_send: 0.3,
@@ -16,28 +17,6 @@ const volumes: Record<string, number> = {
 const MIN_GAP_MS = 150;
 let lastPlayTime = 0;
 
-function getContext(): AudioContext {
-	if (!ctx) ctx = new AudioContext();
-	return ctx;
-}
-
-if (typeof document !== "undefined") {
-	// Resume on user interaction (first click/tap unlocks audio)
-	const unlock = () => {
-		if (ctx?.state === "suspended") ctx.resume();
-		document.removeEventListener("click", unlock);
-		document.removeEventListener("touchstart", unlock);
-	};
-	document.addEventListener("click", unlock);
-	document.addEventListener("touchstart", unlock);
-
-	document.addEventListener("visibilitychange", () => {
-		if (document.visibilityState === "visible" && ctx?.state === "suspended") {
-			ctx.resume();
-		}
-	});
-}
-
 async function loadBuffer(name: string): Promise<AudioBuffer | null> {
 	const existing = buffers.get(name);
 	if (existing) return existing;
@@ -45,7 +24,7 @@ async function loadBuffer(name: string): Promise<AudioBuffer | null> {
 	try {
 		const res = await fetch(`/sounds/${name}.mp3`);
 		const data = await res.arrayBuffer();
-		const ac = getContext();
+		const ac = getAudioContext();
 		if (ac.state === "suspended") await ac.resume();
 		const buffer = await ac.decodeAudioData(data);
 		buffers.set(name, buffer);
@@ -60,7 +39,7 @@ let playQueue: Promise<void> = Promise.resolve();
 
 export function play(name: string) {
 	if (typeof window === "undefined") return;
-	const ac = getContext();
+	const ac = getAudioContext();
 
 	// Fast path: buffer cached & context running — play immediately
 	const buffer = buffers.get(name);
@@ -82,7 +61,7 @@ export function play(name: string) {
 }
 
 async function playSound(name: string) {
-	const ac = getContext();
+	const ac = getAudioContext();
 
 	if (ac.state === "suspended") {
 		try {
@@ -114,7 +93,7 @@ async function playSound(name: string) {
 /** Fire-and-forget playback without queue or gap enforcement. */
 export function playImmediate(name: string, opts?: { pitchRange?: [number, number] }) {
 	if (typeof window === "undefined") return;
-	const ac = getContext();
+	const ac = getAudioContext();
 	if (ac.state !== "running") return;
 	const buffer = buffers.get(name);
 	if (!buffer) return;
