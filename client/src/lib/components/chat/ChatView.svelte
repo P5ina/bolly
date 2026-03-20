@@ -486,10 +486,18 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				agentRunning = false;
 				sending = false;
 				clearStreaming();
-				// Always reveal any pending voice messages — if TTS failed or is still
-				// queued, show the text immediately rather than leaving it hidden.
+				// Don't clear turnMessageIds immediately — TTS audio may still be
+				// synthesizing. Give it time to arrive so word reveal works.
+				// Fallback: if audio hasn't arrived after 15s, reveal all.
 				if (voice.enabled && turnMessageIds.length > 0) {
-					turnMessageIds = [];
+					const pending = [...turnMessageIds];
+					setTimeout(() => {
+						// Only clear IDs that still haven't received audio
+						const stillPending = turnMessageIds.filter(id => pending.includes(id));
+						if (stillPending.length > 0) {
+							turnMessageIds = turnMessageIds.filter(id => !pending.includes(id));
+						}
+					}, 15000);
 				}
 				voiceText = "";
 			} else if (event.type === "tool_activity") {
