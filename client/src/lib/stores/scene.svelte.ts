@@ -86,10 +86,7 @@ export function createSceneStore(): SceneStore {
 	let musicAnalyser: AnalyserNode | null = null;
 	let musicGainNode: GainNode | null = null;
 	let musicSourceNode: MediaElementAudioSourceNode | null = null;
-	// Simple beat detector: tracks bass energy peaks to estimate BPM
-	let beatTimes: number[] = []; // timestamps of detected beats
-	let lastBeatEnergy = 0;
-	let beatThreshold = 0.3;
+	let bpmDetecting = false;
 	let musicDataArray: Uint8Array<ArrayBuffer> | null = null;
 	let musicRafId: number | null = null;
 
@@ -141,16 +138,10 @@ export function createSceneStore(): SceneStore {
 				if (!musicAnalyser || !musicDataArray) return;
 				musicAnalyser.getByteFrequencyData(musicDataArray);
 				let sum = 0;
-				let bassSum = 0;
-				const bassEnd = Math.floor(musicDataArray.length * 0.08); // ~0-350Hz
 				for (let i = 0; i < musicDataArray.length; i++) {
 					sum += musicDataArray[i];
-					if (i < bassEnd) bassSum += musicDataArray[i];
 				}
 				musicAmplitude = sum / (musicDataArray.length * 255);
-				// Beat detection from bass energy
-				const bassEnergy = bassEnd > 0 ? bassSum / (bassEnd * 255) : 0;
-				detectBeat(bassEnergy, performance.now() / 1000);
 				musicRafId = requestAnimationFrame(updateAmplitude);
 			}
 			updateAmplitude();
@@ -160,40 +151,26 @@ export function createSceneStore(): SceneStore {
 		}
 	}
 
-	/** Detect beats from bass energy and estimate BPM from intervals. */
-	function detectBeat(bassEnergy: number, now: number) {
-		// Beat = bass energy spike above threshold after a cooldown
-		const cooldown = musicBpm > 0 ? (60 / musicBpm) * 0.4 : 0.15; // 40% of beat interval
-		const lastBeatTime = beatTimes.length > 0 ? beatTimes[beatTimes.length - 1] : 0;
-
-		if (bassEnergy > beatThreshold && bassEnergy > lastBeatEnergy * 1.1 && (now - lastBeatTime) > cooldown) {
-			beatTimes.push(now);
-			// Keep last 16 beats
-			if (beatTimes.length > 16) beatTimes.shift();
-			// Adaptive threshold
-			beatThreshold = beatThreshold * 0.95 + bassEnergy * 0.5 * 0.05;
-
-			// Estimate BPM from intervals (need at least 4 beats)
-			if (beatTimes.length >= 4) {
-				const intervals: number[] = [];
-				for (let i = 1; i < beatTimes.length; i++) {
-					intervals.push(beatTimes[i] - beatTimes[i - 1]);
-				}
-				// Median interval (robust to outliers)
-				intervals.sort((a, b) => a - b);
-				const median = intervals[Math.floor(intervals.length / 2)];
-				if (median > 0.2 && median < 2.0) { // 30-300 BPM range
-					const newBpm = Math.round(60 / median);
-					if (Math.abs(newBpm - musicBpm) > 3) {
-						musicBpm = newBpm;
-						console.log("[music] BPM:", musicBpm);
-					}
-				}
-			}
+	/** Fetch audio file, decode, and detect BPM once via web-audio-beat-detector. */
+	async function analyzeBpm(audioUrl: string) {
+		if (bpmDetecting) return;
+		bpmDetecting = true;
+		try {
+			const { guess } = await import("web-audio-beat-detector");
+			const ac = getAudioContext();
+			const response = await fetch(audioUrl);
+			const arrayBuffer = await response.arrayBuffer();
+			const audioBuffer = await ac.decodeAudioData(arrayBuffer);
+			// Analyze first 30s for speed
+			const duration = Math.min(audioBuffer.duration, 30);
+			const result = await guess(audioBuffer, 0, duration);
+			musicBpm = result.bpm;
+			console.log("[music] BPM detected:", musicBpm, "offset:", result.offset.toFixed(2));
+		} catch (e) {
+			console.warn("[music] BPM detection failed:", e);
+		} finally {
+			bpmDetecting = false;
 		}
-		lastBeatEnergy = bassEnergy;
-		// Decay threshold slowly
-		beatThreshold = Math.max(0.15, beatThreshold * 0.998);
 	}
 
 	function disconnectMusicSource() {
@@ -202,9 +179,7 @@ export function createSceneStore(): SceneStore {
 		musicAmplitude = 0;
 		musicBpm = 0;
 		musicPlaying = false;
-		beatTimes = [];
-		lastBeatEnergy = 0;
-		beatThreshold = 0.3;
+		bpmDetecting = false;
 	}
 
 	let selectStartTime = 0;
@@ -538,6 +513,8 @@ export function createSceneStore(): SceneStore {
 					connectMusicSource(customAudio);
 					customAudio.play().then(() => {
 						console.log("[music] playing, context state:", getAudioContext().state);
+						// Detect BPM in background (fetches audio separately, analyzes offline)
+						analyzeBpm(audioUrl);
 					}).catch((e) => {
 						console.warn("[music] play() failed:", e);
 					});
