@@ -6,21 +6,19 @@
 	<title>Privacy Policy — Bolly</title>
 </svelte:head>
 
-<div class="min-h-dvh bg-bg">
-	<header class="border-b border-border" style="background: oklch(0.05 0.015 280 / 70%); backdrop-filter: blur(24px);">
-		<div class="mx-auto max-w-[900px] px-6 py-4">
-			<a href="/" class="flex items-center gap-2.5 w-fit">
-				<div class="w-7 h-7 rounded-md flex items-center justify-center font-display italic text-sm text-warm"
-					style="background: var(--color-warm-glow); border: 1px solid var(--color-border-warm);"
-				>b</div>
-				<span class="font-display italic text-lg text-text">bolly</span>
+<div class="legal-page">
+	<header class="legal-header">
+		<div class="legal-header-inner">
+			<a href="/" class="legal-brand">
+				<div class="legal-logo">b</div>
+				<span class="legal-brand-name">bolly</span>
 			</a>
 		</div>
 	</header>
 
-	<div class="mx-auto max-w-[700px] px-6 py-16">
-		<h1 class="font-display italic text-3xl text-text mb-2">Privacy Policy</h1>
-		<p class="text-xs text-text-ghost mb-12">Last updated: March 13, 2026</p>
+	<div class="legal-content">
+		<h1 class="legal-title">Privacy Policy</h1>
+		<p class="legal-date">Last updated: March 13, 2026</p>
 
 		<div class="prose">
 			<h2>1. Who we are</h2>
@@ -114,6 +112,16 @@
 </div>
 
 <style>
+	.legal-page { min-height: 100dvh; background: oklch(0.04 0.015 260); }
+	.legal-header { border-bottom: 1px solid oklch(1 0 0 / 6%); background: oklch(0.05 0.015 260 / 70%); backdrop-filter: blur(24px); }
+	.legal-header-inner { max-width: 900px; margin: 0 auto; padding: 1rem 1.5rem; }
+	.legal-brand { display: flex; align-items: center; gap: 0.625rem; text-decoration: none; width: fit-content; }
+	.legal-logo { width: 1.75rem; height: 1.75rem; border-radius: 0.375rem; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-style: italic; font-size: 0.875rem; color: var(--color-warm); background: oklch(1 0 0 / 5%); border: 1px solid oklch(1 0 0 / 10%); }
+	.legal-brand-name { font-family: var(--font-display); font-style: italic; font-size: 1.125rem; color: var(--color-text); }
+	.legal-content { max-width: 700px; margin: 0 auto; padding: 4rem 1.5rem; }
+	.legal-title { font-family: var(--font-display); font-style: italic; font-size: 1.875rem; font-weight: 400; color: var(--color-text); margin-bottom: 0.5rem; }
+	.legal-date { font-size: 0.75rem; color: oklch(0.90 0.02 75 / 25%); margin-bottom: 3rem; }
+
 	.prose {
 		color: oklch(0.65 0.02 280);
 		line-height: 1.75;

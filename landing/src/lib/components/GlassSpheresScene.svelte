@@ -333,6 +333,25 @@
 
 		introStartTime = performance.now() / 1000;
 
+		// Anchor link handling — intercept clicks, handle hash on load
+		function onAnchorClick(e: MouseEvent) {
+			const a = (e.target as HTMLElement).closest('a');
+			if (!a) return;
+			const href = a.getAttribute('href');
+			if (!href) return;
+			const m = href.match(/#(\w+)$/);
+			if (m && sectionMap['#' + m[1]] !== undefined) {
+				e.preventDefault();
+				scrollToSection('#' + m[1]);
+			}
+		}
+		document.addEventListener('click', onAnchorClick);
+
+		// Scroll to hash on load
+		if (window.location.hash && sectionMap[window.location.hash] !== undefined) {
+			setTimeout(() => scrollToSection(window.location.hash), 800);
+		}
+
 		// Create sphere meshes — they all start clustered at camera
 		for (const conf of sphereConfs) {
 			const geo = conf.size === 'l' ? geoLarge : conf.size === 'm' ? geoMedium : geoSmall;
@@ -558,6 +577,27 @@
 		cta: -78,
 		footer: -88,
 	};
+
+	const sectionMap: Record<string, number> = {
+		'#hero': Y.hero,
+		'#features': Y.features,
+		'#demo': Y.demo,
+		'#how': Y.how,
+		'#pricing': Y.pricing,
+		'#cta': Y.cta,
+		'#footer': Y.footer,
+	};
+
+	function scrollToSection(hash: string) {
+		if (typeof document === 'undefined') return;
+		const sectionY = sectionMap[hash];
+		if (sectionY === undefined) return;
+		const progress = Math.abs(sectionY) / TOTAL_HEIGHT;
+		const maxScroll = document.body.scrollHeight - window.innerHeight;
+		window.scrollTo({ top: progress * maxScroll, behavior: 'smooth' });
+		history.replaceState(null, '', hash);
+	}
+
 </script>
 
 <T.PerspectiveCamera makeDefault position={[0, 0, CAM_Z]} fov={FOV} near={0.1} far={100} />
