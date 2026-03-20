@@ -11,8 +11,6 @@
 import { getContext, setContext } from "svelte";
 import { getAuthToken } from "$lib/api/client.js";
 import { getAudioContext } from "$lib/audio-context.js";
-// @ts-ignore — package has types but broken dist layout (dist/dist/ instead of dist/)
-import { createRealtimeBpmAnalyzer, getBiquadFilter, type BpmCandidates } from "realtime-bpm-analyzer";
 import type { InstanceSummary } from "$lib/api/types.js";
 
 const SCENE_KEY = Symbol("scene");
@@ -88,7 +86,10 @@ export function createSceneStore(): SceneStore {
 	let musicAnalyser: AnalyserNode | null = null;
 	let musicGainNode: GainNode | null = null;
 	let musicSourceNode: MediaElementAudioSourceNode | null = null;
-	let bpmAnalyzer: any = null; // realtime-bpm-analyzer instance
+	// Simple beat detector: tracks bass energy peaks to estimate BPM
+	let beatTimes: number[] = []; // timestamps of detected beats
+	let lastBeatEnergy = 0;
+	let beatThreshold = 0.3;
 	let musicDataArray: Uint8Array<ArrayBuffer> | null = null;
 	let musicRafId: number | null = null;
 
@@ -140,61 +141,70 @@ export function createSceneStore(): SceneStore {
 				if (!musicAnalyser || !musicDataArray) return;
 				musicAnalyser.getByteFrequencyData(musicDataArray);
 				let sum = 0;
+				let bassSum = 0;
+				const bassEnd = Math.floor(musicDataArray.length * 0.08); // ~0-350Hz
 				for (let i = 0; i < musicDataArray.length; i++) {
 					sum += musicDataArray[i];
+					if (i < bassEnd) bassSum += musicDataArray[i];
 				}
 				musicAmplitude = sum / (musicDataArray.length * 255);
+				// Beat detection from bass energy
+				const bassEnergy = bassEnd > 0 ? bassSum / (bassEnd * 255) : 0;
+				detectBeat(bassEnergy, performance.now() / 1000);
 				musicRafId = requestAnimationFrame(updateAmplitude);
 			}
 			updateAmplitude();
-
-			// BPM detection — async, best-effort
-			setupBpmDetection(ac, musicSourceNode);
 		} catch (e) {
 			console.warn("[music] createMediaElementSource failed:", e);
 			// Audio will play natively without visualizer
 		}
 	}
 
-	async function setupBpmDetection(ac: AudioContext, source: MediaElementAudioSourceNode) {
-		try {
-			if (bpmAnalyzer) {
-				try { bpmAnalyzer.node?.disconnect(); } catch {}
-			}
-			bpmAnalyzer = await createRealtimeBpmAnalyzer(ac);
-			// Connect source → lowpass → BPM analyzer (parallel to main gain pipeline)
-			const lowpass = getBiquadFilter(ac);
-			source.connect(lowpass).connect(bpmAnalyzer.node);
+	/** Detect beats from bass energy and estimate BPM from intervals. */
+	function detectBeat(bassEnergy: number, now: number) {
+		// Beat = bass energy spike above threshold after a cooldown
+		const cooldown = musicBpm > 0 ? (60 / musicBpm) * 0.4 : 0.15; // 40% of beat interval
+		const lastBeatTime = beatTimes.length > 0 ? beatTimes[beatTimes.length - 1] : 0;
 
-			bpmAnalyzer.on("bpmStable", (data: BpmCandidates) => {
-				if (data.bpm?.length) {
-					const newBpm = Math.round(data.bpm[0].tempo);
-					if (newBpm !== musicBpm) {
+		if (bassEnergy > beatThreshold && bassEnergy > lastBeatEnergy * 1.1 && (now - lastBeatTime) > cooldown) {
+			beatTimes.push(now);
+			// Keep last 16 beats
+			if (beatTimes.length > 16) beatTimes.shift();
+			// Adaptive threshold
+			beatThreshold = beatThreshold * 0.95 + bassEnergy * 0.5 * 0.05;
+
+			// Estimate BPM from intervals (need at least 4 beats)
+			if (beatTimes.length >= 4) {
+				const intervals: number[] = [];
+				for (let i = 1; i < beatTimes.length; i++) {
+					intervals.push(beatTimes[i] - beatTimes[i - 1]);
+				}
+				// Median interval (robust to outliers)
+				intervals.sort((a, b) => a - b);
+				const median = intervals[Math.floor(intervals.length / 2)];
+				if (median > 0.2 && median < 2.0) { // 30-300 BPM range
+					const newBpm = Math.round(60 / median);
+					if (Math.abs(newBpm - musicBpm) > 3) {
 						musicBpm = newBpm;
-						console.log("[music] BPM stable:", musicBpm);
+						console.log("[music] BPM:", musicBpm);
 					}
 				}
-			});
-			bpmAnalyzer.on("bpm", (data: BpmCandidates) => {
-				// Use first estimate if no stable BPM yet
-				if (musicBpm === 0 && data.bpm?.length) {
-					musicBpm = Math.round(data.bpm[0].tempo);
-					console.log("[music] BPM estimate:", musicBpm);
-				}
-			});
-			console.log("[music] BPM analyzer connected");
-		} catch (e) {
-			console.warn("[music] BPM detection failed:", e);
+			}
 		}
+		lastBeatEnergy = bassEnergy;
+		// Decay threshold slowly
+		beatThreshold = Math.max(0.15, beatThreshold * 0.998);
 	}
 
 	function disconnectMusicSource() {
 		if (musicRafId !== null) { cancelAnimationFrame(musicRafId); musicRafId = null; }
 		if (musicSourceNode) { try { musicSourceNode.disconnect(); } catch {} musicSourceNode = null; }
-		if (bpmAnalyzer) { try { bpmAnalyzer.node?.disconnect(); } catch {} bpmAnalyzer = null; }
 		musicAmplitude = 0;
 		musicBpm = 0;
 		musicPlaying = false;
+		beatTimes = [];
+		lastBeatEnergy = 0;
+		beatThreshold = 0.3;
 	}
 
 	let selectStartTime = 0;

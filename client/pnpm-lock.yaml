@@ -23,9 +23,6 @@ importers:
       marked:
         specifier: ^17.0.4
         version: 17.0.4
-      realtime-bpm-analyzer:
-        specifier: ^5.0.1
-        version: 5.0.1
       three:
         specifier: ^0.183.2
         version: 0.183.2
@@ -1165,9 +1162,6 @@ packages:
   readdirp@4.1.2:
     resolution: {integrity: sha512-GDhwkLfywWL2s6vEjyhri+eXmfH6j1L7JE27WhqLeYzoh/A3DBaYGEj2H/HFZCn/kMfim73FXxEJTw06WtxQwg==}
     engines: {node: '>= 14.18.0'}
-
-  realtime-bpm-analyzer@5.0.1:
-    resolution: {integrity: sha512-h+b3ubD+vjh4fKhsRQNt/TtVkhVgeGDb1ML/EqS8xIHd9zYCs+8/9ib1JownZLcW0tCaPYlZLlLcSb9GNcCSaw==}
 
   require-from-string@2.0.2:
     resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
@@ -2339,8 +2333,6 @@ snapshots:
     optional: true
 
   readdirp@4.1.2: {}
-
-  realtime-bpm-analyzer@5.0.1: {}
 
   require-from-string@2.0.2: {}
 
