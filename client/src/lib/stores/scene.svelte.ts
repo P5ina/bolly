@@ -11,6 +11,8 @@
 import { getContext, setContext } from "svelte";
 import { getAuthToken } from "$lib/api/client.js";
 import { getAudioContext } from "$lib/audio-context.js";
+// @ts-ignore — package has types but broken dist layout (dist/dist/ instead of dist/)
+import { createRealtimeBpmAnalyzer, getBiquadFilter, type BpmCandidates } from "realtime-bpm-analyzer";
 import type { InstanceSummary } from "$lib/api/types.js";
 
 const SCENE_KEY = Symbol("scene");
@@ -31,6 +33,7 @@ export interface SceneStore {
 	readonly thinking: boolean;
 	readonly voiceAmplitude: number;
 	readonly musicAmplitude: number;
+	readonly musicBpm: number;
 	readonly musicPlaying: boolean;
 	readonly musicEnabled: boolean;
 	presenting: boolean;
@@ -75,6 +78,7 @@ export function createSceneStore(): SceneStore {
 	let thinking = $state(false);
 	let voiceAmplitude = $state(0);
 	let musicAmplitude = $state(0);
+	let musicBpm = $state(0);
 	let musicPlaying = $state(false);
 	let musicEnabled = $state(true);
 	let presenting = $state(false);
@@ -84,6 +88,7 @@ export function createSceneStore(): SceneStore {
 	let musicAnalyser: AnalyserNode | null = null;
 	let musicGainNode: GainNode | null = null;
 	let musicSourceNode: MediaElementAudioSourceNode | null = null;
+	let bpmAnalyzer: any = null; // realtime-bpm-analyzer instance
 	let musicDataArray: Uint8Array<ArrayBuffer> | null = null;
 	let musicRafId: number | null = null;
 
@@ -142,16 +147,53 @@ export function createSceneStore(): SceneStore {
 				musicRafId = requestAnimationFrame(updateAmplitude);
 			}
 			updateAmplitude();
+
+			// BPM detection — async, best-effort
+			setupBpmDetection(ac, musicSourceNode);
 		} catch (e) {
 			console.warn("[music] createMediaElementSource failed:", e);
 			// Audio will play natively without visualizer
 		}
 	}
 
+	async function setupBpmDetection(ac: AudioContext, source: MediaElementAudioSourceNode) {
+		try {
+			if (bpmAnalyzer) {
+				try { bpmAnalyzer.node?.disconnect(); } catch {}
+			}
+			bpmAnalyzer = await createRealtimeBpmAnalyzer(ac);
+			// Connect source → lowpass → BPM analyzer (parallel to main gain pipeline)
+			const lowpass = getBiquadFilter(ac);
+			source.connect(lowpass).connect(bpmAnalyzer.node);
+
+			bpmAnalyzer.on("bpmStable", (data: BpmCandidates) => {
+				if (data.bpm?.length) {
+					const newBpm = Math.round(data.bpm[0].tempo);
+					if (newBpm !== musicBpm) {
+						musicBpm = newBpm;
+						console.log("[music] BPM stable:", musicBpm);
+					}
+				}
+			});
+			bpmAnalyzer.on("bpm", (data: BpmCandidates) => {
+				// Use first estimate if no stable BPM yet
+				if (musicBpm === 0 && data.bpm?.length) {
+					musicBpm = Math.round(data.bpm[0].tempo);
+					console.log("[music] BPM estimate:", musicBpm);
+				}
+			});
+			console.log("[music] BPM analyzer connected");
+		} catch (e) {
+			console.warn("[music] BPM detection failed:", e);
+		}
+	}
+
 	function disconnectMusicSource() {
 		if (musicRafId !== null) { cancelAnimationFrame(musicRafId); musicRafId = null; }
 		if (musicSourceNode) { try { musicSourceNode.disconnect(); } catch {} musicSourceNode = null; }
+		if (bpmAnalyzer) { try { bpmAnalyzer.node?.disconnect(); } catch {} bpmAnalyzer = null; }
 		musicAmplitude = 0;
+		musicBpm = 0;
 		musicPlaying = false;
 	}
 
@@ -336,6 +378,7 @@ export function createSceneStore(): SceneStore {
 		get thinking() { return thinking; },
 		get voiceAmplitude() { return voiceAmplitude; },
 		get musicAmplitude() { return musicAmplitude; },
+		get musicBpm() { return musicBpm; },
 		get musicPlaying() { return musicPlaying; },
 		get musicEnabled() { return musicEnabled; },
 		get presenting() { return presenting; },
@@ -428,7 +471,7 @@ export function createSceneStore(): SceneStore {
 				// after createMediaElementSource in Chrome
 				musicGainNode.gain.cancelScheduledValues(ac.currentTime);
 				musicGainNode.gain.setValueAtTime(musicGainNode.gain.value, ac.currentTime);
-				musicGainNode.gain.linearRampToValueAtTime(0.05, ac.currentTime + 0.15);
+				musicGainNode.gain.linearRampToValueAtTime(0.15, ac.currentTime + 0.3);
 			} else if (!speaking && isDucked) {
 				isDucked = false;
 				musicGainNode.gain.cancelScheduledValues(ac.currentTime);

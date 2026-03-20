@@ -577,8 +577,18 @@
 				uIntensity.value = smoothIntensity;
 
 				if (isMusic) {
-					// Scale pulsing driven by beat — expand on bass hits, contract on silence
-					uBreathe.value = 1.0 + mAmp * 0.15;
+					const bpm = store.musicBpm;
+					if (bpm > 0) {
+						// BPM-synced pulse: sin wave at beat frequency
+						// bpm/60 = beats per second, *2π = angular frequency
+						const beatPhase = Math.sin(t * (bpm / 60) * Math.PI * 2);
+						// Expand on beat (phase=1), contract between (phase=-1)
+						// Amplitude driven by music loudness
+						uBreathe.value = 1.0 + (beatPhase * 0.5 + 0.5) * mAmp * 0.15;
+					} else {
+						// No BPM yet — fall back to amplitude-driven pulse
+						uBreathe.value = 1.0 + mAmp * 0.15;
+					}
 				} else {
 					uBreathe.value = 1.0
 						+ Math.sin(t * (thk ? 2.5 : energy.breatheRate)) * (thk ? 0.06 : energy.breatheDepth)
