@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from "$app/state";
+	import { getSceneStore } from "$lib/stores/scene.svelte.js";
 	import {
 		checkUpdate,
 		applyUpdate,
@@ -33,6 +34,7 @@
 	import type { Usage } from "$lib/api/types.js";
 
 	const slug = $derived(page.params.slug!);
+	const scene = getSceneStore();
 
 	// --- catalog of known extensions ---
 	interface ExtensionEntry {
@@ -120,6 +122,7 @@
 			const next = !musicEnabledVal;
 			await updateMusicEnabled(slug, next);
 			musicEnabledVal = next;
+			scene.setMusicEnabled(next);
 		} catch {
 			// ignore
 		} finally {
