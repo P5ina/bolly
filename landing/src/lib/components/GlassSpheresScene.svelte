@@ -61,10 +61,7 @@
 	const TOTAL_HEIGHT = 85;
 
 	// ── Render target for refraction ──
-	import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocessing';
-
 	let fbo: THREE.WebGLRenderTarget | null = null;
-	let composer: InstanceType<typeof EffectComposer> | null = null;
 
 	// ── Fonts ──
 	const fraunces = 'https://fonts.gstatic.com/s/fraunces/v38/6NVf8FyLNQOQZAnv9ZwNjucMHVn85Ni7emAe9lKqZTnbB-gzTK0K1ChJdt9vIVYX9G37lod9sPEKsxx664UJf1hLTf7W.ttf';
@@ -246,6 +243,12 @@
 	];
 
 	const sphereMeshes: THREE.Mesh[] = [];
+
+	// ── Cinematic intro sphere ──
+	const introGeo = new THREE.IcosahedronGeometry(1, 12);
+	let introSphere: THREE.Mesh | undefined;
+	let introStartTime = 0;
+	const INTRO_DURATION = 3.0; // seconds
 	let starsRef: THREE.Points | undefined;
 	let bgPlane: THREE.Mesh | undefined;
 
@@ -323,6 +326,13 @@
 		bgPlane.position.set(0, 0, -10);
 		bgPlane.renderOrder = -100;
 		scene.add(bgPlane);
+
+		// Create cinematic intro sphere — starts right in front of camera
+		introSphere = new THREE.Mesh(introGeo, refractionMat);
+		introSphere.position.set(0, 0, CAM_Z - 1); // right in front of lens
+		introSphere.scale.setScalar(3); // big, fills viewport
+		scene.add(introSphere);
+		introStartTime = performance.now() / 1000;
 
 		// Create sphere meshes immediately
 		for (const conf of sphereConfs) {
@@ -423,6 +433,29 @@
 		refractionMat.uniforms.uTime.value = t;
 		refractionMat.uniforms.uBreathe.value = 1.0 + breathe * 0.5;
 
+		// ── Cinematic intro animation ──
+		if (introSphere) {
+			const elapsed = t - introStartTime;
+			const introProgress = Math.min(1, elapsed / INTRO_DURATION);
+			// Smooth ease-out: starts fast, decelerates
+			const eased = 1 - Math.pow(1 - introProgress, 3);
+
+			if (introProgress < 1) {
+				// Fly from camera lens (z=CAM_Z-1) to hero position (z=3)
+				introSphere.position.set(
+					eased * 5, // drift right
+					eased * 2, // drift up
+					THREE.MathUtils.lerp(CAM_Z - 1, 3, eased)
+				);
+				// Shrink from viewport-filling to normal
+				introSphere.scale.setScalar(THREE.MathUtils.lerp(3, 1, eased));
+			} else {
+				// Become first hero sphere, join the drift
+				introSphere.position.set(5, 2, 2);
+				introSphere.scale.setScalar(1);
+			}
+		}
+
 		// Spheres: orbit + drift + scroll-triggered entrance
 		const visH = 2 * CAM_Z * Math.tan((FOV / 2) * Math.PI / 180);
 
@@ -477,22 +510,11 @@
 
 		if (bgPlane) bgPlane.position.y = smoothCamY;
 
-		// ── Setup bloom composer on first frame ──
-		if (!composer && renderer) {
-			composer = new EffectComposer(renderer);
-			composer.addPass(new RenderPass(scene, camera.current));
-			composer.addPass(new EffectPass(camera.current, new BloomEffect({
-				intensity: 0.4,
-				luminanceThreshold: 0.6,
-				luminanceSmoothing: 0.3,
-				mipmapBlur: true,
-			})));
-		}
-
 		// ── Two-pass render ──
 		if (fbo && sphereMeshes.length > 0) {
 			// Pass 1: hide spheres, show backing planes → render to FBO
 			for (const m of sphereMeshes) m.visible = false;
+			if (introSphere) introSphere.visible = false;
 			for (const bp of backingPlanes) bp.mesh.visible = true;
 
 			renderer.setRenderTarget(fbo);
@@ -501,15 +523,12 @@
 
 			// Pass 2: show spheres, hide backing planes → render with bloom
 			for (const m of sphereMeshes) m.visible = true;
+			if (introSphere) introSphere.visible = true;
 			for (const bp of backingPlanes) bp.mesh.visible = false;
 
 			renderer.setRenderTarget(null);
-			if (composer) {
-				composer.render();
-			} else {
-				renderer.clear();
-				renderer.render(scene, camera.current);
-			}
+			renderer.clear();
+			renderer.render(scene, camera.current);
 		}
 	});
 
