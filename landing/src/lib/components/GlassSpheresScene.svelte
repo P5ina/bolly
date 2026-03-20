@@ -244,11 +244,11 @@
 
 	const sphereMeshes: THREE.Mesh[] = [];
 
-	// ── Cinematic intro sphere ──
-	const introGeo = new THREE.IcosahedronGeometry(1, 12);
-	let introSphere: THREE.Mesh | undefined;
+	// ── Cinematic intro — ALL spheres start at camera, scatter outward ──
 	let introStartTime = 0;
-	const INTRO_DURATION = 3.0; // seconds
+	const INTRO_HOLD = 1.2;    // seconds: clustered at camera
+	const INTRO_SCATTER = 3.5; // seconds: flying to positions
+	const INTRO_TOTAL = INTRO_HOLD + INTRO_SCATTER;
 	let starsRef: THREE.Points | undefined;
 	let bgPlane: THREE.Mesh | undefined;
 
@@ -327,14 +327,9 @@
 		bgPlane.renderOrder = -100;
 		scene.add(bgPlane);
 
-		// Create cinematic intro sphere — starts right in front of camera
-		introSphere = new THREE.Mesh(introGeo, refractionMat);
-		introSphere.position.set(0, 0, CAM_Z - 1); // right in front of lens
-		introSphere.scale.setScalar(3); // big, fills viewport
-		scene.add(introSphere);
 		introStartTime = performance.now() / 1000;
 
-		// Create sphere meshes immediately
+		// Create sphere meshes — they all start clustered at camera
 		for (const conf of sphereConfs) {
 			const geo = conf.size === 'l' ? geoLarge : conf.size === 'm' ? geoMedium : geoSmall;
 			const mesh = new THREE.Mesh(geo, refractionMat);
@@ -433,30 +428,16 @@
 		refractionMat.uniforms.uTime.value = t;
 		refractionMat.uniforms.uBreathe.value = 1.0 + breathe * 0.5;
 
-		// ── Cinematic intro animation ──
-		if (introSphere) {
-			const elapsed = t - introStartTime;
-			const introProgress = Math.min(1, elapsed / INTRO_DURATION);
-			// Smooth ease-out: starts fast, decelerates
-			const eased = 1 - Math.pow(1 - introProgress, 3);
-
-			if (introProgress < 1) {
-				// Fly from camera lens (z=CAM_Z-1) to hero position (z=3)
-				introSphere.position.set(
-					eased * 5, // drift right
-					eased * 2, // drift up
-					THREE.MathUtils.lerp(CAM_Z - 1, 3, eased)
-				);
-				// Shrink from viewport-filling to normal
-				introSphere.scale.setScalar(THREE.MathUtils.lerp(3, 1, eased));
-			} else {
-				// Become first hero sphere, join the drift
-				introSphere.position.set(5, 2, 2);
-				introSphere.scale.setScalar(1);
-			}
+		// ── Cinematic intro: all spheres clustered at camera, then scatter ──
+		const elapsed = t - introStartTime;
+		const introActive = elapsed < INTRO_TOTAL;
+		let introProgress = 0; // 0 = at camera, 1 = at final position
+		if (elapsed > INTRO_HOLD) {
+			introProgress = Math.min(1, (elapsed - INTRO_HOLD) / INTRO_SCATTER);
+			// Ease out cubic — starts fast, decelerates
+			introProgress = 1 - Math.pow(1 - introProgress, 3);
 		}
 
-		// Spheres: orbit + drift + scroll-triggered entrance
 		const visH = 2 * CAM_Z * Math.tan((FOV / 2) * Math.PI / 180);
 
 		for (let si = 0; si < sphereMeshes.length; si++) {
@@ -464,43 +445,56 @@
 			const conf = mesh.userData as SphereConf;
 			const p = conf.phase;
 
-			// Scroll-triggered entrance: sphere slides in from off-screen
-			const sphereScreenY = conf.y - smoothCamY;
-			const enterThreshold = visH * 0.8;
-			const enterProgress = Math.min(1, Math.max(0, (enterThreshold - Math.abs(sphereScreenY)) / enterThreshold));
-			const enterEased = enterProgress * enterProgress * (3 - 2 * enterProgress); // smoothstep
-
-			// Orbit + drift
+			// Final position: orbit + drift
 			const orbitAngle = scrollProgress * Math.PI * 4 + p;
 			const orbitRadius = Math.abs(conf.x);
 			const driftX = Math.sin(t * 0.2 + p) * 1.5 + Math.sin(t * 0.5 + p * 2.3) * 0.5;
 			const driftY = Math.sin(t * 0.15 + p * 1.7) * 0.8 + Math.cos(t * 0.35 + p * 0.9) * 0.4;
 			const driftZ = Math.sin(t * 0.25 + p * 3.1) * 1.0;
+			const finalX = orbitRadius * Math.cos(orbitAngle) + driftX + mouseX * 0.2;
+			const finalY = conf.y + driftY;
+			const finalZ = orbitRadius * 0.4 * Math.sin(orbitAngle) + driftZ;
 
-			// Off-screen start position (far right/left)
-			const offX = conf.x > 0 ? 20 : -20;
-			const targetX = orbitRadius * Math.cos(orbitAngle) + driftX + mouseX * 0.2;
-			const targetZ = orbitRadius * 0.4 * Math.sin(orbitAngle) + driftZ;
+			if (introActive) {
+				// Intro: start clustered at camera, scatter with stagger
+				const stagger = si * 0.06; // each sphere starts slightly later
+				const myProgress = Math.max(0, Math.min(1, (introProgress - stagger) / (1 - stagger)));
+				const eased = 1 - Math.pow(1 - myProgress, 3);
 
-			mesh.position.x = THREE.MathUtils.lerp(offX, targetX, enterEased);
-			mesh.position.y = conf.y + driftY;
-			mesh.position.z = THREE.MathUtils.lerp(-5, targetZ, enterEased);
-			mesh.scale.setScalar((1 + Math.sin(t * 0.8 + p) * 0.04) * enterEased);
+				// Start position: clustered in front of camera with random jitter
+				const startX = Math.sin(p * 5) * 1.5;
+				const startY = Math.cos(p * 3) * 1.0;
+				const startZ = CAM_Z - 4 + Math.sin(p * 7) * 0.5;
+				const startScale = 1.5 + Math.sin(p) * 0.3;
+
+				mesh.position.x = THREE.MathUtils.lerp(startX, finalX, eased);
+				mesh.position.y = THREE.MathUtils.lerp(startY, finalY, eased);
+				mesh.position.z = THREE.MathUtils.lerp(startZ, finalZ, eased);
+				mesh.scale.setScalar(THREE.MathUtils.lerp(startScale, 1, eased) * (0.5 + eased * 0.5));
+			} else {
+				// Normal: scroll-triggered entrance
+				const sphereScreenY = conf.y - smoothCamY;
+				const enterThreshold = visH * 0.8;
+				const enterProgress = Math.min(1, Math.max(0, (enterThreshold - Math.abs(sphereScreenY)) / enterThreshold));
+				const enterEased = enterProgress * enterProgress * (3 - 2 * enterProgress);
+
+				const offX = conf.x > 0 ? 20 : -20;
+				mesh.position.x = THREE.MathUtils.lerp(offX, finalX, enterEased);
+				mesh.position.y = finalY;
+				mesh.position.z = THREE.MathUtils.lerp(-5, finalZ, enterEased);
+				mesh.scale.setScalar((1 + Math.sin(t * 0.8 + p) * 0.04) * enterEased);
+			}
 
 			// Update particle trail
 			const trail = trailHistory[si];
-			// Shift history
-			for (let ti = TRAIL_COUNT - 1; ti > 0; ti--) {
-				trail[ti].copy(trail[ti - 1]);
-			}
+			for (let ti = TRAIL_COUNT - 1; ti > 0; ti--) trail[ti].copy(trail[ti - 1]);
 			trail[0].copy(mesh.position);
-			// Write to buffer
 			for (let ti = 0; ti < TRAIL_COUNT; ti++) {
 				const idx = (si * TRAIL_COUNT + ti) * 3;
 				trailPositions[idx] = trail[ti].x;
 				trailPositions[idx + 1] = trail[ti].y;
 				trailPositions[idx + 2] = trail[ti].z;
-				trailAlphas[si * TRAIL_COUNT + ti] = (1 - ti / TRAIL_COUNT) * 0.5 * enterEased;
+				trailAlphas[si * TRAIL_COUNT + ti] = (1 - ti / TRAIL_COUNT) * 0.4;
 			}
 		}
 		trailGeo.attributes.position.needsUpdate = true;
@@ -514,7 +508,6 @@
 		if (fbo && sphereMeshes.length > 0) {
 			// Pass 1: hide spheres, show backing planes → render to FBO
 			for (const m of sphereMeshes) m.visible = false;
-			if (introSphere) introSphere.visible = false;
 			for (const bp of backingPlanes) bp.mesh.visible = true;
 
 			renderer.setRenderTarget(fbo);
@@ -523,7 +516,6 @@
 
 			// Pass 2: show spheres, hide backing planes → render with bloom
 			for (const m of sphereMeshes) m.visible = true;
-			if (introSphere) introSphere.visible = true;
 			for (const bp of backingPlanes) bp.mesh.visible = false;
 
 			renderer.setRenderTarget(null);
