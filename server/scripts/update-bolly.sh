@@ -39,11 +39,12 @@ else
 fi
 
 echo "[update] fetching: $API_URL"
-RELEASE_JSON=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$API_URL" 2>&1) || { echo "[update] could not fetch release info"; exit 1; }
-echo "[update] response (first 300 chars): $(echo "$RELEASE_JSON" | head -c 300)"
-TAG=$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"//;s/".*//')
-ASSET_COUNT=$(echo "$RELEASE_JSON" | jq '.assets | length' 2>/dev/null || echo "jq-failed")
-echo "[update] tag=$TAG, assets_in_json=$ASSET_COUNT"
+RELEASE_FILE="/tmp/bolly_release_$$.json"
+curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$API_URL" -o "$RELEASE_FILE" 2>/dev/null || { echo "[update] could not fetch release info"; exit 1; }
+TAG=$(grep '"tag_name"' "$RELEASE_FILE" | head -1 | sed 's/.*"tag_name": *"//;s/".*//')
+ASSET_COUNT=$(jq '.assets | length' "$RELEASE_FILE" 2>/dev/null || echo "jq-failed")
+echo "[update] tag=$TAG, assets_in_json=$ASSET_COUNT, json_size=$(wc -c < "$RELEASE_FILE")bytes"
+RELEASE_JSON=$(cat "$RELEASE_FILE")
 
 if [ -z "$TAG" ]; then
     echo "[update] no tag found in release"
@@ -73,10 +74,10 @@ echo "[update] release_token: $([ -n "$RELEASE_TOKEN" ] && echo 'set' || echo 'N
 ASSET_NAME="bolly-$TARGET"
 ASSET_API_URL=""
 if [ -n "$RELEASE_TOKEN" ] && command -v jq >/dev/null 2>&1; then
-    AVAILABLE_ASSETS=$(echo "$RELEASE_JSON" | jq -r '.assets[].name' 2>/dev/null) || true
+    AVAILABLE_ASSETS=$(jq -r '.assets[].name' "$RELEASE_FILE" 2>/dev/null) || true
     echo "[update] looking for: $ASSET_NAME"
     echo "[update] available assets: $(echo "$AVAILABLE_ASSETS" | tr '\n' ', ')"
-    ASSET_API_URL=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url" 2>/dev/null) || true
+    ASSET_API_URL=$(jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url" "$RELEASE_FILE" 2>/dev/null) || true
 fi
 
 DOWNLOAD_OK=false
