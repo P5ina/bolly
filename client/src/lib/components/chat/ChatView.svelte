@@ -630,31 +630,43 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		stream = [];
 	}
 
-	/** Hide assistant messages in voice mode until TTS starts speaking. */
-	function shouldHideForVoice(msgId: string): boolean {
-		return voice.enabled && turnMessageIds.includes(msgId) && !voice.speaking;
+	/** Is this message waiting for or currently playing TTS? */
+	function isVoiceMessage(msgId: string): boolean {
+		return voice.enabled && (turnMessageIds.includes(msgId) || voice.speakingIds.has(msgId));
 	}
 
-	/** Compute per-message reveal progress based on word distribution across all speaking messages. */
+	/** Compute per-message reveal progress.
+	 *  - In turnMessageIds (waiting for audio): 0 (all words hidden)
+	 *  - In speakingIds (audio playing): 0→1 based on playback
+	 *  - Neither (done or no voice): 1 (fully visible) */
 	function getMessageRevealProgress(msgId: string): number {
-		if (!voice.speaking || !voice.speakingIds.has(msgId)) return 1;
+		// Waiting for audio — show nothing yet
+		if (voice.enabled && turnMessageIds.includes(msgId) && !voice.speakingIds.has(msgId)) {
+			return 0;
+		}
 
-		const speakingMsgs = stream
-			.filter(s => s.type === "message" && voice.speakingIds.has(s.data.id))
-			.map(s => (s as { type: "message"; data: ChatMessage }).data);
+		// Currently playing — distribute progress across speaking messages
+		if (voice.speaking && voice.speakingIds.has(msgId)) {
+			const speakingMsgs = stream
+				.filter(s => s.type === "message" && voice.speakingIds.has(s.data.id))
+				.map(s => (s as { type: "message"; data: ChatMessage }).data);
 
-		const wordCounts = speakingMsgs.map(m => m.content.split(/\s+/).filter(w => w).length);
-		const totalWords = wordCounts.reduce((a, b) => a + b, 0);
-		if (totalWords === 0) return 1;
+			const wordCounts = speakingMsgs.map(m => m.content.split(/\s+/).filter(w => w).length);
+			const totalWords = wordCounts.reduce((a, b) => a + b, 0);
+			if (totalWords === 0) return 1;
 
-		const msgIndex = speakingMsgs.findIndex(m => m.id === msgId);
-		if (msgIndex < 0) return 1;
+			const msgIndex = speakingMsgs.findIndex(m => m.id === msgId);
+			if (msgIndex < 0) return 1;
 
-		const wordsBefore = wordCounts.slice(0, msgIndex).reduce((a, b) => a + b, 0);
-		const wordsInMsg = wordCounts[msgIndex];
-		const revealedWords = voice.revealProgress * totalWords;
-		const localRevealed = Math.max(0, Math.min(wordsInMsg, revealedWords - wordsBefore));
-		return localRevealed / wordsInMsg;
+			const wordsBefore = wordCounts.slice(0, msgIndex).reduce((a, b) => a + b, 0);
+			const wordsInMsg = wordCounts[msgIndex];
+			const revealedWords = voice.revealProgress * totalWords;
+			const localRevealed = Math.max(0, Math.min(wordsInMsg, revealedWords - wordsBefore));
+			return localRevealed / wordsInMsg;
+		}
+
+		// Done or not a voice message
+		return 1;
 	}
 
 	function streamKey(item: StreamItem): string {
@@ -785,9 +797,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					{:else}
 						{#each stream as item, i (streamKey(item))}
 							{#if item.type === "message"}
-								{#if !shouldHideForVoice(item.data.id)}
-									<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} nextMessage={getNext(item, i)} speaking={voice.speakingIds.has(item.data.id)} revealProgress={getMessageRevealProgress(item.data.id)} streaming={item.data.id === streamingMessageId} />
-								{/if}
+								<MessageBubble message={item.data} {slug} index={i} prevMessage={getPrev(item, i)} nextMessage={getNext(item, i)} speaking={isVoiceMessage(item.data.id)} revealProgress={getMessageRevealProgress(item.data.id)} streaming={item.data.id === streamingMessageId} />
 							{:else if item.type === "mcp_app"}
 								<McpAppViewer
 									html={item.html}
