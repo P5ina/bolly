@@ -29,6 +29,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/voice", put(set_voice_id))
         .route("/api/instances/{instance_slug}/music", get(get_music_enabled))
         .route("/api/instances/{instance_slug}/music", put(set_music_enabled))
+        .route("/api/instances/{instance_slug}/voice-mode", get(get_voice_enabled))
+        .route("/api/instances/{instance_slug}/voice-mode", put(set_voice_enabled))
         .route("/api/instances/{instance_slug}/export", get(export_instance))
         .route("/api/instances/{instance_slug}/import", post(import_instance))
 }
@@ -257,6 +259,36 @@ async fn set_music_enabled(
 ) -> StatusCode {
     let mut inst = crate::config::InstanceConfig::load(&state.workspace_dir, &instance_slug);
     inst.music_enabled = req.music_enabled;
+    match inst.save(&state.workspace_dir, &instance_slug) {
+        Ok(_) => StatusCode::OK,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Voice enabled
+// ---------------------------------------------------------------------------
+
+async fn get_voice_enabled(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> Json<serde_json::Value> {
+    let inst = crate::config::InstanceConfig::load(&state.workspace_dir, &instance_slug);
+    Json(serde_json::json!({ "voice_enabled": inst.voice_enabled }))
+}
+
+#[derive(Deserialize)]
+struct SetVoiceEnabledRequest {
+    voice_enabled: bool,
+}
+
+async fn set_voice_enabled(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+    Json(req): Json<SetVoiceEnabledRequest>,
+) -> StatusCode {
+    let mut inst = crate::config::InstanceConfig::load(&state.workspace_dir, &instance_slug);
+    inst.voice_enabled = req.voice_enabled;
     match inst.save(&state.workspace_dir, &instance_slug) {
         Ok(_) => StatusCode::OK,
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR,

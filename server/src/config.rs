@@ -74,6 +74,9 @@ pub struct InstanceConfig {
     /// Whether background music/ambient plays automatically. Default: true.
     #[serde(default = "default_true")]
     pub music_enabled: bool,
+    /// Whether voice mode (TTS) is enabled. Default: false.
+    #[serde(default)]
+    pub voice_enabled: bool,
 }
 
 fn default_true() -> bool { true }

@@ -5,6 +5,7 @@
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getPresentationState } from "$lib/stores/presentation.svelte.js";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
+	import { getVoiceState } from "$lib/stores/voice.svelte.js";
 	import InstanceOnboarding from "$lib/components/onboarding/InstanceOnboarding.svelte";
 	let { children } = $props();
 
@@ -12,18 +13,21 @@
 	const instances = getInstances();
 	const presentation = getPresentationState();
 	const scene = getSceneStore();
+	const voice = getVoiceState();
 	const isNew = $derived(
 		!instances.loading && !instances.list.some((i) => i.slug === slug)
 	);
 	const checking = $derived(instances.loading);
 
-	// Fetch music setting and enter chat mode when instance is ready
+	// Fetch instance settings and enter chat mode when ready
 	$effect(() => {
 		if (!checking && !isNew) {
-			fetchMusicEnabled(slug)
-				.then((res) => scene.setMusicEnabled(res.music_enabled))
-				.catch(() => {})
-				.finally(() => scene.enterChat(slug));
+			Promise.all([
+				fetchMusicEnabled(slug)
+					.then((res) => scene.setMusicEnabled(res.music_enabled))
+					.catch(() => {}),
+				voice.loadForInstance(slug),
+			]).finally(() => scene.enterChat(slug));
 		}
 	});
 
