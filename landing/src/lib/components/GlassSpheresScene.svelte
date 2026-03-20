@@ -34,17 +34,6 @@
 				img.src = dataUrl;
 			});
 
-			console.log(`[HtmlRenderer] element: ${w}x${h}, image: ${image.naturalWidth}x${image.naturalHeight}`);
-			if (!document.getElementById('_dbg')) {
-				const a = document.createElement('a');
-				a.id = '_dbg';
-				a.href = dataUrl;
-				a.target = '_blank';
-				a.textContent = 'Open SVG';
-				a.style.cssText = 'position:fixed;top:10px;left:10px;z-index:99999;color:red;font-size:20px;';
-				document.body.appendChild(a);
-			}
-
 			const canvas = document.createElement('canvas');
 			canvas.width = w;
 			canvas.height = h;
@@ -224,7 +213,7 @@
 			let count = 0;
 			for (const def of backingDefs) {
 				const el = document.querySelector<HTMLElement>(`[data-backing="${def.id}"]`);
-				if (!el) { console.warn(`[GlassScene] ✗ ${def.id}: not found`); continue; }
+				if (!el) continue;
 
 				try {
 					const tex = await htmlRenderer.update(el);
@@ -235,17 +224,13 @@
 						new THREE.PlaneGeometry(pw, ph),
 						new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })
 					);
-					mesh.position.set(def.x, def.y, 2);
+					mesh.position.set(def.x, def.y, 0.01);
 					mesh.visible = false;
 					scene.add(mesh);
 					backingPlanes.push({ mesh, el });
 					count++;
-					console.log(`[GlassScene] ✓ ${def.id}: ${pw.toFixed(1)}x${ph.toFixed(1)} at (${def.x}, ${def.y})`);
-				} catch (e) {
-					console.warn(`[GlassScene] ✗ ${def.id}:`, e);
-				}
+				} catch {}
 			}
-			console.log(`[GlassScene] Captured ${count}/${backingDefs.length}. Scene children:`, scene.children.length);
 
 
 		}, 2500);
