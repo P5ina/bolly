@@ -141,8 +141,12 @@ async fn serve_file_inner(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let is_media = meta.mime_type.starts_with("audio/")
+        || meta.mime_type.starts_with("video/")
+        || meta.mime_type.starts_with("image/");
+    let disposition = if is_media { "inline" } else { "attachment" };
     let content_disposition = format!(
-        "attachment; filename=\"{}\"",
+        "{disposition}; filename=\"{}\"",
         meta.original_name.replace('"', "_")
     );
 
