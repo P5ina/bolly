@@ -118,72 +118,111 @@
 		blending: THREE.AdditiveBlending,
 	});
 
-	// ── Glass refraction shader (matching client's blob style) ──
-	const refractionMat = new THREE.ShaderMaterial({
+	// ── Raymarching SDF shader — metaball glass spheres ──
+	const MAX_SPHERES = 16;
+	const raymarchMat = new THREE.ShaderMaterial({
 		vertexShader: /* glsl */ `
-			uniform float uTime;
-			uniform float uSpeed;
-			uniform float uIntensity;
-			uniform float uBreathe;
-
-			varying vec3 vWorldNormal;
-			varying vec3 vViewDir;
-			varying vec2 vScreenUV;
-
+			varying vec2 vUv;
 			void main() {
-				// Organic blob displacement (same as client SharedScene)
-				float noise = sin(position.x * 2.1 + uTime * uSpeed * 0.7)
-					* cos(position.y * 1.8 + uTime * uSpeed * 0.5)
-					* sin(position.z * 2.5 + uTime * uSpeed * 0.9);
-				vec3 displaced = position * (uBreathe + noise * uIntensity);
-
-				vec4 worldPos = modelMatrix * vec4(displaced, 1.0);
-
-				// Recompute normal from displacement (approximate)
-				float e = 0.01;
-				float nx = sin((position.x+e)*2.1+uTime*uSpeed*0.7)*cos(position.y*1.8+uTime*uSpeed*0.5)*sin(position.z*2.5+uTime*uSpeed*0.9)
-				         - sin((position.x-e)*2.1+uTime*uSpeed*0.7)*cos(position.y*1.8+uTime*uSpeed*0.5)*sin(position.z*2.5+uTime*uSpeed*0.9);
-				float ny = sin(position.x*2.1+uTime*uSpeed*0.7)*cos((position.y+e)*1.8+uTime*uSpeed*0.5)*sin(position.z*2.5+uTime*uSpeed*0.9)
-				         - sin(position.x*2.1+uTime*uSpeed*0.7)*cos((position.y-e)*1.8+uTime*uSpeed*0.5)*sin(position.z*2.5+uTime*uSpeed*0.9);
-				float nz = sin(position.x*2.1+uTime*uSpeed*0.7)*cos(position.y*1.8+uTime*uSpeed*0.5)*sin((position.z+e)*2.5+uTime*uSpeed*0.9)
-				         - sin(position.x*2.1+uTime*uSpeed*0.7)*cos(position.y*1.8+uTime*uSpeed*0.5)*sin((position.z-e)*2.5+uTime*uSpeed*0.9);
-				vec3 displacedNormal = normalize(normal + vec3(nx, ny, nz) * uIntensity * 2.0);
-
-				vWorldNormal = normalize((modelMatrix * vec4(displacedNormal, 0.0)).xyz);
-				vViewDir = normalize(worldPos.xyz - cameraPosition);
-				vec4 clip = projectionMatrix * viewMatrix * worldPos;
-				vScreenUV = clip.xy / clip.w * 0.5 + 0.5;
-				gl_Position = clip;
+				vUv = uv;
+				gl_Position = vec4(position.xy, 0.0, 1.0);
 			}
 		`,
 		fragmentShader: /* glsl */ `
+			#define MAX_SPHERES ${MAX_SPHERES}
+			#define MAX_STEPS 24
+			#define MAX_DIST 30.0
+			#define SURF_DIST 0.08
+
 			uniform sampler2D uSceneTex;
+			uniform vec2 uResolution;
+			uniform vec3 uCamPos;
+			uniform mat4 uInvProjView;
+			uniform float uTime;
+			uniform vec4 uSpheres[MAX_SPHERES]; // xyz = pos, w = radius
+			uniform int uSphereCount;
 			uniform float uIOR;
 			uniform float uChroma;
-			uniform float uFresnelPow;
+			uniform float uSmoothK;
 
-			varying vec3 vWorldNormal;
-			varying vec3 vViewDir;
-			varying vec2 vScreenUV;
+			// Smooth minimum — creates metaball merging
+			float smin(float a, float b, float k) {
+				float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+				return mix(b, a, h) - k * h * (1.0 - h);
+			}
+
+			// SDF: all spheres with smooth union
+			float sceneSDF(vec3 p) {
+				float d = MAX_DIST;
+				for (int i = 0; i < MAX_SPHERES; i++) {
+					if (i >= uSphereCount) break;
+					vec4 s = uSpheres[i];
+					// Organic surface displacement
+					vec3 lp = p - s.xyz;
+					float noise = sin(lp.x * 2.1 + uTime * 0.5) * cos(lp.y * 1.8 + uTime * 0.4) * sin(lp.z * 2.5 + uTime * 0.6) * 0.08;
+					float sd = length(lp) - s.w * (1.0 + noise);
+					d = smin(d, sd, uSmoothK);
+				}
+				return d;
+			}
+
+			// Normal from SDF gradient
+			vec3 calcNormal(vec3 p) {
+				vec2 e = vec2(0.01, 0.0);
+				return normalize(vec3(
+					sceneSDF(p + e.xyy) - sceneSDF(p - e.xyy),
+					sceneSDF(p + e.yxy) - sceneSDF(p - e.yxy),
+					sceneSDF(p + e.yyx) - sceneSDF(p - e.yyx)
+				));
+			}
 
 			void main() {
-				vec3 N = normalize(vWorldNormal);
-				vec3 V = normalize(vViewDir);
+				vec2 uv = gl_FragCoord.xy / uResolution;
+				vec2 ndc = uv * 2.0 - 1.0;
 
-				// Snell refraction
+				// Ray from camera through pixel
+				vec4 nearClip = uInvProjView * vec4(ndc, -1.0, 1.0);
+				vec4 farClip = uInvProjView * vec4(ndc, 1.0, 1.0);
+				vec3 ro = nearClip.xyz / nearClip.w;
+				vec3 rd = normalize(farClip.xyz / farClip.w - ro);
+
+				// Raymarch
+				float t = 0.0;
+				bool hit = false;
+				for (int i = 0; i < MAX_STEPS; i++) {
+					vec3 p = ro + rd * t;
+					float d = sceneSDF(p);
+					if (d < SURF_DIST) { hit = true; break; }
+					if (t > MAX_DIST) break;
+					t += d;
+				}
+
+				if (!hit) {
+					discard;
+					return;
+				}
+
+				vec3 hitPos = ro + rd * t;
+				vec3 N = calcNormal(hitPos);
+				vec3 V = rd;
+
+				// Screen UV for refraction sampling
+				vec2 screenUV = uv;
+
+				// Refraction
 				vec3 refr = refract(V, N, 1.0 / uIOR);
 				vec2 offset = refr.xy * 0.12;
 
-				// Chromatic aberration (dispersion)
-				float r = texture2D(uSceneTex, vScreenUV + offset * (1.0 + uChroma)).r;
-				float g = texture2D(uSceneTex, vScreenUV + offset).g;
-				float b = texture2D(uSceneTex, vScreenUV + offset * (1.0 - uChroma)).b;
+				// Chromatic aberration
+				float r = texture2D(uSceneTex, screenUV + offset * (1.0 + uChroma)).r;
+				float g = texture2D(uSceneTex, screenUV + offset).g;
+				float b = texture2D(uSceneTex, screenUV + offset * (1.0 - uChroma)).b;
 				vec3 refracted = vec3(r, g, b);
 
 				// Fresnel
-				float fresnel = pow(1.0 + dot(V, N), uFresnelPow);
+				float fresnel = pow(1.0 + dot(V, N), 2.5);
 
-				// Specular highlights (key + rim, matching client lighting)
+				// Specular
 				vec3 refl = reflect(V, N);
 				float specKey = pow(max(dot(refl, normalize(vec3(3.0, 2.0, 4.0))), 0.0), 80.0) * 0.4;
 				float specRim = pow(max(dot(refl, normalize(vec3(-3.0, 1.5, -2.0))), 0.0), 40.0) * 0.15;
@@ -198,18 +237,27 @@
 		`,
 		uniforms: {
 			uSceneTex: { value: null },
+			uResolution: { value: new THREE.Vector2() },
+			uCamPos: { value: new THREE.Vector3() },
+			uInvProjView: { value: new THREE.Matrix4() },
+			uTime: { value: 0 },
+			uSpheres: { value: Array.from({ length: MAX_SPHERES }, () => new THREE.Vector4(0, 0, -100, 0.5)) },
+			uSphereCount: { value: 0 },
 			uIOR: { value: 1.45 },
 			uChroma: { value: 0.08 },
-			uFresnelPow: { value: 2.5 },
-			uTime: { value: 0 },
-			uSpeed: { value: 0.8 },
-			uIntensity: { value: 0.08 },
-			uBreathe: { value: 1.0 },
+			uSmoothK: { value: 0.8 }, // merge radius — bigger = more metaball
 		},
+		transparent: true,
+		depthTest: false,
+		depthWrite: false,
 	});
-	const geoLarge = new THREE.IcosahedronGeometry(1, 12);
-	const geoMedium = new THREE.IcosahedronGeometry(0.6, 8);
-	const geoSmall = new THREE.IcosahedronGeometry(0.35, 6);
+
+	// Fullscreen quad for raymarching
+	const raymarchQuad = new THREE.Mesh(
+		new THREE.PlaneGeometry(2, 2),
+		raymarchMat
+	);
+	raymarchQuad.frustumCulled = false;
 
 	// ── Sphere definitions scattered along scroll ──
 	interface SphereConf {
@@ -242,9 +290,12 @@
 		{ x: 5, y: -84, z: 1.5, size: 's', phase: 3.3 },
 	];
 
-	const sphereMeshes: THREE.Mesh[] = [];
-	// Smooth current positions — spheres lerp toward targets
+	// Reusable matrix for inverse proj-view (avoid GC pressure)
+	const _invProjView = new THREE.Matrix4();
+
+	// Sphere positions (no meshes — raymarched)
 	const sphereCurrentPos: THREE.Vector3[] = [];
+	const sphereRadii: number[] = [];
 
 	// ── Cinematic intro — blur wall → spiral away from camera ──
 	let introStartTime = 0;
@@ -252,7 +303,7 @@
 	const INTRO_SPIRAL = 4.0;    // seconds: spiral away from camera to ring
 	const INTRO_TOTAL = INTRO_BLUR + INTRO_SPIRAL;
 	const INTRO_RING_RADIUS = 6;
-	const SPHERE_SPEED = 1.0;    // units per second after intro
+	const SPHERE_SPEED = 3.0;    // units per second after intro
 	let starsRef: THREE.Points | undefined;
 	let bgPlane: THREE.Mesh | undefined;
 
@@ -333,16 +384,12 @@
 
 		introStartTime = performance.now() / 1000;
 
-		// Create sphere meshes — they all start clustered at camera
+		// Init sphere positions (start at camera) and add raymarch quad
 		for (const conf of sphereConfs) {
-			const geo = conf.size === 'l' ? geoLarge : conf.size === 'm' ? geoMedium : geoSmall;
-			const mesh = new THREE.Mesh(geo, refractionMat);
-			mesh.position.set(conf.x, conf.y, conf.z);
-			mesh.userData = conf;
-			scene.add(mesh);
-			sphereMeshes.push(mesh);
-			sphereCurrentPos.push(new THREE.Vector3(0, 0, CAM_Z - 4)); // start at camera
+			sphereCurrentPos.push(new THREE.Vector3(0, 0, CAM_Z - 4));
+			sphereRadii.push(conf.size === 'l' ? 1.0 : conf.size === 'm' ? 0.6 : 0.35);
 		}
+		scene.add(raymarchQuad);
 
 		setTimeout(async () => {
 			// ── Capture HTML elements and place backing planes at known 3D positions ──
@@ -403,14 +450,15 @@
 	useTask(() => {
 		const t = performance.now() / 1000;
 
-		// Resize FBO
-		const w = Math.round(size.current.width * Math.min(devicePixelRatio, 2));
-		const h = Math.round(size.current.height * Math.min(devicePixelRatio, 2));
+		// Resize FBO (full res for refraction quality)
+		const dpr = Math.min(devicePixelRatio, 1.5); // cap DPR for performance
+		const w = Math.round(size.current.width * dpr);
+		const h = Math.round(size.current.height * dpr);
 		if (w > 0 && h > 0) {
 			if (!fbo || fbo.width !== w || fbo.height !== h) {
 				fbo?.dispose();
 				fbo = new THREE.WebGLRenderTarget(w, h);
-				refractionMat.uniforms.uSceneTex.value = fbo.texture;
+				raymarchMat.uniforms.uSceneTex.value = fbo.texture;
 			}
 		}
 
@@ -428,22 +476,28 @@
 
 		const cy = smoothCamY;
 
-		// Update shader uniforms — morphing via time, breathing
-		const breathe = Math.sin(t * 0.8) * 0.04;
-		refractionMat.uniforms.uTime.value = t;
-		refractionMat.uniforms.uBreathe.value = 1.0 + breathe * 0.5;
+		// Update raymarching uniforms
+		raymarchMat.uniforms.uTime.value = t;
+		raymarchMat.uniforms.uResolution.value.set(
+			size.current.width * Math.min(devicePixelRatio, 2),
+			size.current.height * Math.min(devicePixelRatio, 2)
+		);
+		raymarchMat.uniforms.uCamPos.value.copy(camera.current.position);
+		_invProjView.multiplyMatrices(camera.current.projectionMatrix, camera.current.matrixWorldInverse);
+		_invProjView.invert();
+		raymarchMat.uniforms.uInvProjView.value.copy(_invProjView);
 
 		// ── Intro: blur wall → spiral away from camera → drift to positions ──
 		const elapsed = t - introStartTime;
 		const introActive = elapsed < INTRO_TOTAL;
 
-		const totalSpheres = sphereMeshes.length;
+		const totalSpheres = sphereConfs.length;
 
 		for (let si = 0; si < totalSpheres; si++) {
-			const mesh = sphereMeshes[si];
-			const conf = mesh.userData as SphereConf;
+			const conf = sphereConfs[si];
 			const p = conf.phase;
 			const cur = sphereCurrentPos[si];
+			if (!cur) continue;
 
 			// Target position (with drift)
 			const orbitAngle = scrollProgress * Math.PI * 4 + p;
@@ -462,7 +516,7 @@
 					cur.x = Math.sin(p * 5) * 1.2 + jitter;
 					cur.y = Math.cos(p * 3) * 0.8 + Math.cos(t * 2 + p * 3) * 0.2;
 					cur.z = CAM_Z - 4 + Math.sin(p * 7) * 0.3;
-					mesh.scale.setScalar(2.0 + Math.sin(t * 1.5 + p) * 0.2);
+					
 				} else {
 					// Phase 2: SPIRAL AWAY — peel off from camera, spiral to ring
 					const spiralElapsed = elapsed - INTRO_BLUR;
@@ -485,9 +539,9 @@
 					cur.x = THREE.MathUtils.lerp(fromX, toX, eased);
 					cur.y = THREE.MathUtils.lerp(fromY, toY, eased);
 					cur.z = THREE.MathUtils.lerp(fromZ, toZ, eased);
-					mesh.scale.setScalar(THREE.MathUtils.lerp(2.0, 1, eased));
+					
 				}
-				mesh.position.copy(cur);
+				
 			} else {
 				// Post-intro: move toward target at fixed speed
 				const dx = targetX - cur.x;
@@ -505,14 +559,14 @@
 					cur.set(targetX, targetY, targetZ);
 				}
 
-				mesh.position.copy(cur);
-				mesh.scale.setScalar(1 + Math.sin(t * 0.8 + p) * 0.04);
+				
+				
 			}
 
 			// Update particle trail
 			const trail = trailHistory[si];
 			for (let ti = TRAIL_COUNT - 1; ti > 0; ti--) trail[ti].copy(trail[ti - 1]);
-			trail[0].copy(mesh.position);
+			trail[0].copy(cur);
 			for (let ti = 0; ti < TRAIL_COUNT; ti++) {
 				const idx = (si * TRAIL_COUNT + ti) * 3;
 				trailPositions[idx] = trail[ti].x;
@@ -524,22 +578,34 @@
 		trailGeo.attributes.position.needsUpdate = true;
 		trailGeo.attributes.alpha.needsUpdate = true;
 
+		// Update sphere uniforms for raymarching
+		const sphereUniforms = raymarchMat.uniforms.uSpheres.value as THREE.Vector4[];
+		for (let si = 0; si < totalSpheres && si < MAX_SPHERES; si++) {
+			sphereUniforms[si].set(
+				sphereCurrentPos[si].x,
+				sphereCurrentPos[si].y,
+				sphereCurrentPos[si].z,
+				sphereRadii[si] || 0.5
+			);
+		}
+		raymarchMat.uniforms.uSphereCount.value = Math.min(totalSpheres, MAX_SPHERES);
+
 		if (starsRef) starsRef.rotation.y = t * 0.005 + mouseX * 0.02;
 
 		if (bgPlane) bgPlane.position.y = smoothCamY;
 
 		// ── Two-pass render ──
-		if (fbo && sphereMeshes.length > 0) {
-			// Pass 1: hide spheres, show backing planes → render to FBO
-			for (const m of sphereMeshes) m.visible = false;
+		if (fbo) {
+			// Pass 1: hide raymarch quad, show backing planes → render to FBO
+			raymarchQuad.visible = false;
 			for (const bp of backingPlanes) bp.mesh.visible = true;
 
 			renderer.setRenderTarget(fbo);
 			renderer.clear();
 			renderer.render(scene, camera.current);
 
-			// Pass 2: show spheres, hide backing planes → render with bloom
-			for (const m of sphereMeshes) m.visible = true;
+			// Pass 2: show raymarch quad, hide backing planes → render to screen
+			raymarchQuad.visible = true;
 			for (const bp of backingPlanes) bp.mesh.visible = false;
 
 			renderer.setRenderTarget(null);
@@ -711,7 +777,4 @@
 </HTML>
 
 <!-- ═══ SPHERES ═══ -->
-<!-- Glass spheres created programmatically in onMount -->
-{#each sphereMeshes as mesh}
-	<T is={mesh} />
-{/each}
+<!-- Raymarched glass spheres (fullscreen quad added programmatically) -->
