@@ -126,7 +126,7 @@
 
 				// Snell refraction
 				vec3 refr = refract(V, N, 1.0 / uIOR);
-				vec2 offset = refr.xy * 0.03;
+				vec2 offset = refr.xy * 0.12;
 
 				// Chromatic aberration
 				float r = texture2D(uSceneTex, vScreenUV + offset * (1.0 + uChroma)).r;
@@ -151,9 +151,9 @@
 		`,
 		uniforms: {
 			uSceneTex: { value: null },
-			uIOR: { value: 1.05 },
-			uChroma: { value: 0.02 },
-			uFresnelPow: { value: 3.0 },
+			uIOR: { value: 1.45 },
+			uChroma: { value: 0.08 },
+			uFresnelPow: { value: 2.5 },
 		},
 	});
 	const mainGeo = new THREE.IcosahedronGeometry(1, 12);
@@ -275,17 +275,38 @@
 		camera.current.lookAt(0, smoothCamY, 0);
 
 		const cy = smoothCamY;
+
+		// Organic breathing
+		const breathe = Math.sin(t * 0.8) * 0.04;
+
 		if (mainSphere) {
-			// Follow cursor for testing
-			const visH = 2 * CAM_Z * Math.tan((FOV / 2) * Math.PI / 180);
-			const visW = visH * (window.innerWidth / window.innerHeight);
-			mainSphere.position.set(mouseX * visW * 0.5, cy - mouseY * visH * 0.5, 2);
+			const a = t * 0.3;
+			mainSphere.position.set(
+				6 * Math.cos(a) + mouseX * 0.5,
+				cy + Math.sin(t * 0.4) * 2 + mouseY * -0.3,
+				3 * Math.sin(a)
+			);
+			mainSphere.rotation.set(t * 0.08, t * 0.15, 0);
+			mainSphere.scale.setScalar(1 + breathe);
 		}
 		if (smallSphere) {
-			smallSphere.position.set(-5 * Math.cos(t * 0.4 + 1) + mouseX * 0.3, cy - 1.5 + Math.sin(t * 0.5 + 1) * 1.5, 2.5 * Math.sin(t * 0.4 + 1));
+			const a = t * 0.4 + 1;
+			smallSphere.position.set(
+				-5 * Math.cos(a) + mouseX * 0.3,
+				cy - 1.5 + Math.sin(t * 0.5 + 1) * 1.5 + mouseY * -0.2,
+				2.5 * Math.sin(a)
+			);
+			smallSphere.rotation.y = t * 0.2;
+			smallSphere.scale.setScalar(1 + Math.sin(t * 1.1 + 2) * 0.03);
 		}
 		if (tinySphere) {
-			tinySphere.position.set(4.5 * Math.cos(t * 0.5 + 2) + mouseX * 0.2, cy + 2 + Math.sin(t * 0.6 + 2) * 1, 2 * Math.sin(t * 0.5 + 2));
+			const a = t * 0.5 + 2;
+			tinySphere.position.set(
+				4.5 * Math.cos(a) + mouseX * 0.2,
+				cy + 2 + Math.sin(t * 0.6 + 2) * 1 + mouseY * -0.15,
+				2 * Math.sin(a)
+			);
+			tinySphere.rotation.y = t * -0.25;
 		}
 		if (starsRef) starsRef.rotation.y = t * 0.005 + mouseX * 0.02;
 
