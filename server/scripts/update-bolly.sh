@@ -69,6 +69,9 @@ echo "[update] release_token: $([ -n "$RELEASE_TOKEN" ] && echo 'set' || echo 'N
 ASSET_NAME="bolly-$TARGET"
 ASSET_API_URL=""
 if [ -n "$RELEASE_TOKEN" ] && command -v jq >/dev/null 2>&1; then
+    AVAILABLE_ASSETS=$(echo "$RELEASE_JSON" | jq -r '.assets[].name' 2>/dev/null) || true
+    echo "[update] looking for: $ASSET_NAME"
+    echo "[update] available assets: $(echo "$AVAILABLE_ASSETS" | tr '\n' ', ')"
     ASSET_API_URL=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url" 2>/dev/null) || true
 fi
 
