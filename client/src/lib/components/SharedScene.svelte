@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onMount, onDestroy } from "svelte";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
 
 	const store = getSceneStore();
@@ -53,6 +53,9 @@
 	// Final chat position
 	const FINAL_X = 1.8, FINAL_Y = -0.1, FINAL_Z = 0, FINAL_SCALE = 1.2;
 	const HOME_SCALE = 0.5;
+
+	let cleanup: (() => void) | null = null;
+	onDestroy(() => cleanup?.());
 
 	onMount(async () => {
 		if (!container) return;
@@ -728,7 +731,7 @@
 		}
 		requestAnimationFrame(animate);
 
-		return () => {
+		cleanup = () => {
 			running = false;
 			ro.disconnect();
 			renderer.domElement.removeEventListener("pointermove", onPointerMove);

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onMount, onDestroy } from "svelte";
 
 	let { thinking = false, mood = "calm", voiceAmplitude = 0 }: { thinking?: boolean; mood?: string; voiceAmplitude?: number } = $props();
 
@@ -50,6 +50,9 @@
 	$effect(() => { moodRef = mood; });
 	$effect(() => { thinkingRef = thinking; });
 	$effect(() => { voiceRef = voiceAmplitude; });
+
+	let cleanup: (() => void) | null = null;
+	onDestroy(() => cleanup?.());
 
 	onMount(async () => {
 		if (!container) return;
@@ -252,7 +255,7 @@
 		}
 		requestAnimationFrame(animate);
 
-		return () => {
+		cleanup = () => {
 			running = false;
 			ro.disconnect();
 			creatureGeo.dispose();
