@@ -39,7 +39,8 @@ else
 fi
 
 echo "[update] fetching: $API_URL"
-RELEASE_JSON=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$API_URL" 2>/dev/null) || { echo "[update] could not fetch release info"; exit 1; }
+RELEASE_JSON=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$API_URL" 2>&1) || { echo "[update] could not fetch release info"; exit 1; }
+echo "[update] response (first 300 chars): $(echo "$RELEASE_JSON" | head -c 300)"
 TAG=$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"//;s/".*//')
 ASSET_COUNT=$(echo "$RELEASE_JSON" | jq '.assets | length' 2>/dev/null || echo "jq-failed")
 echo "[update] tag=$TAG, assets_in_json=$ASSET_COUNT"
