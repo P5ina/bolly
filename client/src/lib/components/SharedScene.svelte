@@ -411,8 +411,11 @@
 		let skipFrame = false;
 		let smoothAmp = 0;
 		let smoothMusicAmp = 0;
-		let beatPulse = 0;       // 0→1 on beat hit, decays to 0
-		let prevBassEnergy = 0;  // for onset detection
+		let beatPulse = 0;         // 0→1 on beat hit, decays to 0
+		let prevSpectrum: number[] = [];  // previous frame's frequency data
+		const fluxHistory: number[] = [];  // rolling window of spectral flux values
+		const FLUX_HISTORY_SIZE = 30;      // ~0.5s at 60fps (skip every other = ~1s)
+		let lastBeatTime = 0;
 		let smoothSpeed = 0.8;
 		let smoothIntensity = 0.08;
 		let lastMode: string = "";
@@ -582,23 +585,45 @@
 				uIntensity.value = smoothIntensity;
 
 				if (isMusic) {
-					// Onset detection: detect bass energy spikes → trigger pulse
+					// Spectral flux onset detection — measures change in frequency
+					// spectrum between frames. Much more reliable than raw bass energy.
 					const freqData = store.getMusicFrequencyData();
 					if (freqData) {
-						const bassEnd = Math.floor(freqData.length * 0.06);
-						let bassSum = 0;
-						for (let j = 0; j < bassEnd; j++) bassSum += freqData[j];
-						const bassEnergy = bassEnd > 0 ? bassSum / (bassEnd * 255) : 0;
-						// Onset = energy jump above previous frame
-						const onset = bassEnergy - prevBassEnergy;
-						if (onset > 0.05 && bassEnergy > 0.15) {
-							// Beat hit — fire pulse
-							beatPulse = 1.0;
+						// Initialize prev spectrum on first frame
+						if (prevSpectrum.length !== freqData.length) {
+							prevSpectrum = Array.from(freqData);
 						}
-						prevBassEnergy = bassEnergy;
+						// Spectral flux: sum of positive differences (only increases)
+						// Focus on low-mid frequencies (first 40% of bins)
+						const rangeEnd = Math.floor(freqData.length * 0.4);
+						let flux = 0;
+						for (let j = 0; j < rangeEnd; j++) {
+							const diff = freqData[j] - prevSpectrum[j];
+							if (diff > 0) flux += diff;
+							prevSpectrum[j] = freqData[j];
+						}
+						flux /= rangeEnd; // normalize
+
+						// Adaptive threshold: mean + 1.5 × stddev of recent flux
+						fluxHistory.push(flux);
+						if (fluxHistory.length > FLUX_HISTORY_SIZE) fluxHistory.shift();
+
+						if (fluxHistory.length >= 8) {
+							const mean = fluxHistory.reduce((a, b) => a + b, 0) / fluxHistory.length;
+							const variance = fluxHistory.reduce((a, b) => a + (b - mean) ** 2, 0) / fluxHistory.length;
+							const stddev = Math.sqrt(variance);
+							const threshold = mean + 1.5 * stddev;
+
+							// Beat detected if flux exceeds adaptive threshold + cooldown
+							const now = performance.now() / 1000;
+							if (flux > threshold && flux > 3 && (now - lastBeatTime) > 0.15) {
+								beatPulse = 1.0;
+								lastBeatTime = now;
+							}
+						}
 					}
-					// Decay pulse quickly for punchy feel
-					beatPulse *= Math.pow(0.04, delta); // ~96% decay per second
+					// Exponential decay for punchy feel
+					beatPulse *= Math.pow(0.02, delta);
 					// Scale: base 0.88, expand to 1.18 on beat
 					uBreathe.value = 0.88 + beatPulse * 0.30;
 				} else {
