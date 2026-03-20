@@ -15,43 +15,26 @@
 	}
 </script>
 
-<nav
-	class="fixed top-0 left-0 right-0 z-100 py-4 backdrop-blur-[24px] transition-all duration-400"
-	style="background: oklch(0.05 0.015 280 / 70%); border-bottom: 1px solid {scrolled ? 'oklch(1 0 0 / 8%)' : 'oklch(1 0 0 / 5%)'};"
->
-	<div class="mx-auto max-w-[1100px] px-6 flex items-center justify-between">
-		<a href="/" class="flex items-center gap-2.5">
-			<div
-				class="w-8 h-8 rounded-lg flex items-center justify-center font-display italic text-base text-warm"
-				style="background: var(--color-warm-glow); border: 1px solid var(--color-border-warm);"
-			>
-				b
-			</div>
-			<span class="font-display italic text-xl text-text tracking-tight">bolly</span>
+<nav class="nav" class:nav-scrolled={scrolled}>
+	<div class="nav-inner">
+		<a href="/" class="nav-brand">
+			<div class="nav-logo">b</div>
+			<span class="nav-name">bolly</span>
 		</a>
 
 		<!-- desktop -->
-		<ul class="hidden md:flex items-center gap-8 list-none">
-			<li><a href="/#features" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Features</a></li>
-			<li><a href="/#how" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">How it works</a></li>
-			<li><a href="/#pricing" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Pricing</a></li>
-			<li><a href="/skills" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Skills</a></li>
-			<li><a href="https://github.com/P5ina/bolly" target="_blank" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">GitHub</a></li>
-			<li><a href="/login" class="text-[0.8125rem] text-text-dim tracking-wide hover:text-text transition-colors">Log in</a></li>
-			<li>
-				<a
-					href="/signup"
-					class="text-[0.8125rem] py-2 px-5 rounded-full text-warm transition-all duration-300 hover:shadow-[0_0_30px_oklch(0.78_0.12_75/8%)]"
-					style="background: var(--color-warm-glow); border: 1px solid var(--color-border-warm);"
-				>
-					Get started
-				</a>
-			</li>
+		<ul class="nav-links">
+			<li><a href="/#features" class="nav-link">Features</a></li>
+			<li><a href="/#how" class="nav-link">How it works</a></li>
+			<li><a href="/#pricing" class="nav-link">Pricing</a></li>
+			<li><a href="/skills" class="nav-link">Skills</a></li>
+			<li><a href="/login" class="nav-link">Log in</a></li>
+			<li><a href="/signup" class="nav-cta">Get started</a></li>
 		</ul>
 
 		<!-- mobile toggle -->
 		<button
-			class="mobile-toggle md:hidden"
+			class="mobile-toggle"
 			onclick={() => mobileOpen = !mobileOpen}
 			aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
 		>
@@ -61,31 +44,136 @@
 	</div>
 </nav>
 
-<!-- mobile menu -->
 {#if mobileOpen}
 	<button class="mobile-backdrop" onclick={closeMobile} aria-label="Close menu"></button>
-
 	<div class="mobile-menu">
 		<a href="/#features" onclick={closeMobile} class="mobile-link">Features</a>
 		<a href="/#how" onclick={closeMobile} class="mobile-link">How it works</a>
 		<a href="/#pricing" onclick={closeMobile} class="mobile-link">Pricing</a>
 		<a href="/skills" class="mobile-link">Skills</a>
-		<a href="https://github.com/P5ina/bolly" target="_blank" class="mobile-link">GitHub</a>
-
 		<div class="mobile-divider"></div>
-
 		<a href="/login" class="mobile-link">Log in</a>
 		<a href="/signup" class="mobile-cta">Get started</a>
 	</div>
 {/if}
 
 <style>
-	.mobile-toggle {
+	.nav {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		z-index: 100;
+		padding: 1rem 0;
+		backdrop-filter: blur(24px) saturate(160%) brightness(1.04);
+		background: oklch(0.04 0.015 260 / 50%);
+		border-bottom: 1px solid var(--glass-border);
+		transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.nav::after {
+		content: '';
+		position: absolute;
+		bottom: 0;
+		left: 10%;
+		right: 10%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 8%), transparent);
+		pointer-events: none;
+	}
+
+	.nav-scrolled {
+		background: oklch(0.04 0.015 260 / 70%);
+		border-bottom-color: oklch(1 0 0 / 10%);
+		box-shadow: 0 8px 32px oklch(0 0 0 / 20%);
+	}
+
+	.nav-inner {
+		max-width: 1100px;
+		margin: 0 auto;
+		padding: 0 1.5rem;
 		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.nav-brand {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+		text-decoration: none;
+	}
+
+	.nav-logo {
+		width: 2rem;
+		height: 2rem;
+		border-radius: 0.5rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-family: var(--font-display);
+		font-style: italic;
+		font-size: 0.875rem;
+		color: var(--color-warm);
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		border: 1px solid var(--glass-border);
+		border-top-color: var(--glass-border-top);
+	}
+
+	.nav-name {
+		font-family: var(--font-display);
+		font-style: italic;
+		font-size: 1.25rem;
+		color: var(--color-text);
+		letter-spacing: -0.02em;
+	}
+
+	.nav-links {
+		display: flex;
+		align-items: center;
+		gap: 2rem;
+		list-style: none;
+	}
+
+	.nav-link {
+		font-size: 0.8125rem;
+		color: oklch(0.90 0.02 75 / 45%);
+		letter-spacing: 0.02em;
+		transition: color 0.3s ease;
+		text-decoration: none;
+	}
+
+	.nav-link:hover {
+		color: oklch(0.90 0.02 75 / 85%);
+	}
+
+	.nav-cta {
+		font-size: 0.8125rem;
+		padding: 0.5rem 1.25rem;
+		border-radius: 2rem;
+		color: var(--color-warm);
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		border: 1px solid oklch(0.78 0.12 75 / 12%);
+		border-top-color: oklch(0.78 0.12 75 / 20%);
+		transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+		text-decoration: none;
+	}
+
+	.nav-cta:hover {
+		border-color: oklch(0.78 0.12 75 / 30%);
+		box-shadow: 0 0 30px oklch(0.78 0.12 75 / 8%);
+	}
+
+	.mobile-toggle {
+		display: none;
 		flex-direction: column;
 		gap: 5px;
 		padding: 0.5rem;
 		cursor: pointer;
+		background: none;
+		border: none;
 	}
 
 	.toggle-line {
@@ -108,8 +196,8 @@
 		position: fixed;
 		inset: 0;
 		z-index: 90;
-		background: oklch(0 0 0 / 40%);
-		backdrop-filter: blur(4px);
+		background: oklch(0 0 0 / 50%);
+		backdrop-filter: blur(8px);
 		animation: fade-in 0.2s ease both;
 		border: none;
 		cursor: default;
@@ -122,9 +210,9 @@
 		bottom: 0;
 		width: min(280px, 80vw);
 		z-index: 95;
-		background: oklch(0.06 0.015 280 / 95%);
-		backdrop-filter: blur(24px);
-		border-left: 1px solid oklch(1 0 0 / 6%);
+		background: oklch(0.05 0.015 260 / 80%);
+		backdrop-filter: blur(32px) saturate(160%) brightness(1.04);
+		border-left: 1px solid var(--glass-border);
 		padding: 5rem 1.5rem 2rem;
 		display: flex;
 		flex-direction: column;
@@ -134,21 +222,21 @@
 
 	.mobile-link {
 		display: block;
-		padding: 0.75rem 0.75rem;
+		padding: 0.75rem;
 		font-size: 0.875rem;
-		color: oklch(0.88 0.02 75 / 60%);
-		border-radius: 0.5rem;
+		color: oklch(0.90 0.02 75 / 50%);
+		border-radius: 0.75rem;
 		transition: all 0.2s ease;
 		text-decoration: none;
 	}
 	.mobile-link:hover {
-		color: oklch(0.88 0.02 75 / 90%);
-		background: oklch(1 0 0 / 3%);
+		color: oklch(0.90 0.02 75 / 85%);
+		background: oklch(1 0 0 / 4%);
 	}
 
 	.mobile-divider {
 		height: 1px;
-		background: oklch(1 0 0 / 6%);
+		background: linear-gradient(90deg, oklch(1 0 0 / 8%), transparent);
 		margin: 0.5rem 0.75rem;
 	}
 
@@ -159,15 +247,20 @@
 		padding: 0.75rem 1.5rem;
 		border-radius: 2rem;
 		font-size: 0.875rem;
-		color: oklch(0.78 0.12 75 / 90%);
-		background: oklch(0.78 0.12 75 / 8%);
-		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		color: var(--color-warm);
+		background: var(--glass-bg);
+		border: 1px solid oklch(0.78 0.12 75 / 12%);
 		transition: all 0.2s ease;
 		text-decoration: none;
 	}
 	.mobile-cta:hover {
-		background: oklch(0.78 0.12 75 / 14%);
-		border-color: oklch(0.78 0.12 75 / 40%);
+		background: oklch(1 0 0 / 8%);
+		border-color: oklch(0.78 0.12 75 / 30%);
+	}
+
+	@media (max-width: 768px) {
+		.nav-links { display: none; }
+		.mobile-toggle { display: flex; }
 	}
 
 	@keyframes fade-in {

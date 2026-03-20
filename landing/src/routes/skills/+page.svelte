@@ -142,9 +142,9 @@
 				</p>
 			</Reveal>
 
-			<div class="skills-grid">
-				{#each filtered as skill, i (skill.id)}
-					<Reveal delay={450 + i * 50}>
+			<Reveal delay={450}>
+				<div class="skills-grid">
+					{#each filtered as skill (skill.id)}
 						<button
 							class="skill-card"
 							class:skill-card-selected={selectedSkill?.id === skill.id}
@@ -180,9 +180,9 @@
 								</div>
 							{/if}
 						</button>
-					</Reveal>
-				{/each}
-			</div>
+					{/each}
+				</div>
+			</Reveal>
 		{/if}
 
 		<!-- Publish CTA -->
@@ -238,7 +238,7 @@
 		margin-bottom: 2rem;
 	}
 
-	/* Search */
+	/* Search — glass */
 	.search-wrap {
 		position: relative;
 		max-width: 400px;
@@ -252,7 +252,7 @@
 		transform: translateY(-50%);
 		width: 1rem;
 		height: 1rem;
-		color: var(--color-text-ghost);
+		color: oklch(0.90 0.02 75 / 25%);
 		pointer-events: none;
 	}
 
@@ -261,20 +261,23 @@
 		font-family: var(--font-mono);
 		font-size: 0.9rem;
 		color: var(--color-text);
-		background: var(--color-bg-raised);
-		border: 1px solid var(--color-border);
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		border: 1px solid var(--glass-border);
+		border-top-color: var(--glass-border-top);
 		border-radius: 0.75rem;
 		padding: 0.625rem 2.5rem 0.625rem 2.5rem;
 		outline: none;
-		transition: border-color 0.2s ease;
+		transition: all 0.3s ease;
 	}
 
 	.search-input:focus {
-		border-color: var(--color-border-warm);
+		border-color: oklch(1 0 0 / 16%);
+		box-shadow: 0 0 0 3px oklch(0.55 0.08 240 / 6%);
 	}
 
 	.search-input::placeholder {
-		color: var(--color-text-ghost);
+		color: oklch(0.90 0.02 75 / 20%);
 	}
 
 	.search-clear {
@@ -282,7 +285,7 @@
 		right: 0.625rem;
 		top: 50%;
 		transform: translateY(-50%);
-		color: var(--color-text-ghost);
+		color: oklch(0.90 0.02 75 / 25%);
 		background: none;
 		border: none;
 		cursor: pointer;
@@ -292,7 +295,7 @@
 	}
 
 	.search-clear:hover {
-		color: var(--color-text-dim);
+		color: oklch(0.90 0.02 75 / 60%);
 	}
 
 	/* Loading / Empty */
@@ -309,13 +312,13 @@
 		height: 8px;
 		border-radius: 50%;
 		background: var(--color-warm-dim);
-		animation: breathe 2s ease-in-out infinite;
+		animation: presence-beacon 2.5s ease-in-out infinite;
 	}
 
 	.loading-text {
 		font-family: var(--font-mono);
 		font-size: 0.85rem;
-		color: var(--color-text-ghost);
+		color: oklch(0.90 0.02 75 / 20%);
 	}
 
 	.empty-state {
@@ -336,15 +339,16 @@
 
 	.empty-hint {
 		font-size: 0.9rem;
-		color: var(--color-text-ghost);
+		color: oklch(0.90 0.02 75 / 25%);
 	}
 
 	.btn-retry {
 		font-family: var(--font-mono);
 		font-size: 0.85rem;
-		color: var(--color-warm-dim);
-		background: var(--color-warm-ghost);
-		border: 1px solid var(--color-border-warm);
+		color: oklch(0.90 0.02 75 / 40%);
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		border: 1px solid var(--glass-border);
 		padding: 0.4rem 1rem;
 		border-radius: 0.5rem;
 		cursor: pointer;
@@ -354,86 +358,105 @@
 
 	.btn-retry:hover {
 		color: var(--color-warm);
-		background: oklch(0.78 0.12 75 / 8%);
+		border-color: oklch(1 0 0 / 14%);
 	}
 
 	/* Results */
 	.results-count {
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
-		color: var(--color-text-ghost);
+		color: oklch(0.90 0.02 75 / 20%);
 		letter-spacing: 0.04em;
 		margin-bottom: 1rem;
 	}
 
-	/* Grid */
+	/* Grid — glass cards */
 	.skills-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-		gap: 1px;
-		background: var(--color-border);
-		border: 1px solid var(--color-border);
-		border-radius: 1rem;
-		overflow: hidden;
+		gap: 1rem;
 		margin-bottom: 4rem;
 	}
 
-	/* Card */
+	/* Card — glass */
 	.skill-card {
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
 		padding: 1.5rem 1.375rem;
-		background: var(--color-bg);
-		border: none;
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		border: 1px solid var(--glass-border);
+		border-top-color: var(--glass-border-top);
+		border-radius: 1rem;
 		cursor: pointer;
 		text-align: left;
 		width: 100%;
 		transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 		position: relative;
+		overflow: hidden;
 	}
 
+	/* specular highlight */
 	.skill-card::before {
 		content: '';
 		position: absolute;
-		inset: 0;
-		background: radial-gradient(
-			ellipse at 50% 0%,
-			oklch(0.78 0.12 75 / 3%) 0%,
-			transparent 70%
-		);
-		opacity: 0;
-		transition: opacity 0.5s ease;
+		top: 0;
+		left: 10%;
+		right: 10%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, var(--glass-highlight), transparent);
 		pointer-events: none;
+		z-index: 2;
 	}
 
-	.skill-card:hover::before {
-		opacity: 1;
+	/* inner refraction */
+	.skill-card::after {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 40%;
+		background: linear-gradient(180deg, oklch(1 0 0 / 3%) 0%, transparent 100%);
+		pointer-events: none;
+		z-index: 1;
+		border-radius: 1rem 1rem 0 0;
+	}
+
+	.skill-card:hover {
+		border-color: oklch(1 0 0 / 14%);
+		background: oklch(1 0 0 / 6%);
+		transform: translateY(-2px);
+		box-shadow:
+			0 4px 24px oklch(0 0 0 / 20%),
+			inset 0 1px 0 oklch(1 0 0 / 8%);
 	}
 
 	.skill-card-selected {
-		background: var(--color-bg-raised);
-	}
-
-	.skill-card-selected::before {
-		opacity: 1;
+		border-color: oklch(1 0 0 / 12%);
+		background: oklch(1 0 0 / 5%);
 	}
 
 	.skill-header {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
+		position: relative;
+		z-index: 3;
 	}
 
 	.skill-icon {
 		font-family: var(--font-mono);
 		font-size: 0.9rem;
-		color: var(--color-warm-dim);
+		color: oklch(0.90 0.02 75 / 40%);
 		width: 2rem;
 		height: 2rem;
 		border-radius: 0.5rem;
-		background: var(--color-warm-ghost);
-		border: 1px solid var(--color-border-warm);
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		border: 1px solid var(--glass-border);
+		border-top-color: var(--glass-border-top);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -442,10 +465,10 @@
 	}
 
 	.skill-card:hover .skill-icon {
-		background: oklch(0.78 0.12 75 / 8%);
-		border-color: oklch(0.78 0.12 75 / 35%);
-		color: var(--color-warm);
-		box-shadow: 0 0 20px oklch(0.78 0.12 75 / 6%);
+		background: oklch(1 0 0 / 8%);
+		border-color: oklch(1 0 0 / 18%);
+		color: oklch(0.90 0.02 75 / 75%);
+		box-shadow: 0 0 20px oklch(0.55 0.08 240 / 8%);
 	}
 
 	.skill-name {
@@ -455,12 +478,16 @@
 		font-size: 1rem;
 		color: var(--color-text);
 		letter-spacing: -0.01em;
+		position: relative;
+		z-index: 3;
 	}
 
 	.skill-desc {
 		font-size: 0.9rem;
 		color: var(--color-text-dim);
 		line-height: 1.55;
+		position: relative;
+		z-index: 3;
 	}
 
 	.skill-meta {
@@ -468,18 +495,20 @@
 		align-items: center;
 		gap: 0.5rem;
 		margin-top: 0.25rem;
+		position: relative;
+		z-index: 3;
 	}
 
 	.skill-author {
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
-		color: var(--color-text-ghost);
+		color: oklch(0.90 0.02 75 / 25%);
 	}
 
 	.skill-repo {
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
-		color: oklch(0.78 0.12 75 / 35%);
+		color: oklch(0.78 0.12 75 / 30%);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -492,8 +521,10 @@
 		gap: 0.75rem;
 		padding-top: 0.75rem;
 		margin-top: 0.25rem;
-		border-top: 1px solid var(--color-border);
+		border-top: 1px solid var(--glass-border);
 		animation: fade-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+		position: relative;
+		z-index: 3;
 	}
 
 	.skill-install-hint {
@@ -503,13 +534,13 @@
 	}
 
 	.skill-install-hint strong {
-		color: var(--color-warm-dim);
+		color: oklch(0.78 0.12 75 / 50%);
 	}
 
 	.skill-github-link {
 		font-family: var(--font-mono);
 		font-size: 0.85rem;
-		color: var(--color-text-ghost);
+		color: oklch(0.90 0.02 75 / 30%);
 		text-decoration: none;
 		transition: color 0.2s;
 	}
@@ -518,17 +549,40 @@
 		color: var(--color-warm);
 	}
 
-	/* Publish CTA */
+	/* Publish CTA — glass */
 	.publish-cta {
 		text-align: center;
 		padding: 4rem 2rem;
-		border: 1px solid var(--color-border);
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		border: 1px solid var(--glass-border);
+		border-top-color: var(--glass-border-top);
 		border-radius: 1rem;
-		background: radial-gradient(
-			ellipse at 50% 0%,
-			oklch(0.78 0.12 75 / 4%) 0%,
-			transparent 60%
-		);
+		position: relative;
+		overflow: hidden;
+	}
+
+	.publish-cta::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 10%;
+		right: 10%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, var(--glass-highlight), transparent);
+		pointer-events: none;
+	}
+
+	.publish-cta::after {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 40%;
+		background: linear-gradient(180deg, oklch(1 0 0 / 3%) 0%, transparent 100%);
+		pointer-events: none;
+		border-radius: 1rem 1rem 0 0;
 	}
 
 	.publish-title {
@@ -538,6 +592,8 @@
 		font-size: 1.5rem;
 		color: var(--color-text);
 		margin-bottom: 0.75rem;
+		position: relative;
+		z-index: 2;
 	}
 
 	.publish-desc {
@@ -546,15 +602,18 @@
 		max-width: 420px;
 		margin: 0 auto 1.5rem;
 		line-height: 1.6;
+		position: relative;
+		z-index: 2;
 	}
 
 	.publish-desc code {
 		font-family: var(--font-mono);
 		font-size: 0.9rem;
-		color: var(--color-warm-dim);
-		background: var(--color-warm-ghost);
+		color: oklch(0.78 0.12 75 / 45%);
+		background: oklch(1 0 0 / 4%);
 		padding: 0.1rem 0.35rem;
 		border-radius: 0.25rem;
+		border: 1px solid var(--glass-border);
 	}
 
 	@media (max-width: 768px) {

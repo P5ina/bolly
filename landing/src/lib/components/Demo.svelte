@@ -13,6 +13,9 @@
 							<span class="text-[0.8125rem] text-text">bolly</span>
 							<span class="demo-mood">feeling curious</span>
 						</div>
+						<div class="demo-presence">
+							<span class="demo-presence-dot"></span>
+						</div>
 					</div>
 					<div class="demo-body">
 						<div class="demo-msg demo-msg-user">
@@ -96,11 +99,45 @@
 		align-items: center;
 	}
 
+	/* ── Glass chat window ── */
 	.demo-chat {
-		background: oklch(0.04 0.01 280);
-		border: 1px solid var(--color-border);
-		border-radius: 1rem;
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur-heavy);
+		border: 1px solid var(--glass-border);
+		border-top-color: var(--glass-border-top);
+		border-radius: 1.25rem;
 		overflow: hidden;
+		position: relative;
+		box-shadow:
+			0 4px 32px oklch(0 0 0 / 25%),
+			0 0 0 1px oklch(1 0 0 / 3%);
+	}
+
+	/* specular line */
+	.demo-chat::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 8%;
+		right: 8%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 25%), transparent);
+		pointer-events: none;
+		z-index: 5;
+	}
+
+	/* inner refraction */
+	.demo-chat::after {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 35%;
+		background: linear-gradient(180deg, oklch(1 0 0 / 4%) 0%, transparent 100%);
+		pointer-events: none;
+		z-index: 1;
+		border-radius: 1.25rem 1.25rem 0 0;
 	}
 
 	.demo-bar {
@@ -108,16 +145,20 @@
 		align-items: center;
 		gap: 0.625rem;
 		padding: 0.875rem 1.25rem;
-		background: oklch(0.06 0.01 280);
-		border-bottom: 1px solid var(--color-border);
+		background: oklch(1 0 0 / 3%);
+		border-bottom: 1px solid var(--glass-border);
+		position: relative;
+		z-index: 2;
 	}
 
 	.demo-avatar {
 		width: 28px;
 		height: 28px;
 		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 10%);
-		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		border: 1px solid var(--glass-border);
+		border-top-color: var(--glass-border-top);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -130,8 +171,22 @@
 	.demo-mood {
 		display: block;
 		font-size: 0.85rem;
-		color: oklch(0.78 0.12 75 / 45%);
+		color: oklch(0.78 0.12 75 / 40%);
 		font-style: italic;
+	}
+
+	.demo-presence {
+		margin-left: auto;
+	}
+
+	.demo-presence-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: oklch(0.65 0.15 145);
+		display: block;
+		animation: presence-beacon 2.5s ease-in-out infinite;
+		box-shadow: 0 0 6px oklch(0.65 0.15 145 / 40%);
 	}
 
 	.demo-body {
@@ -140,31 +195,65 @@
 		flex-direction: column;
 		gap: 0.75rem;
 		min-height: 340px;
+		position: relative;
+		z-index: 2;
 	}
 
 	.demo-msg {
 		max-width: 85%;
 		padding: 0.625rem 0.875rem;
-		border-radius: 0.875rem;
+		border-radius: 1rem;
 		font-size: 0.9rem;
 		line-height: 1.55;
+		position: relative;
 	}
 
+	/* ── User message — warm glass ── */
 	.demo-msg-user {
 		align-self: flex-end;
 		background: oklch(0.78 0.12 75 / 8%);
-		border: 1px solid oklch(0.78 0.12 75 / 10%);
+		backdrop-filter: blur(12px) saturate(140%);
+		border: 1px solid oklch(0.78 0.12 75 / 12%);
+		border-top-color: oklch(0.78 0.12 75 / 18%);
 		color: var(--color-text);
 		border-bottom-right-radius: 0.25rem;
 	}
 
+	/* ── Bot message — cool glass with specular ── */
 	.demo-msg-bot {
 		align-self: flex-start;
-		background: oklch(1 0 0 / 3%);
-		border: 1px solid var(--color-border);
+		background: oklch(1 0 0 / 4%);
+		backdrop-filter: blur(24px) saturate(170%) brightness(1.08);
+		border: 1px solid oklch(1 0 0 / 8%);
+		border-top-color: oklch(1 0 0 / 16%);
 		color: var(--color-text-dim);
 		border-bottom-left-radius: 0.25rem;
 		white-space: pre-line;
+	}
+
+	/* specular highlight on bot messages */
+	.demo-msg-bot::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 10%;
+		right: 10%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 20%), transparent);
+		pointer-events: none;
+	}
+
+	/* inner glow */
+	.demo-msg-bot::after {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 50%;
+		background: linear-gradient(180deg, oklch(1 0 0 / 3%) 0%, transparent 100%);
+		pointer-events: none;
+		border-radius: 1rem 1rem 0 0;
 	}
 
 	.demo-typing {
@@ -177,7 +266,7 @@
 		width: 5px;
 		height: 5px;
 		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 20%);
+		background: oklch(0.55 0.08 240 / 30%);
 		animation: typing-bounce 1.2s ease-in-out infinite;
 	}
 	.demo-typing span:nth-child(2) { animation-delay: 0.15s; }
@@ -205,7 +294,7 @@
 		width: 4px;
 		height: 4px;
 		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 25%);
+		background: oklch(0.55 0.08 240 / 30%);
 		flex-shrink: 0;
 	}
 
