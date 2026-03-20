@@ -95,15 +95,38 @@
 		blending: THREE.AdditiveBlending,
 	});
 
-	// ── Custom refraction shader ──
+	// ── Glass refraction shader (matching client's blob style) ──
 	const refractionMat = new THREE.ShaderMaterial({
 		vertexShader: /* glsl */ `
+			uniform float uTime;
+			uniform float uSpeed;
+			uniform float uIntensity;
+			uniform float uBreathe;
+
 			varying vec3 vWorldNormal;
 			varying vec3 vViewDir;
 			varying vec2 vScreenUV;
+
 			void main() {
-				vec4 worldPos = modelMatrix * vec4(position, 1.0);
-				vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+				// Organic blob displacement (same as client SharedScene)
+				float noise = sin(position.x * 2.1 + uTime * uSpeed * 0.7)
+					* cos(position.y * 1.8 + uTime * uSpeed * 0.5)
+					* sin(position.z * 2.5 + uTime * uSpeed * 0.9);
+				vec3 displaced = position * (uBreathe + noise * uIntensity);
+
+				vec4 worldPos = modelMatrix * vec4(displaced, 1.0);
+
+				// Recompute normal from displacement (approximate)
+				float e = 0.01;
+				float nx = sin((position.x+e)*2.1+uTime*uSpeed*0.7)*cos(position.y*1.8+uTime*uSpeed*0.5)*sin(position.z*2.5+uTime*uSpeed*0.9)
+				         - sin((position.x-e)*2.1+uTime*uSpeed*0.7)*cos(position.y*1.8+uTime*uSpeed*0.5)*sin(position.z*2.5+uTime*uSpeed*0.9);
+				float ny = sin(position.x*2.1+uTime*uSpeed*0.7)*cos((position.y+e)*1.8+uTime*uSpeed*0.5)*sin(position.z*2.5+uTime*uSpeed*0.9)
+				         - sin(position.x*2.1+uTime*uSpeed*0.7)*cos((position.y-e)*1.8+uTime*uSpeed*0.5)*sin(position.z*2.5+uTime*uSpeed*0.9);
+				float nz = sin(position.x*2.1+uTime*uSpeed*0.7)*cos(position.y*1.8+uTime*uSpeed*0.5)*sin((position.z+e)*2.5+uTime*uSpeed*0.9)
+				         - sin(position.x*2.1+uTime*uSpeed*0.7)*cos(position.y*1.8+uTime*uSpeed*0.5)*sin((position.z-e)*2.5+uTime*uSpeed*0.9);
+				vec3 displacedNormal = normalize(normal + vec3(nx, ny, nz) * uIntensity * 2.0);
+
+				vWorldNormal = normalize((modelMatrix * vec4(displacedNormal, 0.0)).xyz);
 				vViewDir = normalize(worldPos.xyz - cameraPosition);
 				vec4 clip = projectionMatrix * viewMatrix * worldPos;
 				vScreenUV = clip.xy / clip.w * 0.5 + 0.5;
@@ -128,23 +151,24 @@
 				vec3 refr = refract(V, N, 1.0 / uIOR);
 				vec2 offset = refr.xy * 0.12;
 
-				// Chromatic aberration
+				// Chromatic aberration (dispersion)
 				float r = texture2D(uSceneTex, vScreenUV + offset * (1.0 + uChroma)).r;
 				float g = texture2D(uSceneTex, vScreenUV + offset).g;
 				float b = texture2D(uSceneTex, vScreenUV + offset * (1.0 - uChroma)).b;
 				vec3 refracted = vec3(r, g, b);
 
-				// Fresnel — subtle edge
+				// Fresnel
 				float fresnel = pow(1.0 + dot(V, N), uFresnelPow);
 
-				// Specular — single sharp highlight
+				// Specular highlights (key + rim, matching client lighting)
 				vec3 refl = reflect(V, N);
-				float spec = pow(max(dot(refl, normalize(vec3(3, 2, 4))), 0.0), 120.0) * 0.25;
+				float specKey = pow(max(dot(refl, normalize(vec3(3.0, 2.0, 4.0))), 0.0), 80.0) * 0.4;
+				float specRim = pow(max(dot(refl, normalize(vec3(-3.0, 1.5, -2.0))), 0.0), 40.0) * 0.15;
 
-				// Mix — mostly refracted, minimal Fresnel
-				vec3 col = mix(refracted, vec3(0.04, 0.06, 0.10), fresnel * 0.12);
-				col += spec;
-				col += fresnel * vec3(0.02, 0.03, 0.06) * 0.15;
+				// Combine
+				vec3 col = mix(refracted, vec3(0.05, 0.07, 0.14), fresnel * 0.2);
+				col += (specKey + specRim) * vec3(0.9, 0.92, 1.0);
+				col += fresnel * vec3(0.03, 0.05, 0.10) * 0.3;
 
 				gl_FragColor = vec4(col, 1.0);
 			}
@@ -154,6 +178,10 @@
 			uIOR: { value: 1.45 },
 			uChroma: { value: 0.08 },
 			uFresnelPow: { value: 2.5 },
+			uTime: { value: 0 },
+			uSpeed: { value: 0.8 },
+			uIntensity: { value: 0.08 },
+			uBreathe: { value: 1.0 },
 		},
 	});
 	const mainGeo = new THREE.IcosahedronGeometry(1, 12);
@@ -276,8 +304,10 @@
 
 		const cy = smoothCamY;
 
-		// Organic breathing
+		// Organic breathing + update shader uniforms
 		const breathe = Math.sin(t * 0.8) * 0.04;
+		refractionMat.uniforms.uTime.value = t;
+		refractionMat.uniforms.uBreathe.value = 1.0 + breathe * 0.5;
 
 		if (mainSphere) {
 			const a = t * 0.3;
@@ -348,10 +378,11 @@
 
 <T.PerspectiveCamera makeDefault position={[0, 0, CAM_Z]} fov={FOV} near={0.1} far={100} />
 
-<T.AmbientLight color={0x334466} intensity={0.8} />
+<!-- Lighting (matching client SharedScene) -->
+<T.AmbientLight color={0x334477} intensity={0.3} />
 <T.DirectionalLight color={0xffffff} intensity={2.0} position={[3, 2, 4]} />
 <T.PointLight color={0x8899cc} intensity={1.0} position={[-3, 1.5, -2]} />
-<T.PointLight color={0xffcc88} intensity={0.5} position={[2, -1, 3]} />
+<T.PointLight color={0x6677aa} intensity={0.4} position={[0, -3, 1]} />
 
 <T.Points bind:ref={starsRef} geometry={starGeo} material={starMat} />
 
