@@ -29,7 +29,7 @@
 			canvas.height = h;
 			const ctx = canvas.getContext('2d')!;
 			// Draw dark background first (HTML has transparent backgrounds)
-			ctx.fillStyle = '#0a0a14';
+			ctx.fillStyle = '#000206';
 			ctx.fillRect(0, 0, w, h);
 			ctx.drawImage(image, 0, 0, w, h);
 
@@ -125,18 +125,17 @@
 				float b = texture2D(uSceneTex, vScreenUV + offset * (1.0 - uChroma)).b;
 				vec3 refracted = vec3(r, g, b);
 
-				// Fresnel
+				// Fresnel — subtle edge
 				float fresnel = pow(1.0 + dot(V, N), uFresnelPow);
 
-				// Specular
+				// Specular — single sharp highlight
 				vec3 refl = reflect(V, N);
-				float spec = pow(max(dot(refl, normalize(vec3(3, 2, 4))), 0.0), 80.0) * 0.6;
-				float spec2 = pow(max(dot(refl, normalize(vec3(-2, 1, -1))), 0.0), 40.0) * 0.2;
+				float spec = pow(max(dot(refl, normalize(vec3(3, 2, 4))), 0.0), 120.0) * 0.25;
 
-				// Mix
-				vec3 col = mix(refracted, vec3(0.1, 0.13, 0.22), fresnel * 0.35);
-				col += (spec + spec2);
-				col += fresnel * vec3(0.05, 0.08, 0.14) * 0.5;
+				// Mix — mostly refracted, minimal Fresnel
+				vec3 col = mix(refracted, vec3(0.04, 0.06, 0.10), fresnel * 0.12);
+				col += spec;
+				col += fresnel * vec3(0.02, 0.03, 0.06) * 0.15;
 
 				gl_FragColor = vec4(col, 1.0);
 			}
