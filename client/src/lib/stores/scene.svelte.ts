@@ -414,12 +414,11 @@ export function createSceneStore(): SceneStore {
 			if (!customAudio) return;
 			if (speaking && !isDucked) {
 				isDucked = true;
-				console.log("[duck] lowering music to", customAudioBaseVolume * 0.15);
-				fadeAudio(customAudio, customAudioBaseVolume * 0.15, 300);
+				// Duck to 5% — near-silent so voice is clearly audible
+				customAudio.volume = customAudioBaseVolume * 0.05;
 			} else if (!speaking && isDucked) {
 				isDucked = false;
-				console.log("[duck] restoring music to", customAudioBaseVolume);
-				fadeAudio(customAudio, customAudioBaseVolume, 500);
+				fadeAudio(customAudio, customAudioBaseVolume, 800);
 			}
 		},
 
