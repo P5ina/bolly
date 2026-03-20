@@ -90,8 +90,17 @@ async fn check_and_deliver(workspace_dir: &Path, events: &broadcast::Sender<Serv
                 tool_name: None, mcp_app_html: None, mcp_app_input: None, model: None,
             };
 
-            // Append to chat history
-            append_scheduled_message(workspace_dir, &instance_slug, &message);
+            // Append to rig_history (the single source of truth for chat)
+            let rig_path = crate::services::chat::rig_history_path(workspace_dir, &instance_slug, "default");
+            let entry = crate::services::llm::HistoryEntry {
+                message: crate::services::llm::Message::assistant(&message.content),
+                ts: Some(message.created_at.clone()),
+                id: Some(message.id.clone()),
+                mcp_app_html: None,
+                mcp_app_input: None,
+                model: None,
+            };
+            crate::services::chat::append_to_rig_history(&rig_path, &entry);
 
             // Broadcast via WebSocket
             let msg_id = message.id.clone();
@@ -139,29 +148,6 @@ async fn check_and_deliver(workspace_dir: &Path, events: &broadcast::Sender<Serv
     }
 }
 
-fn append_scheduled_message(workspace_dir: &Path, instance_slug: &str, message: &ChatMessage) {
-    let chat_dir = workspace_dir
-        .join("instances")
-        .join(instance_slug)
-        .join("chats")
-        .join("default");
-    let _ = fs::create_dir_all(&chat_dir);
-    let messages_path = chat_dir.join("messages.json");
-
-    let lock = crate::services::tools::chat_file_lock(&messages_path);
-    let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
-
-    let mut messages: Vec<ChatMessage> = match fs::read_to_string(&messages_path) {
-        Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
-        Err(_) => Vec::new(),
-    };
-
-    messages.push(message.clone());
-
-    if let Ok(json) = serde_json::to_string_pretty(&messages) {
-        let _ = fs::write(&messages_path, json);
-    }
-}
 
 fn unix_millis() -> u128 {
     SystemTime::now()
