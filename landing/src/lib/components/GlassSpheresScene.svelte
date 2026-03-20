@@ -6,94 +6,49 @@
 
 	const { scene, camera, renderer, size } = useThrelte();
 
-	// ── HTML → Texture renderer (ported from three-html-render) ──
+	// ── HTML → Texture (exact copy of three-html-render approach) ──
 	class HtmlRenderer {
 		private canvas = document.createElement('canvas');
-		private ctx = this.canvas.getContext('2d')!;
+		private context = this.canvas.getContext('2d')!;
 		private textures = new Map<HTMLElement, THREE.CanvasTexture>();
-		private pageStyles = '';
-
-		setPageStyles(styles: string) { this.pageStyles = styles; }
-
-		private svgToDataUrl(svg: string): string {
-			return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-		}
 
 		async update(node: HTMLElement): Promise<THREE.CanvasTexture> {
 			const w = node.clientWidth;
 			const h = node.clientHeight;
 
-			const html = node.innerHTML;
+			// Use XMLSerializer for proper XHTML serialization (handles quotes, entities, namespaces)
+			const serialized = new XMLSerializer().serializeToString(node);
 
-			const svg = `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
-	<style>${this.pageStyles}</style>
-	<foreignObject x="0" y="0" width="100%" height="100%">
-		<div xmlns="http://www.w3.org/1999/xhtml" style="height:100%;width:100%;">
-			${html}
-		</div>
-	</foreignObject>
-</svg>`;
+			const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%">${serialized}</foreignObject></svg>`;
 
-			// Data URL — does NOT taint canvas (unlike Blob URL)
-			const dataUrl = this.svgToDataUrl(svg);
+			// encodeURIComponent preserves quotes correctly (unlike svgUrl which replaces " with ')
+			const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 
-			const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-				const i = new Image();
-				i.onload = () => resolve(i);
-				i.onerror = (e) => reject(e);
-				i.crossOrigin = 'anonymous';
-				i.decoding = 'sync';
-				i.src = dataUrl;
+			const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+				const img = new Image();
+				img.onload = () => resolve(img);
+				img.onerror = reject;
+				img.src = dataUrl;
 			});
 
-			let tex = this.textures.get(node);
-			if (!tex || this.canvas.width !== w || this.canvas.height !== h) {
-				tex?.dispose();
+			let canvasTexture = this.textures.get(node);
+			if (!canvasTexture || this.canvas.width !== w || this.canvas.height !== h) {
+				canvasTexture?.dispose();
 				this.canvas.width = w;
 				this.canvas.height = h;
-				tex = new THREE.CanvasTexture(this.canvas);
-				tex.colorSpace = THREE.SRGBColorSpace;
-				this.textures.set(node, tex);
+				canvasTexture = new THREE.CanvasTexture(this.canvas);
+				this.textures.set(node, canvasTexture);
 			}
 
-			this.ctx.clearRect(0, 0, w, h);
-			this.ctx.drawImage(img, 0, 0, w, h);
-			tex.needsUpdate = true;
-			return tex;
+			this.context.clearRect(0, 0, w, h);
+			this.context.drawImage(image, 0, 0, w, h);
+			canvasTexture.needsUpdate = true;
+			return canvasTexture;
 		}
 	}
 
 	const htmlRenderer = new HtmlRenderer();
-
-	// Backing planes — HTML rendered as textures for refraction FBO
-	const backingPlanes: { mesh: THREE.Mesh; el: HTMLElement; position: THREE.Vector3 }[] = [];
-
-	// Register an HTML element for texture backing
-	function registerHtmlBacking(el: HTMLElement, x: number, y: number, z: number, scaleVal: number) {
-		const mesh = new THREE.Mesh(
-			new THREE.PlaneGeometry(1, 1),
-			new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide })
-		);
-		mesh.position.set(x, y, z);
-		mesh.visible = false; // only shown during FBO pass
-		scene.add(mesh);
-		backingPlanes.push({ mesh, el, position: new THREE.Vector3(x, y, z) });
-
-		// Initial capture after a delay
-		setTimeout(async () => {
-			try {
-				const tex = await htmlRenderer.update(el);
-				(mesh.material as THREE.MeshBasicMaterial).map = tex;
-				(mesh.material as THREE.MeshBasicMaterial).needsUpdate = true;
-
-				// Scale plane to match HTML size in 3D
-				const pxToUnit = (CAM_Z * 2 * Math.tan((FOV / 2) * Math.PI / 180)) / window.innerHeight;
-				mesh.scale.set(el.clientWidth * pxToUnit * scaleVal, el.clientHeight * pxToUnit * scaleVal, 1);
-			} catch (e) {
-				console.warn('HTML backing capture failed:', e);
-			}
-		}, 2000);
-	}
+	const backingPlanes: { mesh: THREE.Mesh; el: HTMLElement }[] = [];
 
 	scene.background = new THREE.Color(0x000206);
 
@@ -239,50 +194,49 @@
 	// ── Auto-capture all HTML elements after mount ──
 	onMount(() => {
 		setTimeout(async () => {
-			// Gather all CSS styles for the foreignObject
-			let styles = '';
-			for (const sheet of document.styleSheets) {
-				try { for (const rule of sheet.cssRules) styles += rule.cssText + '\n'; } catch {}
-			}
-			htmlRenderer.setPageStyles(styles);
+			htmlRenderer.pageStyles = '';
 
-			// Find all HTML wrappers created by <HTML transform>
+			// ── Sanity test: can we render ANY SVG foreignObject to Image? ──
+			try {
+				const testSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="50"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="color:white;background:#333;padding:10px;font-family:sans-serif;">Hello from SVG!</div></foreignObject></svg>';
+				const testUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(testSvg);
+				const testImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+					const img = new Image();
+					img.onload = () => resolve(img);
+					img.onerror = reject;
+					img.src = testUrl;
+				});
+				console.log('[GlassScene] SANITY TEST PASSED — SVG foreignObject → Image works!', testImg.width, testImg.height);
+			} catch (e) {
+				console.error('[GlassScene] SANITY TEST FAILED — foreignObject → Image broken:', e);
+				return; // No point continuing
+			}
+
 			const canvasParent = renderer.domElement.parentElement;
 			if (!canvasParent) return;
 
-			// Threlte HTML components are siblings of the canvas
 			const allDivs = canvasParent.querySelectorAll<HTMLElement>('div');
 			const wrappers: HTMLElement[] = [];
 			allDivs.forEach(d => {
-				if (d.style.transform && d.style.transform.includes('matrix3d')) wrappers.push(d);
+				if (d.style.transform?.includes('matrix3d')) wrappers.push(d);
 			});
 			console.log(`[GlassScene] Found ${wrappers.length} matrix3d wrappers`);
 
 			let count = 0;
-
 			for (const wrapper of wrappers) {
 				const content = wrapper.children[0] as HTMLElement;
-				if (!content || content.clientWidth === 0) {
-					console.log('[GlassScene] Skipping wrapper — no content or zero width');
-					continue;
-				}
+				if (!content || content.clientWidth === 0) continue;
 
-				// Parse position from matrix3d
 				const m = wrapper.style.transform.match(/matrix3d\(([^)]+)\)/);
-				if (!m) { console.log('[GlassScene] No matrix3d match'); continue; }
+				if (!m) continue;
 				const vals = m[1].split(',').map(Number);
 				const x = vals[12], y = vals[13], z = vals[14];
-				console.log(`[GlassScene] Wrapper at (${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}) size: ${content.clientWidth}x${content.clientHeight}`);
-
-				// Parse scale from the wrapper
-				const scaleMatch = wrapper.style.transform.match(/scale\(([^)]+)\)/);
-				const scaleVal = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
 
 				try {
 					const tex = await htmlRenderer.update(content);
 					const pxToUnit = (CAM_Z * 2 * Math.tan((FOV / 2) * Math.PI / 180)) / window.innerHeight;
-					const pw = content.clientWidth * pxToUnit * scaleVal;
-					const ph = content.clientHeight * pxToUnit * scaleVal;
+					const pw = content.clientWidth * pxToUnit;
+					const ph = content.clientHeight * pxToUnit;
 
 					const geo = new THREE.PlaneGeometry(pw, ph);
 					const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
@@ -290,14 +244,15 @@
 					mesh.position.set(x, y, z);
 					mesh.visible = false;
 					scene.add(mesh);
-					backingPlanes.push({ mesh, el: content, position: new THREE.Vector3(x, y, z) });
+					backingPlanes.push({ mesh, el: content });
 					count++;
+					console.log(`[GlassScene] Captured wrapper at (${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)})`);
 				} catch (e) {
-					console.warn('Backing capture failed:', e);
+					console.warn('[GlassScene] Capture failed:', e);
 				}
 			}
 
-			console.log(`[GlassScene] Captured ${count} HTML backing planes`);
+			console.log(`[GlassScene] Total captured: ${count} HTML backing planes`);
 		}, 2500);
 	});
 
