@@ -561,12 +561,12 @@
 				const isSpeaking = smoothAmp > 0.01;
 				const thk = store.thinking;
 
-				// Music mode: gentler multipliers to prevent violent displacement
+				// Music mode: low noise displacement, strong scale pulse from beat
 				const tgtSpeed = isMusic
-					? 1.5 + mAmp * 1.5
+					? 1.0 + mAmp * 0.8
 					: thk ? 3.0 : isSpeaking ? energy.speed + smoothAmp * 1.5 : energy.speed;
 				const tgtInt = isMusic
-					? 0.10 + mAmp * 0.12
+					? 0.06 + mAmp * 0.06
 					: thk ? 0.25 : isSpeaking ? energy.intensity + smoothAmp * 0.15 : energy.intensity;
 
 				const uLerp = Math.min(delta * 3, 1);
@@ -575,10 +575,15 @@
 
 				uSpeed.value = smoothSpeed;
 				uIntensity.value = smoothIntensity;
-				uBreathe.value = 1.0
-					+ Math.sin(t * (thk ? 2.5 : isMusic ? 2.0 : energy.breatheRate)) * (thk ? 0.06 : isMusic ? 0.03 + mAmp * 0.04 : energy.breatheDepth)
-					+ (isSpeaking ? smoothAmp * 0.06 : 0)
-					+ (isMusic ? mAmp * 0.05 : 0);
+
+				if (isMusic) {
+					// Scale pulsing driven by beat — expand on bass hits, contract on silence
+					uBreathe.value = 1.0 + mAmp * 0.15;
+				} else {
+					uBreathe.value = 1.0
+						+ Math.sin(t * (thk ? 2.5 : energy.breatheRate)) * (thk ? 0.06 : energy.breatheDepth)
+						+ (isSpeaking ? smoothAmp * 0.06 : 0);
+				}
 
 				// Disco color cycling when music plays
 				if (isMusic) {
