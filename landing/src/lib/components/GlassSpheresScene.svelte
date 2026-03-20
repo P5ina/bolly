@@ -184,13 +184,42 @@
 			uBreathe: { value: 1.0 },
 		},
 	});
-	const mainGeo = new THREE.IcosahedronGeometry(1, 12);
-	const smallGeo = new THREE.IcosahedronGeometry(0.5, 8);
-	const tinyGeo = new THREE.IcosahedronGeometry(0.3, 6);
+	const geoLarge = new THREE.IcosahedronGeometry(1, 12);
+	const geoMedium = new THREE.IcosahedronGeometry(0.6, 8);
+	const geoSmall = new THREE.IcosahedronGeometry(0.35, 6);
 
-	let mainSphere: THREE.Mesh | undefined;
-	let smallSphere: THREE.Mesh | undefined;
-	let tinySphere: THREE.Mesh | undefined;
+	// ── Sphere definitions scattered along scroll ──
+	interface SphereConf {
+		x: number; y: number; z: number;
+		size: 'l' | 'm' | 's';
+		phase: number; // unique offset for morphing
+	}
+
+	const sphereConfs: SphereConf[] = [
+		// Hero area
+		{ x: 5, y: 2, z: 2, size: 'l', phase: 0 },
+		{ x: -6, y: -1, z: 1.5, size: 'm', phase: 1.2 },
+		{ x: 3, y: -4, z: 1, size: 's', phase: 2.4 },
+		// Features
+		{ x: -7, y: -14, z: 2, size: 'm', phase: 0.8 },
+		{ x: 7, y: -18, z: 1.5, size: 'l', phase: 3.1 },
+		{ x: 0, y: -22, z: 1, size: 's', phase: 1.7 },
+		// Demo
+		{ x: 6, y: -30, z: 2, size: 'm', phase: 0.3 },
+		{ x: -3, y: -35, z: 1.5, size: 's', phase: 2.8 },
+		// How it works
+		{ x: -6, y: -46, z: 2, size: 'l', phase: 1.5 },
+		{ x: 5, y: -50, z: 1, size: 's', phase: 3.6 },
+		// Pricing
+		{ x: 7, y: -62, z: 2, size: 'm', phase: 0.6 },
+		{ x: -5, y: -67, z: 1.5, size: 'l', phase: 2.1 },
+		{ x: 2, y: -70, z: 1, size: 's', phase: 4.0 },
+		// CTA / Footer
+		{ x: -4, y: -78, z: 2, size: 'm', phase: 1.0 },
+		{ x: 5, y: -84, z: 1.5, size: 's', phase: 3.3 },
+	];
+
+	const sphereMeshes: THREE.Mesh[] = [];
 	let starsRef: THREE.Points | undefined;
 
 	// ── Features data ──
@@ -221,6 +250,16 @@
 
 	// ── Auto-capture all HTML elements after mount ──
 	onMount(() => {
+		// Create sphere meshes immediately
+		for (const conf of sphereConfs) {
+			const geo = conf.size === 'l' ? geoLarge : conf.size === 'm' ? geoMedium : geoSmall;
+			const mesh = new THREE.Mesh(geo, refractionMat);
+			mesh.position.set(conf.x, conf.y, conf.z);
+			mesh.userData = conf;
+			scene.add(mesh);
+			sphereMeshes.push(mesh);
+		}
+
 		setTimeout(async () => {
 			// ── Capture HTML elements and place backing planes at known 3D positions ──
 			const canvasParent = renderer.domElement.parentElement;
@@ -265,6 +304,7 @@
 	});
 
 	let scrollY = 0;
+	let scrollProgress = 0;
 	let smoothCamY = 0;
 	let mouseX = 0, mouseY = 0, targetMX = 0, targetMY = 0;
 
@@ -292,7 +332,7 @@
 
 		const maxScroll = typeof document !== 'undefined'
 			? Math.max(1, document.body.scrollHeight - window.innerHeight) : 1;
-		const scrollProgress = scrollY / maxScroll;
+		scrollProgress = scrollY / maxScroll;
 		const targetCamY = -scrollProgress * TOTAL_HEIGHT;
 		smoothCamY += (targetCamY - smoothCamY) * 0.1;
 
@@ -304,48 +344,33 @@
 
 		const cy = smoothCamY;
 
-		// Organic breathing + update shader uniforms
+		// Update shader uniforms — morphing via time, breathing
 		const breathe = Math.sin(t * 0.8) * 0.04;
 		refractionMat.uniforms.uTime.value = t;
 		refractionMat.uniforms.uBreathe.value = 1.0 + breathe * 0.5;
 
-		if (mainSphere) {
-			const a = t * 0.3;
-			mainSphere.position.set(
-				6 * Math.cos(a) + mouseX * 0.5,
-				cy + Math.sin(t * 0.4) * 2 + mouseY * -0.3,
-				3 * Math.sin(a)
+		// Spheres: rotate only from scroll, slight mouse parallax
+		for (const mesh of sphereMeshes) {
+			const conf = mesh.userData as SphereConf;
+			// Scroll-driven rotation
+			mesh.rotation.set(
+				scrollProgress * Math.PI * 2 * 0.3 + conf.phase,
+				scrollProgress * Math.PI * 2 * 0.5 + conf.phase * 0.7,
+				0
 			);
-			mainSphere.rotation.set(t * 0.08, t * 0.15, 0);
-			mainSphere.scale.setScalar(1 + breathe);
+			// Subtle mouse parallax
+			mesh.position.x = conf.x + mouseX * 0.15;
+			mesh.position.z = conf.z + mouseY * -0.1;
+			// Breathing scale
+			mesh.scale.setScalar(1 + Math.sin(t * 0.8 + conf.phase) * 0.03);
 		}
-		if (smallSphere) {
-			const a = t * 0.4 + 1;
-			smallSphere.position.set(
-				-5 * Math.cos(a) + mouseX * 0.3,
-				cy - 1.5 + Math.sin(t * 0.5 + 1) * 1.5 + mouseY * -0.2,
-				2.5 * Math.sin(a)
-			);
-			smallSphere.rotation.y = t * 0.2;
-			smallSphere.scale.setScalar(1 + Math.sin(t * 1.1 + 2) * 0.03);
-		}
-		if (tinySphere) {
-			const a = t * 0.5 + 2;
-			tinySphere.position.set(
-				4.5 * Math.cos(a) + mouseX * 0.2,
-				cy + 2 + Math.sin(t * 0.6 + 2) * 1 + mouseY * -0.15,
-				2 * Math.sin(a)
-			);
-			tinySphere.rotation.y = t * -0.25;
-		}
+
 		if (starsRef) starsRef.rotation.y = t * 0.005 + mouseX * 0.02;
 
 		// ── Two-pass render ──
-		if (fbo && mainSphere && smallSphere && tinySphere) {
+		if (fbo && sphereMeshes.length > 0) {
 			// Pass 1: hide spheres, show backing planes → render to FBO
-			mainSphere.visible = false;
-			smallSphere.visible = false;
-			tinySphere.visible = false;
+			for (const m of sphereMeshes) m.visible = false;
 			for (const bp of backingPlanes) bp.mesh.visible = true;
 
 			renderer.setRenderTarget(fbo);
@@ -353,9 +378,7 @@
 			renderer.render(scene, camera.current);
 
 			// Pass 2: show spheres, hide backing planes → render to screen
-			mainSphere.visible = true;
-			smallSphere.visible = true;
-			tinySphere.visible = true;
+			for (const m of sphereMeshes) m.visible = true;
 			for (const bp of backingPlanes) bp.mesh.visible = false;
 
 			renderer.setRenderTarget(null);
@@ -527,6 +550,7 @@
 </HTML>
 
 <!-- ═══ SPHERES ═══ -->
-<T.Mesh bind:ref={mainSphere} geometry={mainGeo} material={refractionMat} />
-<T.Mesh bind:ref={smallSphere} geometry={smallGeo} material={refractionMat} />
-<T.Mesh bind:ref={tinySphere} geometry={tinyGeo} material={refractionMat} />
+<!-- Glass spheres created programmatically in onMount -->
+{#each sphereMeshes as mesh}
+	<T is={mesh} />
+{/each}
