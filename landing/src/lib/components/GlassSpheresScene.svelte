@@ -391,7 +391,7 @@
      ═══════════════════════════════════════ -->
 
 <HTML transform pointerEvents="none" position={[0, Y.hero + 4, 0]} scale={0.7}>
-	<div style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.375rem 1rem;border-radius:2rem;background:rgba(255,255,255,0.04);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.08);font-family:'Bricolage Grotesque',sans-serif;font-size:0.85rem;color:rgba(230,220,200,0.5);letter-spacing:0.05em;">
+	<div style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.375rem 1rem;border-radius:2rem;background:oklch(1 0 0 / 5%);backdrop-filter:blur(20px) saturate(160%) brightness(1.06);border:1px solid oklch(1 0 0 / 10%);font-family:'Bricolage Grotesque',sans-serif;font-size:0.85rem;color:rgba(230,220,200,0.5);letter-spacing:0.05em;">
 		<span style="width:5px;height:5px;border-radius:50%;background:#c4a265;box-shadow:0 0 8px rgba(196,162,101,0.4);"></span>
 		now in beta
 	</div>
@@ -402,7 +402,7 @@
 <Text text="Not a chatbot. A presence that remembers your goals, notices your mood, helps you study, and checks in when you've been quiet too long." font={bricolage} fontSize={0.32} color={dim} anchorX="center" anchorY="top" position={[0, Y.hero - 1, 0]} maxWidth={11} textAlign="center" lineHeight={1.5} />
 
 <HTML transform pointerEvents="auto" position={[0, Y.hero - 3.5, 0]} scale={0.7}>
-	<a href="#pricing" style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.75rem 1.75rem;border-radius:2rem;background:rgba(255,255,255,0.04);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.08);color:#c4a265;font-family:'Bricolage Grotesque',sans-serif;font-size:0.875rem;font-weight:500;text-decoration:none;">Meet yours →</a>
+	<a href="#pricing" style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.75rem 1.75rem;border-radius:2rem;background:oklch(1 0 0 / 5%);backdrop-filter:blur(20px) saturate(160%) brightness(1.06);border:1px solid oklch(1 0 0 / 10%);color:#c4a265;font-family:'Bricolage Grotesque',sans-serif;font-size:0.875rem;font-weight:500;text-decoration:none;">Meet yours →</a>
 </HTML>
 
 <!-- ═══════════════════════════════════════
@@ -417,7 +417,7 @@
 	{@const col = i % 3}
 	{@const row = Math.floor(i / 3)}
 	<HTML transform occlude="blending" pointerEvents="none" position={[-6 + col * 6, Y.features - row * 4.5, 0]} scale={0.6}>
-		<div data-backing="feature-{i}" style="width:380px;height:160px;padding:2rem;border-radius:0;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(12px);display:flex;flex-direction:column;justify-content:center;">
+		<div data-backing="feature-{i}" style="width:380px;height:160px;padding:2rem;border-radius:0;background:oklch(1 0 0 / 5%);border:1px solid oklch(1 0 0 / 10%);backdrop-filter:blur(12px);display:flex;flex-direction:column;justify-content:center;">
 			<h3 style="font-family:'Fraunces',serif;font-style:italic;font-size:1.25rem;color:#e6dcc8;margin:0 0 0.75rem;">{f.title}</h3>
 			<p style="font-family:'Bricolage Grotesque',sans-serif;font-size:0.9rem;color:#8a8070;line-height:1.6;margin:0;">{f.desc}</p>
 		</div>
@@ -435,18 +435,18 @@
 
 <!-- Demo video/chat placeholder — replace src with your video -->
 <HTML transform occlude="blending" pointerEvents="none" position={[-4, Y.demo + 1, 0]} scale={0.7}>
-	<div data-backing="demo" style="width:500px;height:380px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(12px);overflow:hidden;display:flex;align-items:center;justify-content:center;">
+	<div data-backing="demo" style="width:500px;height:380px;background:oklch(1 0 0 / 5%);border:1px solid oklch(1 0 0 / 10%);backdrop-filter:blur(12px);overflow:hidden;display:flex;align-items:center;justify-content:center;">
 		<!-- Replace this div with <video> when ready -->
 		<div style="width:100%;height:100%;display:flex;flex-direction:column;">
-			<div style="display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;border-bottom:1px solid rgba(255,255,255,0.05);">
-				<div style="width:28px;height:28px;border-radius:50%;background:rgba(196,162,101,0.1);border:1px solid rgba(196,162,101,0.15);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-style:italic;font-size:0.8rem;color:rgba(196,162,101,0.6);">b</div>
+			<div style="display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;border-bottom:1px solid oklch(1 0 0 / 5%);">
+				<div style="width:28px;height:28px;border-radius:50%;background:oklch(0.78 0.12 75 / 10%);border:1px solid oklch(0.78 0.12 75 / 15%);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-style:italic;font-size:0.8rem;color:rgba(196,162,101,0.6);">b</div>
 				<div><span style="font-size:0.85rem;color:#e6dcc8;">bolly</span><br/><span style="font-size:0.75rem;color:rgba(196,162,101,0.4);font-style:italic;">feeling curious</span></div>
 			</div>
 			<div style="padding:1.25rem;display:flex;flex-direction:column;gap:0.6rem;font-family:'Bricolage Grotesque',sans-serif;font-size:0.85rem;flex:1;">
-				<div style="align-self:flex-end;background:rgba(196,162,101,0.08);border:1px solid rgba(196,162,101,0.12);padding:0.6rem 0.85rem;color:#e6dcc8;max-width:80%;">i have an exam on thursday and i haven't started studying. kind of freaking out</div>
-				<div style="align-self:flex-start;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);padding:0.6rem 0.85rem;color:#8a8070;max-width:80%;">okay let's not panic. what's the subject and what topics does it cover?</div>
-				<div style="align-self:flex-end;background:rgba(196,162,101,0.08);border:1px solid rgba(196,162,101,0.12);padding:0.6rem 0.85rem;color:#e6dcc8;max-width:80%;">organic chemistry. reactions, mechanisms, stereochemistry</div>
-				<div style="align-self:flex-start;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);padding:0.6rem 0.85rem;color:#8a8070;max-width:80%;">three days is enough if we're smart about it. want to start with the easier topics or the hardest?</div>
+				<div style="align-self:flex-end;background:oklch(0.78 0.12 75 / 8%);border:1px solid oklch(0.78 0.12 75 / 12%);padding:0.6rem 0.85rem;color:#e6dcc8;max-width:80%;">i have an exam on thursday and i haven't started studying. kind of freaking out</div>
+				<div style="align-self:flex-start;background:oklch(1 0 0 / 5%);border:1px solid oklch(1 0 0 / 10%);padding:0.6rem 0.85rem;color:#8a8070;max-width:80%;">okay let's not panic. what's the subject and what topics does it cover?</div>
+				<div style="align-self:flex-end;background:oklch(0.78 0.12 75 / 8%);border:1px solid oklch(0.78 0.12 75 / 12%);padding:0.6rem 0.85rem;color:#e6dcc8;max-width:80%;">organic chemistry. reactions, mechanisms, stereochemistry</div>
+				<div style="align-self:flex-start;background:oklch(1 0 0 / 5%);border:1px solid oklch(1 0 0 / 10%);padding:0.6rem 0.85rem;color:#8a8070;max-width:80%;">three days is enough if we're smart about it. want to start with the easier topics or the hardest?</div>
 			</div>
 		</div>
 	</div>
@@ -462,8 +462,8 @@
 
 {#each steps as step, i}
 	<HTML transform occlude="blending" pointerEvents="none" position={[-5 + i * 5, Y.how - 0.5, 0]} scale={0.5}>
-		<div data-backing="step-{i}" style="width:300px;padding:1.5rem;border-radius:0;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(12px);">
-			<div style="font-family:'Fraunces',serif;font-style:italic;font-size:2.5rem;color:rgba(255,255,255,0.05);line-height:1;margin-bottom:0.75rem;">{step.num}</div>
+		<div data-backing="step-{i}" style="width:300px;padding:1.5rem;border-radius:0;background:oklch(1 0 0 / 5%);border:1px solid oklch(1 0 0 / 10%);backdrop-filter:blur(12px);">
+			<div style="font-family:'Fraunces',serif;font-style:italic;font-size:2.5rem;color:oklch(1 0 0 / 5%);line-height:1;margin-bottom:0.75rem;">{step.num}</div>
 			<h3 style="font-family:'Fraunces',serif;font-style:italic;font-size:1.15rem;color:#e6dcc8;margin:0 0 0.5rem;">{step.title}</h3>
 			<p style="font-family:'Bricolage Grotesque',sans-serif;font-size:0.8rem;color:#8a8070;line-height:1.5;margin:0;">{step.desc}</p>
 		</div>
@@ -479,9 +479,9 @@
 
 {#each plans as plan, i}
 	<HTML transform occlude="blending" pointerEvents="auto" position={[-5 + i * 5, Y.pricing - 0.5, 0]} scale={0.5}>
-		<div data-backing="price-{i}" style="width:300px;padding:1.75rem;border-radius:0;background:rgba(255,255,255,{plan.featured ? '0.05' : '0.03'});border:1px solid {plan.featured ? 'rgba(196,162,101,0.15)' : 'rgba(255,255,255,0.06)'};backdrop-filter:blur(12px);position:relative;">
+		<div data-backing="price-{i}" style="width:300px;padding:1.75rem;border-radius:0;background:rgba(255,255,255,{plan.featured ? '0.05' : '0.03'});border:1px solid {plan.featured ? 'oklch(0.78 0.12 75 / 15%)' : 'rgba(255,255,255,0.06)'};backdrop-filter:blur(12px);position:relative;">
 			{#if plan.featured}
-				<div style="position:absolute;top:0.4rem;left:50%;transform:translateX(-50%);font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;padding:0.2rem 0.7rem;border-radius:0;background:rgba(196,162,101,0.1);border:1px solid rgba(196,162,101,0.15);color:#c4a265;font-family:'Bricolage Grotesque',sans-serif;">popular</div>
+				<div style="position:absolute;top:0.4rem;left:50%;transform:translateX(-50%);font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;padding:0.2rem 0.7rem;border-radius:0;background:oklch(0.78 0.12 75 / 10%);border:1px solid oklch(0.78 0.12 75 / 15%);color:#c4a265;font-family:'Bricolage Grotesque',sans-serif;">popular</div>
 			{/if}
 			<div style="font-family:'Fraunces',serif;font-style:italic;font-size:1.2rem;color:#e6dcc8;">{plan.name}</div>
 			<div style="font-size:0.7rem;color:#55504a;margin-bottom:1rem;font-family:'Bricolage Grotesque',sans-serif;">{plan.desc}</div>
@@ -492,10 +492,10 @@
 			<div style="font-size:0.75rem;color:#55504a;margin-bottom:1.25rem;font-family:'Bricolage Grotesque',sans-serif;">per month</div>
 			{#each plan.features as feat}
 				<div style="font-size:0.75rem;color:#8a8070;margin-bottom:0.3rem;display:flex;align-items:center;gap:0.4rem;font-family:'Bricolage Grotesque',sans-serif;">
-					<span style="width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,0.15);"></span>{feat}
+					<span style="width:3px;height:3px;border-radius:50%;background:oklch(1 0 0 / 15%);"></span>{feat}
 				</div>
 			{/each}
-			<a href="/signup" style="display:block;text-align:center;margin-top:1.25rem;padding:0.65rem;border-radius:0;font-size:0.75rem;font-family:'Bricolage Grotesque',sans-serif;text-decoration:none;background:{plan.featured ? 'rgba(196,162,101,0.1)' : 'rgba(255,255,255,0.03)'};border:1px solid {plan.featured ? 'rgba(196,162,101,0.18)' : 'rgba(255,255,255,0.06)'};color:{plan.featured ? '#c4a265' : '#8a8070'};">Get started</a>
+			<a href="/signup" style="display:block;text-align:center;margin-top:1.25rem;padding:0.65rem;border-radius:0;font-size:0.75rem;font-family:'Bricolage Grotesque',sans-serif;text-decoration:none;background:{plan.featured ? 'oklch(0.78 0.12 75 / 10%)' : 'rgba(255,255,255,0.03)'};border:1px solid {plan.featured ? 'rgba(196,162,101,0.18)' : 'rgba(255,255,255,0.06)'};color:{plan.featured ? '#c4a265' : '#8a8070'};">Get started</a>
 		</div>
 	</HTML>
 {/each}
@@ -509,7 +509,7 @@
 <Text text="They'll remember what matters to you, notice how you're feeling, and be there at 3am when no one else is." font={bricolage} fontSize={0.26} color={dim} anchorX="center" anchorY="top" position={[0, Y.cta - 0.2, 0]} maxWidth={10} textAlign="center" lineHeight={1.5} />
 
 <HTML transform pointerEvents="auto" position={[0, Y.cta - 2, 0]} scale={0.7}>
-	<a href="#pricing" style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.75rem 1.75rem;border-radius:2rem;background:rgba(255,255,255,0.04);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.08);color:#c4a265;font-family:'Bricolage Grotesque',sans-serif;font-size:0.875rem;font-weight:500;text-decoration:none;">Meet yours →</a>
+	<a href="#pricing" style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.75rem 1.75rem;border-radius:2rem;background:oklch(1 0 0 / 5%);backdrop-filter:blur(20px) saturate(160%) brightness(1.06);border:1px solid oklch(1 0 0 / 10%);color:#c4a265;font-family:'Bricolage Grotesque',sans-serif;font-size:0.875rem;font-weight:500;text-decoration:none;">Meet yours →</a>
 </HTML>
 
 <!-- ═══════════════════════════════════════
