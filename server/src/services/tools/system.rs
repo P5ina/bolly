@@ -2207,8 +2207,12 @@ impl Tool for ImportProfileTool {
             return Err(ToolExecError(format!("file not found: {}", archive_path.display())));
         }
 
+        // Auto-detect: gzip magic bytes 1f 8b
+        let is_gzip = fs::read(&archive_path)
+            .map(|d| d.len() >= 2 && d[0] == 0x1f && d[1] == 0x8b)
+            .unwrap_or(false);
         let output = tokio::process::Command::new("tar")
-            .arg("xzf")
+            .arg(if is_gzip { "xzf" } else { "xf" })
             .arg(&archive_path)
             .arg("--strip-components=1")
             .arg("-C")

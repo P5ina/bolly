@@ -732,10 +732,12 @@ async fn import_instance(
         }
     };
 
-    // Extract tar.gz into the instance directory
+    // Extract archive into the instance directory
     // Use --strip-components=1 to handle archives that contain the slug as root dir
+    // Auto-detect format: try gzip first, fall back to plain tar
+    let is_gzip = data.len() >= 2 && data[0] == 0x1f && data[1] == 0x8b;
     let mut child = match tokio::process::Command::new("tar")
-        .arg("xzf")
+        .arg(if is_gzip { "xzf" } else { "xf" })
         .arg("-") // stdin
         .arg("--strip-components=1")
         .arg("-C")
@@ -769,7 +771,7 @@ async fn import_instance(
             Json(serde_json::json!({ "ok": true })).into_response()
         }
         Ok(_) => {
-            (StatusCode::BAD_REQUEST, "invalid archive — make sure it's a .tar.gz file").into_response()
+            (StatusCode::BAD_REQUEST, "invalid archive — make sure it's a .tar or .tar.gz file").into_response()
         }
         Err(e) => {
             log::error!("[import] tar failed: {e}");
