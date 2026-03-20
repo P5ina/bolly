@@ -542,27 +542,65 @@
 			</select>
 		</div>
 		{#if updateDone}
-			<div class="update-banner update-done">
-				<span class="update-label">updated!</span>
-				<button class="update-reload-btn" onclick={() => location.reload()}>reload page</button>
+			<div class="update-card update-card-done">
+				<div class="update-card-glow"></div>
+				<div class="update-card-shimmer"></div>
+				<div class="update-card-content">
+					<div class="update-icon-wrap update-icon-done">
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M20 6L9 17l-5-5"/>
+						</svg>
+					</div>
+					<div class="update-text">
+						<span class="update-title update-title-done">updated successfully</span>
+						<span class="update-subtitle">restart to enjoy the latest version</span>
+					</div>
+					<button class="update-action-btn update-action-done" onclick={() => location.reload()}>
+						reload
+					</button>
+				</div>
 			</div>
 		{:else if updating}
-			<div class="update-banner">
-				<span class="update-label">updating…</span>
-				<span class="update-version">server restarting</span>
+			<div class="update-card update-card-progress">
+				<div class="update-card-progress-bar"></div>
+				<div class="update-card-content">
+					<div class="update-icon-wrap update-icon-progress">
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="update-spinner">
+							<path d="M21 12a9 9 0 11-6.219-8.56"/>
+						</svg>
+					</div>
+					<div class="update-text">
+						<span class="update-title">installing update</span>
+						<span class="update-subtitle">server restarting — hold tight</span>
+					</div>
+				</div>
 			</div>
 		{:else if updateInfo?.update_available}
-			<div class="update-banner">
-				<div class="update-info">
-					<span class="update-label">update available</span>
-					<span class="update-version">{updateInfo.current} → {updateInfo.latest}</span>
+			<div class="update-card update-card-available">
+				<div class="update-card-glow"></div>
+				<div class="update-card-content">
+					<div class="update-icon-wrap update-icon-available">
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M12 5v14M5 12l7 7 7-7"/>
+						</svg>
+					</div>
+					<div class="update-text">
+						<span class="update-title">new version available</span>
+						<span class="update-version-tag">
+							<span class="update-v-old">{updateInfo.current}</span>
+							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="update-arrow">
+								<path d="M5 12h14M12 5l7 7-7 7"/>
+							</svg>
+							<span class="update-v-new">{updateInfo.latest}</span>
+						</span>
+					</div>
+					<button
+						class="update-action-btn update-action-available"
+						onclick={doUpdate}
+					>
+						update
+					</button>
 				</div>
-				<button
-					class="update-btn"
-					onclick={doUpdate}
-				>
-					update now
-				</button>
 			</div>
 		{/if}
 	</div>
@@ -1260,7 +1298,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		margin-bottom: 0.5rem;
+		margin-bottom: 0.75rem;
 	}
 	.update-current {
 		font-family: var(--font-mono);
@@ -1277,72 +1315,245 @@
 		color: oklch(0.88 0.02 75 / 60%);
 		cursor: pointer;
 	}
-	.update-banner {
+	/* ═══ Update card ═══ */
+
+	.update-card {
+		position: relative;
+		overflow: hidden;
+		border-radius: 1rem;
+		border: 1px solid oklch(0.5 0.08 155 / 10%);
+		animation: update-card-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+	.update-card::before {
+		content: "";
+		position: absolute;
+		top: 0; left: 15%; right: 15%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(0.6 0.12 155 / 18%), transparent);
+		pointer-events: none;
+	}
+	@keyframes update-card-in {
+		from { opacity: 0; transform: translateY(8px) scale(0.98); filter: blur(4px); }
+		to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+	}
+
+	.update-card-content {
+		position: relative;
+		z-index: 2;
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
 		gap: 0.75rem;
-		padding: 0.625rem 0.75rem;
-		margin-bottom: 1.5rem;
+		padding: 0.875rem 1rem;
+	}
+
+	.update-card-glow {
+		position: absolute;
+		inset: 0;
+		z-index: 0;
+		opacity: 0;
+		animation: update-glow-pulse 3s ease-in-out infinite;
+	}
+	@keyframes update-glow-pulse {
+		0%, 100% { opacity: 0.4; }
+		50% { opacity: 1; }
+	}
+
+	/* ── Available state ── */
+	.update-card-available {
+		background: linear-gradient(
+			165deg,
+			oklch(0.5 0.06 155 / 6%) 0%,
+			oklch(0.4 0.04 165 / 4%) 50%,
+			oklch(0.5 0.06 155 / 5%) 100%
+		);
+		backdrop-filter: blur(16px) saturate(140%);
+		border-color: oklch(0.55 0.10 155 / 15%);
+	}
+	.update-card-available .update-card-glow {
+		background: radial-gradient(ellipse at 30% 50%, oklch(0.55 0.14 155 / 8%) 0%, transparent 70%);
+	}
+
+	/* ── Progress state ── */
+	.update-card-progress {
+		background: linear-gradient(
+			165deg,
+			oklch(0.5 0.06 220 / 6%) 0%,
+			oklch(0.4 0.04 230 / 4%) 100%
+		);
+		backdrop-filter: blur(16px) saturate(140%);
+		border-color: oklch(0.55 0.10 220 / 12%);
+	}
+	.update-card-progress-bar {
+		position: absolute;
+		bottom: 0; left: 0;
+		height: 2px;
+		width: 30%;
+		background: linear-gradient(90deg, oklch(0.60 0.14 220 / 60%), oklch(0.65 0.18 200 / 80%));
+		border-radius: 1px;
+		animation: progress-slide 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+	}
+	@keyframes progress-slide {
+		0% { left: -30%; }
+		100% { left: 100%; }
+	}
+
+	/* ── Done state ── */
+	.update-card-done {
+		background: linear-gradient(
+			165deg,
+			oklch(0.50 0.08 155 / 8%) 0%,
+			oklch(0.45 0.06 165 / 5%) 50%,
+			oklch(0.50 0.08 155 / 7%) 100%
+		);
+		backdrop-filter: blur(16px) saturate(140%);
+		border-color: oklch(0.60 0.14 155 / 20%);
+		box-shadow:
+			0 4px 24px oklch(0.50 0.14 155 / 10%),
+			0 12px 48px oklch(0.40 0.10 155 / 5%);
+	}
+	.update-card-done .update-card-glow {
+		background: radial-gradient(ellipse at 50% 40%, oklch(0.55 0.16 155 / 12%) 0%, transparent 65%);
+		animation: update-glow-bloom 2s ease-out both;
+	}
+	@keyframes update-glow-bloom {
+		from { opacity: 0; transform: scale(0.8); }
+		to { opacity: 1; transform: scale(1); }
+	}
+	.update-card-shimmer {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+		background: linear-gradient(
+			110deg,
+			transparent 30%,
+			oklch(0.70 0.12 155 / 8%) 45%,
+			oklch(0.75 0.14 155 / 12%) 50%,
+			oklch(0.70 0.12 155 / 8%) 55%,
+			transparent 70%
+		);
+		background-size: 300% 100%;
+		animation: shimmer-sweep 2.5s ease-in-out 0.3s both;
+		pointer-events: none;
+	}
+	@keyframes shimmer-sweep {
+		from { background-position: 200% 0; }
+		to { background-position: -100% 0; }
+	}
+
+	/* ── Icons ── */
+	.update-icon-wrap {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
 		border-radius: 0.5rem;
-		background: oklch(0.72 0.15 155 / 6%);
-		border: 1px solid oklch(0.72 0.15 155 / 18%);
+		flex-shrink: 0;
 	}
-	.update-done {
-		background: oklch(0.72 0.15 155 / 10%);
-		border-color: oklch(0.72 0.15 155 / 30%);
+	.update-icon-available {
+		background: oklch(0.55 0.10 155 / 10%);
+		color: oklch(0.65 0.14 155 / 70%);
+		animation: icon-bounce 2s ease-in-out infinite;
 	}
-	.update-done .update-label {
-		color: oklch(0.72 0.15 155);
+	@keyframes icon-bounce {
+		0%, 100% { transform: translateY(0); }
+		50% { transform: translateY(-2px); }
 	}
-	.update-reload-btn {
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		padding: 0.25rem 0.6rem;
-		border-radius: 0.3rem;
-		background: oklch(0.72 0.15 155 / 15%);
-		color: oklch(0.72 0.15 155);
-		border: 1px solid oklch(0.72 0.15 155 / 30%);
-		cursor: pointer;
-		transition: background 0.15s;
+	.update-icon-progress {
+		background: oklch(0.55 0.10 220 / 10%);
+		color: oklch(0.65 0.14 220 / 70%);
 	}
-	.update-reload-btn:hover {
-		background: oklch(0.72 0.15 155 / 25%);
+	.update-spinner {
+		animation: spin 1.2s linear infinite;
 	}
-	.update-info {
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+	.update-icon-done {
+		background: oklch(0.55 0.12 155 / 14%);
+		color: oklch(0.70 0.16 155 / 85%);
+		animation: icon-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+	}
+	@keyframes icon-pop {
+		from { transform: scale(0); opacity: 0; }
+		to { transform: scale(1); opacity: 1; }
+	}
+
+	/* ── Text ── */
+	.update-text {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 0.1rem;
+		gap: 0.15rem;
+		min-width: 0;
 	}
-	.update-label {
+	.update-title {
 		font-family: var(--font-mono);
 		font-size: 0.72rem;
-		letter-spacing: 0.05em;
-		color: oklch(0.72 0.15 155 / 75%);
+		font-weight: 500;
+		letter-spacing: 0.04em;
+		color: oklch(0.80 0.04 155 / 75%);
 	}
-	.update-version {
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: oklch(0.72 0.15 155 / 40%);
+	.update-title-done {
+		color: oklch(0.72 0.14 155 / 90%);
 	}
-	.update-btn {
+	.update-subtitle {
+		font-family: var(--font-body);
+		font-size: 0.68rem;
+		color: oklch(0.65 0.04 220 / 40%);
+	}
+	.update-version-tag {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
 		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		padding: 0.3rem 0.75rem;
-		border-radius: 0.375rem;
-		background: oklch(0.72 0.15 155 / 12%);
-		border: 1px solid oklch(0.72 0.15 155 / 25%);
-		color: oklch(0.72 0.15 155 / 85%);
+		font-size: 0.68rem;
+	}
+	.update-v-old {
+		color: oklch(0.60 0.04 220 / 35%);
+	}
+	.update-arrow {
+		color: oklch(0.60 0.10 155 / 45%);
+	}
+	.update-v-new {
+		color: oklch(0.68 0.12 155 / 70%);
+		font-weight: 500;
+	}
+
+	/* ── Action buttons ── */
+	.update-action-btn {
+		flex-shrink: 0;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		font-weight: 500;
+		letter-spacing: 0.04em;
+		padding: 0.375rem 0.875rem;
+		border-radius: 0.5rem;
 		cursor: pointer;
-		transition: all 0.2s ease;
+		transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 		white-space: nowrap;
 	}
-	.update-btn:hover:not(:disabled) {
-		background: oklch(0.72 0.15 155 / 20%);
+	.update-action-available {
+		background: oklch(0.55 0.10 155 / 12%);
+		border: 1px solid oklch(0.60 0.12 155 / 25%);
+		color: oklch(0.72 0.14 155 / 85%);
 	}
-	.update-btn:disabled {
-		opacity: 0.5;
-		cursor: default;
+	.update-action-available:hover {
+		background: oklch(0.55 0.12 155 / 22%);
+		border-color: oklch(0.60 0.14 155 / 40%);
+		box-shadow: 0 0 16px oklch(0.50 0.12 155 / 12%);
+		transform: translateY(-1px);
+	}
+	.update-action-done {
+		background: oklch(0.55 0.12 155 / 14%);
+		border: 1px solid oklch(0.60 0.14 155 / 30%);
+		color: oklch(0.72 0.16 155 / 90%);
+	}
+	.update-action-done:hover {
+		background: oklch(0.55 0.14 155 / 25%);
+		border-color: oklch(0.65 0.16 155 / 45%);
+		box-shadow: 0 0 20px oklch(0.50 0.14 155 / 15%);
+		transform: translateY(-1px);
 	}
 
 	.settings-section {
