@@ -80,7 +80,7 @@
 		cam.lookAt(0, 0, 0);
 
 		// ── Skybox — dark gradient with subtle color for envmap reflections ──
-		const skyGeo = new THREE.SphereGeometry(30, 64, 32);
+		const skyGeo = new THREE.SphereGeometry(30, 32, 16);
 		const skyMat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide });
 		const skyShader = Fn(() => {
 			const st = uv();
@@ -117,7 +117,7 @@
 		scene.backgroundNode = flatBg();
 
 		// ── Star particles — real 3D points for parallax + glass refraction ──
-		const STAR_COUNT = 1500;
+		const STAR_COUNT = 800;
 		const starPositions = new Float32Array(STAR_COUNT * 3);
 		const starSizes = new Float32Array(STAR_COUNT);
 		const starColors = new Float32Array(STAR_COUNT * 3);
@@ -201,7 +201,7 @@
 		glassMat.transparent = true;
 		glassMat.side = THREE.FrontSide;
 
-		const sphereGeo = new THREE.IcosahedronGeometry(1, 6);
+		const sphereGeo = new THREE.IcosahedronGeometry(1, 4);
 
 		// ── Sphere pool ──
 		interface OrbState {
