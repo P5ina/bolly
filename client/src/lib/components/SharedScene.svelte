@@ -207,8 +207,6 @@
 		const VIZ_Z_BEHIND = -2; // behind the blob (blob is at z=0)
 		const barGeo = new THREE.BoxGeometry(1, 1, 1);
 		const vizGroup = new THREE.Group();
-		// Place columns at blob position, offset behind it on Z axis
-		vizGroup.position.set(FINAL_X, FINAL_Y, FINAL_Z - 1.8);
 		vizGroup.visible = false;
 		scene.add(vizGroup);
 
@@ -681,6 +679,18 @@
 			// ── Visualizer columns update ──
 			const isDiscoNow = store.musicPlaying && store.musicAmplitude > 0.01;
 			vizGroup.visible = isDiscoNow;
+
+			// Position vizGroup behind the selected orb every frame
+			if (isDiscoNow && sel) {
+				const selOrb2 = orbMap.get(sel);
+				if (selOrb2) {
+					vizGroup.position.set(
+						selOrb2.mesh.position.x,
+						selOrb2.mesh.position.y,
+						selOrb2.mesh.position.z - 1.8,
+					);
+				}
+			}
 
 			if (isDiscoNow) {
 				const freqData = store.getMusicFrequencyData();
