@@ -38,8 +38,11 @@ else
     API_URL="https://api.github.com/repos/$REPO/releases/latest"
 fi
 
+echo "[update] fetching: $API_URL"
 RELEASE_JSON=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$API_URL" 2>/dev/null) || { echo "[update] could not fetch release info"; exit 1; }
 TAG=$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"//;s/".*//')
+ASSET_COUNT=$(echo "$RELEASE_JSON" | jq '.assets | length' 2>/dev/null || echo "jq-failed")
+echo "[update] tag=$TAG, assets_in_json=$ASSET_COUNT"
 
 if [ -z "$TAG" ]; then
     echo "[update] no tag found in release"
