@@ -61,7 +61,10 @@
 	const TOTAL_HEIGHT = 85;
 
 	// ── Render target for refraction ──
+	import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocessing';
+
 	let fbo: THREE.WebGLRenderTarget | null = null;
+	let composer: InstanceType<typeof EffectComposer> | null = null;
 
 	// ── Fonts ──
 	const fraunces = 'https://fonts.gstatic.com/s/fraunces/v38/6NVf8FyLNQOQZAnv9ZwNjucMHVn85Ni7emAe9lKqZTnbB-gzTK0K1ChJdt9vIVYX9G37lod9sPEKsxx664UJf1hLTf7W.ttf';
@@ -246,6 +249,44 @@
 	let starsRef: THREE.Points | undefined;
 	let bgPlane: THREE.Mesh | undefined;
 
+	// ── Particle trails ──
+	const TRAIL_COUNT = 4; // particles per sphere
+	const trailGeo = new THREE.BufferGeometry();
+	const trailPositions = new Float32Array(sphereConfs.length * TRAIL_COUNT * 3);
+	const trailAlphas = new Float32Array(sphereConfs.length * TRAIL_COUNT);
+	trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+	trailGeo.setAttribute('alpha', new THREE.BufferAttribute(trailAlphas, 1));
+
+	const trailMat = new THREE.ShaderMaterial({
+		vertexShader: `
+			attribute float alpha;
+			varying float vAlpha;
+			void main() {
+				vAlpha = alpha;
+				vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+				gl_PointSize = (1.0 + alpha * 2.0) * (300.0 / -mvPos.z);
+				gl_Position = projectionMatrix * mvPos;
+			}
+		`,
+		fragmentShader: `
+			varying float vAlpha;
+			void main() {
+				float d = length(gl_PointCoord - 0.5) * 2.0;
+				if (d > 1.0) discard;
+				float glow = exp(-d * d * 3.0) * vAlpha;
+				gl_FragColor = vec4(0.4, 0.5, 0.8, glow * 0.6);
+			}
+		`,
+		transparent: true,
+		depthWrite: false,
+		blending: THREE.AdditiveBlending,
+	});
+
+	// Trail history — stores last N positions per sphere
+	const trailHistory: THREE.Vector3[][] = sphereConfs.map(() =>
+		Array.from({ length: TRAIL_COUNT }, () => new THREE.Vector3())
+	);
+
 	// ── Features data ──
 	const features = [
 		{ title: 'helps you focus', desc: 'Track your tasks, break down complex goals, and stay on course.' },
@@ -382,28 +423,71 @@
 		refractionMat.uniforms.uTime.value = t;
 		refractionMat.uniforms.uBreathe.value = 1.0 + breathe * 0.5;
 
-		// Spheres: orbit on scroll + lazy floating drift
-		for (const mesh of sphereMeshes) {
+		// Spheres: orbit + drift + scroll-triggered entrance
+		const visH = 2 * CAM_Z * Math.tan((FOV / 2) * Math.PI / 180);
+
+		for (let si = 0; si < sphereMeshes.length; si++) {
+			const mesh = sphereMeshes[si];
 			const conf = mesh.userData as SphereConf;
 			const p = conf.phase;
-			// Scroll drives orbit around content
+
+			// Scroll-triggered entrance: sphere slides in from off-screen
+			const sphereScreenY = conf.y - smoothCamY;
+			const enterThreshold = visH * 0.8;
+			const enterProgress = Math.min(1, Math.max(0, (enterThreshold - Math.abs(sphereScreenY)) / enterThreshold));
+			const enterEased = enterProgress * enterProgress * (3 - 2 * enterProgress); // smoothstep
+
+			// Orbit + drift
 			const orbitAngle = scrollProgress * Math.PI * 4 + p;
 			const orbitRadius = Math.abs(conf.x);
-			// Lazy figure-8 drift
 			const driftX = Math.sin(t * 0.2 + p) * 1.5 + Math.sin(t * 0.5 + p * 2.3) * 0.5;
 			const driftY = Math.sin(t * 0.15 + p * 1.7) * 0.8 + Math.cos(t * 0.35 + p * 0.9) * 0.4;
 			const driftZ = Math.sin(t * 0.25 + p * 3.1) * 1.0;
 
-			mesh.position.x = orbitRadius * Math.cos(orbitAngle) + driftX + mouseX * 0.2;
+			// Off-screen start position (far right/left)
+			const offX = conf.x > 0 ? 20 : -20;
+			const targetX = orbitRadius * Math.cos(orbitAngle) + driftX + mouseX * 0.2;
+			const targetZ = orbitRadius * 0.4 * Math.sin(orbitAngle) + driftZ;
+
+			mesh.position.x = THREE.MathUtils.lerp(offX, targetX, enterEased);
 			mesh.position.y = conf.y + driftY;
-			mesh.position.z = orbitRadius * 0.4 * Math.sin(orbitAngle) + driftZ;
-			// Breathing scale
-			mesh.scale.setScalar(1 + Math.sin(t * 0.8 + p) * 0.04);
+			mesh.position.z = THREE.MathUtils.lerp(-5, targetZ, enterEased);
+			mesh.scale.setScalar((1 + Math.sin(t * 0.8 + p) * 0.04) * enterEased);
+
+			// Update particle trail
+			const trail = trailHistory[si];
+			// Shift history
+			for (let ti = TRAIL_COUNT - 1; ti > 0; ti--) {
+				trail[ti].copy(trail[ti - 1]);
+			}
+			trail[0].copy(mesh.position);
+			// Write to buffer
+			for (let ti = 0; ti < TRAIL_COUNT; ti++) {
+				const idx = (si * TRAIL_COUNT + ti) * 3;
+				trailPositions[idx] = trail[ti].x;
+				trailPositions[idx + 1] = trail[ti].y;
+				trailPositions[idx + 2] = trail[ti].z;
+				trailAlphas[si * TRAIL_COUNT + ti] = (1 - ti / TRAIL_COUNT) * 0.5 * enterEased;
+			}
 		}
+		trailGeo.attributes.position.needsUpdate = true;
+		trailGeo.attributes.alpha.needsUpdate = true;
 
 		if (starsRef) starsRef.rotation.y = t * 0.005 + mouseX * 0.02;
 
 		if (bgPlane) bgPlane.position.y = smoothCamY;
+
+		// ── Setup bloom composer on first frame ──
+		if (!composer && renderer) {
+			composer = new EffectComposer(renderer);
+			composer.addPass(new RenderPass(scene, camera.current));
+			composer.addPass(new EffectPass(camera.current, new BloomEffect({
+				intensity: 0.4,
+				luminanceThreshold: 0.6,
+				luminanceSmoothing: 0.3,
+				mipmapBlur: true,
+			})));
+		}
 
 		// ── Two-pass render ──
 		if (fbo && sphereMeshes.length > 0) {
@@ -415,13 +499,17 @@
 			renderer.clear();
 			renderer.render(scene, camera.current);
 
-			// Pass 2: show spheres, hide backing planes → render to screen
+			// Pass 2: show spheres, hide backing planes → render with bloom
 			for (const m of sphereMeshes) m.visible = true;
 			for (const bp of backingPlanes) bp.mesh.visible = false;
 
 			renderer.setRenderTarget(null);
-			renderer.clear();
-			renderer.render(scene, camera.current);
+			if (composer) {
+				composer.render();
+			} else {
+				renderer.clear();
+				renderer.render(scene, camera.current);
+			}
 		}
 	});
 
@@ -446,6 +534,9 @@
 <T.PointLight color={0x6677aa} intensity={0.4} position={[0, -3, 1]} />
 
 <T.Points bind:ref={starsRef} geometry={starGeo} material={starMat} />
+
+<!-- Particle trails behind spheres -->
+<T.Points geometry={trailGeo} material={trailMat} />
 
 <!-- ═══════════════════════════════════════
      HERO

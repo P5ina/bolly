@@ -32,6 +32,9 @@ importers:
       lucide-svelte:
         specifier: ^0.577.0
         version: 0.577.0(svelte@5.53.9)
+      postprocessing:
+        specifier: ^6.38.3
+        version: 6.38.3(three@0.183.2)
       resend:
         specifier: ^6.9.3
         version: 6.9.3
@@ -1442,6 +1445,11 @@ packages:
     resolution: {integrity: sha512-9ZhXKM/rw350N1ovuWHbGxnGh/SNJ4cnxHiM0rxE4VN41wsg8P8zWn9hv/buK00RP4WvlOyr/RBDiptyxVbkZQ==}
     engines: {node: '>=0.10.0'}
 
+  postprocessing@6.38.3:
+    resolution: {integrity: sha512-5qCFp8j62nWL6sSVv/RKuHscQUIV+VMMgWeHLYZQEBpAk7G+r3jA3bSKON7gZjiuxdZ/F4PXj2Jc1oPh/7Eg+g==}
+    peerDependencies:
+      three: '>= 0.157.0 < 0.184.0'
+
   qs@6.15.0:
     resolution: {integrity: sha512-mAZTtNCeetKMH+pSjrb76NAM8V9a05I9aBZOHztWy/UqcJdQYNsf59vrRKWnojAT9Y+GbIvoTBC++CPHqpDBhQ==}
     engines: {node: '>=0.6'}
@@ -2720,6 +2728,10 @@ snapshots:
   postgres-interval@1.2.0:
     dependencies:
       xtend: 4.0.2
+
+  postprocessing@6.38.3(three@0.183.2):
+    dependencies:
+      three: 0.183.2
 
   qs@6.15.0:
     dependencies:

@@ -24,6 +24,7 @@
 		"@vercel/analytics": "^2.0.1",
 		"drizzle-orm": "^0.44.0",
 		"lucide-svelte": "^0.577.0",
+		"postprocessing": "^6.38.3",
 		"resend": "^6.9.3",
 		"stripe": "^17.0.0",
 		"three": "^0.183.2",
