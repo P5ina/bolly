@@ -207,21 +207,8 @@
 		const VIZ_Z_BEHIND = -2; // behind the blob (blob is at z=0)
 		const barGeo = new THREE.BoxGeometry(1, 1, 1);
 		const vizGroup = new THREE.Group();
-		// Place columns behind the blob along the camera→blob vector.
-		// Camera is at (0,0,5), blob at (FINAL_X, FINAL_Y, 0).
-		// Direction: normalize(blob - cam), then offset blob by ~2.5 units along it.
-		{
-			const dx = FINAL_X - 0, dy = FINAL_Y - 0, dz = FINAL_Z - 5;
-			const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-			const VIZ_DEPTH = 1.8; // closer to blob so they hide behind it
-			vizGroup.position.set(
-				FINAL_X + (dx / len) * VIZ_DEPTH,
-				FINAL_Y + (dy / len) * VIZ_DEPTH,
-				FINAL_Z + (dz / len) * VIZ_DEPTH,
-			);
-		}
-		// Orient the group to face the camera
-		vizGroup.lookAt(0, 0, 5);
+		// Place columns at blob position, offset behind it on Z axis
+		vizGroup.position.set(FINAL_X, FINAL_Y, FINAL_Z - 1.8);
 		vizGroup.visible = false;
 		scene.add(vizGroup);
 
