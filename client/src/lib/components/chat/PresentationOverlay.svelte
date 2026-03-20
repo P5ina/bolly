@@ -52,7 +52,7 @@
 
 			visible = [...visible, {
 				id: item.data.id,
-				side: item.data.role === "user" ? "left" : "right",
+				side: item.data.role === "user" ? "right" : "left",
 			}];
 
 			// Auto-scroll to bottom

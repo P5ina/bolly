@@ -257,12 +257,12 @@
 		white-space: pre-wrap;
 	}
 
-	/* User messages: left-aligned, subdued glass */
+	/* User messages: right-aligned, subdued glass */
 	.msg-user {
 		display: flex;
 		flex-direction: column;
-		align-items: flex-start;
-		padding-left: 0.25rem;
+		align-items: flex-end;
+		padding-right: 0.25rem;
 	}
 
 	.msg-content-user {
@@ -281,7 +281,7 @@
 		-webkit-backdrop-filter: blur(20px) saturate(150%) brightness(1.05);
 		border: 1px solid oklch(1 0 0 / 8%);
 		border-top-color: oklch(1 0 0 / 15%);
-		border-radius: 14px 14px 14px 4px;
+		border-radius: 14px 14px 4px 14px;
 		max-width: 65%;
 		box-shadow:
 			0 2px 8px oklch(0 0 0 / 12%),
@@ -302,12 +302,12 @@
 		pointer-events: none;
 	}
 
-	/* Companion wrap: right-aligned */
+	/* Companion wrap: left-aligned */
 	.msg-companion-wrap {
 		display: flex;
 		flex-direction: column;
 		gap: 0.28rem;
-		align-items: flex-end;
+		align-items: flex-start;
 	}
 
 	.msg-presence-line {
