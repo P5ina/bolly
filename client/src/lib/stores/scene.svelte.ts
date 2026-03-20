@@ -334,8 +334,8 @@ export function createSceneStore(): SceneStore {
 				const vol = volume ?? 0.5;
 				const isBuiltIn = track === "ambient" || track === "intro" || track === "loop";
 				if (!isBuiltIn) {
-					// Custom audio — URL or relative path (e.g. /api/instances/.../file)
-					if (customAudio) { customAudio.pause(); }
+					// Stop all existing audio before playing custom track
+					stopAudio();
 					// Append auth token for same-origin upload URLs
 					let audioUrl = track;
 					if (track.startsWith("/api/")) {
