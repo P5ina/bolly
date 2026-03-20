@@ -349,18 +349,21 @@
 		refractionMat.uniforms.uTime.value = t;
 		refractionMat.uniforms.uBreathe.value = 1.0 + breathe * 0.5;
 
-		// Spheres: rotate only from scroll, slight mouse parallax
+		// Spheres: orbit around content column on scroll
 		for (const mesh of sphereMeshes) {
 			const conf = mesh.userData as SphereConf;
-			// Scroll-driven rotation
+			// Scroll drives the orbit angle — each sphere has unique phase
+			const orbitAngle = scrollProgress * Math.PI * 4 + conf.phase;
+			const orbitRadius = Math.abs(conf.x); // use initial x as orbit radius
+			mesh.position.x = orbitRadius * Math.cos(orbitAngle) + mouseX * 0.15;
+			mesh.position.y = conf.y; // stays at its Y position
+			mesh.position.z = orbitRadius * 0.5 * Math.sin(orbitAngle); // z oscillates
+			// Self-rotation also from scroll
 			mesh.rotation.set(
-				scrollProgress * Math.PI * 2 * 0.3 + conf.phase,
-				scrollProgress * Math.PI * 2 * 0.5 + conf.phase * 0.7,
+				orbitAngle * 0.3,
+				orbitAngle * 0.5,
 				0
 			);
-			// Subtle mouse parallax
-			mesh.position.x = conf.x + mouseX * 0.15;
-			mesh.position.z = conf.z + mouseY * -0.1;
 			// Breathing scale
 			mesh.scale.setScalar(1 + Math.sin(t * 0.8 + conf.phase) * 0.03);
 		}
@@ -458,19 +461,16 @@
 
 <!-- Demo video/chat placeholder — replace src with your video -->
 <HTML transform occlude="blending" pointerEvents="none" position={[-4, Y.demo + 1, 0]} scale={0.7}>
-	<div data-backing="demo" style="width:500px;height:380px;background:oklch(1 0 0 / 5%);border:1px solid oklch(1 0 0 / 10%);backdrop-filter:blur(12px);overflow:hidden;display:flex;align-items:center;justify-content:center;">
-		<!-- Replace this div with <video> when ready -->
-		<div style="width:100%;height:100%;display:flex;flex-direction:column;">
-			<div style="display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;border-bottom:1px solid oklch(1 0 0 / 5%);">
-				<div style="width:28px;height:28px;border-radius:50%;background:oklch(0.78 0.12 75 / 10%);border:1px solid oklch(0.78 0.12 75 / 15%);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-style:italic;font-size:0.8rem;color:rgba(196,162,101,0.6);">b</div>
-				<div><span style="font-size:0.85rem;color:#e6dcc8;">bolly</span><br/><span style="font-size:0.75rem;color:rgba(196,162,101,0.4);font-style:italic;">feeling curious</span></div>
-			</div>
-			<div style="padding:1.25rem;display:flex;flex-direction:column;gap:0.6rem;font-family:'Bricolage Grotesque',sans-serif;font-size:0.85rem;flex:1;">
-				<div style="align-self:flex-end;background:oklch(0.78 0.12 75 / 8%);border:1px solid oklch(0.78 0.12 75 / 12%);padding:0.6rem 0.85rem;color:#e6dcc8;max-width:80%;">i have an exam on thursday and i haven't started studying. kind of freaking out</div>
-				<div style="align-self:flex-start;background:oklch(1 0 0 / 5%);border:1px solid oklch(1 0 0 / 10%);padding:0.6rem 0.85rem;color:#8a8070;max-width:80%;">okay let's not panic. what's the subject and what topics does it cover?</div>
-				<div style="align-self:flex-end;background:oklch(0.78 0.12 75 / 8%);border:1px solid oklch(0.78 0.12 75 / 12%);padding:0.6rem 0.85rem;color:#e6dcc8;max-width:80%;">organic chemistry. reactions, mechanisms, stereochemistry</div>
-				<div style="align-self:flex-start;background:oklch(1 0 0 / 5%);border:1px solid oklch(1 0 0 / 10%);padding:0.6rem 0.85rem;color:#8a8070;max-width:80%;">three days is enough if we're smart about it. want to start with the easier topics or the hardest?</div>
-			</div>
+	<div data-backing="demo" style="width:500px;height:380px;background:oklch(0.04 0.015 260);border:1px solid oklch(1 0 0 / 8%);overflow:hidden;display:flex;flex-direction:column;">
+		<div style="display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;border-bottom:1px solid oklch(1 0 0 / 5%);">
+			<div style="width:28px;height:28px;border-radius:50%;background:oklch(0.78 0.12 75 / 10%);border:1px solid oklch(0.78 0.12 75 / 15%);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-style:italic;font-size:0.8rem;color:oklch(0.78 0.12 75 / 60%);">b</div>
+			<div><span style="font-size:0.85rem;color:oklch(0.90 0.02 75);">bolly</span><br/><span style="font-size:0.75rem;color:oklch(0.78 0.12 75 / 40%);font-style:italic;">feeling curious</span></div>
+		</div>
+		<div style="padding:1.25rem;display:flex;flex-direction:column;gap:0.6rem;font-family:'Bricolage Grotesque',sans-serif;font-size:0.85rem;flex:1;">
+			<div style="align-self:flex-start;color:oklch(0.72 0.025 220 / 60%);padding:0.55rem 0.9rem;background:linear-gradient(160deg,oklch(1 0 0 / 6%),oklch(0.5 0.02 220 / 8%),oklch(1 0 0 / 3%));border:1px solid oklch(1 0 0 / 8%);border-top-color:oklch(1 0 0 / 15%);max-width:65%;">i have an exam on thursday and i haven't started studying. kind of freaking out</div>
+			<div style="align-self:flex-end;color:oklch(0.9 0.025 75 / 92%);padding:0.7rem 1rem;background:linear-gradient(145deg,oklch(1 0 0 / 7%),oklch(1 0 0 / 4%),oklch(0.5 0.03 200 / 10%));border:1px solid oklch(1 0 0 / 10%);border-top-color:oklch(1 0 0 / 20%);max-width:80%;">okay let's not panic. what's the subject and what topics does it cover?</div>
+			<div style="align-self:flex-start;color:oklch(0.72 0.025 220 / 60%);padding:0.55rem 0.9rem;background:linear-gradient(160deg,oklch(1 0 0 / 6%),oklch(0.5 0.02 220 / 8%),oklch(1 0 0 / 3%));border:1px solid oklch(1 0 0 / 8%);border-top-color:oklch(1 0 0 / 15%);max-width:65%;">organic chemistry</div>
+			<div style="align-self:flex-end;color:oklch(0.9 0.025 75 / 92%);padding:0.7rem 1rem;background:linear-gradient(145deg,oklch(1 0 0 / 7%),oklch(1 0 0 / 4%),oklch(0.5 0.03 200 / 10%));border:1px solid oklch(1 0 0 / 10%);border-top-color:oklch(1 0 0 / 20%);max-width:80%;">three days is enough if we're smart about it. want to start with the easier topics or the hardest?</div>
 		</div>
 	</div>
 </HTML>
