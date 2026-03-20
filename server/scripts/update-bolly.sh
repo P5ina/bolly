@@ -68,7 +68,7 @@ echo "[update] downloading bolly $VERSION ($CHANNEL) for $TARGET..."
 ASSET_NAME="bolly-$TARGET"
 ASSET_API_URL=""
 if [ -n "$RELEASE_TOKEN" ] && command -v jq >/dev/null 2>&1; then
-    ASSET_API_URL=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url" 2>/dev/null)
+    ASSET_API_URL=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url" 2>/dev/null) || true
 fi
 
 DOWNLOAD_OK=false

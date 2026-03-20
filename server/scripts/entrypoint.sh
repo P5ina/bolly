@@ -9,12 +9,14 @@ mkdir -p "$PERSIST_DIR" "$BIN_DIR"
 
 # --- Always check for updates before starting ---
 echo "[entrypoint] checking for updates..."
-if /opt/bolly/scripts/update-bolly.sh; then
+/opt/bolly/scripts/update-bolly.sh || UPDATE_EXIT=$?
+UPDATE_EXIT=${UPDATE_EXIT:-0}
+if [ $UPDATE_EXIT -eq 0 ]; then
     echo "[entrypoint] update applied successfully"
-elif [ $? -eq 2 ]; then
+elif [ $UPDATE_EXIT -eq 2 ]; then
     echo "[entrypoint] already up to date"
 else
-    echo "[entrypoint] WARNING: update failed, starting with existing binary"
+    echo "[entrypoint] WARNING: update failed (exit $UPDATE_EXIT), starting with existing binary"
 fi
 
 # --- Ensure Chromium is available ---
