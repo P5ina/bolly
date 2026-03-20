@@ -526,14 +526,12 @@ fn build_reflection_prompt(
     prompt.push_str(&format!("memory library ({file_count} files — use memory_read for details):\n"));
     prompt.push_str(library_catalog);
     prompt.push('\n');
-    if file_count > 50 {
+    if file_count > 200 {
         prompt.push_str(&format!(
-            "\n⚠ your memory has {file_count} files — this is too many. \
-             PRIORITIZE cleanup this heartbeat:\n\
+            "\n⚠ your memory has {file_count} files — consider tidying up:\n\
              - merge files about the same topic into one\n\
              - delete trivial/duplicate/outdated memories\n\
-             - aim for ~30-50 high-quality files, not hundreds of fragments\n\
-             - do 5-10 cleanup ops this cycle\n\n"
+             - do a few cleanup ops this cycle\n\n"
         ));
     }
 
