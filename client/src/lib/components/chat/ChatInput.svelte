@@ -64,8 +64,13 @@
 		// eslint-disable-next-line @typescript-eslint/no-unused-expressions
 		value;
 		if (!textareaEl) return;
+		// Temporarily hide overflow to get accurate scrollHeight
+		textareaEl.style.overflowY = "hidden";
 		textareaEl.style.height = "auto";
-		textareaEl.style.height = `${textareaEl.scrollHeight}px`;
+		const h = textareaEl.scrollHeight;
+		textareaEl.style.height = `${h}px`;
+		// Only show scrollbar when content exceeds max-height
+		textareaEl.style.overflowY = h >= 200 ? "auto" : "hidden";
 	});
 
 	function handleSubmit() {
@@ -462,7 +467,7 @@
 		min-width: 0;
 		min-height: 44px;
 		max-height: 200px;
-		overflow-y: auto;
+		overflow-y: hidden;
 		resize: none;
 		padding: 0.75rem 1rem;
 		font-family: var(--font-body);
