@@ -46,6 +46,7 @@ export interface SceneStore {
 	setMood(m: string): void;
 	setThinking(v: boolean): void;
 	setVoiceAmplitude(v: number): void;
+	duckMusic(speaking: boolean): void;
 	skipIntro(): void;
 	musicControl(action: string, track?: string, volume?: number): void;
 	destroy(): void;
@@ -401,18 +402,17 @@ export function createSceneStore(): SceneStore {
 
 		setMood(m) { mood = m; },
 		setThinking(v) { thinking = v; },
-		setVoiceAmplitude(v) {
-			voiceAmplitude = v;
-			// Auto-duck custom music when TTS is speaking
-			if (customAudio) {
-				const speaking = v > 0.01;
-				if (speaking && !isDucked) {
-					isDucked = true;
-					fadeAudio(customAudio, customAudioBaseVolume * 0.15, 300);
-				} else if (!speaking && isDucked) {
-					isDucked = false;
-					fadeAudio(customAudio, customAudioBaseVolume, 500);
-				}
+		setVoiceAmplitude(v) { voiceAmplitude = v; },
+		duckMusic(speaking: boolean) {
+			if (!customAudio) return;
+			if (speaking && !isDucked) {
+				isDucked = true;
+				console.log("[duck] lowering music to", customAudioBaseVolume * 0.15);
+				fadeAudio(customAudio, customAudioBaseVolume * 0.15, 300);
+			} else if (!speaking && isDucked) {
+				isDucked = false;
+				console.log("[duck] restoring music to", customAudioBaseVolume);
+				fadeAudio(customAudio, customAudioBaseVolume, 500);
 			}
 		},
 

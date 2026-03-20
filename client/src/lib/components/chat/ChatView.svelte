@@ -113,6 +113,8 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	$effect(() => { scene.setMood(mood); });
 	$effect(() => { scene.setThinking(sending || agentRunning); });
 	$effect(() => { scene.setVoiceAmplitude(voice.amplitude); });
+	// Auto-duck music when TTS is speaking
+	$effect(() => { scene.duckMusic(voice.speaking); });
 
 	const ws = getWebSocket();
 	let hadConnection = false;
