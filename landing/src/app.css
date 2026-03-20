@@ -213,6 +213,10 @@ a { color: inherit; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Buttons reset */
+button { background: none; border: none; font: inherit; cursor: pointer; color: inherit; }
+select { font: inherit; color: inherit; }
+
 /* Misc */
 .relative { position: relative; }
 .z-10 { z-index: 10; }
