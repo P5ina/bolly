@@ -26,7 +26,6 @@ permissions:
 
 env:
   FLY_IMAGE: registry.fly.io/bolly:latest
-  FLY_NIGHTLY: registry.fly.io/bolly:nightly
 
 jobs:
   # Build binary with embedded client
@@ -143,8 +142,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: |
-            ${{ startsWith(github.ref, 'refs/tags/v') && env.FLY_IMAGE || env.FLY_NIGHTLY }}
+          tags: ${{ env.FLY_IMAGE }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

@@ -9,9 +9,10 @@ export function registryApp(): string {
 
 export type ImageChannel = 'stable' | 'nightly';
 
-export function imageForChannel(channel: ImageChannel): string {
-	const registry = `registry.fly.io/${registryApp()}`;
-	return channel === 'nightly' ? `${registry}:nightly` : `${registry}:latest`;
+export function imageForChannel(_channel: ImageChannel): string {
+	// Single Docker image for all channels — nightly/stable only affects
+	// which binary update-bolly.sh downloads inside the container.
+	return `registry.fly.io/${registryApp()}:latest`;
 }
 
 function headers() {
