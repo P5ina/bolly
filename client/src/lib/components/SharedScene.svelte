@@ -86,7 +86,7 @@
 		const skyMat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide });
 		const skyShader = Fn(() => {
 			const st = uv();
-			const t = time.mul(0.012);
+			const t = time.mod(6283.0).mul(0.012);
 			const E = float(2.718);
 			// Dark base
 			const c = vec3(0.003, 0.005, 0.018).toVar();
@@ -253,7 +253,9 @@
 		const uBreathe = uniform(1.0);
 		const displacedPos = Fn(() => {
 			const pos = positionLocal.toVar();
-			const t = time;
+			// Wrap time to prevent float32 precision loss in sin/cos on GPU
+			// after long idle periods. 6283 ≈ 1000*2π, so wrapping is seamless.
+			const t = time.mod(6283.0);
 			const noise = sin(pos.x.mul(2.1).add(t.mul(uSpeed).mul(0.7)))
 				.mul(cos(pos.y.mul(1.8).add(t.mul(uSpeed).mul(0.5))))
 				.mul(sin(pos.z.mul(2.5).add(t.mul(uSpeed).mul(0.9))));
@@ -418,7 +420,7 @@
 			const now = performance.now();
 			const delta = (now - prevTime) / 1000;
 			prevTime = now;
-			t += delta;
+			t = (t + delta) % 6283; // wrap to match shader time.mod(6283)
 
 			store.tick();
 			syncOrbs();
