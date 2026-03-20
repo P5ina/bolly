@@ -18,6 +18,8 @@
 		updateTimezone,
 		fetchVoiceId,
 		updateVoiceId,
+		fetchMusicEnabled,
+		updateMusicEnabled,
 		fetchEmailAccounts,
 		saveEmailAccounts,
 		deleteAllEmailAccounts,
@@ -94,6 +96,36 @@
 	let ghSaving = $state(false);
 	let ghError = $state("");
 	let ghEditing = $state(false);
+
+	// Music state
+	let musicEnabledVal = $state(true);
+	let musicLoading = $state(true);
+	let musicSaving = $state(false);
+
+	async function loadMusic() {
+		musicLoading = true;
+		try {
+			const res = await fetchMusicEnabled(slug);
+			musicEnabledVal = res.music_enabled;
+		} catch {
+			// not critical
+		} finally {
+			musicLoading = false;
+		}
+	}
+
+	async function toggleMusic() {
+		musicSaving = true;
+		try {
+			const next = !musicEnabledVal;
+			await updateMusicEnabled(slug, next);
+			musicEnabledVal = next;
+		} catch {
+			// ignore
+		} finally {
+			musicSaving = false;
+		}
+	}
 
 	// Voice state
 	let voiceId = $state("");
@@ -480,6 +512,7 @@
 		loadTimezone();
 		loadEmail();
 		loadVoice();
+		loadMusic();
 	});
 </script>
 
@@ -1022,6 +1055,37 @@
 		{#if ghError}
 			<p class="error-msg">{ghError}</p>
 		{/if}
+	</section>
+
+	<!-- Music -->
+	<section class="settings-section">
+		<div class="section-header">
+			<div class="section-icon voice-icon">
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M9 18V5l12-2v13"/>
+					<circle cx="6" cy="18" r="3"/>
+					<circle cx="18" cy="16" r="3"/>
+				</svg>
+			</div>
+			<div class="section-header-text">
+				<h3 class="section-label">music</h3>
+				<p class="section-desc">
+					Background ambient and intro music when entering chat.
+				</p>
+			</div>
+			{#if musicLoading}
+				<div class="loading-dot" style="margin-left:auto"></div>
+			{:else}
+				<button
+					class="music-toggle"
+					class:music-toggle-on={musicEnabledVal}
+					disabled={musicSaving}
+					onclick={toggleMusic}
+				>
+					{musicEnabledVal ? "on" : "off"}
+				</button>
+			{/if}
+		</div>
 	</section>
 
 	<!-- Voice -->
@@ -1758,6 +1822,37 @@
 
 	.voice-icon {
 		color: oklch(0.78 0.10 200 / 60%);
+	}
+
+	.music-toggle {
+		margin-left: auto;
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		letter-spacing: 0.04em;
+		padding: 0.3rem 0.75rem;
+		border-radius: 0.5rem;
+		border: 1px solid oklch(1 0 0 / 8%);
+		background: oklch(1 0 0 / 3%);
+		color: oklch(0.65 0.04 240 / 50%);
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+	.music-toggle:hover {
+		border-color: oklch(1 0 0 / 15%);
+		color: oklch(0.80 0.04 240 / 75%);
+	}
+	.music-toggle-on {
+		border-color: oklch(0.78 0.10 200 / 25%);
+		background: oklch(0.78 0.10 200 / 8%);
+		color: oklch(0.78 0.10 200 / 70%);
+	}
+	.music-toggle-on:hover {
+		border-color: oklch(0.78 0.10 200 / 40%);
+		color: oklch(0.78 0.10 200 / 85%);
+	}
+	.music-toggle:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 
 	.gh-status {

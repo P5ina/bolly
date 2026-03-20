@@ -295,6 +295,18 @@ export function updateVoiceId(slug: string, voiceId: string): Promise<void> {
 	});
 }
 
+export function fetchMusicEnabled(slug: string): Promise<{ music_enabled: boolean }> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/music`);
+}
+
+export function updateMusicEnabled(slug: string, enabled: boolean): Promise<void> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/music`, {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ music_enabled: enabled }),
+	});
+}
+
 export function fetchMood(slug: string): Promise<{ mood: string }> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/mood`);
 }

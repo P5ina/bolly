@@ -28,8 +28,10 @@ export interface SceneStore {
 	readonly mood: string;
 	readonly thinking: boolean;
 	readonly voiceAmplitude: number;
+	readonly musicEnabled: boolean;
 
 	setInstances(list: InstanceSummary[]): void;
+	setMusicEnabled(v: boolean): void;
 	selectInstance(slug: string): void;
 	enterHome(): void;
 	enterOnboarding(slug: string): void;
@@ -64,6 +66,7 @@ export function createSceneStore(): SceneStore {
 	let mood = $state("calm");
 	let thinking = $state(false);
 	let voiceAmplitude = $state(0);
+	let musicEnabled = $state(true);
 
 	let selectStartTime = 0;
 	let introStartTime = 0;
@@ -101,6 +104,7 @@ export function createSceneStore(): SceneStore {
 	}
 
 	function startFullAudio() {
+		if (!musicEnabled) return;
 		if (!ambientAudio) {
 			ambientAudio = new Audio("/sounds/ambient.mp3");
 			ambientAudio.loop = true;
@@ -146,6 +150,7 @@ export function createSceneStore(): SceneStore {
 	}
 
 	function startLoopOnly() {
+		if (!musicEnabled) return;
 		if (!ambientAudio) {
 			ambientAudio = new Audio("/sounds/ambient.mp3");
 			ambientAudio.loop = true;
@@ -240,8 +245,10 @@ export function createSceneStore(): SceneStore {
 		get mood() { return mood; },
 		get thinking() { return thinking; },
 		get voiceAmplitude() { return voiceAmplitude; },
+		get musicEnabled() { return musicEnabled; },
 
 		setInstances(list) { instances = list; },
+		setMusicEnabled(v) { musicEnabled = v; if (!v) stopAudio(); },
 
 		selectInstance(slug: string) {
 			if (mode !== "home") return;

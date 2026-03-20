@@ -71,7 +71,12 @@ pub struct InstanceConfig {
     /// ElevenLabs voice ID override for this instance.
     #[serde(default)]
     pub elevenlabs_voice_id: String,
+    /// Whether background music/ambient plays automatically. Default: true.
+    #[serde(default = "default_true")]
+    pub music_enabled: bool,
 }
+
+fn default_true() -> bool { true }
 
 impl InstanceConfig {
     /// Load per-instance config from `instances/{slug}/instance.toml`.

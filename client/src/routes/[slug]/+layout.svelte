@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from "$app/navigation";
 	import { page } from "$app/state";
-	import { deleteInstance } from "$lib/api/client.js";
+	import { deleteInstance, fetchMusicEnabled } from "$lib/api/client.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getPresentationState } from "$lib/stores/presentation.svelte.js";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
@@ -17,10 +17,13 @@
 	);
 	const checking = $derived(instances.loading);
 
-	// Ensure scene enters chat mode when instance is ready
+	// Fetch music setting and enter chat mode when instance is ready
 	$effect(() => {
 		if (!checking && !isNew) {
-			scene.enterChat(slug);
+			fetchMusicEnabled(slug)
+				.then((res) => scene.setMusicEnabled(res.music_enabled))
+				.catch(() => {})
+				.finally(() => scene.enterChat(slug));
 		}
 	});
 
