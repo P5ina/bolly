@@ -48,7 +48,7 @@ pub use system::{
     RestartMachineTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
 };
 pub use image::ViewImageTool;
-pub use media::{WatchVideoTool, ListenMusicTool};
+pub use media::{WatchVideoTool, ListenMusicTool, MediaType, is_youtube_url, download_youtube};
 pub use web::{BrowseTool, WebFetchTool, WebSearchTool};
 
 // ---------------------------------------------------------------------------

@@ -108,7 +108,7 @@ impl MediaContext {
 }
 
 #[derive(Clone, Copy)]
-enum MediaType {
+pub enum MediaType {
     Video,
     Audio,
 }
@@ -228,7 +228,7 @@ impl Tool for ListenMusicTool {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-fn is_youtube_url(url: &str) -> bool {
+pub fn is_youtube_url(url: &str) -> bool {
     let lower = url.to_lowercase();
     lower.contains("youtube.com/") || lower.contains("youtu.be/") || lower.contains("music.youtube.com/")
 }
@@ -242,7 +242,7 @@ async fn maybe_compress(path: &str, media_type: MediaType) -> Result<String, Too
     compress_media(Path::new(path), media_type).await
 }
 
-async fn download_youtube(url: &str, media_type: MediaType) -> Result<String, ToolExecError> {
+pub async fn download_youtube(url: &str, media_type: MediaType) -> Result<String, ToolExecError> {
     ensure_ytdlp().await?;
     let ext = media_type.yt_dlp_ext();
     let output_path = format!("/tmp/yt_{}.{ext}", std::process::id());
@@ -268,7 +268,7 @@ async fn download_youtube(url: &str, media_type: MediaType) -> Result<String, To
     Ok(output_path)
 }
 
-async fn ensure_ytdlp() -> Result<(), ToolExecError> {
+pub async fn ensure_ytdlp() -> Result<(), ToolExecError> {
     let check = tokio::process::Command::new("yt-dlp").arg("--version").output().await;
     if check.is_ok() && check.as_ref().unwrap().status.success() { return Ok(()); }
 
