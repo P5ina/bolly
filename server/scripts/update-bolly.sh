@@ -38,13 +38,9 @@ else
     API_URL="https://api.github.com/repos/$REPO/releases/latest"
 fi
 
-echo "[update] fetching: $API_URL"
 RELEASE_FILE="/tmp/bolly_release_$$.json"
 curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$API_URL" -o "$RELEASE_FILE" 2>/dev/null || { echo "[update] could not fetch release info"; exit 1; }
 TAG=$(grep '"tag_name"' "$RELEASE_FILE" | head -1 | sed 's/.*"tag_name": *"//;s/".*//')
-ASSET_COUNT=$(jq '.assets | length' "$RELEASE_FILE" 2>/dev/null || echo "jq-failed")
-echo "[update] tag=$TAG, assets_in_json=$ASSET_COUNT, json_size=$(wc -c < "$RELEASE_FILE")bytes"
-RELEASE_JSON=$(cat "$RELEASE_FILE")
 
 if [ -z "$TAG" ]; then
     echo "[update] no tag found in release"
@@ -53,7 +49,7 @@ fi
 
 # For nightly, use the published_at timestamp as version (tag is always "nightly")
 if [ "$CHANNEL" = "nightly" ]; then
-    PUBLISHED=$(echo "$RELEASE_JSON" | grep '"published_at"' | head -1 | sed 's/.*"published_at": *"//;s/".*//')
+    PUBLISHED=$(grep '"published_at"' "$RELEASE_FILE" | head -1 | sed 's/.*"published_at": *"//;s/".*//')
     VERSION="nightly-$PUBLISHED"
 else
     VERSION="$TAG"
@@ -66,7 +62,6 @@ if [ -f "$VERSION_FILE" ] && [ "$(cat "$VERSION_FILE")" = "$VERSION" ] && [ -f "
 fi
 
 echo "[update] downloading bolly $VERSION ($CHANNEL) for $TARGET..."
-echo "[update] release_token: $([ -n "$RELEASE_TOKEN" ] && echo 'set' || echo 'NOT SET'), jq: $(command -v jq >/dev/null 2>&1 && echo 'available' || echo 'NOT FOUND')"
 
 # For private repos, browser_download_url returns 404.
 # Use GitHub API asset endpoint with Accept: application/octet-stream instead.
@@ -74,9 +69,6 @@ echo "[update] release_token: $([ -n "$RELEASE_TOKEN" ] && echo 'set' || echo 'N
 ASSET_NAME="bolly-$TARGET"
 ASSET_API_URL=""
 if [ -n "$RELEASE_TOKEN" ] && command -v jq >/dev/null 2>&1; then
-    AVAILABLE_ASSETS=$(jq -r '.assets[].name' "$RELEASE_FILE" 2>/dev/null) || true
-    echo "[update] looking for: $ASSET_NAME"
-    echo "[update] available assets: $(echo "$AVAILABLE_ASSETS" | tr '\n' ', ')"
     ASSET_API_URL=$(jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url" "$RELEASE_FILE" 2>/dev/null) || true
 fi
 
@@ -113,6 +105,8 @@ if [ "$DOWNLOAD_OK" = "true" ]; then
         DOWNLOAD_OK=false
     fi
 fi
+
+rm -f "$RELEASE_FILE"
 
 if [ "$DOWNLOAD_OK" = "true" ]; then
     chmod +x "$BINARY.tmp"
