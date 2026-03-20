@@ -166,11 +166,12 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                 cfg.llm.tokens.elevenlabs.clone()
             };
             if api_key.is_empty() { return; }
-            let voice_id = crate::routes::tts::resolve_voice_id(&tts_state.workspace_dir, &tts_slug);
 
             while let Some(message) = tts_rx.recv().await {
                 if tts_cancel.is_cancelled() { break; }
 
+                // Re-resolve voice_id per message — agent may change it via set_voice tool
+                let voice_id = crate::routes::tts::resolve_voice_id(&tts_state.workspace_dir, &tts_slug);
                 let idir = tts_state.workspace_dir.join("instances").join(&tts_slug);
                 let mood = crate::services::tools::companion::load_mood_state(&idir).companion_mood;
                 match crate::routes::tts::synthesize_bytes(&tts_state.http_client, &api_key, &voice_id, &message.content, &mood).await {

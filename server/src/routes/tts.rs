@@ -23,8 +23,14 @@ struct TtsRequest {
     instance_slug: String,
 }
 
-/// Resolve ElevenLabs voice ID: instance config > env var > default.
+/// Resolve ElevenLabs voice ID: temporary override > instance config > env var > default.
 pub fn resolve_voice_id(workspace_dir: &Path, instance_slug: &str) -> String {
+    // Check temporary in-memory override first (set by set_voice tool)
+    if let Some(override_id) = crate::services::tools::get_voice_override(instance_slug) {
+        if !override_id.is_empty() {
+            return override_id;
+        }
+    }
     if !instance_slug.is_empty() {
         let inst = InstanceConfig::load(workspace_dir, instance_slug);
         if !inst.elevenlabs_voice_id.is_empty() {

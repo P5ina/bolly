@@ -6,6 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use chrono::Utc;
 use tokio::sync::broadcast;
 
+use crate::app::state::AppState;
 use crate::domain::chat::{ChatMessage, ChatRole};
 use crate::domain::events::ServerEvent;
 use crate::services::tools::ScheduledMessage;
@@ -13,19 +14,20 @@ use crate::services::tools::ScheduledMessage;
 static SCHED_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Spawn a background task that checks for scheduled messages every 30 seconds.
-pub fn start(workspace_dir: &Path, events: broadcast::Sender<ServerEvent>) {
-    let workspace = workspace_dir.to_path_buf();
+pub fn start(state: AppState) {
+    let workspace = state.workspace_dir.clone();
+    let events = state.events.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(30));
         loop {
             interval.tick().await;
-            check_and_deliver(&workspace, &events);
+            check_and_deliver(&workspace, &events, &state).await;
         }
     });
     log::info!("scheduler started — checking for scheduled messages every 30s");
 }
 
-fn check_and_deliver(workspace_dir: &Path, events: &broadcast::Sender<ServerEvent>) {
+async fn check_and_deliver(workspace_dir: &Path, events: &broadcast::Sender<ServerEvent>, state: &AppState) {
     let instances_dir = workspace_dir.join("instances");
     let entries = match fs::read_dir(&instances_dir) {
         Ok(e) => e,
@@ -92,6 +94,8 @@ fn check_and_deliver(workspace_dir: &Path, events: &broadcast::Sender<ServerEven
             append_scheduled_message(workspace_dir, &instance_slug, &message);
 
             // Broadcast via WebSocket
+            let msg_id = message.id.clone();
+            let msg_content = message.content.clone();
             match events.send(ServerEvent::ChatMessageCreated {
                 instance_slug: instance_slug.clone(),
                 chat_id: "default".to_string(),
@@ -99,6 +103,32 @@ fn check_and_deliver(workspace_dir: &Path, events: &broadcast::Sender<ServerEven
             }) {
                 Ok(n) => log::info!("broadcast scheduled message to {n} receivers"),
                 Err(e) => log::warn!("broadcast failed (no receivers?): {e}"),
+            }
+
+            // Synthesize TTS if voice_enabled for this instance
+            let inst_config = crate::config::InstanceConfig::load(workspace_dir, &instance_slug);
+            if inst_config.voice_enabled {
+                let api_key = {
+                    let cfg = state.config.read().await;
+                    cfg.llm.tokens.elevenlabs.clone()
+                };
+                if !api_key.is_empty() {
+                    let voice_id = crate::routes::tts::resolve_voice_id(workspace_dir, &instance_slug);
+                    let mood = crate::services::tools::companion::load_mood_state(&instance_dir).companion_mood;
+                    match crate::routes::tts::synthesize_bytes(&state.http_client, &api_key, &voice_id, &msg_content, &mood).await {
+                        Ok(audio_bytes) => {
+                            use base64::Engine;
+                            let audio_base64 = base64::engine::general_purpose::STANDARD.encode(&audio_bytes);
+                            let _ = events.send(ServerEvent::ChatAudioReady {
+                                instance_slug: instance_slug.clone(),
+                                chat_id: "default".to_string(),
+                                audio_base64,
+                                message_ids: vec![msg_id.clone()],
+                            });
+                        }
+                        Err(e) => log::warn!("[scheduler-tts] failed for {}: {e}", msg_id),
+                    }
+                }
             }
 
             // Remove the scheduled file

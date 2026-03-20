@@ -212,105 +212,78 @@ impl PlayMusicTool {
 }
 
 // ---------------------------------------------------------------------------
-// speak — synthesize speech with a specific ElevenLabs voice ID
+// set_voice — temporarily change the ElevenLabs voice ID (in-memory only)
 // ---------------------------------------------------------------------------
 
-pub struct SpeakTool {
-    instance_slug: String,
-    chat_id: String,
-    workspace_dir: PathBuf,
-    events: broadcast::Sender<ServerEvent>,
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+/// Temporary voice overrides — cleared on server restart or context clear.
+static VOICE_OVERRIDES: std::sync::OnceLock<Mutex<HashMap<String, String>>> = std::sync::OnceLock::new();
+
+fn voice_overrides() -> &'static Mutex<HashMap<String, String>> {
+    VOICE_OVERRIDES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-impl SpeakTool {
-    pub fn new(
-        workspace_dir: &Path,
-        instance_slug: &str,
-        chat_id: &str,
-        events: broadcast::Sender<ServerEvent>,
-        _config_path: &Path,
-    ) -> Self {
+/// Get the temporary voice override for an instance, if set.
+pub fn get_voice_override(instance_slug: &str) -> Option<String> {
+    let map = voice_overrides().lock().unwrap_or_else(|e| e.into_inner());
+    map.get(instance_slug).cloned()
+}
+
+/// Clear the temporary voice override for an instance (e.g. on context clear).
+pub fn clear_voice_override(instance_slug: &str) {
+    let mut map = voice_overrides().lock().unwrap_or_else(|e| e.into_inner());
+    map.remove(instance_slug);
+}
+
+pub struct SetVoiceTool {
+    instance_slug: String,
+}
+
+impl SetVoiceTool {
+    pub fn new(_workspace_dir: &Path, instance_slug: &str) -> Self {
         Self {
             instance_slug: instance_slug.to_string(),
-            chat_id: chat_id.to_string(),
-            workspace_dir: workspace_dir.to_path_buf(),
-            events,
         }
     }
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct SpeakArgs {
-    /// The text to speak aloud.
-    pub text: String,
-    /// ElevenLabs voice ID to use for this phrase. If omitted, uses the instance default.
-    pub voice_id: Option<String>,
+pub struct SetVoiceArgs {
+    /// ElevenLabs voice ID to use. Pass empty string to reset to default.
+    pub voice_id: String,
 }
 
-impl Tool for SpeakTool {
-    const NAME: &'static str = "speak";
+impl Tool for SetVoiceTool {
+    const NAME: &'static str = "set_voice";
     type Error = ToolExecError;
-    type Args = SpeakArgs;
+    type Args = SetVoiceArgs;
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: "speak".into(),
-            description: "Speak a phrase aloud using text-to-speech. \
-                Optionally specify a voice_id to use a different ElevenLabs voice \
-                for this specific phrase (useful for character voices, impressions, etc.). \
-                The audio plays immediately in the user's browser."
+            name: "set_voice".into(),
+            description: "Temporarily change the ElevenLabs voice for text-to-speech. \
+                All subsequent messages will use this voice until context is cleared \
+                or server restarts. Pass empty string to reset to instance default."
                 .into(),
-            parameters: openai_schema::<SpeakArgs>(),
+            parameters: openai_schema::<SetVoiceArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        if args.text.trim().is_empty() {
-            return Err(ToolExecError("text cannot be empty".into()));
+        let vid = args.voice_id.trim().to_string();
+        let mut map = voice_overrides().lock().unwrap_or_else(|e| e.into_inner());
+
+        if vid.is_empty() {
+            map.remove(&self.instance_slug);
+            Ok("voice reset to default".into())
+        } else {
+            map.insert(self.instance_slug.clone(), vid.clone());
+            Ok(format!("voice temporarily set to {vid}"))
         }
-
-        let api_key = {
-            let cfg = crate::config::load_config()
-                .map_err(|e| ToolExecError(format!("failed to load config: {e}")))?;
-            cfg.llm.tokens.elevenlabs.clone()
-        };
-        if api_key.is_empty() {
-            return Err(ToolExecError("ElevenLabs API key not configured".into()));
-        }
-
-        let voice_id = match &args.voice_id {
-            Some(vid) if !vid.is_empty() => vid.clone(),
-            _ => crate::routes::tts::resolve_voice_id(&self.workspace_dir, &self.instance_slug),
-        };
-
-        let instance_dir = self.workspace_dir.join("instances").join(&self.instance_slug);
-        let mood = load_mood_state(&instance_dir).companion_mood;
-
-        let http = reqwest::Client::new();
-        let audio_bytes = crate::routes::tts::synthesize_bytes(&http, &api_key, &voice_id, &args.text, &mood)
-            .await
-            .map_err(|e| ToolExecError(e))?;
-
-        use base64::Engine;
-        let audio_base64 = base64::engine::general_purpose::STANDARD.encode(&audio_bytes);
-
-        // Generate a message ID for this spoken phrase
-        let msg_id = format!("speak_{}_{}", super::tool_call_counter(), super::unix_millis());
-
-        let _ = self.events.send(ServerEvent::ChatAudioReady {
-            instance_slug: self.instance_slug.clone(),
-            chat_id: self.chat_id.clone(),
-            audio_base64,
-            message_ids: vec![msg_id],
-        });
-
-        Ok(format!("spoke: \"{}\" (voice: {})", truncate_text(&args.text, 60), voice_id))
     }
-}
-
-fn truncate_text(s: &str, max: usize) -> String {
-    if s.len() <= max { s.to_string() } else { format!("{}…", &s[..max]) }
 }
 
 // ---------------------------------------------------------------------------

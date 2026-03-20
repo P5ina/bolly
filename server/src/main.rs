@@ -61,7 +61,7 @@ async fn main() {
     }
 
     // Start background scheduler for scheduled messages
-    services::scheduler::start(&state.workspace_dir, state.events.clone());
+    services::scheduler::start(state.clone());
 
     // Start heartbeat — companion's autonomous inner life
     services::heartbeat::start(

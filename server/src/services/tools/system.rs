@@ -1282,12 +1282,14 @@ impl Tool for UpdateConfigTool {
 
 pub struct ClearContextTool {
     instance_dir: PathBuf,
+    instance_slug: String,
 }
 
 impl ClearContextTool {
     pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
         Self {
             instance_dir: workspace_dir.join("instances").join(instance_slug),
+            instance_slug: instance_slug.to_string(),
         }
     }
 }
@@ -1329,6 +1331,9 @@ impl Tool for ClearContextTool {
                     .map_err(|e| ToolExecError(format!("failed to clear messages: {e}")))?;
             }
         }
+
+        // Clear temporary voice override
+        super::companion::clear_voice_override(&self.instance_slug);
 
         let what = if args.clear_messages {
             "compacted context and chat history cleared"
