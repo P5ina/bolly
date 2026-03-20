@@ -107,11 +107,36 @@
 		skybox.visible = false;
 		scene.add(skybox);
 
-		// ── Flat background — very dark, nearly black ──
+		// ── Background — dark base with disco mode uniforms ──
+		const uDiscoBeat = uniform(0.0);   // 0-1 music amplitude
+		const uDiscoHue = uniform(0.0);    // 0-1 hue rotation
+		const uDiscoActive = uniform(0.0); // 0 or 1
+
 		const flatBg = Fn(() => {
 			const st = screenUV;
+			// Dark base
 			const c = vec3(0.002, 0.003, 0.012).toVar();
 			c.addAssign(vec3(0.001, 0.002, 0.006).mul(st.y));
+
+			// Disco: color-cycling radial glow from center
+			const center = st.sub(vec3(0.5, 0.45, 0));
+			const dist = center.length();
+			const glow = pow(
+				float(1.0).sub(smoothstep(0.0, 0.8, dist)),
+				float(2.0)
+			);
+
+			// HSV-like hue to RGB
+			const h = uDiscoHue;
+			const r = abs(h.mul(6.0).sub(3.0)).sub(1.0).clamp(0.0, 1.0);
+			const g = float(2.0).sub(abs(h.mul(6.0).sub(2.0))).clamp(0.0, 1.0);
+			const b = float(2.0).sub(abs(h.mul(6.0).sub(4.0))).clamp(0.0, 1.0);
+			const discoColor = vec3(r, g, b);
+
+			// Mix in disco glow scaled by beat intensity
+			const intensity = uDiscoBeat.mul(glow).mul(uDiscoActive).mul(0.08);
+			c.addAssign(discoColor.mul(intensity));
+
 			return c;
 		});
 		scene.backgroundNode = flatBg();
@@ -505,11 +530,16 @@
 					const b = Math.sin((hue + 0.666) * Math.PI * 2) * 0.5 + 0.5;
 					keyLight.color.setRGB(r * boost, g * boost, b * boost);
 					keyLight.intensity = 2.5 + mAmp * 2.0;
-					fillLight.color.setRGB(b * boost, r * boost, g * boost); // offset color
+					fillLight.color.setRGB(b * boost, r * boost, g * boost);
 					fillLight.intensity = 0.8 + mAmp * 1.5;
 					rimLight.color.setRGB(g * boost, b * boost, r * boost);
 					rimLight.intensity = 1.0 + mAmp * 2.0;
 					glassMat.dispersion = 0.5 + mAmp * 0.5;
+
+					// Drive background shader uniforms
+					uDiscoActive.value = 1.0;
+					uDiscoBeat.value += (mAmp - uDiscoBeat.value) * Math.min(delta * 10, 1);
+					uDiscoHue.value = hue;
 				} else {
 					keyLight.color.set(moodColors[resolved]);
 					keyLight.intensity = thk ? 2.5 : 2.0;
@@ -518,6 +548,10 @@
 					rimLight.color.set(0x8899cc);
 					rimLight.intensity = 1.0;
 					glassMat.dispersion = thk ? 0.6 : 0.4;
+
+					// Fade out disco background
+					uDiscoActive.value = Math.max(0, uDiscoActive.value - delta * 3);
+					uDiscoBeat.value *= 0.95;
 				}
 
 				// Override rotation for selected orb in chat
@@ -546,9 +580,11 @@
 				envDone = true;
 			}
 
-			// Slow star field rotation for subtle parallax
-			stars.rotation.y = t * 0.01;
-			stars.rotation.x = t * 0.003;
+			// Star field — faster rotation + brightness pulse in disco mode
+			const isDiscoNow = store.musicPlaying && store.musicAmplitude > 0.01;
+			stars.rotation.y = t * (isDiscoNow ? 0.05 : 0.01);
+			stars.rotation.x = t * (isDiscoNow ? 0.02 : 0.003);
+			starMat.opacity = isDiscoNow ? 0.5 + store.musicAmplitude * 0.5 : 0.85;
 
 			renderer.render(scene, cam);
 		}
