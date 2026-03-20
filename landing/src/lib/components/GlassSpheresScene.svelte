@@ -1,15 +1,108 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { T, useTask, useThrelte } from '@threlte/core';
 	import { HTML, Text } from '@threlte/extras';
 	import * as THREE from 'three';
 
-	const { scene, camera } = useThrelte();
+	const { scene, camera, renderer, size } = useThrelte();
+
+	// ── HTML → Texture renderer (ported from three-html-render) ──
+	class HtmlRenderer {
+		private canvas = document.createElement('canvas');
+		private ctx = this.canvas.getContext('2d')!;
+		private textures = new Map<HTMLElement, THREE.CanvasTexture>();
+		private pageStyles = '';
+
+		setPageStyles(styles: string) { this.pageStyles = styles; }
+
+		private svgToDataUrl(svg: string): string {
+			return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+		}
+
+		async update(node: HTMLElement): Promise<THREE.CanvasTexture> {
+			const w = node.clientWidth;
+			const h = node.clientHeight;
+
+			const html = node.innerHTML;
+
+			const svg = `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+	<style>${this.pageStyles}</style>
+	<foreignObject x="0" y="0" width="100%" height="100%">
+		<div xmlns="http://www.w3.org/1999/xhtml" style="height:100%;width:100%;">
+			${html}
+		</div>
+	</foreignObject>
+</svg>`;
+
+			// Data URL — does NOT taint canvas (unlike Blob URL)
+			const dataUrl = this.svgToDataUrl(svg);
+
+			const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+				const i = new Image();
+				i.onload = () => resolve(i);
+				i.onerror = (e) => reject(e);
+				i.crossOrigin = 'anonymous';
+				i.decoding = 'sync';
+				i.src = dataUrl;
+			});
+
+			let tex = this.textures.get(node);
+			if (!tex || this.canvas.width !== w || this.canvas.height !== h) {
+				tex?.dispose();
+				this.canvas.width = w;
+				this.canvas.height = h;
+				tex = new THREE.CanvasTexture(this.canvas);
+				tex.colorSpace = THREE.SRGBColorSpace;
+				this.textures.set(node, tex);
+			}
+
+			this.ctx.clearRect(0, 0, w, h);
+			this.ctx.drawImage(img, 0, 0, w, h);
+			tex.needsUpdate = true;
+			return tex;
+		}
+	}
+
+	const htmlRenderer = new HtmlRenderer();
+
+	// Backing planes — HTML rendered as textures for refraction FBO
+	const backingPlanes: { mesh: THREE.Mesh; el: HTMLElement; position: THREE.Vector3 }[] = [];
+
+	// Register an HTML element for texture backing
+	function registerHtmlBacking(el: HTMLElement, x: number, y: number, z: number, scaleVal: number) {
+		const mesh = new THREE.Mesh(
+			new THREE.PlaneGeometry(1, 1),
+			new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide })
+		);
+		mesh.position.set(x, y, z);
+		mesh.visible = false; // only shown during FBO pass
+		scene.add(mesh);
+		backingPlanes.push({ mesh, el, position: new THREE.Vector3(x, y, z) });
+
+		// Initial capture after a delay
+		setTimeout(async () => {
+			try {
+				const tex = await htmlRenderer.update(el);
+				(mesh.material as THREE.MeshBasicMaterial).map = tex;
+				(mesh.material as THREE.MeshBasicMaterial).needsUpdate = true;
+
+				// Scale plane to match HTML size in 3D
+				const pxToUnit = (CAM_Z * 2 * Math.tan((FOV / 2) * Math.PI / 180)) / window.innerHeight;
+				mesh.scale.set(el.clientWidth * pxToUnit * scaleVal, el.clientHeight * pxToUnit * scaleVal, 1);
+			} catch (e) {
+				console.warn('HTML backing capture failed:', e);
+			}
+		}, 2000);
+	}
 
 	scene.background = new THREE.Color(0x000206);
 
 	const CAM_Z = 14;
 	const FOV = 50;
 	const TOTAL_HEIGHT = 85;
+
+	// ── Render target for refraction ──
+	let fbo: THREE.WebGLRenderTarget | null = null;
 
 	// ── Fonts ──
 	const fraunces = 'https://fonts.gstatic.com/s/fraunces/v38/6NVf8FyLNQOQZAnv9ZwNjucMHVn85Ni7emAe9lKqZTnbB-gzTK0K1ChJdt9vIVYX9G37lod9sPEKsxx664UJf1hLTf7W.ttf';
@@ -46,11 +139,71 @@
 		blending: THREE.AdditiveBlending,
 	});
 
-	// ── Spheres ──
-	const sphereMat = new THREE.MeshStandardMaterial({ color: 0xccddee, roughness: 0.1, metalness: 0.3 });
-	const mainGeo = new THREE.SphereGeometry(1, 32, 32);
-	const smallGeo = new THREE.SphereGeometry(0.5, 24, 24);
-	const tinyGeo = new THREE.SphereGeometry(0.3, 16, 16);
+	// ── Custom refraction shader ──
+	const refractionMat = new THREE.ShaderMaterial({
+		vertexShader: /* glsl */ `
+			varying vec3 vWorldNormal;
+			varying vec3 vViewDir;
+			varying vec2 vScreenUV;
+			void main() {
+				vec4 worldPos = modelMatrix * vec4(position, 1.0);
+				vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+				vViewDir = normalize(worldPos.xyz - cameraPosition);
+				vec4 clip = projectionMatrix * viewMatrix * worldPos;
+				vScreenUV = clip.xy / clip.w * 0.5 + 0.5;
+				gl_Position = clip;
+			}
+		`,
+		fragmentShader: /* glsl */ `
+			uniform sampler2D uSceneTex;
+			uniform float uIOR;
+			uniform float uChroma;
+			uniform float uFresnelPow;
+
+			varying vec3 vWorldNormal;
+			varying vec3 vViewDir;
+			varying vec2 vScreenUV;
+
+			void main() {
+				vec3 N = normalize(vWorldNormal);
+				vec3 V = normalize(vViewDir);
+
+				// Snell refraction
+				vec3 refr = refract(V, N, 1.0 / uIOR);
+				vec2 offset = refr.xy * 0.15;
+
+				// Chromatic aberration
+				float r = texture2D(uSceneTex, vScreenUV + offset * (1.0 + uChroma)).r;
+				float g = texture2D(uSceneTex, vScreenUV + offset).g;
+				float b = texture2D(uSceneTex, vScreenUV + offset * (1.0 - uChroma)).b;
+				vec3 refracted = vec3(r, g, b);
+
+				// Fresnel
+				float fresnel = pow(1.0 + dot(V, N), uFresnelPow);
+
+				// Specular
+				vec3 refl = reflect(V, N);
+				float spec = pow(max(dot(refl, normalize(vec3(3, 2, 4))), 0.0), 80.0) * 0.6;
+				float spec2 = pow(max(dot(refl, normalize(vec3(-2, 1, -1))), 0.0), 40.0) * 0.2;
+
+				// Mix
+				vec3 col = mix(refracted, vec3(0.1, 0.13, 0.22), fresnel * 0.35);
+				col += (spec + spec2);
+				col += fresnel * vec3(0.05, 0.08, 0.14) * 0.5;
+
+				gl_FragColor = vec4(col, 1.0);
+			}
+		`,
+		uniforms: {
+			uSceneTex: { value: null },
+			uIOR: { value: 1.45 },
+			uChroma: { value: 0.12 },
+			uFresnelPow: { value: 3.0 },
+		},
+	});
+	const mainGeo = new THREE.IcosahedronGeometry(1, 12);
+	const smallGeo = new THREE.IcosahedronGeometry(0.5, 8);
+	const tinyGeo = new THREE.IcosahedronGeometry(0.3, 6);
 
 	let mainSphere: THREE.Mesh | undefined;
 	let smallSphere: THREE.Mesh | undefined;
@@ -82,6 +235,72 @@
 	];
 
 	// ── Scroll & mouse ──
+
+	// ── Auto-capture all HTML elements after mount ──
+	onMount(() => {
+		setTimeout(async () => {
+			// Gather all CSS styles for the foreignObject
+			let styles = '';
+			for (const sheet of document.styleSheets) {
+				try { for (const rule of sheet.cssRules) styles += rule.cssText + '\n'; } catch {}
+			}
+			htmlRenderer.setPageStyles(styles);
+
+			// Find all HTML wrappers created by <HTML transform>
+			const canvasParent = renderer.domElement.parentElement;
+			if (!canvasParent) return;
+
+			// Threlte HTML components are siblings of the canvas
+			const allDivs = canvasParent.querySelectorAll<HTMLElement>('div');
+			const wrappers: HTMLElement[] = [];
+			allDivs.forEach(d => {
+				if (d.style.transform && d.style.transform.includes('matrix3d')) wrappers.push(d);
+			});
+			console.log(`[GlassScene] Found ${wrappers.length} matrix3d wrappers`);
+
+			let count = 0;
+
+			for (const wrapper of wrappers) {
+				const content = wrapper.children[0] as HTMLElement;
+				if (!content || content.clientWidth === 0) {
+					console.log('[GlassScene] Skipping wrapper — no content or zero width');
+					continue;
+				}
+
+				// Parse position from matrix3d
+				const m = wrapper.style.transform.match(/matrix3d\(([^)]+)\)/);
+				if (!m) { console.log('[GlassScene] No matrix3d match'); continue; }
+				const vals = m[1].split(',').map(Number);
+				const x = vals[12], y = vals[13], z = vals[14];
+				console.log(`[GlassScene] Wrapper at (${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}) size: ${content.clientWidth}x${content.clientHeight}`);
+
+				// Parse scale from the wrapper
+				const scaleMatch = wrapper.style.transform.match(/scale\(([^)]+)\)/);
+				const scaleVal = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+
+				try {
+					const tex = await htmlRenderer.update(content);
+					const pxToUnit = (CAM_Z * 2 * Math.tan((FOV / 2) * Math.PI / 180)) / window.innerHeight;
+					const pw = content.clientWidth * pxToUnit * scaleVal;
+					const ph = content.clientHeight * pxToUnit * scaleVal;
+
+					const geo = new THREE.PlaneGeometry(pw, ph);
+					const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+					const mesh = new THREE.Mesh(geo, mat);
+					mesh.position.set(x, y, z);
+					mesh.visible = false;
+					scene.add(mesh);
+					backingPlanes.push({ mesh, el: content, position: new THREE.Vector3(x, y, z) });
+					count++;
+				} catch (e) {
+					console.warn('Backing capture failed:', e);
+				}
+			}
+
+			console.log(`[GlassScene] Captured ${count} HTML backing planes`);
+		}, 2500);
+	});
+
 	let scrollY = 0;
 	let smoothCamY = 0;
 	let mouseX = 0, mouseY = 0, targetMX = 0, targetMY = 0;
@@ -96,6 +315,18 @@
 
 	useTask(() => {
 		const t = performance.now() / 1000;
+
+		// Resize FBO
+		const w = Math.round(size.current.width * Math.min(devicePixelRatio, 2));
+		const h = Math.round(size.current.height * Math.min(devicePixelRatio, 2));
+		if (w > 0 && h > 0) {
+			if (!fbo || fbo.width !== w || fbo.height !== h) {
+				fbo?.dispose();
+				fbo = new THREE.WebGLRenderTarget(w, h);
+				refractionMat.uniforms.uSceneTex.value = fbo.texture;
+			}
+		}
+
 		const maxScroll = typeof document !== 'undefined'
 			? Math.max(1, document.body.scrollHeight - window.innerHeight) : 1;
 		const scrollProgress = scrollY / maxScroll;
@@ -119,6 +350,29 @@
 			tinySphere.position.set(4.5 * Math.cos(t * 0.5 + 2) + mouseX * 0.2, cy + 2 + Math.sin(t * 0.6 + 2) * 1, 2 * Math.sin(t * 0.5 + 2));
 		}
 		if (starsRef) starsRef.rotation.y = t * 0.005 + mouseX * 0.02;
+
+		// ── Two-pass render ──
+		if (fbo && mainSphere && smallSphere && tinySphere) {
+			// Pass 1: hide spheres, show backing planes → render to FBO
+			mainSphere.visible = false;
+			smallSphere.visible = false;
+			tinySphere.visible = false;
+			for (const bp of backingPlanes) bp.mesh.visible = true;
+
+			renderer.setRenderTarget(fbo);
+			renderer.clear();
+			renderer.render(scene, camera.current);
+
+			// Pass 2: show spheres, hide backing planes → render to screen
+			mainSphere.visible = true;
+			smallSphere.visible = true;
+			tinySphere.visible = true;
+			for (const bp of backingPlanes) bp.mesh.visible = false;
+
+			renderer.setRenderTarget(null);
+			renderer.clear();
+			renderer.render(scene, camera.current);
+		}
 	});
 
 	// ── Section Y positions ──
@@ -283,6 +537,6 @@
 </HTML>
 
 <!-- ═══ SPHERES ═══ -->
-<T.Mesh bind:ref={mainSphere} geometry={mainGeo} material={sphereMat} />
-<T.Mesh bind:ref={smallSphere} geometry={smallGeo} material={sphereMat} />
-<T.Mesh bind:ref={tinySphere} geometry={tinyGeo} material={sphereMat} />
+<T.Mesh bind:ref={mainSphere} geometry={mainGeo} material={refractionMat} />
+<T.Mesh bind:ref={smallSphere} geometry={smallGeo} material={refractionMat} />
+<T.Mesh bind:ref={tinySphere} geometry={tinyGeo} material={refractionMat} />

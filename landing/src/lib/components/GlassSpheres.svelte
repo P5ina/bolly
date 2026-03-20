@@ -8,7 +8,7 @@
 
 <!-- Fixed 3D scene -->
 <div class="scene-root">
-	<Canvas>
+	<Canvas autoRender={false}>
 		<GlassSpheresScene />
 	</Canvas>
 </div>
