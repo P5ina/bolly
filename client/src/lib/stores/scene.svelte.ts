@@ -389,11 +389,14 @@ export function createSceneStore(): SceneStore {
 		enterChat(slug: string) {
 			if (mode === "selecting" || mode === "intro" || mode === "onboarding") return;
 			selectedSlug = slug;
-			if (playedSlugs.has(slug)) {
+			// Skip intro on mobile — 3D animation not visible, just delays UI
+			const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
+			if (isMobile || playedSlugs.has(slug)) {
+				playedSlugs.add(slug);
 				mode = "chat";
 				introPhase = "done";
 				introProgress = 1;
-				startLoopOnly();
+				if (!isMobile) startLoopOnly();
 			} else {
 				playedSlugs.add(slug);
 				mode = "intro";
