@@ -42,8 +42,8 @@ pub struct ScheduledMessage {
 pub struct ScheduleMessageArgs {
     /// The message to send to the user later.
     pub message: String,
-    /// When to deliver, in minutes from now (e.g. 30 for "in 30 minutes", 1440 for "tomorrow").
-    pub delay_minutes: u32,
+    /// When to deliver, in seconds from now (e.g. 10 for "in 10 seconds", 3600 for "in 1 hour", 86400 for "tomorrow").
+    pub delay_seconds: u32,
 }
 
 impl Tool for ScheduleMessageTool {
@@ -55,7 +55,7 @@ impl Tool for ScheduleMessageTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "schedule_message".into(),
-            description: "Schedule a message for later delivery. Delay in minutes (60=1h, 1440=1d).".into(),
+            description: "Schedule a message for later delivery. Delay in seconds (10=10s, 60=1m, 3600=1h, 86400=1d).".into(),
             parameters: openai_schema::<ScheduleMessageArgs>(),
         }
     }
@@ -66,12 +66,12 @@ impl Tool for ScheduleMessageTool {
             return Err(ToolExecError("message cannot be empty".into()));
         }
 
-        if args.delay_minutes == 0 {
-            return Err(ToolExecError("delay must be at least 1 minute".into()));
+        if args.delay_seconds == 0 {
+            return Err(ToolExecError("delay must be at least 1 second".into()));
         }
 
         let now = Utc::now().timestamp();
-        let deliver_at = now + (args.delay_minutes as i64 * 60);
+        let deliver_at = now + args.delay_seconds as i64;
 
         let scheduled = ScheduledMessage {
             id: uuid::Uuid::new_v4().to_string(),
@@ -88,14 +88,21 @@ impl Tool for ScheduleMessageTool {
             serde_json::to_string_pretty(&scheduled).map_err(|e| ToolExecError(e.to_string()))?;
         fs::write(&file_path, json).map_err(|e| ToolExecError(e.to_string()))?;
 
-        let hours = args.delay_minutes / 60;
-        let mins = args.delay_minutes % 60;
-        let time_desc = if hours > 0 && mins > 0 {
-            format!("{hours}h {mins}m")
-        } else if hours > 0 {
-            format!("{hours}h")
+        let total = args.delay_seconds;
+        let time_desc = if total >= 86400 {
+            let d = total / 86400;
+            let h = (total % 86400) / 3600;
+            if h > 0 { format!("{d}d {h}h") } else { format!("{d}d") }
+        } else if total >= 3600 {
+            let h = total / 3600;
+            let m = (total % 3600) / 60;
+            if m > 0 { format!("{h}h {m}m") } else { format!("{h}h") }
+        } else if total >= 60 {
+            let m = total / 60;
+            let s = total % 60;
+            if s > 0 { format!("{m}m {s}s") } else { format!("{m}m") }
         } else {
-            format!("{mins}m")
+            format!("{total}s")
         };
 
         Ok(format!("message scheduled for delivery in {time_desc}."))
