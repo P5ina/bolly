@@ -76,6 +76,22 @@
 			</h1>
 		</div>
 
+		<!-- Mobile: list of instances (3D spheres don't fit on small screens) -->
+		{#if !instances.loading && instances.list.length > 0}
+			<div class="mobile-list">
+				{#each instances.list as inst (inst.slug)}
+					<button class="mobile-card" onclick={() => goto(`/${inst.slug}`)}>
+						<div class="mobile-card-orb"></div>
+						<div class="mobile-card-info">
+							<span class="mobile-card-name">{inst.companion_name || inst.slug}</span>
+							<span class="mobile-card-slug">{inst.slug}</span>
+						</div>
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mobile-card-arrow"><path d="m9 18 6-6-6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+					</button>
+				{/each}
+			</div>
+		{/if}
+
 		<div class="bottom">
 			{#if !showCreate}
 				{#if !instances.loading && instances.list.length > 0}
@@ -103,7 +119,7 @@
 				<div class="loading-dot"></div>
 			{/if}
 
-			<!-- Hover label from 3D scene -->
+			<!-- Hover label from 3D scene (desktop only) -->
 			{#if scene.hoveredSlug}
 				<div class="hover-name">{instances.list.find(i => i.slug === scene.hoveredSlug)?.companion_name || scene.hoveredSlug}</div>
 			{/if}
@@ -219,6 +235,92 @@
 	}
 	.sep { font-size: 0.5rem; color: oklch(0.50 0.06 240 / 12%); }
 	@media (max-width: 540px) { .hints { flex-direction: column; gap: 0.3rem; } .sep { display: none; } }
+
+	/* Mobile instance list — hidden on desktop where 3D spheres work */
+	.mobile-list {
+		display: none;
+		flex-direction: column;
+		gap: 0.5rem;
+		width: 100%;
+		max-width: 320px;
+		padding: 0 0.5rem;
+		animation: enter-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: 300ms;
+	}
+	@media (max-width: 640px) {
+		.mobile-list { display: flex; }
+	}
+
+	.mobile-card {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		width: 100%;
+		padding: 0.75rem 1rem;
+		border-radius: 1rem;
+		border: 1px solid oklch(0.5 0.06 220 / 10%);
+		border-top-color: oklch(0.6 0.08 220 / 15%);
+		background: linear-gradient(
+			165deg,
+			oklch(0.5 0.04 220 / 7%) 0%,
+			oklch(0.4 0.03 230 / 4%) 100%
+		);
+		backdrop-filter: blur(16px) saturate(140%);
+		-webkit-backdrop-filter: blur(16px) saturate(140%);
+		cursor: pointer;
+		transition: all 0.25s ease;
+		text-align: left;
+	}
+	.mobile-card:active {
+		transform: scale(0.97);
+		background: oklch(0.5 0.06 220 / 12%);
+	}
+	.mobile-card-orb {
+		width: 2.25rem;
+		height: 2.25rem;
+		border-radius: 50%;
+		flex-shrink: 0;
+		background: radial-gradient(
+			circle at 35% 35%,
+			oklch(0.55 0.10 220 / 30%) 0%,
+			oklch(0.40 0.06 240 / 15%) 60%,
+			oklch(0.30 0.04 250 / 10%) 100%
+		);
+		border: 1px solid oklch(0.5 0.08 220 / 12%);
+		box-shadow: 0 0 12px oklch(0.45 0.08 220 / 10%);
+	}
+	.mobile-card-info {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+	}
+	.mobile-card-name {
+		font-family: var(--font-display);
+		font-size: 0.9rem;
+		font-weight: 400;
+		color: oklch(0.88 0.02 220 / 80%);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.mobile-card-slug {
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		color: oklch(0.60 0.04 220 / 35%);
+		letter-spacing: 0.04em;
+	}
+	.mobile-card-arrow {
+		width: 1rem;
+		height: 1rem;
+		flex-shrink: 0;
+		color: oklch(0.55 0.04 220 / 25%);
+		transition: transform 0.2s ease;
+	}
+	.mobile-card:active .mobile-card-arrow {
+		transform: translateX(2px);
+	}
 
 	.loading-dot { width: 6px; height: 6px; border-radius: 50%; background: oklch(0.50 0.06 240 / 30%); animation: pulse 2s ease-in-out infinite; }
 	@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
