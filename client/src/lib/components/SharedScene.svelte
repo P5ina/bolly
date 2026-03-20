@@ -684,6 +684,13 @@
 			stars.rotation.x = t * (isDiscoNow ? 0.02 : 0.003);
 			starMat.opacity = isDiscoNow ? 0.5 + store.musicAmplitude * 0.5 : 0.85;
 
+			// Presentation mode: camera looks at the blob so it's centered
+			if (store.presenting && m === "chat") {
+				cam.lookAt(FINAL_X, FINAL_Y, FINAL_Z);
+			} else {
+				cam.lookAt(0, 0, 0);
+			}
+
 			renderer.render(scene, cam);
 		}
 		requestAnimationFrame(animate);

@@ -115,6 +115,8 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	$effect(() => { scene.setVoiceAmplitude(voice.amplitude); });
 	// Auto-duck music when TTS is speaking
 	$effect(() => { scene.duckMusic(voice.speaking); });
+	// Sync presentation mode to scene (camera targets blob)
+	$effect(() => { scene.presenting = presentation.active; });
 
 	const ws = getWebSocket();
 	let hadConnection = false;

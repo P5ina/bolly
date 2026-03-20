@@ -33,6 +33,7 @@ export interface SceneStore {
 	readonly musicAmplitude: number;
 	readonly musicPlaying: boolean;
 	readonly musicEnabled: boolean;
+	presenting: boolean;
 	/** Get current frequency bins (0-255 per bin) for visualizer. Returns empty array if not playing. */
 	getMusicFrequencyData(): Uint8Array | null;
 
@@ -76,6 +77,7 @@ export function createSceneStore(): SceneStore {
 	let musicAmplitude = $state(0);
 	let musicPlaying = $state(false);
 	let musicEnabled = $state(true);
+	let presenting = $state(false);
 
 	// Audio analyser for custom music visualizer.
 	// Uses the shared AudioContext (one per app, from audio-context.ts).
@@ -327,6 +329,8 @@ export function createSceneStore(): SceneStore {
 		get musicAmplitude() { return musicAmplitude; },
 		get musicPlaying() { return musicPlaying; },
 		get musicEnabled() { return musicEnabled; },
+		get presenting() { return presenting; },
+		set presenting(v) { presenting = v; },
 		getMusicFrequencyData() {
 			if (!musicAnalyser || !musicPlaying) return null;
 			const data = new Uint8Array(musicAnalyser.frequencyBinCount);
