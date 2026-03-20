@@ -246,10 +246,12 @@
 	// Smooth current positions — spheres lerp toward targets
 	const sphereCurrentPos: THREE.Vector3[] = [];
 
-	// ── Cinematic intro — spheres spiral out from center, form ring around title ──
+	// ── Cinematic intro — blur wall → spiral away from camera ──
 	let introStartTime = 0;
-	const INTRO_DURATION = 4.0;  // seconds to form ring
-	const INTRO_RING_RADIUS = 6; // ring radius around title
+	const INTRO_BLUR = 2.0;      // seconds: all spheres smashed against camera = total blur
+	const INTRO_SPIRAL = 4.0;    // seconds: spiral away from camera to ring
+	const INTRO_TOTAL = INTRO_BLUR + INTRO_SPIRAL;
+	const INTRO_RING_RADIUS = 6;
 	const SPHERE_SPEED = 1.0;    // units per second after intro
 	let starsRef: THREE.Points | undefined;
 	let bgPlane: THREE.Mesh | undefined;
@@ -431,14 +433,9 @@
 		refractionMat.uniforms.uTime.value = t;
 		refractionMat.uniforms.uBreathe.value = 1.0 + breathe * 0.5;
 
-		// ── Intro: spheres spiral from center, form ring around title ──
+		// ── Intro: blur wall → spiral away from camera → drift to positions ──
 		const elapsed = t - introStartTime;
-		const introActive = elapsed < INTRO_DURATION;
-		const introProgress = Math.min(1, elapsed / INTRO_DURATION);
-		// Ease-in-out smooth
-		const introEased = introProgress < 0.5
-			? 4 * introProgress * introProgress * introProgress
-			: 1 - Math.pow(-2 * introProgress + 2, 3) / 2;
+		const introActive = elapsed < INTRO_TOTAL;
 
 		const totalSpheres = sphereMeshes.length;
 
@@ -459,17 +456,38 @@
 			const targetZ = orbitRadius * 0.4 * Math.sin(orbitAngle) + driftZ;
 
 			if (introActive) {
-				// Spiral from center to ring around title (y=0)
-				const anglePerSphere = (Math.PI * 2) / totalSpheres;
-				const ringAngle = si * anglePerSphere + introEased * Math.PI * 3; // 1.5 full rotations
-				const radius = introEased * INTRO_RING_RADIUS;
+				if (elapsed < INTRO_BLUR) {
+					// Phase 1: BLUR WALL — all spheres packed right in front of camera
+					const jitter = Math.sin(t * 3 + p * 5) * 0.3;
+					cur.x = Math.sin(p * 5) * 1.2 + jitter;
+					cur.y = Math.cos(p * 3) * 0.8 + Math.cos(t * 2 + p * 3) * 0.2;
+					cur.z = CAM_Z - 4 + Math.sin(p * 7) * 0.3;
+					mesh.scale.setScalar(2.0 + Math.sin(t * 1.5 + p) * 0.2);
+				} else {
+					// Phase 2: SPIRAL AWAY — peel off from camera, spiral to ring
+					const spiralElapsed = elapsed - INTRO_BLUR;
+					const spiralProgress = Math.min(1, spiralElapsed / INTRO_SPIRAL);
+					const eased = 1 - Math.pow(1 - spiralProgress, 3); // ease-out
 
-				cur.x = radius * Math.cos(ringAngle);
-				cur.y = radius * 0.4 * Math.sin(ringAngle); // elliptical
-				cur.z = radius * 0.3 * Math.sin(ringAngle * 0.7); // depth wobble
+					const anglePerSphere = (Math.PI * 2) / totalSpheres;
+					const ringAngle = si * anglePerSphere + eased * Math.PI * 2.5;
+					const radius = eased * INTRO_RING_RADIUS;
 
+					// From camera position to ring position
+					const fromX = Math.sin(p * 5) * 1.2;
+					const fromY = Math.cos(p * 3) * 0.8;
+					const fromZ = CAM_Z - 4;
+
+					const toX = radius * Math.cos(ringAngle);
+					const toY = radius * 0.3 * Math.sin(ringAngle);
+					const toZ = radius * 0.25 * Math.sin(ringAngle * 0.7);
+
+					cur.x = THREE.MathUtils.lerp(fromX, toX, eased);
+					cur.y = THREE.MathUtils.lerp(fromY, toY, eased);
+					cur.z = THREE.MathUtils.lerp(fromZ, toZ, eased);
+					mesh.scale.setScalar(THREE.MathUtils.lerp(2.0, 1, eased));
+				}
 				mesh.position.copy(cur);
-				mesh.scale.setScalar(THREE.MathUtils.lerp(0.1, 1, introEased));
 			} else {
 				// Post-intro: move toward target at fixed speed
 				const dx = targetX - cur.x;
