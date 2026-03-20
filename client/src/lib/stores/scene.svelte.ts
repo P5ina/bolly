@@ -80,28 +80,39 @@ export function createSceneStore(): SceneStore {
 	let musicDataArray: Uint8Array<ArrayBuffer> | null = null;
 	let musicRafId: number | null = null;
 
-	function setupMusicAnalyser(audio: HTMLAudioElement) {
+	async function setupMusicAnalyser(audio: HTMLAudioElement) {
 		cleanupMusicAnalyser();
-		musicAudioCtx = new AudioContext();
-		musicAnalyser = musicAudioCtx.createAnalyser();
-		musicAnalyser.fftSize = 256;
-		musicSourceNode = musicAudioCtx.createMediaElementSource(audio);
-		musicSourceNode.connect(musicAnalyser);
-		musicAnalyser.connect(musicAudioCtx.destination);
-		musicDataArray = new Uint8Array(musicAnalyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
-		musicPlaying = true;
-
-		function updateAmplitude() {
-			if (!musicAnalyser || !musicDataArray) return;
-			musicAnalyser.getByteFrequencyData(musicDataArray);
-			let sum = 0;
-			for (let i = 0; i < musicDataArray.length; i++) {
-				sum += musicDataArray[i];
+		try {
+			musicAudioCtx = new AudioContext();
+			// Resume immediately — createMediaElementSource redirects audio through
+			// the context, so if it's suspended the audio goes silent.
+			if (musicAudioCtx.state === "suspended") {
+				await musicAudioCtx.resume();
 			}
-			musicAmplitude = sum / (musicDataArray.length * 255);
-			musicRafId = requestAnimationFrame(updateAmplitude);
+			musicAnalyser = musicAudioCtx.createAnalyser();
+			musicAnalyser.fftSize = 256;
+			musicSourceNode = musicAudioCtx.createMediaElementSource(audio);
+			musicSourceNode.connect(musicAnalyser);
+			musicAnalyser.connect(musicAudioCtx.destination);
+			musicDataArray = new Uint8Array(musicAnalyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
+			musicPlaying = true;
+
+			function updateAmplitude() {
+				if (!musicAnalyser || !musicDataArray) return;
+				musicAnalyser.getByteFrequencyData(musicDataArray);
+				let sum = 0;
+				for (let i = 0; i < musicDataArray.length; i++) {
+					sum += musicDataArray[i];
+				}
+				musicAmplitude = sum / (musicDataArray.length * 255);
+				musicRafId = requestAnimationFrame(updateAmplitude);
+			}
+			updateAmplitude();
+		} catch (e) {
+			// Analyser setup failed — audio still plays natively, just no visualizer
+			console.warn("[music] analyser setup failed:", e);
+			musicPlaying = false;
 		}
-		updateAmplitude();
 	}
 
 	function cleanupMusicAnalyser() {
