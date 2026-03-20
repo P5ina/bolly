@@ -243,12 +243,14 @@
 	];
 
 	const sphereMeshes: THREE.Mesh[] = [];
+	// Smooth current positions — spheres lerp toward targets
+	const sphereCurrentPos: THREE.Vector3[] = [];
 
-	// ── Cinematic intro — ALL spheres start at camera, scatter outward ──
+	// ── Cinematic intro — spheres spiral out from center, form ring around title ──
 	let introStartTime = 0;
-	const INTRO_HOLD = 1.2;    // seconds: clustered at camera
-	const INTRO_SCATTER = 3.5; // seconds: flying to positions
-	const INTRO_TOTAL = INTRO_HOLD + INTRO_SCATTER;
+	const INTRO_DURATION = 4.0;  // seconds to form ring
+	const INTRO_RING_RADIUS = 6; // ring radius around title
+	const SPHERE_SPEED = 1.0;    // units per second after intro
 	let starsRef: THREE.Points | undefined;
 	let bgPlane: THREE.Mesh | undefined;
 
@@ -337,6 +339,7 @@
 			mesh.userData = conf;
 			scene.add(mesh);
 			sphereMeshes.push(mesh);
+			sphereCurrentPos.push(new THREE.Vector3(0, 0, CAM_Z - 4)); // start at camera
 		}
 
 		setTimeout(async () => {
@@ -428,61 +431,64 @@
 		refractionMat.uniforms.uTime.value = t;
 		refractionMat.uniforms.uBreathe.value = 1.0 + breathe * 0.5;
 
-		// ── Cinematic intro: all spheres clustered at camera, then scatter ──
+		// ── Intro: spheres spiral from center, form ring around title ──
 		const elapsed = t - introStartTime;
-		const introActive = elapsed < INTRO_TOTAL;
-		let introProgress = 0; // 0 = at camera, 1 = at final position
-		if (elapsed > INTRO_HOLD) {
-			introProgress = Math.min(1, (elapsed - INTRO_HOLD) / INTRO_SCATTER);
-			// Ease out cubic — starts fast, decelerates
-			introProgress = 1 - Math.pow(1 - introProgress, 3);
-		}
+		const introActive = elapsed < INTRO_DURATION;
+		const introProgress = Math.min(1, elapsed / INTRO_DURATION);
+		// Ease-in-out smooth
+		const introEased = introProgress < 0.5
+			? 4 * introProgress * introProgress * introProgress
+			: 1 - Math.pow(-2 * introProgress + 2, 3) / 2;
 
-		const visH = 2 * CAM_Z * Math.tan((FOV / 2) * Math.PI / 180);
+		const totalSpheres = sphereMeshes.length;
 
-		for (let si = 0; si < sphereMeshes.length; si++) {
+		for (let si = 0; si < totalSpheres; si++) {
 			const mesh = sphereMeshes[si];
 			const conf = mesh.userData as SphereConf;
 			const p = conf.phase;
+			const cur = sphereCurrentPos[si];
 
-			// Final position: orbit + drift
+			// Target position (with drift)
 			const orbitAngle = scrollProgress * Math.PI * 4 + p;
 			const orbitRadius = Math.abs(conf.x);
 			const driftX = Math.sin(t * 0.2 + p) * 1.5 + Math.sin(t * 0.5 + p * 2.3) * 0.5;
 			const driftY = Math.sin(t * 0.15 + p * 1.7) * 0.8 + Math.cos(t * 0.35 + p * 0.9) * 0.4;
 			const driftZ = Math.sin(t * 0.25 + p * 3.1) * 1.0;
-			const finalX = orbitRadius * Math.cos(orbitAngle) + driftX + mouseX * 0.2;
-			const finalY = conf.y + driftY;
-			const finalZ = orbitRadius * 0.4 * Math.sin(orbitAngle) + driftZ;
+			const targetX = orbitRadius * Math.cos(orbitAngle) + driftX + mouseX * 0.2;
+			const targetY = conf.y + driftY;
+			const targetZ = orbitRadius * 0.4 * Math.sin(orbitAngle) + driftZ;
 
 			if (introActive) {
-				// Intro: start clustered at camera, scatter with stagger
-				const stagger = si * 0.06; // each sphere starts slightly later
-				const myProgress = Math.max(0, Math.min(1, (introProgress - stagger) / (1 - stagger)));
-				const eased = 1 - Math.pow(1 - myProgress, 3);
+				// Spiral from center to ring around title (y=0)
+				const anglePerSphere = (Math.PI * 2) / totalSpheres;
+				const ringAngle = si * anglePerSphere + introEased * Math.PI * 3; // 1.5 full rotations
+				const radius = introEased * INTRO_RING_RADIUS;
 
-				// Start position: clustered in front of camera with random jitter
-				const startX = Math.sin(p * 5) * 1.5;
-				const startY = Math.cos(p * 3) * 1.0;
-				const startZ = CAM_Z - 4 + Math.sin(p * 7) * 0.5;
-				const startScale = 1.5 + Math.sin(p) * 0.3;
+				cur.x = radius * Math.cos(ringAngle);
+				cur.y = radius * 0.4 * Math.sin(ringAngle); // elliptical
+				cur.z = radius * 0.3 * Math.sin(ringAngle * 0.7); // depth wobble
 
-				mesh.position.x = THREE.MathUtils.lerp(startX, finalX, eased);
-				mesh.position.y = THREE.MathUtils.lerp(startY, finalY, eased);
-				mesh.position.z = THREE.MathUtils.lerp(startZ, finalZ, eased);
-				mesh.scale.setScalar(THREE.MathUtils.lerp(startScale, 1, eased) * (0.5 + eased * 0.5));
+				mesh.position.copy(cur);
+				mesh.scale.setScalar(THREE.MathUtils.lerp(0.1, 1, introEased));
 			} else {
-				// Normal: scroll-triggered entrance
-				const sphereScreenY = conf.y - smoothCamY;
-				const enterThreshold = visH * 0.8;
-				const enterProgress = Math.min(1, Math.max(0, (enterThreshold - Math.abs(sphereScreenY)) / enterThreshold));
-				const enterEased = enterProgress * enterProgress * (3 - 2 * enterProgress);
+				// Post-intro: move toward target at fixed speed
+				const dx = targetX - cur.x;
+				const dy = targetY - cur.y;
+				const dz = targetZ - cur.z;
+				const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-				const offX = conf.x > 0 ? 20 : -20;
-				mesh.position.x = THREE.MathUtils.lerp(offX, finalX, enterEased);
-				mesh.position.y = finalY;
-				mesh.position.z = THREE.MathUtils.lerp(-5, finalZ, enterEased);
-				mesh.scale.setScalar((1 + Math.sin(t * 0.8 + p) * 0.04) * enterEased);
+				if (dist > 0.05) {
+					const step = Math.min(SPHERE_SPEED / 60, dist); // 1 unit/sec at 60fps
+					const ratio = step / dist;
+					cur.x += dx * ratio;
+					cur.y += dy * ratio;
+					cur.z += dz * ratio;
+				} else {
+					cur.set(targetX, targetY, targetZ);
+				}
+
+				mesh.position.copy(cur);
+				mesh.scale.setScalar(1 + Math.sin(t * 0.8 + p) * 0.04);
 			}
 
 			// Update particle trail
