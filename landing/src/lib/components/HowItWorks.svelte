@@ -5,7 +5,7 @@
 		{
 			num: '01',
 			title: 'sign up',
-			desc: 'Pick a plan and your private environment spins up in seconds. Or self-host with Docker — your choice.',
+			desc: 'Pick a plan and your private environment spins up in seconds. No setup, no servers to manage.',
 		},
 		{
 			num: '02',
@@ -34,22 +34,22 @@
 			</p>
 		</Reveal>
 
-		<div class="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-8">
+		<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
 			{#each steps as step, i}
 				<Reveal delay={100 + i * 100}>
-					<div class="relative px-6 py-8">
-						<div class="font-display italic text-5xl leading-none mb-4" style="color: oklch(0.78 0.12 75 / 8%);">
-							{step.num}
+					<div class="step-card">
+						<div class="step-card-inner">
+							<div class="step-num">{step.num}</div>
+							<h3 class="font-display italic font-normal text-xl text-text mb-2.5 -tracking-tight">
+								{step.title}
+							</h3>
+							<p class="text-[0.8125rem] text-text-dim leading-relaxed">
+								{step.desc}
+							</p>
 						</div>
-						<h3 class="font-display italic font-normal text-xl text-text mb-2.5 -tracking-tight">
-							{step.title}
-						</h3>
-						<p class="text-[0.8125rem] text-text-dim leading-relaxed">
-							{step.desc}
-						</p>
 
 						{#if i < steps.length - 1}
-							<div class="hidden md:block absolute top-14 -right-4 w-8 h-px" style="background: var(--color-border-warm);"></div>
+							<div class="step-connector"></div>
 						{/if}
 					</div>
 				</Reveal>
@@ -61,9 +61,21 @@
 <style>
 	.how {
 		padding: 7rem 0;
-		background: var(--color-bg-raised);
-		border-top: 1px solid var(--color-border);
-		border-bottom: 1px solid var(--color-border);
+		background: oklch(0.03 0.012 260);
+		border-top: 1px solid var(--glass-border);
+		border-bottom: 1px solid var(--glass-border);
+		position: relative;
+	}
+
+	.how::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 8%), transparent);
+		pointer-events: none;
 	}
 
 	.section-label {
@@ -83,5 +95,78 @@
 		letter-spacing: -0.02em;
 		color: var(--color-text);
 		margin-bottom: 1rem;
+	}
+
+	.step-card {
+		position: relative;
+		border-radius: 1rem;
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		border: 1px solid var(--glass-border);
+		border-top-color: var(--glass-border-top);
+		overflow: hidden;
+		transition: all 0.4s ease;
+	}
+
+	.step-card::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 10%;
+		right: 10%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 18%), transparent);
+		pointer-events: none;
+		z-index: 2;
+	}
+
+	.step-card::after {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 40%;
+		background: linear-gradient(180deg, oklch(1 0 0 / 3%) 0%, transparent 100%);
+		pointer-events: none;
+		z-index: 1;
+	}
+
+	.step-card:hover {
+		border-color: oklch(1 0 0 / 14%);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 24px oklch(0 0 0 / 20%);
+	}
+
+	.step-card-inner {
+		position: relative;
+		z-index: 3;
+		padding: 2.25rem 2rem;
+	}
+
+	.step-num {
+		font-family: var(--font-display);
+		font-style: italic;
+		font-size: 3rem;
+		line-height: 1;
+		margin-bottom: 1rem;
+		color: oklch(1 0 0 / 6%);
+	}
+
+	.step-connector {
+		display: none;
+	}
+
+	@media (min-width: 768px) {
+		.step-connector {
+			display: block;
+			position: absolute;
+			top: 3rem;
+			right: -0.75rem;
+			width: 1.5rem;
+			height: 1px;
+			background: linear-gradient(90deg, oklch(1 0 0 / 10%), oklch(1 0 0 / 4%));
+			z-index: 10;
+		}
 	}
 </style>

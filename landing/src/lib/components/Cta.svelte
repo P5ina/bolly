@@ -2,14 +2,15 @@
 	import Reveal from './Reveal.svelte';
 </script>
 
-<section class="py-32 text-center relative">
+<section class="cta">
 	<div class="cta-glow"></div>
-	<div class="mx-auto max-w-[1100px] px-6">
+	<div class="cta-glow-secondary"></div>
+	<div class="mx-auto max-w-[1100px] px-6 text-center">
 		<Reveal>
 			<h2 class="font-display font-normal italic text-text mb-4 relative"
 				style="font-size: clamp(2rem, 4vw, 3rem); letter-spacing: -0.02em;"
 			>
-				someone is ready to<br><span class="text-warm">be in your corner</span>
+				someone is ready to<br><span class="cta-accent">be in your corner</span>
 			</h2>
 		</Reveal>
 		<Reveal delay={100}>
@@ -29,6 +30,12 @@
 </section>
 
 <style>
+	.cta {
+		padding: 8rem 0;
+		position: relative;
+		overflow: hidden;
+	}
+
 	.cta-glow {
 		position: absolute;
 		top: 50%;
@@ -37,8 +44,28 @@
 		height: 500px;
 		transform: translate(-50%, -50%);
 		border-radius: 50%;
-		background: radial-gradient(circle, oklch(0.78 0.12 75 / 5%) 0%, transparent 65%);
+		background: radial-gradient(circle, oklch(0.55 0.08 240 / 5%) 0%, transparent 65%);
 		animation: breathe 8s ease-in-out infinite;
 		pointer-events: none;
+	}
+
+	.cta-glow-secondary {
+		position: absolute;
+		top: 45%;
+		left: 55%;
+		width: 350px;
+		height: 350px;
+		transform: translate(-50%, -50%);
+		border-radius: 50%;
+		background: radial-gradient(circle, oklch(0.70 0.08 300 / 3%) 0%, transparent 55%);
+		animation: breathe-slow 12s ease-in-out infinite;
+		pointer-events: none;
+	}
+
+	.cta-accent {
+		background: linear-gradient(135deg, oklch(0.78 0.12 75), oklch(0.72 0.10 55), oklch(0.80 0.14 85));
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		background-clip: text;
 	}
 </style>

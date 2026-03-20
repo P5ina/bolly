@@ -7,15 +7,11 @@
 	import Pricing from '$lib/components/Pricing.svelte';
 	import Cta from '$lib/components/Cta.svelte';
 	import Footer from '$lib/components/Footer.svelte';
+	import GlassSpheres from '$lib/components/GlassSpheres.svelte';
 </script>
 
 <Nav />
-<main>
-	<Hero />
-	<Features />
-	<Demo />
-	<HowItWorks />
-	<Pricing />
-	<Cta />
-</main>
-<Footer />
+
+<GlassSpheres>
+	<div></div>
+</GlassSpheres>

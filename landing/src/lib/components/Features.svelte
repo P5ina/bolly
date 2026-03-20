@@ -29,7 +29,7 @@
 		},
 		{
 			title: 'completely private',
-			desc: "Runs on your own server. Your conversations, memories, and feelings never leave your environment. No one else can access it. Ever.",
+			desc: "Your conversations, memories, and feelings are fully encrypted and private. No one else can access them. Ever.",
 			icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
 		},
 	];
@@ -53,13 +53,15 @@
 			<div class="features-grid">
 				{#each features as f}
 					<div class="feature-card">
-						<div class="feature-icon">
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
-								<path d={f.icon}/>
-							</svg>
+						<div class="feature-card-inner">
+							<div class="feature-icon">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+									<path d={f.icon}/>
+								</svg>
+							</div>
+							<h3 class="font-display italic font-normal text-lg text-text mb-2 -tracking-tight">{f.title}</h3>
+							<p class="text-[0.8125rem] leading-relaxed text-text-dim">{f.desc}</p>
 						</div>
-						<h3 class="font-display italic font-normal text-lg text-text mb-2 -tracking-tight">{f.title}</h3>
-						<p class="text-[0.8125rem] leading-relaxed text-text-dim">{f.desc}</p>
 					</div>
 				{/each}
 			</div>
@@ -90,53 +92,96 @@
 	.features-grid {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
-		gap: 1px;
-		background: var(--color-border);
-		border: 1px solid var(--color-border);
-		border-radius: 1rem;
-		overflow: hidden;
+		gap: 1rem;
 	}
 
 	.feature-card {
-		background: var(--color-bg);
-		padding: 2.25rem 2rem;
-		transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 		position: relative;
+		border-radius: 1rem;
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		border: 1px solid var(--glass-border);
+		border-top-color: var(--glass-border-top);
+		overflow: hidden;
+		transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
+	/* specular top highlight */
 	.feature-card::before {
 		content: '';
 		position: absolute;
-		inset: 0;
-		background: radial-gradient(ellipse at 50% 0%, oklch(0.78 0.12 75 / 3%) 0%, transparent 70%);
-		opacity: 0;
-		transition: opacity 0.5s ease;
+		top: 0;
+		left: 10%;
+		right: 10%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, var(--glass-highlight), transparent);
 		pointer-events: none;
+		z-index: 2;
 	}
 
-	.feature-card:hover::before {
-		opacity: 1;
+	/* inner refraction glow */
+	.feature-card::after {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 50%;
+		background: linear-gradient(180deg, oklch(1 0 0 / 3%) 0%, transparent 100%);
+		pointer-events: none;
+		border-radius: 1rem 1rem 0 0;
+		z-index: 1;
+	}
+
+	.feature-card:hover {
+		border-color: oklch(1 0 0 / 14%);
+		background: oklch(1 0 0 / 6%);
+		transform: translateY(-2px);
+		box-shadow:
+			0 4px 24px oklch(0 0 0 / 20%),
+			0 0 0 1px oklch(1 0 0 / 4%),
+			inset 0 1px 0 oklch(1 0 0 / 8%);
+	}
+
+	.feature-card-inner {
+		position: relative;
+		z-index: 3;
+		padding: 2.25rem 2rem;
 	}
 
 	.feature-icon {
 		width: 2.25rem;
 		height: 2.25rem;
 		border-radius: 0.625rem;
-		background: var(--color-warm-ghost);
-		border: 1px solid var(--color-border-warm);
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		border: 1px solid var(--glass-border);
+		border-top-color: var(--glass-border-top);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		margin-bottom: 1.25rem;
-		color: var(--color-warm-dim);
+		color: oklch(0.90 0.02 75 / 40%);
 		transition: all 0.4s ease;
+		position: relative;
+	}
+
+	.feature-icon::before {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 15%;
+		right: 15%;
+		height: 1px;
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 20%), transparent);
+		pointer-events: none;
 	}
 
 	.feature-card:hover .feature-icon {
-		background: oklch(0.78 0.12 75 / 8%);
-		border-color: oklch(0.78 0.12 75 / 35%);
-		color: var(--color-warm);
-		box-shadow: 0 0 20px oklch(0.78 0.12 75 / 6%);
+		background: oklch(1 0 0 / 8%);
+		border-color: oklch(1 0 0 / 18%);
+		color: oklch(0.90 0.02 75 / 75%);
+		box-shadow: 0 0 20px oklch(0.55 0.08 240 / 8%);
 	}
 
 	@media (max-width: 768px) {
