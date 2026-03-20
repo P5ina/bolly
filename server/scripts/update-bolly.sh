@@ -75,17 +75,33 @@ DOWNLOAD_OK=false
 if [ -n "$ASSET_API_URL" ] && [ "$ASSET_API_URL" != "null" ] && [ -n "$RELEASE_TOKEN" ]; then
     # Private repo: download via API with octet-stream accept header
     echo "[update] downloading via GitHub API (private repo)"
-    if curl -fsSL -L \
+    if curl -fSL --max-time 120 \
         -H "$AUTH_HEADER" \
         -H "Accept: application/octet-stream" \
-        "$ASSET_API_URL" -o "$BINARY.tmp"; then
+        "$ASSET_API_URL" -o "$BINARY.tmp" 2>&1; then
         DOWNLOAD_OK=true
+    else
+        echo "[update] curl failed (exit $?), URL: $ASSET_API_URL"
     fi
 else
     # Public repo fallback: direct download URL
     ASSET_URL="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME"
-    if curl -fsSL -L ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$ASSET_URL" -o "$BINARY.tmp"; then
+    echo "[update] downloading via direct URL"
+    if curl -fSL --max-time 120 ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$ASSET_URL" -o "$BINARY.tmp" 2>&1; then
         DOWNLOAD_OK=true
+    else
+        echo "[update] curl failed (exit $?), URL: $ASSET_URL"
+    fi
+fi
+
+# Verify downloaded file is a real binary (not an HTML error page)
+if [ "$DOWNLOAD_OK" = "true" ]; then
+    FILE_SIZE=$(wc -c < "$BINARY.tmp" 2>/dev/null || echo 0)
+    if [ "$FILE_SIZE" -lt 1000000 ]; then
+        echo "[update] downloaded file too small (${FILE_SIZE} bytes), likely an error page"
+        head -c 200 "$BINARY.tmp" 2>/dev/null || true
+        echo ""
+        DOWNLOAD_OK=false
     fi
 fi
 
