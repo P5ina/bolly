@@ -97,7 +97,7 @@ export function createSceneStore(): SceneStore {
 		return { ctx: musicAudioCtx, analyser: musicAnalyser };
 	}
 
-	function connectMusicSource(audio: HTMLAudioElement) {
+	async function connectMusicSource(audio: HTMLAudioElement): Promise<boolean> {
 		try {
 			// Disconnect old source if any
 			if (musicSourceNode) {
@@ -106,15 +106,20 @@ export function createSceneStore(): SceneStore {
 			}
 
 			const { ctx, analyser } = ensureMusicContext();
+			console.log("[music] AudioContext state:", ctx.state);
 
-			// Resume context (may be suspended due to autoplay policy)
+			// MUST await resume before createMediaElementSource —
+			// once connected, audio only goes through the context pipeline
 			if (ctx.state === "suspended") {
-				ctx.resume().catch(() => {});
+				console.log("[music] resuming AudioContext...");
+				await ctx.resume();
+				console.log("[music] AudioContext resumed:", ctx.state);
 			}
 
 			musicSourceNode = ctx.createMediaElementSource(audio);
 			musicSourceNode.connect(analyser);
 			musicPlaying = true;
+			console.log("[music] source connected, analyser active");
 
 			// Start amplitude tracking loop
 			if (musicRafId !== null) cancelAnimationFrame(musicRafId);
@@ -129,9 +134,10 @@ export function createSceneStore(): SceneStore {
 				musicRafId = requestAnimationFrame(updateAmplitude);
 			}
 			updateAmplitude();
+			return true;
 		} catch (e) {
 			console.warn("[music] analyser connect failed:", e);
-			// Audio still plays natively, just no visualizer
+			return false;
 		}
 	}
 
@@ -422,11 +428,16 @@ export function createSceneStore(): SceneStore {
 					customAudio = new Audio(audioUrl);
 					customAudio.loop = true;
 					customAudio.volume = vol;
-					// Connect to persistent AudioContext for visualizer,
-					// then play through the context pipeline
-					connectMusicSource(customAudio);
-					customAudio.play().catch((e) => {
-						console.warn("[music] play failed:", e);
+					console.log("[music] starting playback:", audioUrl);
+					// Try to connect analyser first (audio goes through AudioContext).
+					// If that fails, play natively without visualizer.
+					connectMusicSource(customAudio).then((connected) => {
+						console.log("[music] analyser connected:", connected);
+						customAudio?.play().then(() => {
+							console.log("[music] playing OK");
+						}).catch((e) => {
+							console.warn("[music] play() failed:", e);
+						});
 					});
 				} else {
 					// Built-in track
