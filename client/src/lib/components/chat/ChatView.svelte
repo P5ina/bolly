@@ -541,6 +541,8 @@ import McpAppViewer from "./McpAppViewer.svelte";
 					item.id = event.message_id; // promote to persisted id
 					stream = stream; // trigger reactivity
 				}
+			} else if (event.type === "music_control") {
+				scene.musicControl(event.action, event.track, event.volume);
 			} else if (event.type === "context_compacting") {
 				stream = [...stream, {
 					type: "compaction",

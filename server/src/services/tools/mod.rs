@@ -35,7 +35,7 @@ pub use communication::{
     ReachOutTool, ReadEmailTool, ScheduleMessageTool, ScheduledMessage, SendEmailTool,
 };
 pub use companion::{
-    ALLOWED_MOODS, EditSoulTool, load_mood_state, save_mood_state,
+    ALLOWED_MOODS, EditSoulTool, PlayMusicTool, SpeakTool, load_mood_state, save_mood_state,
 };
 pub use drive::{ListDriveFilesTool, ReadDriveFileTool, UploadDriveFileTool};
 pub use files::{EditFileTool, ListFilesTool, ReadFileTool, SendFileTool, WriteFileTool};
@@ -240,6 +240,12 @@ pub fn tool_summary(name: &str, args: &str) -> String {
             v["file_id"].as_str().unwrap_or("?")
         ),
         "upload_drive_file" => format!("uploading {}", v["name"].as_str().unwrap_or("?")),
+        "play_music" => {
+            let action = v["action"].as_str().unwrap_or("?");
+            let track = v["track"].as_str().unwrap_or("");
+            if track.is_empty() { format!("music {action}") } else { format!("{action} {track}") }
+        }
+        "speak" => format!("speaking: \"{}\"", v["text"].as_str().unwrap_or("?").chars().take(40).collect::<String>()),
         "request_secret" => format!("requesting secret: {}", v["prompt"].as_str().unwrap_or("?")),
         "read_skill_reference" => format!(
             "reading skill ref {}/{}",
@@ -474,6 +480,8 @@ pub fn build_tools(
         wrap(Box::new(MemorySearchTool::new(workspace_dir, instance_slug))),
         // Mood is managed by background sentiment extraction + heartbeat, not tools.
         wrap(Box::new(EditSoulTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(PlayMusicTool::new(workspace_dir, instance_slug, events.clone()))),
+        wrap(Box::new(SpeakTool::new(workspace_dir, instance_slug, chat_id, events.clone(), config_path))),
         wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug, chat_id, events.clone(), github_token))),
         wrap(Box::new(ClearContextTool::new(workspace_dir, instance_slug))),
     ];

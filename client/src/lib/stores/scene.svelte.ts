@@ -39,6 +39,7 @@ export interface SceneStore {
 	setThinking(v: boolean): void;
 	setVoiceAmplitude(v: number): void;
 	skipIntro(): void;
+	musicControl(action: string, track?: string, volume?: number): void;
 	destroy(): void;
 	tick(): void;
 }
@@ -71,6 +72,7 @@ export function createSceneStore(): SceneStore {
 	let introAudio: HTMLAudioElement | null = null;
 	let loopAudio: HTMLAudioElement | null = null;
 	let ambientAudio: HTMLAudioElement | null = null;
+	let customAudio: HTMLAudioElement | null = null;
 
 	// Pending audio start — retried on first user interaction if autoplay blocked
 	let pendingAudioFn: (() => void) | null = null;
@@ -174,6 +176,17 @@ export function createSceneStore(): SceneStore {
 		if (introAudio) { introAudio.pause(); introAudio = null; }
 		if (loopAudio) { loopAudio.pause(); loopAudio = null; }
 		if (ambientAudio) { ambientAudio.pause(); ambientAudio = null; }
+		if (customAudio) { customAudio.pause(); customAudio = null; }
+	}
+
+	function getTrackAudio(track: string): HTMLAudioElement | null {
+		switch (track) {
+			case "ambient": return ambientAudio;
+			case "intro": return introAudio;
+			case "loop": return loopAudio;
+			case "custom": return customAudio;
+			default: return null;
+		}
 	}
 
 	function fadeAudio(audio: HTMLAudioElement, target: number, ms: number) {
@@ -296,6 +309,62 @@ export function createSceneStore(): SceneStore {
 		setMood(m) { mood = m; },
 		setThinking(v) { thinking = v; },
 		setVoiceAmplitude(v) { voiceAmplitude = v; },
+
+		musicControl(action: string, track?: string, volume?: number) {
+			if (action === "pause") {
+				stopAudio();
+				return;
+			}
+			if (action === "set_volume" && track) {
+				const audio = getTrackAudio(track);
+				if (audio && volume !== undefined) {
+					fadeAudio(audio, Math.max(0, Math.min(1, volume)), 500);
+				}
+				return;
+			}
+			if (action === "play" && track) {
+				const vol = volume ?? 0.5;
+				const isUrl = track.startsWith("http://") || track.startsWith("https://");
+				if (isUrl) {
+					// Custom URL audio
+					if (customAudio) { customAudio.pause(); }
+					customAudio = new Audio(track);
+					customAudio.loop = true;
+					customAudio.volume = vol;
+					customAudio.play().catch(() => {});
+				} else {
+					// Built-in track
+					const builtIn: Record<string, () => void> = {
+						ambient: () => {
+							if (!ambientAudio) {
+								ambientAudio = new Audio("/sounds/ambient.mp3");
+								ambientAudio.loop = true;
+							}
+							ambientAudio.volume = vol;
+							ambientAudio.play().catch(() => {});
+						},
+						intro: () => {
+							if (!introAudio) {
+								introAudio = new Audio("/sounds/intro.mp3");
+								introAudio.loop = false;
+							}
+							introAudio.volume = vol;
+							introAudio.currentTime = 0;
+							introAudio.play().catch(() => {});
+						},
+						loop: () => {
+							if (!loopAudio) {
+								loopAudio = new Audio("/sounds/loop.mp3");
+								loopAudio.loop = true;
+							}
+							loopAudio.volume = vol;
+							loopAudio.play().catch(() => {});
+						},
+					};
+					builtIn[track]?.();
+				}
+			}
+		},
 
 		skipIntro() {
 			mode = "chat";

@@ -293,4 +293,11 @@ export type ServerEvent =
 			chat_id: string;
 			delta: string;
 	  }
+	| {
+			type: "music_control";
+			instance_slug: string;
+			action: string;
+			track?: string;
+			volume?: number;
+	  }
 ;

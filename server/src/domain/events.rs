@@ -92,4 +92,14 @@ pub enum ServerEvent {
         messages: Vec<ChatMessage>,
         agent_running: bool,
     },
+    /// Agent requests music playback control on the client.
+    MusicControl {
+        instance_slug: String,
+        /// Action: "play", "pause", "set_volume"
+        action: String,
+        /// Track name: "ambient", "intro", "loop", or a URL for custom audio.
+        track: Option<String>,
+        /// Volume 0.0–1.0 (for "play" and "set_volume").
+        volume: Option<f64>,
+    },
 }
