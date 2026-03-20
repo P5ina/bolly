@@ -7,14 +7,9 @@ BINARY="$BIN_DIR/bolly"
 
 mkdir -p "$PERSIST_DIR" "$BIN_DIR"
 
-# --- Download binary if not present ---
-if [ ! -x "$BINARY" ]; then
-    echo "[entrypoint] downloading bolly binary..."
-    /opt/bolly/scripts/update-bolly.sh
-fi
-
-# --- Background update check (non-blocking) ---
-/opt/bolly/scripts/update-bolly.sh &
+# --- Always check for updates before starting ---
+echo "[entrypoint] checking for updates..."
+/opt/bolly/scripts/update-bolly.sh || true
 
 # --- Ensure Chromium is available ---
 CHROMIUM_BIN=$(command -v chromium-browser 2>/dev/null || command -v chromium 2>/dev/null || echo "")
