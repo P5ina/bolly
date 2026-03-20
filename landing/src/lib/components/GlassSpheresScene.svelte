@@ -14,8 +14,10 @@
 
 			// Clone and fix styles for foreignObject rendering
 			const clone = node.cloneNode(true) as HTMLElement;
-			// Remove backdrop-filter (renders gray in SVG) and fix backgrounds
+			// Add box-sizing: border-box (page has it from Tailwind, but foreignObject doesn't)
+			clone.style.boxSizing = 'border-box';
 			clone.querySelectorAll<HTMLElement>('*').forEach(el => {
+				el.style.boxSizing = 'border-box';
 				el.style.backdropFilter = 'none';
 				el.style.webkitBackdropFilter = 'none';
 				const bg = el.style.background;
@@ -31,10 +33,7 @@
 			}
 
 			const serialized = new XMLSerializer().serializeToString(clone);
-			if (backingPlanes.length === 0) {
-				console.log('[HtmlRenderer] Serialized (first 500):', serialized.substring(0, 500));
-			}
-			const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="100%" height="100%">${serialized}</foreignObject></svg>`;
+			const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><foreignObject width="${w}" height="${h}">${serialized}</foreignObject></svg>`;
 			const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 
 			const image = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -44,12 +43,21 @@
 				img.src = dataUrl;
 			});
 
-			// Each texture gets its OWN canvas (no shared reference)
+			console.log(`[HtmlRenderer] element: ${w}x${h}, image: ${image.naturalWidth}x${image.naturalHeight}`);
+			if (!document.getElementById('_dbg')) {
+				const a = document.createElement('a');
+				a.id = '_dbg';
+				a.href = dataUrl;
+				a.target = '_blank';
+				a.textContent = 'Open SVG';
+				a.style.cssText = 'position:fixed;top:10px;left:10px;z-index:99999;color:red;font-size:20px;';
+				document.body.appendChild(a);
+			}
+
 			const canvas = document.createElement('canvas');
 			canvas.width = w;
 			canvas.height = h;
 			const ctx = canvas.getContext('2d')!;
-			// Draw dark background first (HTML has transparent backgrounds)
 			ctx.fillStyle = '#000206';
 			ctx.fillRect(0, 0, w, h);
 			ctx.drawImage(image, 0, 0, w, h);
