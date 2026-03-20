@@ -586,7 +586,9 @@ export function setUpdateChannel(channel: string): Promise<{ ok: boolean; channe
 // ---------------------------------------------------------------------------
 
 export function exportInstanceUrl(slug: string): string {
-	return `${BASE}/api/instances/${encodeURIComponent(slug)}/export`;
+	const base = `${BASE}/api/instances/${encodeURIComponent(slug)}/export`;
+	const token = getAuthToken();
+	return token ? `${base}?token=${encodeURIComponent(token)}` : base;
 }
 
 export async function importInstance(slug: string, file: File): Promise<{ ok: boolean }> {
