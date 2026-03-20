@@ -331,9 +331,9 @@ export function createSceneStore(): SceneStore {
 			}
 			if (action === "play" && track) {
 				const vol = volume ?? 0.5;
-				const isUrl = track.startsWith("http://") || track.startsWith("https://");
-				if (isUrl) {
-					// Custom URL audio
+				const isBuiltIn = track === "ambient" || track === "intro" || track === "loop";
+				if (!isBuiltIn) {
+					// Custom audio — URL or relative path (e.g. /api/instances/.../file)
 					if (customAudio) { customAudio.pause(); }
 					customAudio = new Audio(track);
 					customAudio.loop = true;
