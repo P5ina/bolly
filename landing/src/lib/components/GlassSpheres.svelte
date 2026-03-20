@@ -1,35 +1,21 @@
 <script lang="ts">
 	import { Canvas } from '@threlte/core';
 	import GlassSpheresScene from './GlassSpheresScene.svelte';
-
-	interface Section {
-		snippet: import('svelte').Snippet;
-		y: number;
-		width?: number;
-		height?: number;
-	}
-
-	let { sections }: { sections: Section[] } = $props();
-
-	// Total scroll height = enough to scroll through all sections
-	const lastSection = sections[sections.length - 1];
-	const scrollHeight = lastSection ? Math.abs(lastSection.y) * 120 + 1000 : 5000;
 </script>
 
-<!-- Invisible spacer to enable scroll -->
-<div class="scroll-spacer" style="height: {scrollHeight}px"></div>
+<!-- Scroll spacer -->
+<div class="scroll-spacer"></div>
 
 <!-- Fixed 3D scene -->
 <div class="scene-root">
 	<Canvas>
-		<GlassSpheresScene {sections} />
+		<GlassSpheresScene />
 	</Canvas>
 </div>
 
 <style>
 	.scroll-spacer {
-		position: relative;
-		z-index: -1;
+		height: 500vh;
 		pointer-events: none;
 	}
 
