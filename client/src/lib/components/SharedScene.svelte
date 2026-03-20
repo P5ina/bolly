@@ -195,40 +195,41 @@
 		fillLight.position.set(0, -3, 1);
 		scene.add(fillLight);
 
-		// ── Visualizer bars (party mode) ──
-		const VIZ_BARS = 32;
-		const VIZ_WIDTH = 8; // total width of the bar row
-		const VIZ_Z = -3;    // behind the blob
-		const VIZ_Y_BASE = -1.5;
+		// ── Visualizer columns (party mode) ──
+		// 5 columns placed directly behind the blob so refraction shows them
+		const VIZ_BARS = 5;
+		const VIZ_WIDTH = 3.5;   // spread around the blob center
+		const VIZ_Z_BEHIND = -2; // behind the blob (blob is at z=0)
 		const barGeo = new THREE.BoxGeometry(1, 1, 1);
 		const vizGroup = new THREE.Group();
+		// Position group at blob's chat position so columns stay behind it
+		vizGroup.position.set(FINAL_X, FINAL_Y, 0);
 		vizGroup.visible = false;
 		scene.add(vizGroup);
 
 		const vizBars: InstanceType<typeof THREE.Mesh>[] = [];
 		const vizMats: InstanceType<typeof THREE.MeshStandardMaterial>[] = [];
 		const barSpacing = VIZ_WIDTH / VIZ_BARS;
-		const barWidth = barSpacing * 0.7;
+		const barWidth = barSpacing * 0.65;
 
 		for (let i = 0; i < VIZ_BARS; i++) {
 			const mat = new THREE.MeshStandardMaterial({
 				color: 0xffffff,
 				emissive: 0x000000,
-				roughness: 0.3,
-				metalness: 0.7,
+				roughness: 0.2,
+				metalness: 0.8,
 				transparent: true,
-				opacity: 0.85,
+				opacity: 0.9,
 			});
 			const mesh = new THREE.Mesh(barGeo, mat);
 			const x = -VIZ_WIDTH / 2 + i * barSpacing + barSpacing / 2;
-			mesh.position.set(x, VIZ_Y_BASE, VIZ_Z);
-			mesh.scale.set(barWidth, 0.01, 0.3);
+			mesh.position.set(x, 0, VIZ_Z_BEHIND);
+			mesh.scale.set(barWidth, 0.01, 0.4);
 			vizGroup.add(mesh);
 			vizBars.push(mesh);
 			vizMats.push(mat);
 		}
 
-		// Smooth heights for vizualization
 		const vizSmooth = new Float32Array(VIZ_BARS);
 
 		// ── Glass material (shared) ──
@@ -616,43 +617,41 @@
 				envDone = true;
 			}
 
-			// ── Visualizer bars update ──
+			// ── Visualizer columns update ──
 			const isDiscoNow = store.musicPlaying && store.musicAmplitude > 0.01;
 			vizGroup.visible = isDiscoNow;
 
 			if (isDiscoNow) {
 				const freqData = store.getMusicFrequencyData();
 				if (freqData) {
+					// Group frequency bins into 5 bands (bass → treble)
 					const binSize = Math.floor(freqData.length / VIZ_BARS);
 					const hue = (t * 0.4) % 1;
 					for (let i = 0; i < VIZ_BARS; i++) {
-						// Average frequency bins for this bar
 						let sum = 0;
 						for (let j = 0; j < binSize; j++) {
 							sum += freqData[i * binSize + j];
 						}
 						const raw = sum / (binSize * 255);
-						// Smooth with fast attack, slow decay
-						vizSmooth[i] += (raw - vizSmooth[i]) * (raw > vizSmooth[i] ? 0.5 : 0.15);
+						vizSmooth[i] += (raw - vizSmooth[i]) * (raw > vizSmooth[i] ? 0.5 : 0.12);
 						const h = vizSmooth[i];
 
-						// Scale: height from 0.05 to 3.0
-						const barHeight = 0.05 + h * 3.0;
+						// Columns grow upward from bottom of blob
+						const barHeight = 0.1 + h * 4.0;
 						vizBars[i].scale.y = barHeight;
-						vizBars[i].position.y = VIZ_Y_BASE + barHeight / 2;
+						vizBars[i].position.y = -0.8 + barHeight / 2;
 
-						// Color: each bar offset in hue
+						// Rainbow hue offset per column
 						const barHue = (hue + i / VIZ_BARS) % 1;
 						const r = Math.sin(barHue * Math.PI * 2) * 0.5 + 0.5;
 						const g = Math.sin((barHue + 0.333) * Math.PI * 2) * 0.5 + 0.5;
 						const b2 = Math.sin((barHue + 0.666) * Math.PI * 2) * 0.5 + 0.5;
 						vizMats[i].color.setRGB(r, g, b2);
-						vizMats[i].emissive.setRGB(r * h * 0.6, g * h * 0.6, b2 * h * 0.6);
-						vizMats[i].opacity = 0.5 + h * 0.5;
+						vizMats[i].emissive.setRGB(r * h * 0.8, g * h * 0.8, b2 * h * 0.8);
+						vizMats[i].opacity = 0.6 + h * 0.4;
 					}
 				}
 			} else {
-				// Fade out smoothly
 				for (let i = 0; i < VIZ_BARS; i++) {
 					vizSmooth[i] *= 0.9;
 				}
