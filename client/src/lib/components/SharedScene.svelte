@@ -227,12 +227,11 @@
 
 		for (let i = 0; i < VIZ_BARS; i++) {
 			const mat = new THREE.MeshStandardMaterial({
-				color: 0xffffff,
-				emissive: 0x000000,
-				roughness: 0.2,
-				metalness: 0.8,
-				transparent: true,
-				opacity: 0.9,
+				color: 0x000000,     // no diffuse — purely emissive
+				emissive: 0x000000,  // set per-frame in animate loop
+				roughness: 0.1,
+				metalness: 0.0,
+				transparent: false,
 			});
 			const mesh = new THREE.Mesh(barGeo, mat);
 			// Columns spread along local X, in the group's plane facing camera
@@ -663,14 +662,15 @@
 						vizBars[i].scale.y = barHeight;
 						vizBars[i].position.y = -0.21 + barHeight / 2;
 
-						// Rainbow hue offset per column
+						// Purely emissive — no diffuse color, no dark silhouettes.
+						// Transmission pass sees bright glowing bars; refraction
+						// bends them into the sphere as color.
 						const barHue = (hue + i / VIZ_BARS) % 1;
 						const r = Math.sin(barHue * Math.PI * 2) * 0.5 + 0.5;
 						const g = Math.sin((barHue + 0.333) * Math.PI * 2) * 0.5 + 0.5;
 						const b2 = Math.sin((barHue + 0.666) * Math.PI * 2) * 0.5 + 0.5;
-						vizMats[i].color.setRGB(r, g, b2);
-						vizMats[i].emissive.setRGB(r * h * 0.8, g * h * 0.8, b2 * h * 0.8);
-						vizMats[i].opacity = 0.6 + h * 0.4;
+						const brightness = 0.5 + h * 2.0;
+						vizMats[i].emissive.setRGB(r * brightness, g * brightness, b2 * brightness);
 					}
 				}
 			} else {
