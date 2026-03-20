@@ -127,6 +127,11 @@ async function processQueue(voice: VoiceState): Promise<void> {
 		}
 
 		await playBuffer(audioBuffer, voice, entry.messageIds);
+
+		// Keep speaking=true between queue entries to avoid flash-hiding
+		if (audioQueue.length > 0) {
+			voice.speaking = true;
+		}
 	}
 
 	queuePlaying = false;

@@ -482,9 +482,9 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				agentRunning = false;
 				sending = false;
 				clearStreaming();
-				// If voice mode but no audio arrived (TTS failed or not configured),
-				// reveal messages immediately
-				if (voice.enabled && turnMessageIds.length > 0 && !voice.speaking) {
+				// Always reveal any pending voice messages — if TTS failed or is still
+				// queued, show the text immediately rather than leaving it hidden.
+				if (voice.enabled && turnMessageIds.length > 0) {
 					turnMessageIds = [];
 				}
 				voiceText = "";
