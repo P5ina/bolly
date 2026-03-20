@@ -73,30 +73,51 @@ export function createSceneStore(): SceneStore {
 	let musicPlaying = $state(false);
 	let musicEnabled = $state(true);
 
-	// Audio analyser for custom music visualizer
+	// Audio analyser for custom music visualizer.
+	// Uses a persistent AudioContext to avoid autoplay policy issues.
+	// Only the source node is recreated for each new audio element.
 	let musicAudioCtx: AudioContext | null = null;
 	let musicAnalyser: AnalyserNode | null = null;
 	let musicSourceNode: MediaElementAudioSourceNode | null = null;
 	let musicDataArray: Uint8Array<ArrayBuffer> | null = null;
 	let musicRafId: number | null = null;
 
-	async function setupMusicAnalyser(audio: HTMLAudioElement) {
-		cleanupMusicAnalyser();
-		try {
+	function ensureMusicContext(): { ctx: AudioContext; analyser: AnalyserNode } {
+		if (!musicAudioCtx || musicAudioCtx.state === "closed") {
 			musicAudioCtx = new AudioContext();
-			// Resume immediately — createMediaElementSource redirects audio through
-			// the context, so if it's suspended the audio goes silent.
-			if (musicAudioCtx.state === "suspended") {
-				await musicAudioCtx.resume();
-			}
+			musicAnalyser = null; // recreate with new context
+		}
+		if (!musicAnalyser) {
 			musicAnalyser = musicAudioCtx.createAnalyser();
 			musicAnalyser.fftSize = 256;
-			musicSourceNode = musicAudioCtx.createMediaElementSource(audio);
-			musicSourceNode.connect(musicAnalyser);
+			musicAnalyser.smoothingTimeConstant = 0.8;
 			musicAnalyser.connect(musicAudioCtx.destination);
 			musicDataArray = new Uint8Array(musicAnalyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
+		}
+		return { ctx: musicAudioCtx, analyser: musicAnalyser };
+	}
+
+	function connectMusicSource(audio: HTMLAudioElement) {
+		try {
+			// Disconnect old source if any
+			if (musicSourceNode) {
+				try { musicSourceNode.disconnect(); } catch {}
+				musicSourceNode = null;
+			}
+
+			const { ctx, analyser } = ensureMusicContext();
+
+			// Resume context (may be suspended due to autoplay policy)
+			if (ctx.state === "suspended") {
+				ctx.resume().catch(() => {});
+			}
+
+			musicSourceNode = ctx.createMediaElementSource(audio);
+			musicSourceNode.connect(analyser);
 			musicPlaying = true;
 
+			// Start amplitude tracking loop
+			if (musicRafId !== null) cancelAnimationFrame(musicRafId);
 			function updateAmplitude() {
 				if (!musicAnalyser || !musicDataArray) return;
 				musicAnalyser.getByteFrequencyData(musicDataArray);
@@ -109,20 +130,17 @@ export function createSceneStore(): SceneStore {
 			}
 			updateAmplitude();
 		} catch (e) {
-			// Analyser setup failed — audio still plays natively, just no visualizer
-			console.warn("[music] analyser setup failed:", e);
-			musicPlaying = false;
+			console.warn("[music] analyser connect failed:", e);
+			// Audio still plays natively, just no visualizer
 		}
 	}
 
-	function cleanupMusicAnalyser() {
+	function disconnectMusicSource() {
 		if (musicRafId !== null) { cancelAnimationFrame(musicRafId); musicRafId = null; }
 		if (musicSourceNode) { try { musicSourceNode.disconnect(); } catch {} musicSourceNode = null; }
-		if (musicAnalyser) { try { musicAnalyser.disconnect(); } catch {} musicAnalyser = null; }
-		if (musicAudioCtx) { musicAudioCtx.close().catch(() => {}); musicAudioCtx = null; }
-		musicDataArray = null;
 		musicAmplitude = 0;
 		musicPlaying = false;
+		// Keep musicAudioCtx and musicAnalyser alive for reuse
 	}
 
 	let selectStartTime = 0;
@@ -239,7 +257,7 @@ export function createSceneStore(): SceneStore {
 		if (loopAudio) { loopAudio.pause(); loopAudio = null; }
 		if (ambientAudio) { ambientAudio.pause(); ambientAudio = null; }
 		if (customAudio) { customAudio.pause(); customAudio = null; }
-		cleanupMusicAnalyser();
+		disconnectMusicSource();
 	}
 
 	function getTrackAudio(track: string): HTMLAudioElement | null {
@@ -404,10 +422,10 @@ export function createSceneStore(): SceneStore {
 					customAudio = new Audio(audioUrl);
 					customAudio.loop = true;
 					customAudio.volume = vol;
-					// Play first, then attach analyser as best-effort for visualizer
-					customAudio.play().then(() => {
-						if (customAudio) setupMusicAnalyser(customAudio);
-					}).catch((e) => {
+					// Connect to persistent AudioContext for visualizer,
+					// then play through the context pipeline
+					connectMusicSource(customAudio);
+					customAudio.play().catch((e) => {
 						console.warn("[music] play failed:", e);
 					});
 				} else {
