@@ -488,22 +488,31 @@ pub async fn run_single_turn(
             workspace_dir,
             Some(mcp_snapshot),
         )
-        .await
-        .unwrap_or_else(|e| {
+        .await;
+
+    // Propagate hard errors (400 Bad Request etc) — don't swallow them
+    let tool_result = match tool_result {
+        Ok(r) => r,
+        Err(e) => {
             let msg = e.to_string();
             log::error!("LLM call failed: {msg}");
-            let text = if msg.contains("429") || msg.contains("rate_limit")
+
+            // Rate limits / overload: return a friendly message, don't propagate error
+            if msg.contains("429") || msg.contains("rate_limit")
                 || msg.contains("Too Many Requests")
                 || msg.contains("529") || msg.contains("overloaded")
             {
-                "i'm being rate limited right now — give me a moment and try again".to_string()
+                llm::ToolChatResult {
+                    text: "i'm being rate limited right now — give me a moment and try again".to_string(),
+                    rig_history: None, message_id: None, tokens_used: 0,
+                }
             } else {
-                // Log full error for debugging but don't leak API internals
+                // Hard error (400, 500, etc) — propagate to stop the agent loop
                 log::error!("LLM error details: {e:?}");
-                "something went wrong on my end — try again?".to_string()
-            };
-            llm::ToolChatResult { text, rig_history: None, message_id: None, tokens_used: 0 }
-        });
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, msg));
+            }
+        }
+    };
 
     // Strip any leaked tool-call JSON the model may have output as text
     let reply = strip_leaked_tool_calls(&tool_result.text);
