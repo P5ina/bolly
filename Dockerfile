@@ -24,7 +24,7 @@ RUN apt-get update -qq && \
     # Chromium — install via Playwright (apt chromium is a snap stub on 24.04)
     npx playwright install --with-deps chromium > /dev/null 2>&1 && \
     # Qdrant (vector search sidecar)
-    QDRANT_ARCH=$(dpkg --print-architecture) && \
+    QDRANT_ARCH=$(dpkg --print-architecture | sed 's/amd64/x86_64/' | sed 's/arm64/aarch64/') && \
     curl -fsSL "https://github.com/qdrant/qdrant/releases/latest/download/qdrant-${QDRANT_ARCH}-unknown-linux-gnu.tar.gz" -o /tmp/qdrant.tar.gz && \
     tar -xzf /tmp/qdrant.tar.gz -C /usr/local/bin && \
     rm /tmp/qdrant.tar.gz && \
