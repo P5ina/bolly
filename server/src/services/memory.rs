@@ -462,21 +462,52 @@ rules:
 - keep files concise — a few lines each, not essays
 - there are currently {file_count} files. aim for quality over quantity — merge related topics
 
-respond ONLY with the JSON object, no other text."#
+do NOT save images unless they are clearly meaningful (personal photos, important screenshots). ignore memes, random links, UI screenshots."#
     );
 
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "ops": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": ["write", "append", "delete", "save_image"]
+                        },
+                        "path": { "type": "string" },
+                        "content": { "type": "string" },
+                        "upload_id": { "type": "string" },
+                        "description": { "type": "string" }
+                    },
+                    "required": ["action", "path"],
+                    "additionalProperties": false
+                }
+            }
+        },
+        "required": ["ops"],
+        "additionalProperties": false
+    });
+
     let (response, _) = llm
-        .chat(
+        .chat_json(
             "you are a memory librarian. you organize memories into a clean file-based library. \
              you understand the difference between facts (knowing something) and moments (shared experiences). \
-             you can also save images that are meaningful to the user. \
-             respond only with valid JSON.",
+             you can also save images that are meaningful to the user.",
             &extraction_prompt,
-            vec![],
+            schema,
         )
         .await?;
 
-    let ops = parse_memory_ops(&response);
+    let ops: Vec<MemoryOp> = match serde_json::from_str::<MemoryOps>(&response) {
+        Ok(m) => m.ops,
+        Err(e) => {
+            log::warn!("memory: failed to parse structured output: {e}");
+            parse_memory_ops(&response)
+        }
+    };
     if ops.is_empty() {
         return Ok(());
     }

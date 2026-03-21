@@ -602,6 +602,75 @@ impl LlmBackend {
         .await
     }
 
+    /// Chat with structured JSON output (Anthropic only, falls back to text parsing for other providers).
+    pub async fn chat_json(
+        &self,
+        system_prompt: &str,
+        prompt: &str,
+        schema: serde_json::Value,
+    ) -> Result<(String, u64), Box<dyn std::error::Error + Send + Sync>> {
+        let backend = self.clone();
+        let system = system_prompt.to_string();
+        let prompt = prompt.to_string();
+        retry_on_rate_limit(|| {
+            let backend = backend.clone();
+            let system = system.clone();
+            let prompt = prompt.clone();
+            let schema = schema.clone();
+            async move {
+                match &backend {
+                    LlmBackend::Anthropic { http, api_key, model } => {
+                        let messages = vec![Message::user(&prompt)];
+                        let system_blocks = vec![serde_json::json!({"type": "text", "text": &system})];
+                        let msgs = serde_json::to_value(&messages).unwrap_or(serde_json::json!([]));
+
+                        let req = serde_json::json!({
+                            "model": model,
+                            "max_tokens": 16384,
+                            "system": system_blocks,
+                            "messages": msgs,
+                            "output_config": {
+                                "format": {
+                                    "type": "json_schema",
+                                    "schema": schema,
+                                }
+                            }
+                        });
+
+                        let resp = http
+                            .post("https://api.anthropic.com/v1/messages")
+                            .headers(anthropic_headers(api_key))
+                            .json(&req)
+                            .send()
+                            .await?;
+
+                        let status = resp.status();
+                        let resp_text = resp.text().await?;
+                        if !status.is_success() {
+                            return Err(format!("Anthropic API error {status}: {resp_text}").into());
+                        }
+
+                        let resp_json: serde_json::Value = serde_json::from_str(&resp_text)?;
+                        let tokens = resp_json.pointer("/usage/input_tokens").and_then(|v| v.as_u64()).unwrap_or(0)
+                            + resp_json.pointer("/usage/output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+
+                        let text = resp_json.pointer("/content/0/text")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        Ok((text, tokens))
+                    }
+                    // For non-Anthropic backends, fall back to regular chat
+                    _ => {
+                        backend.chat(&system, &prompt, vec![]).await
+                    }
+                }
+            }
+        })
+        .await
+    }
+
     /// Streaming chat with tools.
     pub async fn chat_with_tools_streaming(
         &self,
