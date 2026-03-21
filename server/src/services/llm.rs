@@ -119,6 +119,45 @@ impl ContentBlock {
             }
         }
 
+        // Check for document (PDF) via URL
+        if content.starts_with("__DOCUMENT_URL__:") {
+            let url = &content["__DOCUMENT_URL__:".len()..];
+            let blocks = serde_json::json!([
+                {
+                    "type": "document",
+                    "source": {
+                        "type": "url",
+                        "url": url.trim(),
+                    }
+                }
+            ]);
+            return ContentBlock::ToolResult {
+                tool_use_id,
+                content: blocks,
+            };
+        }
+
+        // Check for document (PDF) via base64
+        if content.starts_with("__DOCUMENT_BASE64__:") {
+            let rest = &content["__DOCUMENT_BASE64__:".len()..];
+            if let Some((mime, data)) = rest.split_once(':') {
+                let blocks = serde_json::json!([
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime,
+                            "data": data,
+                        }
+                    }
+                ]);
+                return ContentBlock::ToolResult {
+                    tool_use_id,
+                    content: blocks,
+                };
+            }
+        }
+
         // Check for mixed content with __IMAGE_URL__: markers (e.g. from memory_search)
         if content.contains("__IMAGE_URL__:") {
             let mut blocks: Vec<serde_json::Value> = Vec::new();

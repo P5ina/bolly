@@ -26,6 +26,16 @@ impl ReadFileTool {
             auth_token: std::env::var("BOLLY_AUTH_TOKEN").unwrap_or_default(),
         }
     }
+
+    /// Try to extract upload_id from a file path in uploads/ directory.
+    fn extract_upload_id(path: &Path) -> Option<String> {
+        let path_str = path.to_string_lossy();
+        if !path_str.contains("/uploads/") {
+            return None;
+        }
+        let fname = path.file_stem()?.to_str()?;
+        Some(fname.trim_end_matches("_blob").to_string())
+    }
 }
 
 /// Arguments for read_file tool.
@@ -101,18 +111,27 @@ impl Tool for ReadFileTool {
             return Err(ToolExecError(format!("{}: failed to read", target.display())));
         }
 
-        // PDF files — extract text
+        // PDF files — send as document content block so Claude sees text + visuals
         if ext == "pdf" {
+            // Try URL-based (preferred — Claude gets full visual understanding)
+            if let Some(upload_id) = Self::extract_upload_id(&target) {
+                if !self.public_url.is_empty() {
+                    let url = format!(
+                        "{}/public/files/{}/{}?token={}",
+                        self.public_url, self.instance_slug, upload_id, self.auth_token,
+                    );
+                    return Ok(format!("__DOCUMENT_URL__:{url}"));
+                }
+            }
+            // Fallback — base64
             let bytes = fs::read(&target)
                 .map_err(|e| ToolExecError(format!("{}: {e}", target.display())))?;
-            let text = pdf_extract::extract_text_from_mem(&bytes)
-                .map_err(|e| ToolExecError(format!("PDF extraction failed: {e}")))?;
-            const MAX_CHARS: usize = 20_000;
-            if text.len() > MAX_CHARS {
-                let truncated: String = text.chars().take(MAX_CHARS).collect();
-                return Ok(format!("{truncated}\n\n...(truncated at {MAX_CHARS} chars)"));
+            if bytes.len() > 32 * 1024 * 1024 {
+                return Err(ToolExecError("PDF too large (>32MB)".into()));
             }
-            return Ok(text);
+            use base64::Engine;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            return Ok(format!("__DOCUMENT_BASE64__:application/pdf:{b64}"));
         }
 
         // Text files — original behavior
