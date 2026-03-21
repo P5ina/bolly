@@ -382,6 +382,17 @@ export function reindexMemory(slug: string): Promise<{ status: string }> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/memory/reindex`, { method: 'POST' });
 }
 
+export interface VectorPoint {
+	path: string;
+	source_type: string;
+	content_preview: string;
+	vector: number[];
+}
+
+export function fetchMemoryVectors(slug: string): Promise<VectorPoint[]> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/memory/vectors`);
+}
+
 export async function fetchMemoryContent(slug: string, path: string): Promise<string> {
 	const res = await authedFetch(`/api/instances/${encodeURIComponent(slug)}/memory/${path}`);
 	if (res.status === 401) throw new AuthError();

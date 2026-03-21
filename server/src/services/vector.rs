@@ -4,7 +4,7 @@ use std::path::Path;
 
 use qdrant_client::qdrant::{
     Condition, CreateCollectionBuilder, DeletePointsBuilder, Distance, Filter, PointStruct,
-    SearchPointsBuilder, UpsertPointsBuilder, VectorParamsBuilder,
+    ScrollPointsBuilder, SearchPointsBuilder, UpsertPointsBuilder, VectorParamsBuilder,
 };
 use qdrant_client::Qdrant;
 use uuid::Uuid;
@@ -28,6 +28,14 @@ pub struct VectorSearchResult {
     pub content_preview: String,
     pub score: f32,
     pub upload_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct VectorPoint {
+    pub path: String,
+    pub source_type: String,
+    pub content_preview: String,
+    pub vector: Vec<f32>,
 }
 
 /// Extract a string field from Qdrant payload.
@@ -232,6 +240,58 @@ impl VectorStore {
             .collect();
 
         Ok(out)
+    }
+
+    /// Get all points with vectors and metadata (for visualization).
+    pub async fn list_all_vectors(
+        &self,
+        instance_slug: &str,
+    ) -> Result<Vec<VectorPoint>, String> {
+        let collection = Self::collection(instance_slug);
+
+        let exists = self.client.collection_exists(&collection).await
+            .map_err(|e| format!("qdrant: {e}"))?;
+        if !exists {
+            return Ok(vec![]);
+        }
+
+        let result = self.client
+            .scroll(ScrollPointsBuilder::new(&collection)
+                .with_payload(true)
+                .with_vectors(true)
+                .limit(2000))
+            .await
+            .map_err(|e| format!("qdrant scroll: {e}"))?;
+
+        let mut points = Vec::new();
+        for pt in result.result {
+            let p = &pt.payload;
+            let path = payload_str(p, "path");
+            let source_type = payload_str(p, "source_type");
+            let content_preview = payload_str(p, "content_preview");
+
+            let vector: Vec<f32> = match &pt.vectors {
+                Some(v) => {
+                    if let Some(qdrant_client::qdrant::vectors_output::VectorsOptions::Vector(vec)) =
+                        &v.vectors_options
+                    {
+                        vec.data.clone()
+                    } else {
+                        continue;
+                    }
+                }
+                None => continue,
+            };
+
+            points.push(VectorPoint {
+                path,
+                source_type,
+                content_preview,
+                vector,
+            });
+        }
+
+        Ok(points)
     }
 
     /// Find pairs of similar text memories above a threshold (for consolidation).
