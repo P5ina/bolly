@@ -392,6 +392,9 @@ impl VectorStore {
 
 /// Chunk text into ~600 byte paragraphs (matching BM25 chunking in memory.rs).
 pub fn chunk_text(text: &str) -> Vec<String> {
+    if text.trim().is_empty() {
+        return vec![];
+    }
     if text.len() < 800 {
         return vec![text.to_string()];
     }
@@ -413,5 +416,6 @@ pub fn chunk_text(text: &str) -> Vec<String> {
         chunks.push(current);
     }
 
+    chunks.retain(|c| !c.trim().is_empty());
     chunks
 }
