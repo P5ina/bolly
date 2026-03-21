@@ -38,29 +38,45 @@ fn scan_dir_recursive(base: &Path, current: &Path, entries: &mut Vec<MemoryEntry
         }
         if path.is_dir() {
             scan_dir_recursive(base, &path, entries);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+        } else {
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let is_text = ext == "md";
+            let is_image = matches!(ext, "jpg" | "jpeg" | "png" | "webp" | "gif");
+
+            if !is_text && !is_image {
+                continue;
+            }
+
             let rel = path
                 .strip_prefix(base)
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .to_string();
 
-            let content = std::fs::read_to_string(&path).unwrap_or_default();
-            let summary = content
-                .lines()
-                .find(|l| !l.trim().is_empty())
-                .unwrap_or("")
-                .trim()
-                .chars()
-                .take(120)
-                .collect::<String>();
-
-            let size = content.len();
-            entries.push(MemoryEntry {
-                path: rel,
-                summary,
-                size,
-            });
+            if is_image {
+                let size = std::fs::metadata(&path).map(|m| m.len() as usize).unwrap_or(0);
+                entries.push(MemoryEntry {
+                    path: rel,
+                    summary: format!("[image: {ext}]"),
+                    size,
+                });
+            } else {
+                let content = std::fs::read_to_string(&path).unwrap_or_default();
+                let summary = content
+                    .lines()
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("")
+                    .trim()
+                    .chars()
+                    .take(120)
+                    .collect::<String>();
+                let size = content.len();
+                entries.push(MemoryEntry {
+                    path: rel,
+                    summary,
+                    size,
+                });
+            }
         }
     }
 }
@@ -364,6 +380,14 @@ pub async fn extract_and_store(
         s
     };
 
+    // Detect image attachments in messages
+    let attachment_re = regex::Regex::new(r"\[attached:\s*(.+?)\s*\((\w+)\)\]").unwrap();
+    let uploads_dir = workspace_dir
+        .join("instances")
+        .join(instance_slug)
+        .join("uploads");
+
+    let mut image_uploads: Vec<(String, String)> = Vec::new(); // (upload_id, original_name)
     let conversation = recent_messages
         .iter()
         .map(|m| {
@@ -371,10 +395,39 @@ pub async fn extract_and_store(
                 crate::domain::chat::ChatRole::User => "user",
                 crate::domain::chat::ChatRole::Assistant => "assistant",
             };
+            // Collect image attachment IDs
+            for cap in attachment_re.captures_iter(&m.content) {
+                let name = cap[1].to_string();
+                let upload_id = cap[2].to_string();
+                let meta_path = uploads_dir.join(format!("{upload_id}.json"));
+                if let Ok(meta_str) = std::fs::read_to_string(&meta_path) {
+                    if let Ok(meta) = serde_json::from_str::<serde_json::Value>(&meta_str) {
+                        let mime = meta["mime_type"].as_str().unwrap_or("");
+                        if mime.starts_with("image/") {
+                            image_uploads.push((upload_id.clone(), name.clone()));
+                        }
+                    }
+                }
+            }
             format!("{role}: {}", m.content)
         })
         .collect::<Vec<_>>()
         .join("\n");
+
+    let image_context = if image_uploads.is_empty() {
+        String::new()
+    } else {
+        let list = image_uploads
+            .iter()
+            .map(|(id, name)| format!("  - \"{name}\" (upload_id: {id})"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            "\nimages shared in this conversation:\n{list}\n\
+             you can save important images using: {{\"action\": \"save_image\", \"upload_id\": \"...\", \"path\": \"folder/name.jpg\", \"description\": \"what this image shows\"}}\n\
+             only save images that are meaningful — personal photos, important screenshots, etc. NOT memes or random links.\n"
+        )
+    };
 
     let extraction_prompt = format!(
         r#"analyze this conversation and decide what to remember.
@@ -384,13 +437,14 @@ your memory library currently contains:
 
 recent conversation:
 {conversation}
-
+{image_context}
 respond with JSON — an array of file operations:
 {{
   "ops": [
     {{"action": "write", "path": "folder/file.md", "content": "the memory content"}},
     {{"action": "append", "path": "folder/file.md", "content": "additional info to add"}},
-    {{"action": "delete", "path": "folder/file.md"}}
+    {{"action": "delete", "path": "folder/file.md"}},
+    {{"action": "save_image", "upload_id": "upload_xxx", "path": "moments/photo.jpg", "description": "what this image shows"}}
   ]
 }}
 
@@ -401,6 +455,7 @@ rules:
 - use "write" to create new files or replace outdated ones
 - use "append" to add new info to an EXISTING file (prefer this over creating new files)
 - use "delete" to remove files with outdated/wrong info
+- use "save_image" to save meaningful images shared in the conversation (only if images were shared)
 - DON'T duplicate info that's already in the library
 - DON'T force it — most conversations produce 0-1 ops
 - DON'T create a new file if you can append to an existing one on the same topic
@@ -414,6 +469,7 @@ respond ONLY with the JSON object, no other text."#
         .chat(
             "you are a memory librarian. you organize memories into a clean file-based library. \
              you understand the difference between facts (knowing something) and moments (shared experiences). \
+             you can also save images that are meaningful to the user. \
              respond only with valid JSON.",
             &extraction_prompt,
             vec![],
@@ -426,8 +482,12 @@ respond ONLY with the JSON object, no other text."#
     }
 
     for op in &ops {
-        // Sanitize path — prevent directory traversal
-        let clean_path = sanitize_memory_path(&op.path);
+        // Sanitize path — allow image extensions for save_image
+        let clean_path = if op.action == "save_image" {
+            sanitize_media_path(&op.path)
+        } else {
+            sanitize_memory_path(&op.path)
+        };
         if clean_path.is_empty() {
             continue;
         }
@@ -464,6 +524,58 @@ respond ONLY with the JSON object, no other text."#
                     log::info!("memory: deleted {clean_path} for {instance_slug}");
                     if let Err(e) = vector_store.delete_by_path(instance_slug, &clean_path).await {
                         log::warn!("memory: vector delete failed for {clean_path}: {e}");
+                    }
+                }
+            }
+            "save_image" => {
+                let upload_id = if !op.upload_id.is_empty() {
+                    &op.upload_id
+                } else {
+                    log::warn!("memory: save_image — missing upload_id");
+                    continue;
+                };
+
+                // Find the source file
+                let meta_path = uploads_dir.join(format!("{upload_id}.json"));
+                let meta_str = match std::fs::read_to_string(&meta_path) {
+                    Ok(s) => s,
+                    Err(_) => {
+                        log::warn!("memory: save_image — upload {upload_id} not found");
+                        continue;
+                    }
+                };
+                let meta: serde_json::Value = match serde_json::from_str(&meta_str) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let stored_name = match meta["stored_name"].as_str() {
+                    Some(s) => s,
+                    None => continue,
+                };
+                let mime_type = meta["mime_type"].as_str().unwrap_or("image/jpeg");
+
+                let src = uploads_dir.join(stored_name);
+                if let Some(parent) = full_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                if let Err(e) = std::fs::copy(&src, &full_path) {
+                    log::warn!("memory: save_image copy failed: {e}");
+                    continue;
+                }
+                log::info!("memory: saved image {clean_path} for {instance_slug}");
+
+                // Embed the image
+                let desc = if op.description.is_empty() { &clean_path } else { &op.description };
+                if let Ok(bytes) = std::fs::read(&full_path) {
+                    if bytes.len() < 20 * 1024 * 1024 {
+                        if let Ok(vec) = super::embedding::embed_image(google_ai_key, &bytes, mime_type).await {
+                            if let Err(e) = vector_store.upsert_media(
+                                instance_slug, &clean_path, "media_image",
+                                mime_type, &clean_path, desc, vec,
+                            ).await {
+                                log::warn!("memory: image vector upsert failed: {e}");
+                            }
+                        }
                     }
                 }
             }
@@ -538,6 +650,24 @@ fn sanitize_memory_path(path: &str) -> String {
     }
 }
 
+/// Sanitize path for image/media files — allows image extensions.
+fn sanitize_media_path(path: &str) -> String {
+    let path = path.trim().trim_start_matches('/');
+    let parts: Vec<&str> = path.split('/').collect();
+    if parts.iter().any(|p| p.is_empty() || *p == ".." || p.starts_with('.')) {
+        return String::new();
+    }
+    let result = parts.join("/");
+    let lower = result.to_lowercase();
+    if lower.ends_with(".jpg") || lower.ends_with(".jpeg") || lower.ends_with(".png")
+        || lower.ends_with(".webp") || lower.ends_with(".gif")
+        || lower.ends_with(".mp4") || lower.ends_with(".mp3") || lower.ends_with(".wav") {
+        result
+    } else {
+        format!("{result}.jpg")
+    }
+}
+
 /// Remove memory files matching a query. Returns the number removed.
 pub fn forget_memories(workspace_dir: &Path, instance_slug: &str, query: &str) -> usize {
     let dir = memory_dir(workspace_dir, instance_slug);
@@ -575,6 +705,12 @@ struct MemoryOp {
     path: String,
     #[serde(default)]
     content: String,
+    /// Upload ID for save_image action.
+    #[serde(default)]
+    upload_id: String,
+    /// Description for save_image action.
+    #[serde(default)]
+    description: String,
 }
 
 #[derive(serde::Deserialize)]

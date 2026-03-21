@@ -13,6 +13,7 @@ use super::{openai_schema, ToolExecError};
 
 pub struct MemoryWriteTool {
     memory_dir: PathBuf,
+    uploads_dir: PathBuf,
     instance_slug: String,
     vector_store: Arc<VectorStore>,
     google_ai_key: String,
@@ -22,6 +23,7 @@ impl MemoryWriteTool {
     pub fn new(workspace_dir: &Path, instance_slug: &str, vector_store: Arc<VectorStore>, google_ai_key: &str) -> Self {
         Self {
             memory_dir: workspace_dir.join("instances").join(instance_slug).join("memory"),
+            uploads_dir: workspace_dir.join("instances").join(instance_slug).join("uploads"),
             instance_slug: instance_slug.to_string(),
             vector_store,
             google_ai_key: google_ai_key.to_string(),
@@ -31,14 +33,20 @@ impl MemoryWriteTool {
 
 #[derive(Deserialize, JsonSchema)]
 pub struct MemoryWriteArgs {
-    /// Path within the memory library (e.g. "about/basics.md", "moments/first-chat.md").
-    /// Folders will be created automatically. Must end with .md.
+    /// Path within the memory library (e.g. "about/basics.md", "moments/sunset.jpg").
+    /// Folders will be created automatically. For text files must end with .md.
+    /// For images, use the original extension (.jpg, .png, .webp).
     pub path: String,
-    /// Content to write. For "write" mode, replaces the file. For "append" mode, adds to the end.
+    /// Content to write. For text files: the memory content. For images: leave empty.
+    #[serde(default)]
     pub content: String,
     /// "write" (default) to create/replace, or "append" to add to existing file.
     #[serde(default = "default_write_mode")]
     pub mode: String,
+    /// Upload ID of an image to save as a memory (e.g. "upload_1234567890").
+    /// When provided, the image is copied from uploads to the memory library.
+    #[serde(default)]
+    pub image_upload_id: Option<String>,
 }
 
 fn default_write_mode() -> String {
@@ -55,12 +63,72 @@ impl Tool for MemoryWriteTool {
         ToolDefinition {
             name: "memory_write".into(),
             description: "Create or update a memory file. Organize by folder (about/, preferences/, moments/, etc). \
-                Files in pinned/ are always loaded into your context — use for triggers, rituals, critical references.".into(),
+                Files in pinned/ are always loaded into your context — use for triggers, rituals, critical references. \
+                Can also save images: set image_upload_id to the upload ID and path to where you want it (e.g. moments/sunset.jpg).".into(),
             parameters: openai_schema::<MemoryWriteArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Image save mode
+        if let Some(upload_id) = &args.image_upload_id {
+            let clean_path = sanitize_image_path(&args.path);
+            if clean_path.is_empty() {
+                return Err(ToolExecError("invalid image path".into()));
+            }
+
+            // Find the uploaded file
+            let meta_path = self.uploads_dir.join(format!("{upload_id}.json"));
+            let meta_str = fs::read_to_string(&meta_path)
+                .map_err(|_| ToolExecError(format!("upload {upload_id} not found")))?;
+            let meta: serde_json::Value = serde_json::from_str(&meta_str)
+                .map_err(|_| ToolExecError("invalid upload metadata".into()))?;
+            let stored_name = meta["stored_name"].as_str()
+                .ok_or_else(|| ToolExecError("missing stored_name".into()))?;
+            let mime_type = meta["mime_type"].as_str().unwrap_or("image/jpeg");
+
+            let src = self.uploads_dir.join(stored_name);
+            let dst = self.memory_dir.join(&clean_path);
+
+            if let Some(parent) = dst.parent() {
+                fs::create_dir_all(parent).map_err(|e| ToolExecError(e.to_string()))?;
+            }
+            fs::copy(&src, &dst).map_err(|e| ToolExecError(e.to_string()))?;
+
+            // Embed image into vector store
+            if let Ok(bytes) = fs::read(&dst) {
+                if bytes.len() < 20 * 1024 * 1024 {
+                    match crate::services::embedding::embed_image(&self.google_ai_key, &bytes, mime_type).await {
+                        Ok(vec) => {
+                            let desc = if args.content.is_empty() {
+                                clean_path.clone()
+                            } else {
+                                args.content.clone()
+                            };
+                            if let Err(e) = self.vector_store.upsert_media(
+                                &self.instance_slug, &clean_path, "media_image",
+                                mime_type, &clean_path, &desc, vec,
+                            ).await {
+                                log::warn!("[memory_write] vector upsert failed for image: {e}");
+                            }
+                        }
+                        Err(e) => log::warn!("[memory_write] embed image failed: {e}"),
+                    }
+                }
+            }
+
+            // If content provided, save it as a description sidecar
+            if !args.content.is_empty() {
+                let desc_path = format!("{clean_path}.md");
+                let desc_full = self.memory_dir.join(&desc_path);
+                let _ = fs::write(&desc_full, &args.content);
+                embed_memory_to_vector(&self.vector_store, &self.google_ai_key, &self.instance_slug, &desc_path, &args.content).await;
+            }
+
+            return Ok(format!("saved image to {clean_path}"));
+        }
+
+        // Text file mode
         let clean_path = sanitize_path(&args.path);
         if clean_path.is_empty() {
             return Err(ToolExecError("invalid path".into()));
@@ -87,7 +155,6 @@ impl Tool for MemoryWriteTool {
             }
         };
 
-        // Embed into vector store
         embed_memory_to_vector(&self.vector_store, &self.google_ai_key, &self.instance_slug, &clean_path, &final_content).await;
 
         Ok(format!("{} {clean_path}", if args.mode == "append" { "appended to" } else { "wrote" }))
@@ -440,6 +507,23 @@ fn sanitize_path(path: &str) -> String {
         format!("{result}.md")
     } else {
         result
+    }
+}
+
+/// Sanitize path for image files — allows image extensions instead of forcing .md.
+fn sanitize_image_path(path: &str) -> String {
+    let path = path.trim().trim_start_matches('/');
+    let parts: Vec<&str> = path.split('/').collect();
+    if parts.iter().any(|p| p.is_empty() || *p == ".." || p.starts_with('.')) {
+        return String::new();
+    }
+    let result = parts.join("/");
+    let lower = result.to_lowercase();
+    if lower.ends_with(".jpg") || lower.ends_with(".jpeg") || lower.ends_with(".png")
+        || lower.ends_with(".webp") || lower.ends_with(".gif") {
+        result
+    } else {
+        format!("{result}.jpg")
     }
 }
 
