@@ -530,13 +530,26 @@ async fn search_memory(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let memory_dir = state.workspace_dir
+        .join("instances")
+        .join(&instance_slug)
+        .join("memory");
+
     let json: Vec<serde_json::Value> = results
         .into_iter()
-        .map(|r| serde_json::json!({
-            "path": r.path,
-            "text": r.content_preview,
-            "score": r.score,
-        }))
+        .map(|r| {
+            // Use content_preview from Qdrant, fall back to reading file from disk
+            let text = if r.content_preview.is_empty() {
+                std::fs::read_to_string(memory_dir.join(&r.path)).unwrap_or_default()
+            } else {
+                r.content_preview
+            };
+            serde_json::json!({
+                "path": r.path,
+                "text": text,
+                "score": r.score,
+            })
+        })
         .collect();
 
     Ok(Json(serde_json::Value::Array(json)))

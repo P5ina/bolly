@@ -34,7 +34,10 @@ pub struct VectorSearchResult {
 fn payload_str(payload: &std::collections::HashMap<String, qdrant_client::qdrant::Value>, key: &str) -> String {
     payload
         .get(key)
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .and_then(|v| match &v.kind {
+            Some(qdrant_client::qdrant::value::Kind::StringValue(s)) => Some(s.clone()),
+            _ => None,
+        })
         .unwrap_or_default()
 }
 
