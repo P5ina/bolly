@@ -41,7 +41,9 @@ echo "[entrypoint] chromium: ${CHROMIUM_PATH:-NOT FOUND}"
 # --- Start Qdrant sidecar (vector search) ---
 mkdir -p "$PERSIST_DIR/qdrant"
 if command -v qdrant >/dev/null 2>&1; then
-    qdrant --storage-path "$PERSIST_DIR/qdrant" &
+    QDRANT__STORAGE__STORAGE_PATH="$PERSIST_DIR/qdrant/storage" \
+    QDRANT__STORAGE__SNAPSHOTS_PATH="$PERSIST_DIR/qdrant/snapshots" \
+    qdrant &
     QDRANT_PID=$!
     echo "[entrypoint] qdrant started (PID: $QDRANT_PID), storage: $PERSIST_DIR/qdrant"
     # Wait for Qdrant to be ready (gRPC port 6334)
