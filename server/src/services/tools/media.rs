@@ -18,7 +18,7 @@ pub struct MediaContext {
     openrouter_key: String,
     workspace_dir: PathBuf,
     instance_slug: String,
-    landing_url: String,
+    public_url: String,
     auth_token: String,
 }
 
@@ -27,14 +27,14 @@ impl MediaContext {
         openrouter_key: &str,
         workspace_dir: &Path,
         instance_slug: &str,
-        landing_url: &str,
+        public_url: &str,
         auth_token: &str,
     ) -> Self {
         Self {
             openrouter_key: openrouter_key.to_string(),
             workspace_dir: workspace_dir.to_path_buf(),
             instance_slug: instance_slug.to_string(),
-            landing_url: landing_url.to_string(),
+            public_url: public_url.to_string(),
             auth_token: auth_token.to_string(),
         }
     }
@@ -44,15 +44,15 @@ impl MediaContext {
             &self.workspace_dir, &self.instance_slug, name, bytes,
         ).map_err(|e| ToolExecError(format!("failed to save upload: {e}")))?;
 
-        if self.landing_url.is_empty() {
+        if self.public_url.is_empty() {
             return Err(ToolExecError(
-                "no public URL configured — set landing_url in config.toml".into()
+                "no public URL configured — set BOLLY_PUBLIC_URL env var".into()
             ));
         }
 
         Ok(format!(
             "{}/public/files/{}/{}?token={}",
-            self.landing_url, self.instance_slug, meta.id, self.auth_token
+            self.public_url, self.instance_slug, meta.id, self.auth_token
         ))
     }
 
@@ -136,8 +136,8 @@ pub struct WatchVideoTool { ctx: MediaContext }
 
 impl WatchVideoTool {
     pub fn new(openrouter_key: &str, workspace_dir: &Path, instance_slug: &str,
-               landing_url: &str, auth_token: &str) -> Self {
-        Self { ctx: MediaContext::new(openrouter_key, workspace_dir, instance_slug, landing_url, auth_token) }
+               public_url: &str, auth_token: &str) -> Self {
+        Self { ctx: MediaContext::new(openrouter_key, workspace_dir, instance_slug, public_url, auth_token) }
     }
 }
 
@@ -181,8 +181,8 @@ pub struct ListenMusicTool { ctx: MediaContext }
 
 impl ListenMusicTool {
     pub fn new(openrouter_key: &str, workspace_dir: &Path, instance_slug: &str,
-               landing_url: &str, auth_token: &str) -> Self {
-        Self { ctx: MediaContext::new(openrouter_key, workspace_dir, instance_slug, landing_url, auth_token) }
+               public_url: &str, auth_token: &str) -> Self {
+        Self { ctx: MediaContext::new(openrouter_key, workspace_dir, instance_slug, public_url, auth_token) }
     }
 }
 

@@ -517,14 +517,14 @@ pub fn build_tools(
     tools.push(wrap(Box::new(WebFetchTool)));
     tools.push(wrap(Box::new(ViewImageTool)));
     {
+        let public_url = std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default();
         let cfg = crate::config::load_config().ok();
-        let landing_url = cfg.as_ref().map(|c| c.landing_url.as_str()).unwrap_or("");
         let auth_token = cfg.as_ref().map(|c| c.auth_token.as_str()).unwrap_or("");
         tools.push(wrap(Box::new(WatchVideoTool::new(
-            openrouter_key, workspace_dir, instance_slug, landing_url, auth_token,
+            openrouter_key, workspace_dir, instance_slug, &public_url, auth_token,
         ))));
         tools.push(wrap(Box::new(ListenMusicTool::new(
-            openrouter_key, workspace_dir, instance_slug, landing_url, auth_token,
+            openrouter_key, workspace_dir, instance_slug, &public_url, auth_token,
         ))));
     }
     if browser_enabled {
