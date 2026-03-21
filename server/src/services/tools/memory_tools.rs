@@ -466,29 +466,52 @@ impl Tool for MemorySearchTool {
             return Ok(format!("no memories matched \"{query}\""));
         }
 
-        let mut output = format!("found {} relevant memories:\n\n", results.len());
+        let has_images = results.iter().any(|r| r.source_type == "media_image" && !self.public_url.is_empty());
+
+        if !has_images {
+            // Text-only results — return plain string
+            let mut output = format!("found {} relevant memories:\n\n", results.len());
+            for (i, r) in results.iter().enumerate() {
+                let preview = r.content_preview.trim();
+                output.push_str(&format!(
+                    "--- [{}/{} · {} · score: {:.4}] ---\n{preview}\n\n",
+                    i + 1, results.len(), r.path, r.score,
+                ));
+            }
+            return Ok(output);
+        }
+
+        // Mixed text + image results — return as content block array
+        let mut blocks: Vec<serde_json::Value> = Vec::new();
+        let mut text_buf = format!("found {} relevant memories:\n\n", results.len());
+
         for (i, r) in results.iter().enumerate() {
             let preview = r.content_preview.trim();
-            output.push_str(&format!(
+            text_buf.push_str(&format!(
                 "--- [{}/{} · {} · score: {:.4}] ---\n{preview}\n\n",
-                i + 1,
-                results.len(),
-                r.path,
-                r.score,
+                i + 1, results.len(), r.path, r.score,
             ));
 
-            // For image results, include the image URL so the LLM can see it
             if r.source_type == "media_image" && !self.public_url.is_empty() {
                 if let Some(upload_id) = &r.upload_id {
+                    // Flush text before image
+                    if !text_buf.trim().is_empty() {
+                        blocks.push(serde_json::json!({"type": "text", "text": text_buf.trim()}));
+                        text_buf.clear();
+                    }
                     let url = format!(
                         "{}/public/files/{}/{upload_id}?token={}",
                         self.public_url, self.instance_slug, self.auth_token,
                     );
-                    output.push_str(&format!("__IMAGE_URL__:{url}\n\n"));
+                    blocks.push(serde_json::json!({"type": "image", "source": {"type": "url", "url": url}}));
                 }
             }
         }
-        Ok(output)
+        if !text_buf.trim().is_empty() {
+            blocks.push(serde_json::json!({"type": "text", "text": text_buf.trim()}));
+        }
+
+        Ok(serde_json::to_string(&serde_json::Value::Array(blocks)).unwrap())
     }
 }
 

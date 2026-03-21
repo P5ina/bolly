@@ -60,7 +60,10 @@ pub(super) fn format_browse_result(result: &serde_json::Value) -> String {
                     if !path.is_empty() {
                         if let Ok(bytes) = std::fs::read(path) {
                             let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                            return format!("[screenshot saved to {path}]\n__IMAGE__:image/png:{b64}");
+                            return serde_json::to_string(&serde_json::json!([
+                                {"type": "text", "text": format!("[screenshot saved to {path}]")},
+                                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}}
+                            ])).unwrap();
                         }
                     }
                     out.push_str(&format!("[screenshot] saved to {path}\n"));

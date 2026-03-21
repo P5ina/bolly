@@ -98,98 +98,15 @@ impl ContentBlock {
     }
 
     pub fn tool_result(tool_use_id: String, content: String) -> Self {
-        // Check for embedded image: __IMAGE__:mime_type:base64_data
-        if content.starts_with("__IMAGE__:") {
-            let rest = &content["__IMAGE__:".len()..];
-            if let Some((mime, data)) = rest.split_once(':') {
-                let blocks = serde_json::json!([
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": mime,
-                            "data": data,
-                        }
-                    }
-                ]);
-                return ContentBlock::ToolResult {
-                    tool_use_id,
-                    content: blocks,
-                };
-            }
-        }
-
-        // Check for document (PDF) via URL
-        if content.starts_with("__DOCUMENT_URL__:") {
-            let url = &content["__DOCUMENT_URL__:".len()..];
-            let blocks = serde_json::json!([
-                {
-                    "type": "document",
-                    "source": {
-                        "type": "url",
-                        "url": url.trim(),
-                    }
+        // If content is a JSON array of content blocks, use directly
+        if content.starts_with('[') {
+            if let Ok(blocks) = serde_json::from_str::<serde_json::Value>(&content) {
+                if blocks.is_array() {
+                    return ContentBlock::ToolResult {
+                        tool_use_id,
+                        content: blocks,
+                    };
                 }
-            ]);
-            return ContentBlock::ToolResult {
-                tool_use_id,
-                content: blocks,
-            };
-        }
-
-        // Check for document (PDF) via base64
-        if content.starts_with("__DOCUMENT_BASE64__:") {
-            let rest = &content["__DOCUMENT_BASE64__:".len()..];
-            if let Some((mime, data)) = rest.split_once(':') {
-                let blocks = serde_json::json!([
-                    {
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": mime,
-                            "data": data,
-                        }
-                    }
-                ]);
-                return ContentBlock::ToolResult {
-                    tool_use_id,
-                    content: blocks,
-                };
-            }
-        }
-
-        // Check for mixed content with __IMAGE_URL__: markers (e.g. from memory_search)
-        if content.contains("__IMAGE_URL__:") {
-            let mut blocks: Vec<serde_json::Value> = Vec::new();
-            let mut text_buf = String::new();
-
-            for line in content.lines() {
-                if let Some(url) = line.strip_prefix("__IMAGE_URL__:") {
-                    if !text_buf.trim().is_empty() {
-                        blocks.push(serde_json::json!({ "type": "text", "text": text_buf.trim() }));
-                        text_buf.clear();
-                    }
-                    blocks.push(serde_json::json!({
-                        "type": "image",
-                        "source": {
-                            "type": "url",
-                            "url": url.trim(),
-                        }
-                    }));
-                } else {
-                    text_buf.push_str(line);
-                    text_buf.push('\n');
-                }
-            }
-            if !text_buf.trim().is_empty() {
-                blocks.push(serde_json::json!({ "type": "text", "text": text_buf.trim() }));
-            }
-
-            if !blocks.is_empty() {
-                return ContentBlock::ToolResult {
-                    tool_use_id,
-                    content: serde_json::Value::Array(blocks),
-                };
             }
         }
 

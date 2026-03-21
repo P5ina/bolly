@@ -88,7 +88,8 @@ impl Tool for ViewImageTool {
 
         log::info!("[view_image] fetched {} ({}, {:.0} KB)", url, mime, bytes.len() as f64 / 1024.0);
 
-        // Return special format that tool_result() converts to image content block
-        Ok(format!("__IMAGE__:{mime}:{b64}"))
+        Ok(serde_json::to_string(&serde_json::json!([
+            {"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}}
+        ])).unwrap())
     }
 }

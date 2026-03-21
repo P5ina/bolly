@@ -76,51 +76,51 @@ impl Tool for ReadFileTool {
 
         let ext = target.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
 
-        // Image files — return as __IMAGE_URL__ for the LLM to see
+        // Image files — return as content block
         if matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "webp" | "gif") {
-            // Try to find upload_id if this is in uploads/
-            let path_str = target.to_string_lossy();
-            if path_str.contains("/uploads/") {
-                // Extract upload_id from filename (e.g. "upload_1234567890_blob.jpg")
-                if let Some(fname) = target.file_stem().and_then(|s| s.to_str()) {
-                    let upload_id = fname.trim_end_matches("_blob");
-                    if !self.public_url.is_empty() {
-                        let url = format!(
-                            "{}/public/files/{}/{}?token={}",
-                            self.public_url, self.instance_slug, upload_id, self.auth_token,
-                        );
-                        return Ok(format!("__IMAGE_URL__:{url}"));
-                    }
-                }
-            }
-            // For memory images or when no public_url — read as base64
-            if let Ok(bytes) = fs::read(&target) {
-                if bytes.len() < 5 * 1024 * 1024 {
-                    use base64::Engine;
-                    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                    let mime = match ext.as_str() {
-                        "png" => "image/png",
-                        "gif" => "image/gif",
-                        "webp" => "image/webp",
-                        _ => "image/jpeg",
-                    };
-                    return Ok(format!("__IMAGE__:{mime}:{b64}"));
-                }
-                return Err(ToolExecError("image too large (>5MB)".into()));
-            }
-            return Err(ToolExecError(format!("{}: failed to read", target.display())));
-        }
-
-        // PDF files — send as document content block so Claude sees text + visuals
-        if ext == "pdf" {
-            // Try URL-based (preferred — Claude gets full visual understanding)
+            // Try URL if in uploads/
             if let Some(upload_id) = Self::extract_upload_id(&target) {
                 if !self.public_url.is_empty() {
                     let url = format!(
                         "{}/public/files/{}/{}?token={}",
                         self.public_url, self.instance_slug, upload_id, self.auth_token,
                     );
-                    return Ok(format!("__DOCUMENT_URL__:{url}"));
+                    return Ok(serde_json::to_string(&serde_json::json!([
+                        {"type": "image", "source": {"type": "url", "url": url}}
+                    ])).unwrap());
+                }
+            }
+            // Fallback — base64
+            let bytes = fs::read(&target)
+                .map_err(|e| ToolExecError(format!("{}: {e}", target.display())))?;
+            if bytes.len() > 5 * 1024 * 1024 {
+                return Err(ToolExecError("image too large (>5MB)".into()));
+            }
+            use base64::Engine;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            let mime = match ext.as_str() {
+                "png" => "image/png",
+                "gif" => "image/gif",
+                "webp" => "image/webp",
+                _ => "image/jpeg",
+            };
+            return Ok(serde_json::to_string(&serde_json::json!([
+                {"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}}
+            ])).unwrap());
+        }
+
+        // PDF files — document content block
+        if ext == "pdf" {
+            // Try URL
+            if let Some(upload_id) = Self::extract_upload_id(&target) {
+                if !self.public_url.is_empty() {
+                    let url = format!(
+                        "{}/public/files/{}/{}?token={}",
+                        self.public_url, self.instance_slug, upload_id, self.auth_token,
+                    );
+                    return Ok(serde_json::to_string(&serde_json::json!([
+                        {"type": "document", "source": {"type": "url", "url": url}}
+                    ])).unwrap());
                 }
             }
             // Fallback — base64
@@ -131,7 +131,9 @@ impl Tool for ReadFileTool {
             }
             use base64::Engine;
             let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-            return Ok(format!("__DOCUMENT_BASE64__:application/pdf:{b64}"));
+            return Ok(serde_json::to_string(&serde_json::json!([
+                {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": b64}}
+            ])).unwrap());
         }
 
         // Text files — original behavior
