@@ -85,6 +85,24 @@ exit $STATUS
 WRAPPER
 chmod +x /usr/local/bin/persist-pip
 
+# --- Start Qdrant sidecar (vector search) ---
+mkdir -p "$PERSIST_DIR/qdrant"
+if command -v qdrant >/dev/null 2>&1; then
+    qdrant --storage-path "$PERSIST_DIR/qdrant" &
+    QDRANT_PID=$!
+    echo "[entrypoint] qdrant started (PID: $QDRANT_PID), storage: $PERSIST_DIR/qdrant"
+    # Wait for Qdrant to be ready (gRPC port 6334)
+    for i in $(seq 1 30); do
+        if curl -sf http://localhost:6333/healthz >/dev/null 2>&1; then
+            echo "[entrypoint] qdrant ready"
+            break
+        fi
+        sleep 1
+    done
+else
+    echo "[entrypoint] qdrant binary not found, skipping vector search"
+fi
+
 # --- Start (restart loop — keeps container alive on binary restart) ---
 while true; do
     echo "[entrypoint] starting bolly $(cat "$BIN_DIR/.version" 2>/dev/null || echo '')"

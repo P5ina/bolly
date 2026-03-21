@@ -217,10 +217,11 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         iteration += 1;
 
         let config_path = config::config_path();
-        let (brave_key, plan, auth_token, model_mode, heavy_multiplier, fast_model_name) = {
+        let (brave_key, plan, auth_token, model_mode, heavy_multiplier, fast_model_name, google_ai_key) = {
             let cfg = state.config.read().await;
             (cfg.llm.tokens.brave_search.clone(), cfg.plan.clone(), cfg.auth_token.clone(),
-             cfg.llm.model_mode, cfg.llm.heavy_multiplier, cfg.llm.fast_model_name().to_string())
+             cfg.llm.model_mode, cfg.llm.heavy_multiplier, cfg.llm.fast_model_name().to_string(),
+             cfg.llm.tokens.google_ai.clone())
         };
 
         let llm_guard = state.llm.read().await;
@@ -273,6 +274,8 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             &pdf_strategy,
             &state.mcp_registry,
             voice_mode,
+            state.vector_store.clone(),
+            &google_ai_key,
         );
 
         let result = tokio::select! {

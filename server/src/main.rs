@@ -64,11 +64,58 @@ async fn main() {
     services::scheduler::start(state.clone());
 
     // Start heartbeat — companion's autonomous inner life
-    services::heartbeat::start(
-        &state.workspace_dir,
-        state.llm.clone(),
-        state.events.clone(),
-    );
+    {
+        let google_ai_key = state.config.read().await.llm.tokens.google_ai.clone();
+        services::heartbeat::start(
+            &state.workspace_dir,
+            state.llm.clone(),
+            state.events.clone(),
+            state.vector_store.clone(),
+            google_ai_key.clone(),
+        );
+
+        // Backfill existing memories into Qdrant (background, non-blocking)
+        let vs = state.vector_store.clone();
+        let ws = state.workspace_dir.clone();
+        let gai = google_ai_key;
+        tokio::spawn(async move {
+            let marker = ws.join(".vectors_backfilled");
+            if marker.exists() {
+                return;
+            }
+
+            // Scan all instances and backfill
+            let instances_dir = ws.join("instances");
+            let entries = match std::fs::read_dir(&instances_dir) {
+                Ok(e) => e,
+                Err(_) => return,
+            };
+
+            let mut had_errors = false;
+            for entry in entries.flatten() {
+                if !entry.path().is_dir() {
+                    continue;
+                }
+                let slug = entry.file_name().to_string_lossy().to_string();
+                info!("[backfill] starting for instance {slug}");
+                match vs.backfill_text_memories(&ws, &slug, &gai).await {
+                    Ok(count) => info!("[backfill] {slug}: indexed {count} chunks"),
+                    Err(e) => {
+                        log::warn!("[backfill] {slug}: failed: {e}");
+                        had_errors = true;
+                    }
+                }
+            }
+
+            // Only write marker if all instances succeeded
+            if !had_errors {
+                let _ = std::fs::write(&marker, "done");
+                info!("[backfill] completed");
+            } else {
+                log::warn!("[backfill] completed with errors — will retry on next restart");
+            }
+        });
+    }
 
     let app = app::router::build_router(state, static_dir);
 

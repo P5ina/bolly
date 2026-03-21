@@ -209,6 +209,7 @@ export const actions: Actions = {
 						OPENROUTER_API_KEY: env.OPENROUTER_API_KEY ?? '',
 						BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY ?? '',
 						ELEVENLABS_API_KEY: env.ELEVENLABS_API_KEY ?? '',
+						GOOGLE_AI_API_KEY: env.GOOGLE_AI_API_KEY ?? '',
 					}),
 				});
 				updated++;
@@ -465,6 +466,7 @@ export const actions: Actions = {
 				OPENAI_API_KEY: isByok ? '' : (env.OPENAI_API_KEY ?? ''),
 				BRAVE_SEARCH_API_KEY: isByok ? '' : (env.BRAVE_SEARCH_API_KEY ?? ''),
 				ELEVENLABS_API_KEY: isByok ? '' : (env.ELEVENLABS_API_KEY ?? ''),
+				GOOGLE_AI_API_KEY: isByok ? '' : (env.GOOGLE_AI_API_KEY ?? ''),
 				GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID ?? '',
 				GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET ?? '',
 				LANDING_URL: env.ORIGIN ?? '',
@@ -528,6 +530,7 @@ export const actions: Actions = {
 				if (env.OPENROUTER_API_KEY) envPatch.OPENROUTER_API_KEY = env.OPENROUTER_API_KEY;
 				if (env.BRAVE_SEARCH_API_KEY) envPatch.BRAVE_SEARCH_API_KEY = env.BRAVE_SEARCH_API_KEY;
 				if (env.ELEVENLABS_API_KEY) envPatch.ELEVENLABS_API_KEY = env.ELEVENLABS_API_KEY;
+				if (env.GOOGLE_AI_API_KEY) envPatch.GOOGLE_AI_API_KEY = env.GOOGLE_AI_API_KEY;
 			}
 			if (env.GOOGLE_CLIENT_ID) envPatch.GOOGLE_CLIENT_ID = env.GOOGLE_CLIENT_ID;
 			if (env.GOOGLE_CLIENT_SECRET) envPatch.GOOGLE_CLIENT_SECRET = env.GOOGLE_CLIENT_SECRET;

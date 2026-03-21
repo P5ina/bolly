@@ -513,8 +513,33 @@ async fn search_memory(
     State(state): State<AppState>,
     Path(instance_slug): Path<String>,
     axum::extract::Query(params): axum::extract::Query<SearchQuery>,
-) -> Json<Vec<memory::SearchResult>> {
-    Json(memory::search(&state.workspace_dir, &instance_slug, &params.q, params.limit))
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let google_ai_key = state.config.read().await.llm.tokens.google_ai.clone();
+
+    let query_vec = crate::services::embedding::embed_text(
+        &google_ai_key,
+        &params.q,
+        crate::services::embedding::TaskType::RetrievalQuery,
+    )
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let results = state
+        .vector_store
+        .search(&instance_slug, query_vec, params.limit)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let json: Vec<serde_json::Value> = results
+        .into_iter()
+        .map(|r| serde_json::json!({
+            "path": r.path,
+            "text": r.content_preview,
+            "score": r.score,
+        }))
+        .collect();
+
+    Ok(Json(serde_json::Value::Array(json)))
 }
 
 async fn read_memory_file(

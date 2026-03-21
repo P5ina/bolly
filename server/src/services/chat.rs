@@ -133,6 +133,8 @@ pub async fn run_single_turn(
     pdf_strategy: &llm::PdfStrategy,
     mcp_registry: &crate::services::mcp::McpRegistry,
     voice_mode: bool,
+    vector_store: std::sync::Arc<crate::services::vector::VectorStore>,
+    google_ai_key: &str,
 ) -> io::Result<SingleTurnResult> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
@@ -422,6 +424,8 @@ pub async fn run_single_turn(
         mcp_tools,
         &openrouter_key,
         github_token,
+        vector_store.clone(),
+        google_ai_key,
     );
     tools::cache_tool_defs(&all_tools).await;
 
@@ -591,12 +595,16 @@ pub async fn run_single_turn(
             .chain(std::iter::once(last_msg))
             .collect::<Vec<_>>();
         let events_bg = events.clone();
+        let vs = vector_store.clone();
+        let gai_key = google_ai_key.to_string();
         tokio::spawn(async move {
             if let Err(e) =
-                memory::extract_and_store(&ws, &slug, &recent_pair, &fast).await
+                memory::extract_and_store(&ws, &slug, &recent_pair, &fast, &vs, &gai_key).await
             {
                 log::warn!("memory extraction failed: {e}");
             }
+            // Embed recent image/media uploads into vector store
+            embed_recent_media(&ws, &slug, &vs, &gai_key).await;
             extract_sentiment(&ws, &slug, &cid, &user_content, &assistant_content, &fast, &events_bg).await;
         });
     }
@@ -1687,6 +1695,120 @@ respond ONLY with those three lines."#,
         log::info!("[sentiment] {instance_slug} mood → {}", mood.companion_mood);
     }
 
+}
+
+/// Embed recent image/video/audio uploads into the vector store.
+/// Scans uploads from the last 5 minutes and embeds any that aren't already indexed.
+async fn embed_recent_media(
+    workspace_dir: &std::path::Path,
+    instance_slug: &str,
+    vector_store: &crate::services::vector::VectorStore,
+    google_ai_key: &str,
+) {
+    use crate::services::embedding;
+
+    let uploads_dir = workspace_dir
+        .join("instances")
+        .join(instance_slug)
+        .join("uploads");
+
+    let entries = match std::fs::read_dir(&uploads_dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    let five_mins_ago = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+        - 5 * 60 * 1000;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+
+        // Only process metadata sidecar files (upload_*.json, not *_blob.*)
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !name.ends_with(".json") || !name.starts_with("upload_") {
+            continue;
+        }
+
+        let meta_str = match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        let meta: serde_json::Value = match serde_json::from_str(&meta_str) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let upload_id = meta["id"].as_str().unwrap_or("");
+        let mime_type = meta["mime_type"].as_str().unwrap_or("");
+        let original_name = meta["original_name"].as_str().unwrap_or("");
+        let uploaded_at: u64 = meta["uploaded_at"]
+            .as_str()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+
+        // Skip old uploads
+        if uploaded_at < five_mins_ago {
+            continue;
+        }
+
+        // Only embed images, video, and audio
+        let source_type = if mime_type.starts_with("image/") {
+            "media_image"
+        } else if mime_type.starts_with("video/") {
+            "media_video"
+        } else if mime_type.starts_with("audio/") {
+            "media_audio"
+        } else {
+            continue;
+        };
+
+        // Read the actual file
+        let stored_name = meta["stored_name"].as_str().unwrap_or("");
+        let file_path = uploads_dir.join(stored_name);
+        let bytes = match std::fs::read(&file_path) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+
+        // Skip very large files (>20MB) — Gemini has limits
+        if bytes.len() > 20 * 1024 * 1024 {
+            log::info!("[media_embed] skipping {original_name} — too large ({} MB)", bytes.len() / 1024 / 1024);
+            continue;
+        }
+
+        let vector = match source_type {
+            "media_image" => embedding::embed_image(google_ai_key, &bytes, mime_type).await,
+            _ => embedding::embed_media(google_ai_key, &bytes, mime_type).await,
+        };
+
+        match vector {
+            Ok(vec) => {
+                if let Err(e) = vector_store
+                    .upsert_media(
+                        instance_slug,
+                        upload_id,
+                        source_type,
+                        mime_type,
+                        original_name,
+                        &format!("{source_type}: {original_name}"),
+                        vec,
+                    )
+                    .await
+                {
+                    log::warn!("[media_embed] upsert failed for {original_name}: {e}");
+                } else {
+                    log::info!("[media_embed] embedded {source_type} {original_name}");
+                }
+            }
+            Err(e) => {
+                log::warn!("[media_embed] embed failed for {original_name}: {e}");
+            }
+        }
+    }
 }
 
 

@@ -334,6 +334,8 @@ pub async fn extract_and_store(
     instance_slug: &str,
     recent_messages: &[ChatMessage],
     llm: &LlmBackend,
+    vector_store: &super::vector::VectorStore,
+    google_ai_key: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let dir = memory_dir(workspace_dir, instance_slug);
     std::fs::create_dir_all(&dir)?;
@@ -438,6 +440,7 @@ respond ONLY with the JSON object, no other text."#
                 }
                 std::fs::write(&full_path, &op.content)?;
                 log::info!("memory: wrote {clean_path} for {instance_slug}");
+                embed_memory_file(vector_store, google_ai_key, instance_slug, &clean_path, &op.content).await;
             }
             "append" => {
                 if let Some(parent) = full_path.parent() {
@@ -450,15 +453,18 @@ respond ONLY with the JSON object, no other text."#
                 existing.push_str(&op.content);
                 std::fs::write(&full_path, &existing)?;
                 log::info!("memory: appended to {clean_path} for {instance_slug}");
+                embed_memory_file(vector_store, google_ai_key, instance_slug, &clean_path, &existing).await;
             }
             "delete" => {
                 if full_path.exists() {
                     std::fs::remove_file(&full_path)?;
-                    // Clean up empty parent dirs
                     if let Some(parent) = full_path.parent() {
                         let _ = cleanup_empty_dirs(parent, &dir);
                     }
                     log::info!("memory: deleted {clean_path} for {instance_slug}");
+                    if let Err(e) = vector_store.delete_by_path(instance_slug, &clean_path).await {
+                        log::warn!("memory: vector delete failed for {clean_path}: {e}");
+                    }
                 }
             }
             _ => {
@@ -468,6 +474,34 @@ respond ONLY with the JSON object, no other text."#
     }
 
     Ok(())
+}
+
+/// Embed a memory file into the vector store (background-safe, logs errors).
+async fn embed_memory_file(
+    vector_store: &super::vector::VectorStore,
+    google_ai_key: &str,
+    instance_slug: &str,
+    path: &str,
+    content: &str,
+) {
+    use super::{embedding, vector};
+
+    let chunks = vector::chunk_text(content);
+    let mut chunk_vectors = Vec::new();
+
+    for chunk in &chunks {
+        match embedding::embed_text(google_ai_key, chunk, embedding::TaskType::RetrievalDocument).await {
+            Ok(vec) => chunk_vectors.push((chunk.clone(), vec)),
+            Err(e) => {
+                log::warn!("[memory] embed error for {path}: {e}");
+                return;
+            }
+        }
+    }
+
+    if let Err(e) = vector_store.upsert_text_memory(instance_slug, path, chunk_vectors).await {
+        log::warn!("[memory] vector upsert failed for {path}: {e}");
+    }
 }
 
 /// Remove empty directories up to (but not including) the base memory dir.
@@ -532,126 +566,6 @@ pub fn forget_memories(workspace_dir: &Path, instance_slug: &str, query: &str) -
 }
 
 // ---------------------------------------------------------------------------
-// BM25 search
-// ---------------------------------------------------------------------------
-
-/// A search result with path, matched chunk text, and relevance score.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct SearchResult {
-    /// File path (e.g. "about/work.md"). May have #chunkN suffix for large files.
-    pub path: String,
-    /// The matched text chunk.
-    pub text: String,
-    /// BM25 relevance score (higher = better).
-    pub score: f64,
-}
-
-/// Search the memory library using BM25 scoring with chunking for large files.
-pub fn search(workspace_dir: &Path, instance_slug: &str, query: &str, limit: usize) -> Vec<SearchResult> {
-    let query = query.trim().to_lowercase();
-    if query.is_empty() {
-        return Vec::new();
-    }
-
-    let terms: Vec<&str> = query
-        .split(|c: char| !c.is_alphanumeric() && c != '\'')
-        .filter(|w| w.len() > 1)
-        .collect();
-
-    if terms.is_empty() {
-        return Vec::new();
-    }
-
-    let dir = memory_dir(workspace_dir, instance_slug);
-    let entries = scan_library(workspace_dir, instance_slug);
-    if entries.is_empty() {
-        return Vec::new();
-    }
-
-    // Build chunks from all files
-    let mut all_chunks: Vec<(String, String)> = Vec::new(); // (path, text)
-    for entry in &entries {
-        let full_path = dir.join(&entry.path);
-        let content = std::fs::read_to_string(&full_path).unwrap_or_default();
-
-        if content.len() < 800 {
-            all_chunks.push((entry.path.clone(), content));
-        } else {
-            let paragraphs: Vec<&str> = content.split("\n\n").collect();
-            let mut current = String::new();
-            let mut idx = 0;
-            for para in paragraphs {
-                current.push_str(para);
-                current.push_str("\n\n");
-                if current.len() >= 600 {
-                    all_chunks.push((format!("{}#chunk{}", entry.path, idx), current.clone()));
-                    current.clear();
-                    idx += 1;
-                }
-            }
-            if !current.trim().is_empty() {
-                all_chunks.push((format!("{}#chunk{}", entry.path, idx), current));
-            }
-        }
-    }
-
-    let total = all_chunks.len() as f64;
-
-    // Document frequency per term
-    let mut df: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-    for (_, text) in &all_chunks {
-        let lower = text.to_lowercase();
-        for term in &terms {
-            if lower.contains(term) {
-                *df.entry(term).or_insert(0) += 1;
-            }
-        }
-    }
-
-    // BM25 scoring
-    let k1 = 1.5f64;
-    let b = 0.75f64;
-    let avg_len = all_chunks.iter().map(|(_, t)| t.len() as f64).sum::<f64>() / total.max(1.0);
-
-    let mut results: Vec<SearchResult> = Vec::new();
-
-    for (path, text) in &all_chunks {
-        let lower = text.to_lowercase();
-        let doc_len = text.len() as f64;
-        let mut score = 0.0f64;
-
-        for term in &terms {
-            let tf = lower.matches(term).count() as f64;
-            if tf == 0.0 { continue; }
-            let n = *df.get(term).unwrap_or(&0) as f64;
-            let idf = ((total - n + 0.5) / (n + 0.5) + 1.0).ln();
-            let tf_norm = (tf * (k1 + 1.0)) / (tf + k1 * (1.0 - b + b * doc_len / avg_len));
-            score += idf * tf_norm;
-        }
-
-        // Path bonus
-        let path_lower = path.to_lowercase();
-        for term in &terms {
-            if path_lower.contains(term) {
-                score += 2.0;
-            }
-        }
-
-        if score > 0.0 {
-            results.push(SearchResult {
-                path: path.clone(),
-                text: text.clone(),
-                score,
-            });
-        }
-    }
-
-    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-    results.truncate(limit);
-    results
-}
-
-// ---------------------------------------------------------------------------
 // Parsing
 // ---------------------------------------------------------------------------
 
@@ -692,4 +606,86 @@ fn parse_memory_ops(response: &str) -> Vec<MemoryOp> {
     }
 
     Vec::new()
+}
+
+/// Consolidate similar memories by merging them with LLM help.
+/// Finds pairs of memories with high vector similarity and asks the LLM to merge them.
+pub async fn consolidate_similar(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    llm: &LlmBackend,
+    vector_store: &super::vector::VectorStore,
+    google_ai_key: &str,
+) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+    let dir = memory_dir(workspace_dir, instance_slug);
+    let pairs = vector_store
+        .find_similar_pairs(instance_slug, 0.85)
+        .await
+        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
+
+    if pairs.is_empty() {
+        return Ok(0);
+    }
+
+    // Group pairs into clusters (simple: take first N pairs to avoid over-merging)
+    let mut merged_count = 0;
+    let mut already_merged: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for (path_a, path_b, score) in pairs.iter().take(10) {
+        if already_merged.contains(path_a) || already_merged.contains(path_b) {
+            continue;
+        }
+
+        let file_a = dir.join(path_a);
+        let file_b = dir.join(path_b);
+
+        let content_a = match std::fs::read_to_string(&file_a) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let content_b = match std::fs::read_to_string(&file_b) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        // Ask LLM to merge
+        let merge_prompt = format!(
+            "merge these two similar memory files into one concise file.\n\n\
+             file 1 ({path_a}):\n{content_a}\n\n\
+             file 2 ({path_b}):\n{content_b}\n\n\
+             similarity score: {score:.2}\n\n\
+             respond with ONLY the merged content — no explanations, no file path."
+        );
+
+        let (merged_content, _) = llm
+            .chat(
+                "you are a memory librarian. merge the two files into one, keeping all important info. be concise.",
+                &merge_prompt,
+                vec![],
+            )
+            .await?;
+
+        // Write merged content to the first file, delete the second
+        std::fs::write(&file_a, merged_content.trim())?;
+        if file_b.exists() {
+            std::fs::remove_file(&file_b)?;
+            if let Some(parent) = file_b.parent() {
+                let _ = cleanup_empty_dirs(parent, &dir);
+            }
+        }
+
+        // Update vectors: embed merged file, delete old vectors
+        embed_memory_file(vector_store, google_ai_key, instance_slug, path_a, merged_content.trim()).await;
+        if let Err(e) = vector_store.delete_by_path(instance_slug, path_b).await {
+            log::warn!("[consolidate] vector delete failed for {path_b}: {e}");
+        }
+
+        already_merged.insert(path_a.clone());
+        already_merged.insert(path_b.clone());
+        merged_count += 1;
+
+        log::info!("[consolidate] merged {path_a} + {path_b} (similarity: {score:.2})");
+    }
+
+    Ok(merged_count)
 }

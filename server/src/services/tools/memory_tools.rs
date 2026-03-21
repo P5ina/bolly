@@ -1,6 +1,7 @@
-use std::{fs, path::{Path, PathBuf}};
+use std::{fs, path::{Path, PathBuf}, sync::Arc};
 
 use crate::services::tool::{ToolDefinition, Tool};
+use crate::services::vector::VectorStore;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -12,12 +13,18 @@ use super::{openai_schema, ToolExecError};
 
 pub struct MemoryWriteTool {
     memory_dir: PathBuf,
+    instance_slug: String,
+    vector_store: Arc<VectorStore>,
+    google_ai_key: String,
 }
 
 impl MemoryWriteTool {
-    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+    pub fn new(workspace_dir: &Path, instance_slug: &str, vector_store: Arc<VectorStore>, google_ai_key: &str) -> Self {
         Self {
             memory_dir: workspace_dir.join("instances").join(instance_slug).join("memory"),
+            instance_slug: instance_slug.to_string(),
+            vector_store,
+            google_ai_key: google_ai_key.to_string(),
         }
     }
 }
@@ -64,7 +71,7 @@ impl Tool for MemoryWriteTool {
             fs::create_dir_all(parent).map_err(|e| ToolExecError(e.to_string()))?;
         }
 
-        match args.mode.as_str() {
+        let final_content = match args.mode.as_str() {
             "append" => {
                 let mut existing = fs::read_to_string(&full_path).unwrap_or_default();
                 if !existing.ends_with('\n') && !existing.is_empty() {
@@ -72,13 +79,18 @@ impl Tool for MemoryWriteTool {
                 }
                 existing.push_str(&args.content);
                 fs::write(&full_path, &existing).map_err(|e| ToolExecError(e.to_string()))?;
-                Ok(format!("appended to {clean_path}"))
+                existing
             }
             _ => {
                 fs::write(&full_path, &args.content).map_err(|e| ToolExecError(e.to_string()))?;
-                Ok(format!("wrote {clean_path}"))
+                args.content.clone()
             }
-        }
+        };
+
+        // Embed into vector store
+        embed_memory_to_vector(&self.vector_store, &self.google_ai_key, &self.instance_slug, &clean_path, &final_content).await;
+
+        Ok(format!("{} {clean_path}", if args.mode == "append" { "appended to" } else { "wrote" }))
     }
 }
 
@@ -226,12 +238,19 @@ impl Tool for MemoryListTool {
 
 pub struct MemoryForgetTool {
     memory_dir: PathBuf,
+    instance_slug: String,
+    vector_store: Arc<VectorStore>,
+    #[allow(dead_code)]
+    google_ai_key: String,
 }
 
 impl MemoryForgetTool {
-    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+    pub fn new(workspace_dir: &Path, instance_slug: &str, vector_store: Arc<VectorStore>, google_ai_key: &str) -> Self {
         Self {
             memory_dir: workspace_dir.join("instances").join(instance_slug).join("memory"),
+            instance_slug: instance_slug.to_string(),
+            vector_store,
+            google_ai_key: google_ai_key.to_string(),
         }
     }
 }
@@ -271,9 +290,11 @@ impl Tool for MemoryForgetTool {
 
             if full_path.exists() {
                 fs::remove_file(&full_path).map_err(|e| ToolExecError(e.to_string()))?;
-                // Clean up empty parent dirs
                 if let Some(parent) = full_path.parent() {
                     let _ = cleanup_empty_dirs(parent, &self.memory_dir);
+                }
+                if let Err(e) = self.vector_store.delete_by_path(&self.instance_slug, clean).await {
+                    log::warn!("[memory_forget] vector delete failed: {e}");
                 }
                 return Ok(format!("deleted {clean}"));
             }
@@ -303,13 +324,17 @@ impl Tool for MemoryForgetTool {
 // ---------------------------------------------------------------------------
 
 pub struct MemorySearchTool {
-    memory_dir: PathBuf,
+    instance_slug: String,
+    vector_store: Arc<VectorStore>,
+    google_ai_key: String,
 }
 
 impl MemorySearchTool {
-    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+    pub fn new(_workspace_dir: &Path, instance_slug: &str, vector_store: Arc<VectorStore>, google_ai_key: &str) -> Self {
         Self {
-            memory_dir: workspace_dir.join("instances").join(instance_slug).join("memory"),
+            instance_slug: instance_slug.to_string(),
+            vector_store,
+            google_ai_key: google_ai_key.to_string(),
         }
     }
 }
@@ -342,154 +367,43 @@ impl Tool for MemorySearchTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let query = args.query.trim().to_lowercase();
+        let query = args.query.trim();
         if query.is_empty() {
             return Err(ToolExecError("query cannot be empty".into()));
         }
         let limit = args.limit.unwrap_or(5).min(20);
 
-        // Tokenize query
-        let query_terms: Vec<&str> = query
-            .split(|c: char| !c.is_alphanumeric() && c != '\'')
-            .filter(|w| w.len() > 1)
-            .collect();
+        let query_vec = crate::services::embedding::embed_text(
+            &self.google_ai_key,
+            query,
+            crate::services::embedding::TaskType::RetrievalQuery,
+        )
+        .await
+        .map_err(|e| ToolExecError(format!("embed query failed: {e}")))?;
 
-        if query_terms.is_empty() {
-            return Err(ToolExecError("query has no searchable terms".into()));
-        }
+        let results = self
+            .vector_store
+            .search(&self.instance_slug, query_vec, limit)
+            .await
+            .map_err(|e| ToolExecError(format!("vector search failed: {e}")))?;
 
-        // Scan all memory files and build chunks
-        let entries = crate::services::memory::scan_library(
-            self.memory_dir.parent().and_then(|p| p.parent()).and_then(|p| p.parent()).unwrap_or(&self.memory_dir),
-            self.memory_dir.parent().and_then(|p| p.file_name()).and_then(|s| s.to_str()).unwrap_or(""),
-        );
-
-        if entries.is_empty() {
-            return Ok("(empty library — no memories to search)".into());
-        }
-
-        // Count document frequency for IDF
-        let total_chunks: f64;
-        let mut chunks: Vec<ScoredChunk> = Vec::new();
-
-        // Build chunks from all files
-        let mut all_chunks: Vec<(String, String)> = Vec::new(); // (path, text)
-        for entry in &entries {
-            let full_path = self.memory_dir.join(&entry.path);
-            let content = fs::read_to_string(&full_path).unwrap_or_default();
-
-            if content.len() < 800 {
-                // Small file — treat as single chunk
-                all_chunks.push((entry.path.clone(), content));
-            } else {
-                // Large file — split into chunks by paragraphs
-                let paragraphs: Vec<&str> = content.split("\n\n").collect();
-                let mut current_chunk = String::new();
-                let mut chunk_idx = 0;
-
-                for para in paragraphs {
-                    current_chunk.push_str(para);
-                    current_chunk.push_str("\n\n");
-
-                    if current_chunk.len() >= 600 {
-                        all_chunks.push((
-                            format!("{}#chunk{}", entry.path, chunk_idx),
-                            current_chunk.clone(),
-                        ));
-                        current_chunk.clear();
-                        chunk_idx += 1;
-                    }
-                }
-                if !current_chunk.trim().is_empty() {
-                    all_chunks.push((
-                        format!("{}#chunk{}", entry.path, chunk_idx),
-                        current_chunk,
-                    ));
-                }
-            }
-        }
-
-        total_chunks = all_chunks.len() as f64;
-
-        // Compute document frequency for each query term
-        let mut df: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-        for (_, text) in &all_chunks {
-            let lower = text.to_lowercase();
-            for term in &query_terms {
-                if lower.contains(term) {
-                    *df.entry(term).or_insert(0) += 1;
-                }
-            }
-        }
-
-        // Score each chunk using BM25-like formula
-        let k1 = 1.5f64;
-        let b = 0.75f64;
-        let avg_len: f64 = all_chunks.iter().map(|(_, t)| t.len() as f64).sum::<f64>() / total_chunks.max(1.0);
-
-        for (path, text) in &all_chunks {
-            let lower = text.to_lowercase();
-            let doc_len = text.len() as f64;
-            let mut score = 0.0f64;
-
-            for term in &query_terms {
-                // Term frequency in this chunk
-                let tf = lower.matches(term).count() as f64;
-                if tf == 0.0 { continue; }
-
-                // IDF: log((N - n + 0.5) / (n + 0.5))
-                let n = *df.get(term).unwrap_or(&0) as f64;
-                let idf = ((total_chunks - n + 0.5) / (n + 0.5) + 1.0).ln();
-
-                // BM25 score
-                let tf_norm = (tf * (k1 + 1.0)) / (tf + k1 * (1.0 - b + b * doc_len / avg_len));
-                score += idf * tf_norm;
-            }
-
-            // Bonus: path contains query terms
-            let path_lower = path.to_lowercase();
-            for term in &query_terms {
-                if path_lower.contains(term) {
-                    score += 2.0;
-                }
-            }
-
-            if score > 0.0 {
-                chunks.push(ScoredChunk {
-                    path: path.clone(),
-                    text: text.clone(),
-                    score,
-                });
-            }
-        }
-
-        chunks.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-        chunks.truncate(limit);
-
-        if chunks.is_empty() {
+        if results.is_empty() {
             return Ok(format!("no memories matched \"{query}\""));
         }
 
-        let mut result = format!("found {} relevant memories:\n\n", chunks.len());
-        for (i, chunk) in chunks.iter().enumerate() {
-            let path_display = chunk.path.split('#').next().unwrap_or(&chunk.path);
-            let preview: String = chunk.text.chars().take(500).collect();
-            let preview = preview.trim();
-            result.push_str(&format!(
-                "--- [{}/{} · {path_display} · score: {:.1}] ---\n{preview}\n\n",
+        let mut output = format!("found {} relevant memories:\n\n", results.len());
+        for (i, r) in results.iter().enumerate() {
+            let preview = r.content_preview.trim();
+            output.push_str(&format!(
+                "--- [{}/{} · {} · score: {:.4}] ---\n{preview}\n\n",
                 i + 1,
-                chunks.len(),
-                chunk.score,
+                results.len(),
+                r.path,
+                r.score,
             ));
         }
-        Ok(result)
+        Ok(output)
     }
-}
-
-struct ScoredChunk {
-    path: String,
-    text: String,
-    score: f64,
 }
 
 // ---------------------------------------------------------------------------
@@ -524,4 +438,32 @@ fn cleanup_empty_dirs(dir: &Path, base: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Embed a memory file into the vector store.
+async fn embed_memory_to_vector(
+    vector_store: &VectorStore,
+    google_ai_key: &str,
+    instance_slug: &str,
+    path: &str,
+    content: &str,
+) {
+    use crate::services::{embedding, vector};
+
+    let chunks = vector::chunk_text(content);
+    let mut chunk_vectors = Vec::new();
+
+    for chunk in &chunks {
+        match embedding::embed_text(google_ai_key, chunk, embedding::TaskType::RetrievalDocument).await {
+            Ok(vec) => chunk_vectors.push((chunk.clone(), vec)),
+            Err(e) => {
+                log::warn!("[memory_tool] embed error for {path}: {e}");
+                return;
+            }
+        }
+    }
+
+    if let Err(e) = vector_store.upsert_text_memory(instance_slug, path, chunk_vectors).await {
+        log::warn!("[memory_tool] vector upsert failed for {path}: {e}");
+    }
 }

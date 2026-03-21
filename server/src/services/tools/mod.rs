@@ -142,6 +142,7 @@ fn secret_values() -> &'static Vec<String> {
             "GITHUB_TOKEN",
             "GOOGLE_CLIENT_SECRET",
             "ELEVENLABS_API_KEY",
+            "GOOGLE_AI_API_KEY",
         ];
         env_keys
             .iter()
@@ -163,6 +164,7 @@ pub fn redact_secrets(text: &str) -> String {
         r"gho_[A-Za-z0-9]{36,}",
         r#"postgresql://[^\s"']+[^\s"'.]"#,
         r#"postgres://[^\s"']+[^\s"'.]"#,
+        r"AIza[A-Za-z0-9_\-]{30,}",
     ];
 
     let mut result = text.to_string();
@@ -456,6 +458,8 @@ pub fn build_tools(
     mcp_tools: Vec<Box<dyn ToolDyn>>,
     openrouter_key: &str,
     github_token: Option<String>,
+    vector_store: Arc<crate::services::vector::VectorStore>,
+    google_ai_key: &str,
 ) -> (Vec<Box<dyn ToolDyn>>, SentFiles) {
     let snap = mcp_snapshot;
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
@@ -477,11 +481,11 @@ pub fn build_tools(
         wrap(Box::new(WriteFileTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(EditFileTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(ListFilesTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(MemoryWriteTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(MemoryWriteTool::new(workspace_dir, instance_slug, vector_store.clone(), google_ai_key))),
         wrap(Box::new(MemoryReadTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(MemoryListTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(MemoryForgetTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(MemorySearchTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(MemoryForgetTool::new(workspace_dir, instance_slug, vector_store.clone(), google_ai_key))),
+        wrap(Box::new(MemorySearchTool::new(workspace_dir, instance_slug, vector_store.clone(), google_ai_key))),
         // Mood is managed by background sentiment extraction + heartbeat, not tools.
         wrap(Box::new(EditSoulTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(PlayMusicTool::new(workspace_dir, instance_slug, events.clone()))),

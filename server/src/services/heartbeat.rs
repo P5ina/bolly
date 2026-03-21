@@ -55,6 +55,8 @@ pub fn start(
     workspace_dir: &Path,
     llm: Arc<RwLock<Option<LlmBackend>>>,
     events: broadcast::Sender<ServerEvent>,
+    vector_store: Arc<crate::services::vector::VectorStore>,
+    google_ai_key: String,
 ) {
     let workspace = workspace_dir.to_path_buf();
     tokio::spawn(async move {
@@ -68,7 +70,7 @@ pub fn start(
             interval.tick().await;
             let llm_guard = llm.read().await;
             if let Some(backend) = llm_guard.as_ref() {
-                run_heartbeat(&workspace, backend, &events).await;
+                run_heartbeat(&workspace, backend, &events, &vector_store, &google_ai_key).await;
             }
         }
     });
@@ -79,6 +81,8 @@ async fn run_heartbeat(
     workspace_dir: &Path,
     llm: &LlmBackend,
     events: &broadcast::Sender<ServerEvent>,
+    vector_store: &Arc<crate::services::vector::VectorStore>,
+    google_ai_key: &str,
 ) {
     let instances_dir = workspace_dir.join("instances");
     let entries = match fs::read_dir(&instances_dir) {
@@ -101,7 +105,7 @@ async fn run_heartbeat(
         let instance_dir = entry.path();
         let slug = entry.file_name().to_string_lossy().to_string();
 
-        if let Err(e) = heartbeat_instance(workspace_dir, &slug, &instance_dir, llm, events).await
+        if let Err(e) = heartbeat_instance(workspace_dir, &slug, &instance_dir, llm, events, vector_store, google_ai_key).await
         {
             log::warn!("heartbeat failed for {slug}: {e}");
         }
@@ -114,6 +118,8 @@ async fn heartbeat_instance(
     instance_dir: &Path,
     llm: &LlmBackend,
     events: &broadcast::Sender<ServerEvent>,
+    vector_store: &Arc<crate::services::vector::VectorStore>,
+    google_ai_key: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mood = load_mood_state(instance_dir);
     let now = Utc::now().timestamp();
@@ -320,7 +326,7 @@ async fn heartbeat_instance(
             let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
             let email_accounts = crate::config::EmailAccounts::load(workspace_dir, slug);
             let config_path = crate::config::config_path();
-            let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google, email_accounts, llm, &config_path);
+            let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google, email_accounts, llm, &config_path, vector_store.clone(), google_ai_key);
 
             match llm
                 .chat_with_tools_only(&system, &wake_prompt, vec![], heartbeat_tools)
@@ -526,7 +532,7 @@ fn build_reflection_prompt(
     prompt.push_str(&format!("memory library ({file_count} files — use memory_read for details):\n"));
     prompt.push_str(library_catalog);
     prompt.push('\n');
-    if file_count > 200 {
+    if file_count > 2000 {
         prompt.push_str(&format!(
             "\n⚠ your memory has {file_count} files — consider tidying up:\n\
              - merge files about the same topic into one\n\
@@ -637,14 +643,16 @@ fn build_heartbeat_tools(
     email_accounts: Vec<crate::config::EmailConfig>,
     llm: &LlmBackend,
     config_path: &Path,
+    vector_store: std::sync::Arc<crate::services::vector::VectorStore>,
+    google_ai_key: &str,
 ) -> Vec<Box<dyn ToolDyn>> {
     let mut raw_tools: Vec<Box<dyn ToolDyn>> = vec![
         // Memory library
-        Box::new(MemoryWriteTool::new(workspace_dir, instance_slug)),
+        Box::new(MemoryWriteTool::new(workspace_dir, instance_slug, vector_store.clone(), google_ai_key)),
         Box::new(MemoryReadTool::new(workspace_dir, instance_slug)),
         Box::new(MemoryListTool::new(workspace_dir, instance_slug)),
-        Box::new(MemoryForgetTool::new(workspace_dir, instance_slug)),
-        Box::new(MemorySearchTool::new(workspace_dir, instance_slug)),
+        Box::new(MemoryForgetTool::new(workspace_dir, instance_slug, vector_store.clone(), google_ai_key)),
+        Box::new(MemorySearchTool::new(workspace_dir, instance_slug, vector_store.clone(), google_ai_key)),
         // Drops
         Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
         // Reach out

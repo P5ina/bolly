@@ -172,6 +172,7 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 						OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
 						BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY ?? '',
 						ELEVENLABS_API_KEY: env.ELEVENLABS_API_KEY ?? '',
+						GOOGLE_AI_API_KEY: env.GOOGLE_AI_API_KEY ?? '',
 					}),
 				},
 				guest: {

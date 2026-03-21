@@ -27,6 +27,8 @@ pub struct Config {
     pub mcp_servers: Vec<McpServerConfig>,
     #[serde(default)]
     pub github: GithubConfig,
+    #[serde(default = "default_qdrant_url")]
+    pub qdrant_url: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -249,6 +251,8 @@ pub struct LlmTokens {
     pub open_router: String,
     #[serde(default, rename = "ELEVENLABS", alias = "elevenlabs")]
     pub elevenlabs: String,
+    #[serde(default, rename = "GOOGLE_AI", alias = "google_ai", alias = "gemini")]
+    pub google_ai: String,
 }
 
 
@@ -258,6 +262,10 @@ fn default_host() -> String {
 
 fn default_port() -> u16 {
     8080
+}
+
+fn default_qdrant_url() -> String {
+    "http://localhost:6334".into()
 }
 
 fn default_registry_url() -> String {
@@ -277,6 +285,7 @@ impl Default for Config {
             plan: String::new(),
             mcp_servers: Vec::new(),
             github: GithubConfig::default(),
+            qdrant_url: default_qdrant_url(),
         }
     }
 }
@@ -353,6 +362,7 @@ impl Default for LlmTokens {
             brave_search: String::new(),
             open_router: String::new(),
             elevenlabs: String::new(),
+            google_ai: String::new(),
         }
     }
 }
@@ -449,6 +459,16 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     if let Ok(key) = env::var("ELEVENLABS_API_KEY") {
         if !key.is_empty() {
             config.llm.tokens.elevenlabs = key;
+        }
+    }
+    if let Ok(key) = env::var("GOOGLE_AI_API_KEY") {
+        if !key.is_empty() {
+            config.llm.tokens.google_ai = key;
+        }
+    }
+    if let Ok(url) = env::var("QDRANT_URL") {
+        if !url.is_empty() {
+            config.qdrant_url = url;
         }
     }
 
