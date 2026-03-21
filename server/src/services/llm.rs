@@ -121,6 +121,42 @@ impl ContentBlock {
                 };
             }
         }
+
+        // Check for mixed content with __IMAGE_URL__: markers (e.g. from memory_search)
+        if content.contains("__IMAGE_URL__:") {
+            let mut blocks: Vec<serde_json::Value> = Vec::new();
+            let mut text_buf = String::new();
+
+            for line in content.lines() {
+                if let Some(url) = line.strip_prefix("__IMAGE_URL__:") {
+                    if !text_buf.trim().is_empty() {
+                        blocks.push(serde_json::json!({ "type": "text", "text": text_buf.trim() }));
+                        text_buf.clear();
+                    }
+                    blocks.push(serde_json::json!({
+                        "type": "image",
+                        "source": {
+                            "type": "url",
+                            "url": url.trim(),
+                        }
+                    }));
+                } else {
+                    text_buf.push_str(line);
+                    text_buf.push('\n');
+                }
+            }
+            if !text_buf.trim().is_empty() {
+                blocks.push(serde_json::json!({ "type": "text", "text": text_buf.trim() }));
+            }
+
+            if !blocks.is_empty() {
+                return ContentBlock::ToolResult {
+                    tool_use_id,
+                    content: serde_json::Value::Array(blocks),
+                };
+            }
+        }
+
         ContentBlock::ToolResult {
             tool_use_id,
             content: serde_json::Value::String(content),

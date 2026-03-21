@@ -324,17 +324,25 @@ impl Tool for MemoryForgetTool {
 // ---------------------------------------------------------------------------
 
 pub struct MemorySearchTool {
+    uploads_dir: PathBuf,
     instance_slug: String,
     vector_store: Arc<VectorStore>,
     google_ai_key: String,
+    public_url: String,
+    auth_token: String,
 }
 
 impl MemorySearchTool {
-    pub fn new(_workspace_dir: &Path, instance_slug: &str, vector_store: Arc<VectorStore>, google_ai_key: &str) -> Self {
+    pub fn new(workspace_dir: &Path, instance_slug: &str, vector_store: Arc<VectorStore>, google_ai_key: &str) -> Self {
+        let public_url = std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default();
+        let auth_token = std::env::var("BOLLY_AUTH_TOKEN").unwrap_or_default();
         Self {
+            uploads_dir: workspace_dir.join("instances").join(instance_slug).join("uploads"),
             instance_slug: instance_slug.to_string(),
             vector_store,
             google_ai_key: google_ai_key.to_string(),
+            public_url,
+            auth_token,
         }
     }
 }
@@ -401,6 +409,17 @@ impl Tool for MemorySearchTool {
                 r.path,
                 r.score,
             ));
+
+            // For image results, include the image URL so the LLM can see it
+            if r.source_type == "media_image" && !self.public_url.is_empty() {
+                if let Some(upload_id) = &r.upload_id {
+                    let url = format!(
+                        "{}/public/files/{}/{upload_id}?token={}",
+                        self.public_url, self.instance_slug, self.auth_token,
+                    );
+                    output.push_str(&format!("__IMAGE_URL__:{url}\n\n"));
+                }
+            }
         }
         Ok(output)
     }
