@@ -12,12 +12,18 @@ use super::{openai_schema, ToolExecError, SentFiles};
 
 pub struct ReadFileTool {
     pub(super) instance_dir: PathBuf,
+    instance_slug: String,
+    public_url: String,
+    auth_token: String,
 }
 
 impl ReadFileTool {
     pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
         Self {
             instance_dir: workspace_dir.join("instances").join(instance_slug),
+            instance_slug: instance_slug.to_string(),
+            public_url: std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default(),
+            auth_token: std::env::var("BOLLY_AUTH_TOKEN").unwrap_or_default(),
         }
     }
 }
@@ -54,6 +60,62 @@ impl Tool for ReadFileTool {
             self.instance_dir.join(&args.path)
         };
 
+        if !target.exists() {
+            return Err(ToolExecError(format!("{}: file not found", target.display())));
+        }
+
+        let ext = target.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+
+        // Image files — return as __IMAGE_URL__ for the LLM to see
+        if matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "webp" | "gif") {
+            // Try to find upload_id if this is in uploads/
+            let path_str = target.to_string_lossy();
+            if path_str.contains("/uploads/") {
+                // Extract upload_id from filename (e.g. "upload_1234567890_blob.jpg")
+                if let Some(fname) = target.file_stem().and_then(|s| s.to_str()) {
+                    let upload_id = fname.trim_end_matches("_blob");
+                    if !self.public_url.is_empty() {
+                        let url = format!(
+                            "{}/public/files/{}/{}?token={}",
+                            self.public_url, self.instance_slug, upload_id, self.auth_token,
+                        );
+                        return Ok(format!("__IMAGE_URL__:{url}"));
+                    }
+                }
+            }
+            // For memory images or when no public_url — read as base64
+            if let Ok(bytes) = fs::read(&target) {
+                if bytes.len() < 5 * 1024 * 1024 {
+                    use base64::Engine;
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                    let mime = match ext.as_str() {
+                        "png" => "image/png",
+                        "gif" => "image/gif",
+                        "webp" => "image/webp",
+                        _ => "image/jpeg",
+                    };
+                    return Ok(format!("__IMAGE__:{mime}:{b64}"));
+                }
+                return Err(ToolExecError("image too large (>5MB)".into()));
+            }
+            return Err(ToolExecError(format!("{}: failed to read", target.display())));
+        }
+
+        // PDF files — extract text
+        if ext == "pdf" {
+            let bytes = fs::read(&target)
+                .map_err(|e| ToolExecError(format!("{}: {e}", target.display())))?;
+            let text = pdf_extract::extract_text_from_mem(&bytes)
+                .map_err(|e| ToolExecError(format!("PDF extraction failed: {e}")))?;
+            const MAX_CHARS: usize = 20_000;
+            if text.len() > MAX_CHARS {
+                let truncated: String = text.chars().take(MAX_CHARS).collect();
+                return Ok(format!("{truncated}\n\n...(truncated at {MAX_CHARS} chars)"));
+            }
+            return Ok(text);
+        }
+
+        // Text files — original behavior
         let raw = fs::read_to_string(&target)
             .map_err(|e| ToolExecError(format!("{}: {e}", target.display())))?;
 
