@@ -29,6 +29,7 @@
 		updateModelMode,
 		exportInstanceUrl,
 		importInstance,
+		reindexMemory,
 		fetchScheduledMessages,
 		cancelScheduledMessage,
 		type ScheduledMessage,
@@ -75,6 +76,20 @@
 		} finally {
 			importing = false;
 			if (importFileInput) importFileInput.value = "";
+		}
+	}
+
+	// Reindex memory
+	let reindexing = $state(false);
+
+	async function handleReindex() {
+		reindexing = true;
+		try {
+			await reindexMemory(slug);
+		} catch (e) {
+			console.error('reindex failed', e);
+		} finally {
+			reindexing = false;
 		}
 	}
 
@@ -1290,6 +1305,16 @@
 			</label>
 		</div>
 		<p class="data-hint">export downloads a .tar.gz of all instance data (soul, memory, drops, chat history). import merges into the current instance.</p>
+		<div class="data-actions" style="margin-top: 0.75rem;">
+			<button
+				class="ext-form-btn"
+				disabled={reindexing}
+				onclick={handleReindex}
+			>
+				{reindexing ? 'reindexing...' : 'reindex memory'}
+			</button>
+			<span class="data-hint">rebuild vector search index for all memories</span>
+		</div>
 		{#if importError}
 			<p class="error-msg">{importError}</p>
 		{/if}

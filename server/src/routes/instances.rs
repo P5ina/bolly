@@ -21,6 +21,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/stats", get(get_stats))
         .route("/api/instances/{instance_slug}/memory", get(list_memory))
         .route("/api/instances/{instance_slug}/memory/search", get(search_memory))
+        .route("/api/instances/{instance_slug}/memory/reindex", post(reindex_memory))
         .route("/api/instances/{instance_slug}/memory/{*path}", get(read_memory_file))
         .route("/api/instances/{instance_slug}/email", get(get_email_config))
         .route("/api/instances/{instance_slug}/email", put(set_email_config))
@@ -553,6 +554,40 @@ async fn search_memory(
         .collect();
 
     Ok(Json(serde_json::Value::Array(json)))
+}
+
+async fn reindex_memory(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let google_ai_key = state.config.read().await.llm.tokens.google_ai.clone();
+
+    // Reset collection
+    state
+        .vector_store
+        .reset_collection(&instance_slug)
+        .await
+        .map_err(|e| {
+            log::warn!("[reindex] reset failed for {instance_slug}: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Remove backfill marker so it runs again
+    let marker = state.workspace_dir.join(".vectors_backfilled");
+    let _ = std::fs::remove_file(&marker);
+
+    // Backfill in background
+    let vs = state.vector_store.clone();
+    let ws = state.workspace_dir.clone();
+    let slug = instance_slug.clone();
+    tokio::spawn(async move {
+        match vs.backfill_text_memories(&ws, &slug, &google_ai_key).await {
+            Ok(count) => log::info!("[reindex] {slug}: indexed {count} chunks"),
+            Err(e) => log::warn!("[reindex] {slug}: failed: {e}"),
+        }
+    });
+
+    Ok(Json(serde_json::json!({ "status": "reindexing" })))
 }
 
 async fn read_memory_file(

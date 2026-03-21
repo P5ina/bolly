@@ -376,6 +376,10 @@ export function searchMemory(slug: string, query: string, limit = 10): Promise<M
 	return json(`/api/instances/${encodeURIComponent(slug)}/memory/search?q=${encodeURIComponent(query)}&limit=${limit}`);
 }
 
+export function reindexMemory(slug: string): Promise<{ status: string }> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/memory/reindex`, { method: 'POST' });
+}
+
 export async function fetchMemoryContent(slug: string, path: string): Promise<string> {
 	const res = await authedFetch(`/api/instances/${encodeURIComponent(slug)}/memory/${path}`);
 	if (res.status === 401) throw new AuthError();

@@ -68,6 +68,26 @@ impl VectorStore {
         Uuid::new_v5(&NS, input.as_bytes()).to_string()
     }
 
+    /// Drop and recreate the collection (reset all vectors).
+    pub async fn reset_collection(&self, instance_slug: &str) -> Result<(), String> {
+        let name = Self::collection(instance_slug);
+        let exists = self
+            .client
+            .collection_exists(&name)
+            .await
+            .map_err(|e| format!("qdrant collection_exists: {e}"))?;
+
+        if exists {
+            self.client
+                .delete_collection(&name)
+                .await
+                .map_err(|e| format!("qdrant delete_collection: {e}"))?;
+            log::info!("[vector] deleted collection {name}");
+        }
+
+        self.ensure_collection(instance_slug).await
+    }
+
     /// Ensure the collection exists, create if not.
     pub async fn ensure_collection(&self, instance_slug: &str) -> Result<(), String> {
         let name = Self::collection(instance_slug);
