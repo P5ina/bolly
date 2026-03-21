@@ -255,12 +255,12 @@
 		glassMat.color = new THREE.Color(0xffffff);
 		glassMat.transmission = 1.0;
 		glassMat.ior = 1.45;
-		glassMat.thickness = 2.0;
+		glassMat.thickness = 1.5;
 		glassMat.roughness = 0.0;
 		glassMat.metalness = 0.0;
 		glassMat.dispersion = 0.15;
-		glassMat.attenuationColor = new THREE.Color(0xd4a04a);
-		glassMat.attenuationDistance = 1.8;
+		glassMat.attenuationColor = new THREE.Color(0xffffff);
+		glassMat.attenuationDistance = Infinity;
 		glassMat.clearcoat = 0.0;
 		glassMat.specularIntensity = 0.2;
 		glassMat.specularColor = new THREE.Color(0xffffff);
@@ -269,13 +269,6 @@
 		glassMat.side = THREE.FrontSide;
 
 		const sphereGeo = new THREE.IcosahedronGeometry(1, 4);
-
-		// ── Inner glow core ──
-		const coreGeo = new THREE.IcosahedronGeometry(0.55, 3);
-		const coreMat = new THREE.MeshBasicNodeMaterial();
-		coreMat.color = new THREE.Color(0xd4a050);
-		coreMat.transparent = true;
-		coreMat.opacity = 0.7;
 
 		// ── Sphere pool ──
 		interface OrbState {
@@ -313,8 +306,6 @@
 			for (const slug of slugs) {
 				if (!orbMap.has(slug)) {
 					const mesh = new THREE.Mesh(sphereGeo, glassMat);
-					const core = new THREE.Mesh(coreGeo, coreMat);
-					mesh.add(core);
 					mesh.scale.setScalar(0);
 					mesh.userData.slug = slug;
 					orbGroup.add(mesh);
