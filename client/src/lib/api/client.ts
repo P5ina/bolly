@@ -370,6 +370,8 @@ export interface MemorySearchResult {
 	path: string;
 	text: string;
 	score: number;
+	source_type?: string;
+	media_url?: string;
 }
 
 export function searchMemory(slug: string, query: string, limit = 10): Promise<MemorySearchResult[]> {

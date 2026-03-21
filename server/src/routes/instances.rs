@@ -536,20 +536,40 @@ async fn search_memory(
         .join(&instance_slug)
         .join("memory");
 
+    let auth_token = state.config.read().await.auth_token.clone();
+    let public_url = std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default();
+
     let json: Vec<serde_json::Value> = results
         .into_iter()
         .map(|r| {
-            // Use content_preview from Qdrant, fall back to reading file from disk
-            let text = if r.content_preview.is_empty() {
+            let is_media = r.source_type.starts_with("media_");
+
+            let text = if r.content_preview.is_empty() && !is_media {
                 std::fs::read_to_string(memory_dir.join(&r.path)).unwrap_or_default()
             } else {
                 r.content_preview
             };
-            serde_json::json!({
+
+            let mut obj = serde_json::json!({
                 "path": r.path,
                 "text": text,
                 "score": r.score,
-            })
+                "source_type": r.source_type,
+            });
+
+            // For media results, include a URL to the file
+            if is_media {
+                if let Some(upload_id) = &r.upload_id {
+                    let url = if public_url.is_empty() {
+                        format!("/api/instances/{instance_slug}/uploads/{upload_id}/file")
+                    } else {
+                        format!("{public_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}")
+                    };
+                    obj["media_url"] = serde_json::Value::String(url);
+                }
+            }
+
+            obj
         })
         .collect();
 

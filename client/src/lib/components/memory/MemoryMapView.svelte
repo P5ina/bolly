@@ -534,23 +534,41 @@
 			{#if searchResults.length > 0}
 				<div class="search-results">
 					{#each searchResults as result}
+						{@const isMedia = result.source_type?.startsWith("media_")}
 						{@const basePath = result.path.split("#")[0]}
-						{@const folder = basePath.split("/")[0] ?? "(root)"}
+						{@const folder = isMedia ? result.source_type?.replace("media_", "") ?? "media" : (basePath.split("/")[0] ?? "(root)")}
 						{@const preview = result.text.trim().slice(0, 200)}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							class="search-result"
-							style="--c: {getHex(folder)}"
+							class:search-result-media={isMedia}
+							style="--c: {isMedia ? '#d4a55a' : getHex(folder)}"
 							onclick={() => {
-								const entry = entries.find(e => e.path === basePath);
-								if (entry) openDocument(entry);
+								if (isMedia && result.media_url) {
+									window.open(result.media_url, '_blank');
+								} else {
+									const entry = entries.find(e => e.path === basePath);
+									if (entry) openDocument(entry);
+								}
 							}}
 						>
-							<div class="search-result-path">
-								<span class="search-result-folder" style="color: {getHex(folder)}">{folder}/</span>{fileName(basePath)}
+							{#if isMedia && result.media_url && result.source_type === "media_image"}
+								<img class="search-result-thumb" src={result.media_url} alt={basePath} />
+							{/if}
+							<div class="search-result-body">
+								<div class="search-result-path">
+									{#if isMedia}
+										<span class="search-result-folder" style="color: var(--c)">{result.source_type === "media_image" ? "image" : result.source_type === "media_video" ? "video" : "audio"}</span>
+										{preview || basePath}
+									{:else}
+										<span class="search-result-folder" style="color: {getHex(folder)}">{folder}/</span>{fileName(basePath)}
+									{/if}
+								</div>
+								{#if !isMedia}
+									<div class="search-result-summary">{preview}</div>
+								{/if}
+								<div class="search-result-meta">score: {result.score.toFixed(4)}</div>
 							</div>
-							<div class="search-result-summary">{preview}</div>
-							<div class="search-result-meta">score: {result.score.toFixed(1)}</div>
 						</div>
 					{/each}
 				</div>
@@ -798,6 +816,18 @@
 		font-family: var(--font-body); font-size: 0.72rem;
 		color: oklch(0.88 0.02 75 / 38%); line-height: 1.4;
 		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	}
+	.search-result-media {
+		flex-direction: row; align-items: center; gap: 0.6rem;
+	}
+	.search-result-thumb {
+		width: 48px; height: 48px; border-radius: 0.5rem;
+		object-fit: cover; flex-shrink: 0;
+		border: 1px solid oklch(1 0 0 / 10%);
+	}
+	.search-result-body {
+		flex: 1; min-width: 0;
+		display: flex; flex-direction: column; gap: 0.15rem;
 	}
 	.search-result-meta {
 		font-family: var(--font-mono); font-size: 0.7rem;
