@@ -10,7 +10,7 @@ let { children } = $props();
 </script>
 
 <svelte:head>
-	<title>Bolly — A companion that lives on your server</title>
+	<title>Bolly — A friend that helps you think, work & feel</title>
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
