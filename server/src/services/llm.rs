@@ -91,12 +91,9 @@ impl ContentBlock {
         }
     }
 
-    pub fn document_url(url: String, media_type: &str) -> Self {
+    pub fn document_url(url: String) -> Self {
         ContentBlock::Document {
-            source: DocumentSource::Url {
-                url,
-                media_type: media_type.to_string(),
-            },
+            source: DocumentSource::Url { url },
         }
     }
 
@@ -383,7 +380,7 @@ pub enum DocumentSource {
     #[serde(rename = "base64")]
     Base64 { media_type: String, data: String },
     #[serde(rename = "url")]
-    Url { url: String, media_type: String },
+    Url { url: String },
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1978,7 +1975,7 @@ pub fn build_multimodal_prompt(
                     let url = format!(
                         "{base_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}"
                     );
-                    contents.push(ContentBlock::document_url(url, "application/pdf"));
+                    contents.push(ContentBlock::document_url(url));
                     log::info!("attached PDF (URL): {name} ({} bytes)", bytes.len());
                 }
                 PdfStrategy::ExtractText => {
