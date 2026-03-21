@@ -478,64 +478,27 @@ pub struct ToolChatResult {
 }
 
 #[derive(Clone)]
-pub enum LlmBackend {
-    Anthropic {
-        http: reqwest::Client,
-        api_key: String,
-        model: String,
-    },
-    OpenAI {
-        http: reqwest::Client,
-        api_key: String,
-        model: String,
-        base_url: String,
-    },
+pub struct LlmBackend {
+    pub http: reqwest::Client,
+    pub api_key: String,
+    pub model: String,
 }
 
 impl LlmBackend {
     pub fn from_config(config: &Config) -> Option<Self> {
-        let provider = config.llm.provider?;
         let api_key = config.llm.api_key()?.to_string();
         let model = config.llm.model_name().to_string();
         let http = reqwest::Client::new();
-
-        match provider {
-            LlmProvider::Anthropic => Some(LlmBackend::Anthropic { http, api_key, model }),
-            LlmProvider::OpenAI => Some(LlmBackend::OpenAI {
-                http, api_key, model,
-                base_url: "https://api.openai.com/v1".to_string(),
-            }),
-            LlmProvider::OpenRouter => Some(LlmBackend::OpenAI {
-                http, api_key, model,
-                base_url: "https://openrouter.ai/api/v1".to_string(),
-            }),
-        }
+        Some(Self { http, api_key, model })
     }
 
     /// Create a variant using the fast/cheap model.
-    /// If `override_model` is provided and non-empty, use that; otherwise fall back to provider default.
     pub fn fast_variant_with(&self, override_model: Option<&str>) -> Self {
-        match self {
-            LlmBackend::Anthropic { http, api_key, .. } => LlmBackend::Anthropic {
-                http: http.clone(),
-                api_key: api_key.clone(),
-                model: override_model.filter(|s| !s.is_empty())
-                    .unwrap_or(LlmProvider::Anthropic.fast_model()).to_string(),
-            },
-            LlmBackend::OpenAI { http, api_key, base_url, .. } => {
-                let provider = if base_url.contains("openrouter") {
-                    LlmProvider::OpenRouter
-                } else {
-                    LlmProvider::OpenAI
-                };
-                LlmBackend::OpenAI {
-                    http: http.clone(),
-                    api_key: api_key.clone(),
-                    model: override_model.filter(|s| !s.is_empty())
-                        .unwrap_or(provider.fast_model()).to_string(),
-                    base_url: base_url.clone(),
-                }
-            }
+        Self {
+            http: self.http.clone(),
+            api_key: self.api_key.clone(),
+            model: override_model.filter(|s| !s.is_empty())
+                .unwrap_or(LlmProvider::Anthropic.fast_model()).to_string(),
         }
     }
 
@@ -550,26 +513,17 @@ impl LlmBackend {
                 base_url: url.to_string(),
                 auth_token: auth_token.to_string(),
             },
-            _ => match self {
-                LlmBackend::Anthropic { .. } => PdfStrategy::NativeDocument,
-                _ => PdfStrategy::ExtractText,
-            },
+            _ => PdfStrategy::NativeDocument,
         }
     }
 
     pub fn model_name(&self) -> &str {
-        match self {
-            LlmBackend::Anthropic { model, .. } => model,
-            LlmBackend::OpenAI { model, .. } => model,
-        }
+        &self.model
     }
 
     /// Returns true if this backend uses an OAuth token (no server-side compaction).
     pub fn is_oauth(&self) -> bool {
-        match self {
-            LlmBackend::Anthropic { api_key, .. } => api_key.starts_with("sk-ant-oat"),
-            _ => false,
-        }
+        self.api_key.starts_with("sk-ant-oat")
     }
 
     /// Classify whether a user message needs the heavy model.
@@ -614,25 +568,9 @@ impl LlmBackend {
             async move {
                 let mut messages = history;
                 messages.push(Message::user(&prompt));
-                match &backend {
-                    LlmBackend::Anthropic {
-                        http,
-                        api_key,
-                        model,
-                    } => anthropic_complete(http, api_key, model, &[&system], &[], &messages, 16384)
-                        .await
-                        .map(|(text, _, _, tokens)| (text, tokens)),
-                    LlmBackend::OpenAI {
-                        http,
-                        api_key,
-                        model,
-                        base_url,
-                    } => {
-                        openai_complete(http, api_key, base_url, model, &system, &[], &messages, 16384)
-                            .await
-                            .map(|(text, _, _, tokens)| (text, tokens))
-                    }
-                }
+                anthropic_complete(&backend.http, &backend.api_key, &backend.model, &[&system], &[], &messages, 16384)
+                    .await
+                    .map(|(text, _, _, tokens)| (text, tokens))
             }
         })
         .await
@@ -654,54 +592,46 @@ impl LlmBackend {
             let prompt = prompt.clone();
             let schema = schema.clone();
             async move {
-                match &backend {
-                    LlmBackend::Anthropic { http, api_key, model } => {
-                        let messages = vec![Message::user(&prompt)];
-                        let system_blocks = vec![serde_json::json!({"type": "text", "text": &system})];
-                        let msgs = serde_json::to_value(&messages).unwrap_or(serde_json::json!([]));
+                let messages = vec![Message::user(&prompt)];
+                let system_blocks = vec![serde_json::json!({"type": "text", "text": &system})];
+                let msgs = serde_json::to_value(&messages).unwrap_or(serde_json::json!([]));
 
-                        let req = serde_json::json!({
-                            "model": model,
-                            "max_tokens": 16384,
-                            "system": system_blocks,
-                            "messages": msgs,
-                            "output_config": {
-                                "format": {
-                                    "type": "json_schema",
-                                    "schema": schema,
-                                }
-                            }
-                        });
-
-                        let resp = http
-                            .post("https://api.anthropic.com/v1/messages")
-                            .headers(anthropic_headers(api_key))
-                            .json(&req)
-                            .send()
-                            .await?;
-
-                        let status = resp.status();
-                        let resp_text = resp.text().await?;
-                        if !status.is_success() {
-                            return Err(format!("Anthropic API error {status}: {resp_text}").into());
+                let req = serde_json::json!({
+                    "model": &backend.model,
+                    "max_tokens": 16384,
+                    "system": system_blocks,
+                    "messages": msgs,
+                    "output_config": {
+                        "format": {
+                            "type": "json_schema",
+                            "schema": schema,
                         }
-
-                        let resp_json: serde_json::Value = serde_json::from_str(&resp_text)?;
-                        let tokens = resp_json.pointer("/usage/input_tokens").and_then(|v| v.as_u64()).unwrap_or(0)
-                            + resp_json.pointer("/usage/output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-
-                        let text = resp_json.pointer("/content/0/text")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-
-                        Ok((text, tokens))
                     }
-                    // For non-Anthropic backends, fall back to regular chat
-                    _ => {
-                        backend.chat(&system, &prompt, vec![]).await
-                    }
+                });
+
+                let resp = backend.http
+                    .post("https://api.anthropic.com/v1/messages")
+                    .headers(anthropic_headers(&backend.api_key))
+                    .json(&req)
+                    .send()
+                    .await?;
+
+                let status = resp.status();
+                let resp_text = resp.text().await?;
+                if !status.is_success() {
+                    return Err(format!("Anthropic API error {status}: {resp_text}").into());
                 }
+
+                let resp_json: serde_json::Value = serde_json::from_str(&resp_text)?;
+                let tokens = resp_json.pointer("/usage/input_tokens").and_then(|v| v.as_u64()).unwrap_or(0)
+                    + resp_json.pointer("/usage/output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+
+                let text = resp_json.pointer("/content/0/text")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                Ok((text, tokens))
             }
         })
         .await
@@ -1006,24 +936,7 @@ async fn complete_once(
     tool_defs: &[ToolDefinition],
     messages: &[Message],
 ) -> Result<(String, Vec<ToolUseBlock>, String, u64), Box<dyn std::error::Error + Send + Sync>> {
-    match backend {
-        LlmBackend::Anthropic {
-            http,
-            api_key,
-            model,
-        } => {
-            anthropic_complete(http, api_key, model, system, tool_defs, messages, 16384).await
-        }
-        LlmBackend::OpenAI {
-            http,
-            api_key,
-            model,
-            base_url,
-        } => {
-            let joined = system.join("\n\n");
-            openai_complete(http, api_key, base_url, model, &joined, tool_defs, messages, 16384).await
-        }
-    }
+    anthropic_complete(&backend.http, &backend.api_key, &backend.model, system, tool_defs, messages, 16384).await
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1534,412 +1447,29 @@ async fn stream_once(
     message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
 ) -> Result<StreamOnceResult, Box<dyn std::error::Error + Send + Sync>> {
-    match backend {
-        LlmBackend::Anthropic {
-            http,
-            api_key,
-            model,
-        } => {
-            let (text, tool_uses, stop_reason, compaction, tokens_used) =
-                anthropic_stream(
-                    http, api_key, model, system, tool_defs, messages,
-                    16384, events, instance_slug, chat_id, message_id, mcp_snapshot,
-                ).await?;
-            Ok(StreamOnceResult { text, tool_uses, stop_reason, compaction, tokens_used })
-        }
-        LlmBackend::OpenAI {
-            http,
-            api_key,
-            model,
-            base_url,
-        } => {
-            let joined = system.join("\n\n");
-            let (text, tool_uses, stop_reason) = openai_stream(
-                http, api_key, base_url, model, &joined, tool_defs, messages,
-                16384, events, instance_slug, chat_id, message_id,
-            ).await?;
-            Ok(StreamOnceResult { text, tool_uses, stop_reason, compaction: None, tokens_used: 0 })
-        }
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// OpenAI / OpenRouter API
-// ═══════════════════════════════════════════════════════════════════════════
-
-fn openai_headers(api_key: &str) -> reqwest::header::HeaderMap {
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(
-        "Authorization",
-        format!("Bearer {api_key}").parse().unwrap(),
-    );
-    headers.insert("content-type", "application/json".parse().unwrap());
-    headers
-}
-
-fn build_openai_request(
-    model: &str,
-    system: &str,
-    tool_defs: &[ToolDefinition],
-    messages: &[Message],
-    max_tokens: u64,
-    stream: bool,
-) -> serde_json::Value {
-    // Convert messages to OpenAI format
-    let mut oai_msgs = vec![serde_json::json!({"role": "system", "content": system})];
-
-    for msg in messages {
-        match msg {
-            Message::User { content } => {
-                // Check for tool results
-                let has_tool_results = content
-                    .iter()
-                    .any(|c| matches!(c, ContentBlock::ToolResult { .. }));
-                if has_tool_results {
-                    for c in content {
-                        if let ContentBlock::ToolResult {
-                            tool_use_id,
-                            content: result_content,
-                        } = c
-                        {
-                            let text = match result_content {
-                                serde_json::Value::String(s) => s.clone(),
-                                other => other.to_string(),
-                            };
-                            oai_msgs.push(serde_json::json!({
-                                "role": "tool",
-                                "tool_call_id": tool_use_id,
-                                "content": text,
-                            }));
-                        }
-                    }
-                } else {
-                    // Build content array
-                    let oai_content: Vec<serde_json::Value> = content
-                        .iter()
-                        .filter_map(|c| match c {
-                            ContentBlock::Text { text } => {
-                                Some(serde_json::json!({"type": "text", "text": text}))
-                            }
-                            ContentBlock::Image {
-                                source: ImageSource::Base64 { media_type, data },
-                            } => Some(serde_json::json!({
-                                "type": "image_url",
-                                "image_url": {"url": format!("data:{media_type};base64,{data}")}
-                            })),
-                            _ => None,
-                        })
-                        .collect();
-                    if oai_content.len() == 1 {
-                        if let Some(text) = oai_content[0]["text"].as_str() {
-                            oai_msgs.push(serde_json::json!({"role": "user", "content": text}));
-                        } else {
-                            oai_msgs.push(
-                                serde_json::json!({"role": "user", "content": oai_content}),
-                            );
-                        }
-                    } else {
-                        oai_msgs
-                            .push(serde_json::json!({"role": "user", "content": oai_content}));
-                    }
-                }
-            }
-            Message::Assistant { content } => {
-                let text_parts: Vec<&str> = content
-                    .iter()
-                    .filter_map(|c| {
-                        if let ContentBlock::Text { text } = c {
-                            Some(text.as_str())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                let tool_calls: Vec<serde_json::Value> = content
-                    .iter()
-                    .filter_map(|c| {
-                        if let ContentBlock::ToolUse { id, name, input } = c {
-                            Some(serde_json::json!({
-                                "id": id,
-                                "type": "function",
-                                "function": {
-                                    "name": name,
-                                    "arguments": serde_json::to_string(input).unwrap_or_default(),
-                                }
-                            }))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-
-                let mut msg = serde_json::json!({
-                    "role": "assistant",
-                    "content": if text_parts.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(text_parts.join("")) },
-                });
-                if !tool_calls.is_empty() {
-                    msg["tool_calls"] = serde_json::Value::Array(tool_calls);
-                }
-                oai_msgs.push(msg);
-            }
-        }
-    }
-
-    // Tool definitions
-    let tools: Vec<serde_json::Value> = tool_defs
-        .iter()
-        .map(|td| {
-            serde_json::json!({
-                "type": "function",
-                "function": {
-                    "name": td.name,
-                    "description": td.description,
-                    "parameters": td.parameters,
-                }
-            })
-        })
-        .collect();
-
-    let mut req = serde_json::json!({
-        "model": model,
-        "max_tokens": max_tokens,
-        "messages": oai_msgs,
-    });
-    if !tools.is_empty() {
-        req["tools"] = serde_json::Value::Array(tools);
-    }
-    if stream {
-        req["stream"] = serde_json::json!(true);
-    }
-    req
-}
-
-/// Non-streaming OpenAI call. Returns (text, stop_reason).
-async fn openai_complete(
-    http: &reqwest::Client,
-    api_key: &str,
-    base_url: &str,
-    model: &str,
-    system: &str,
-    tool_defs: &[ToolDefinition],
-    messages: &[Message],
-    max_tokens: u64,
-) -> Result<(String, Vec<ToolUseBlock>, String, u64), Box<dyn std::error::Error + Send + Sync>> {
-    let body = build_openai_request(model, system, tool_defs, messages, max_tokens, false);
-
-    let resp = http
-        .post(format!("{base_url}/chat/completions"))
-        .headers(openai_headers(api_key))
-        .json(&body)
-        .send()
-        .await?;
-
-    let status = resp.status();
-    let resp_text = resp.text().await?;
-    if !status.is_success() {
-        return Err(format!("OpenAI API error {status}: {resp_text}").into());
-    }
-
-    let resp_json: serde_json::Value = serde_json::from_str(&resp_text)?;
-
-    let tokens_used = if let Some(usage) = resp_json.get("usage") {
-        let prompt = usage["prompt_tokens"].as_u64().unwrap_or(0);
-        let completion = usage["completion_tokens"].as_u64().unwrap_or(0);
-        prompt + completion
-    } else {
-        0
-    };
-
-    let choice = &resp_json["choices"][0];
-    let text = choice["message"]["content"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-    let stop_reason = choice["finish_reason"]
-        .as_str()
-        .unwrap_or("stop")
-        .to_string();
-
-    // Parse tool calls
-    let mut tool_uses = Vec::new();
-    if let Some(tool_calls) = choice["message"]["tool_calls"].as_array() {
-        for tc in tool_calls {
-            if let (Some(id), Some(name)) = (tc["id"].as_str(), tc["function"]["name"].as_str()) {
-                let input: serde_json::Value = tc["function"]["arguments"]
-                    .as_str()
-                    .and_then(|s| serde_json::from_str(s).ok())
-                    .unwrap_or(serde_json::json!({}));
-                tool_uses.push(ToolUseBlock {
-                    id: id.to_string(),
-                    name: name.to_string(),
-                    input,
-                });
-            }
-        }
-    }
-
-    // Map OpenAI stop reasons to our standard
-    let stop_reason = match stop_reason.as_str() {
-        "tool_calls" => "tool_use".to_string(),
-        "length" => "max_tokens".to_string(),
-        _ => "end_turn".to_string(),
-    };
-
-    Ok((text, tool_uses, stop_reason, tokens_used))
-}
-
-/// Streaming OpenAI call. Returns (text, tool_uses, stop_reason).
-async fn openai_stream(
-    http: &reqwest::Client,
-    api_key: &str,
-    base_url: &str,
-    model: &str,
-    system: &str,
-    tool_defs: &[ToolDefinition],
-    messages: &[Message],
-    max_tokens: u64,
-    events: &broadcast::Sender<ServerEvent>,
-    instance_slug: &str,
-    chat_id: &str,
-    message_id: &str,
-) -> Result<(String, Vec<ToolUseBlock>, String), Box<dyn std::error::Error + Send + Sync>> {
-    let body = build_openai_request(model, system, tool_defs, messages, max_tokens, true);
-
-    let resp = http
-        .post(format!("{base_url}/chat/completions"))
-        .headers(openai_headers(api_key))
-        .json(&body)
-        .send()
-        .await?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let err_text = resp.text().await.unwrap_or_default();
-        return Err(format!("OpenAI API error {status}: {err_text}").into());
-    }
-
-    let mut text = String::new();
-    let mut tool_uses: Vec<ToolUseBlock> = Vec::new();
-    let mut stop_reason = String::new();
-
-    // Track tool calls being built
-    let mut tool_call_map: std::collections::HashMap<usize, (String, String, String)> =
-        std::collections::HashMap::new(); // index -> (id, name, args_json)
-
-    let mut stream = resp.bytes_stream();
-    let mut buf = Vec::new();
-
-    const STREAM_TIMEOUT: Duration = Duration::from_secs(480);
-
-    loop {
-        let chunk = tokio::time::timeout(STREAM_TIMEOUT, stream.next()).await;
-        let chunk = match chunk {
-            Ok(Some(Ok(c))) => c,
-            Ok(Some(Err(e))) => return Err(e.into()),
-            Ok(None) => break,
-            Err(_) => {
-                log::warn!("OpenAI stream timed out");
-                break;
-            }
-        };
-
-        buf.extend_from_slice(&chunk);
-
-        while let Some(newline_pos) = buf.iter().position(|&b| b == b'\n') {
-            let line = String::from_utf8_lossy(&buf[..newline_pos]).to_string();
-            buf = buf[newline_pos + 1..].to_vec();
-
-            let Some(data) = line.strip_prefix("data: ") else {
-                continue;
-            };
-            if data == "[DONE]" {
-                break;
-            }
-
-            let Ok(ev) = serde_json::from_str::<serde_json::Value>(data) else {
-                continue;
-            };
-
-            if let Some(choice) = ev["choices"].as_array().and_then(|a| a.first()) {
-                // Text delta
-                if let Some(content) = choice["delta"]["content"].as_str() {
-                    text.push_str(content);
-                    let _ = events.send(ServerEvent::ChatStreamDelta {
-                        instance_slug: instance_slug.to_string(),
-                        chat_id: chat_id.to_string(),
-                        message_id: message_id.to_string(),
-                        delta: content.to_string(),
-                    });
-                }
-
-                // Tool call deltas
-                if let Some(tool_calls) = choice["delta"]["tool_calls"].as_array() {
-                    for tc in tool_calls {
-                        let idx = tc["index"].as_u64().unwrap_or(0) as usize;
-                        let entry = tool_call_map
-                            .entry(idx)
-                            .or_insert_with(|| (String::new(), String::new(), String::new()));
-                        if let Some(id) = tc["id"].as_str() {
-                            entry.0 = id.to_string();
-                        }
-                        if let Some(name) = tc["function"]["name"].as_str() {
-                            entry.1 = name.to_string();
-                        }
-                        if let Some(args) = tc["function"]["arguments"].as_str() {
-                            entry.2.push_str(args);
-                        }
-                    }
-                }
-
-                // Finish reason
-                if let Some(fr) = choice["finish_reason"].as_str() {
-                    stop_reason = match fr {
-                        "tool_calls" => "tool_use".to_string(),
-                        "length" => "max_tokens".to_string(),
-                        _ => "end_turn".to_string(),
-                    };
-                }
-            }
-        }
-    }
-
-    // Finalize tool calls
-    for (_, (id, name, args_json)) in tool_call_map {
-        let input: serde_json::Value = match serde_json::from_str(&args_json) {
-            Ok(v) => v,
-            Err(e) => {
-                log::warn!(
-                    "[llm] truncated tool call JSON for '{}': {e} (input len={})",
-                    name,
-                    args_json.len()
-                );
-                serde_json::json!({})
-            }
-        };
-        tool_uses.push(ToolUseBlock { id, name, input });
-    }
-
-    Ok((text, tool_uses, stop_reason))
+    let (text, tool_uses, stop_reason, compaction, tokens_used) =
+        anthropic_stream(
+            &backend.http, &backend.api_key, &backend.model, system, tool_defs, messages,
+            16384, events, instance_slug, chat_id, message_id, mcp_snapshot,
+        ).await?;
+    Ok(StreamOnceResult { text, tool_uses, stop_reason, compaction, tokens_used })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-
-
-/// How to send PDFs to the LLM provider.
+/// How to send PDFs to the LLM.
 pub enum PdfStrategy {
-    /// Anthropic: send base64 document block.
+    /// Send base64 document block.
     NativeDocument,
-    /// OpenRouter/others: send a public URL.
+    /// Send a public URL.
     Url {
         base_url: String,
         auth_token: String,
     },
-    /// Fallback: extract text from PDF.
-    ExtractText,
 }
+
 
 /// Build a multimodal Message from text + file attachments.
 pub fn build_multimodal_prompt(
@@ -2016,29 +1546,6 @@ pub fn build_multimodal_prompt(
                     );
                     contents.push(ContentBlock::document_url(url));
                     log::info!("attached PDF (URL): {name} ({} bytes)", bytes.len());
-                }
-                PdfStrategy::ExtractText => {
-                    let extracted = pdf_extract::extract_text_from_mem(&bytes).unwrap_or_default();
-                    if extracted.trim().is_empty() {
-                        contents.push(ContentBlock::text(format!(
-                            "[PDF: {name} — could not extract text, {} bytes]",
-                            bytes.len()
-                        )));
-                    } else {
-                        let truncated: String = extracted.chars().take(15_000).collect();
-                        let suffix = if extracted.chars().count() > 15_000 {
-                            "\n...(truncated)"
-                        } else {
-                            ""
-                        };
-                        contents.push(ContentBlock::text(format!(
-                            "\n--- PDF: {name} ---\n{truncated}{suffix}\n---"
-                        )));
-                    }
-                    log::info!(
-                        "attached PDF (text extracted): {name} ({} bytes)",
-                        bytes.len()
-                    );
                 }
             }
         } else if meta.mime_type.starts_with("text/") || meta.mime_type == "application/json" {
