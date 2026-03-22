@@ -592,6 +592,7 @@ export interface UpdateCheck {
 	current: string;
 	latest: string;
 	update_available: boolean;
+	commit: string;
 }
 
 export function checkUpdate(): Promise<UpdateCheck> {

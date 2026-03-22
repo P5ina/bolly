@@ -13,6 +13,7 @@ struct UpdateCheck {
     current: String,
     latest: String,
     update_available: bool,
+    commit: String,
 }
 
 async fn check_update(State(state): State<AppState>) -> Json<UpdateCheck> {
@@ -34,6 +35,7 @@ async fn check_update(State(state): State<AppState>) -> Json<UpdateCheck> {
                 current: display_current_fallback,
                 latest: "unknown".to_string(),
                 update_available: false,
+                commit: current_commit.to_string(),
             });
         }
     };
@@ -73,6 +75,7 @@ async fn check_update(State(state): State<AppState>) -> Json<UpdateCheck> {
         current: display_current,
         latest: display_latest,
         update_available,
+        commit: current_commit.to_string(),
     })
 }
 

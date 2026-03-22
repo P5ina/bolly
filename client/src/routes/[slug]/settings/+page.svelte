@@ -246,30 +246,18 @@
 
 	async function doUpdate() {
 		updating = true;
-		const oldVersion = updateInfo?.current ?? '';
+		const oldCommit = updateInfo?.commit ?? '';
 		try {
 			await applyUpdate();
 		} catch {
 			// Connection may reset when server exits — that's expected
 		}
-		// Wait for server to go DOWN first (stop responding)
-		for (let i = 0; i < 15; i++) {
-			await new Promise(r => setTimeout(r, 1000));
-			try {
-				await checkUpdate();
-				// Still up — keep waiting
-			} catch {
-				// Server is down — proceed to wait for it to come back
-				break;
-			}
-		}
-		// Now wait for server to come BACK with a new version
-		for (let i = 0; i < 30; i++) {
-			await new Promise(r => setTimeout(r, 2000));
+		// Wait for server to restart, then poll until commit hash changes
+		await new Promise(r => setTimeout(r, 3000));
+		for (let i = 0; i < 40; i++) {
 			try {
 				const info = await checkUpdate();
-				if (info.current !== oldVersion || i > 15) {
-					// Version changed or waited long enough — done
+				if (info.commit !== oldCommit) {
 					updateInfo = info;
 					updating = false;
 					updateDone = true;
@@ -277,8 +265,9 @@
 					return;
 				}
 			} catch {
-				// Still down, keep polling
+				// Still restarting
 			}
+			await new Promise(r => setTimeout(r, 2000));
 		}
 		// Timeout
 		updating = false;
