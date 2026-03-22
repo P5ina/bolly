@@ -34,6 +34,7 @@ export interface SceneStore {
 	readonly musicPlaying: boolean;
 	readonly musicEnabled: boolean;
 	presenting: boolean;
+	recalledMemories: {path: string; preview: string; score: number}[];
 	/** Get current frequency bins (0-255 per bin) for visualizer. Returns empty array if not playing. */
 	getMusicFrequencyData(): Uint8Array | null;
 
@@ -340,6 +341,7 @@ export function createSceneStore(): SceneStore {
 		get musicEnabled() { return musicEnabled; },
 		get presenting() { return presenting; },
 		set presenting(v) { presenting = v; },
+		recalledMemories: [] as {path: string; preview: string; score: number}[],
 		getMusicFrequencyData() {
 			if (!musicAnalyser || !musicPlaying) return null;
 			const data = new Uint8Array(musicAnalyser.frequencyBinCount);

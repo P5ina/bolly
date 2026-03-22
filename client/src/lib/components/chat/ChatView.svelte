@@ -49,7 +49,6 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	let sending = $state(false);
 	let agentRunning = $state(false);
 	let needsGoogleReconnect = $state(false);
-	let recalledMemories = $state<{path: string; preview: string; score: number}[]>([]);
 	let mood = $state(
 		(typeof localStorage !== "undefined" && localStorage.getItem("mood:" + slug)) || "calm"
 	);
@@ -488,7 +487,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				sending = false;
 				clearStreaming();
 				// Fade out recalled memories after a delay
-				setTimeout(() => { recalledMemories = []; }, 3000);
+				setTimeout(() => { scene.recalledMemories = []; }, 3000);
 				// Don't clear turnMessageIds immediately — TTS audio may still be
 				// synthesizing. Give it time to arrive so word reveal works.
 				// Fallback: if audio hasn't arrived after 15s, reveal all.
@@ -512,7 +511,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				play("drop_received");
 				hapticDouble();
 			} else if (event.type === "memory_recall") {
-				recalledMemories = event.memories.map((m: any) => ({
+				scene.recalledMemories = event.memories.map((m: any) => ({
 					path: m.path,
 					preview: m.preview,
 					score: m.score,
@@ -777,24 +776,6 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		</div>
 	</header>
 
-	<!-- Memory recall — floating thought bubbles -->
-	{#if recalledMemories.length > 0}
-		<div class="memory-clouds">
-			{#each recalledMemories as mem, i}
-				<div
-					class="memory-cloud"
-					style="
-						--delay: {i * 150 + 100}ms;
-						--drift-x: {(i % 2 === 0 ? -1 : 1) * (12 + i * 8)}px;
-						--drift-y: {-20 - i * 15}px;
-						--float-dur: {3 + i * 0.5}s;
-					"
-				>
-					<span class="memory-cloud-text">{mem.path.split('/').pop()?.replace('.md', '')}</span>
-				</div>
-			{/each}
-		</div>
-	{/if}
 
 	<!-- TODO: re-enable multi-chat when ready -->
 	<!-- {#if showChatList}
@@ -1009,73 +990,6 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		}
 	}
 
-	/* ── Memory recall — floating thought clouds ── */
-	.memory-clouds {
-		position: fixed;
-		right: calc(50% + 320px + (100% - 50% - 320px) / 2);
-		top: 40%;
-		transform: translate(50%, -50%);
-		z-index: 15;
-		pointer-events: none;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.memory-cloud {
-		padding: 0.3rem 0.75rem;
-		border-radius: 1rem;
-		background: oklch(0.78 0.12 75 / 6%);
-		backdrop-filter: blur(12px) saturate(140%);
-		-webkit-backdrop-filter: blur(12px) saturate(140%);
-		border: 1px solid oklch(0.78 0.12 75 / 12%);
-		box-shadow:
-			0 2px 12px oklch(0 0 0 / 15%),
-			0 0 20px oklch(0.78 0.12 75 / 4%);
-		white-space: nowrap;
-		opacity: 0;
-		animation: cloud-rise var(--float-dur) cubic-bezier(0.16, 1, 0.3, 1) both;
-		animation-delay: var(--delay);
-	}
-
-	@keyframes cloud-rise {
-		0% {
-			opacity: 0;
-			transform: translateY(30px) scale(0.7);
-			filter: blur(4px);
-		}
-		15% {
-			opacity: 1;
-			transform: translateY(0) scale(1);
-			filter: blur(0);
-		}
-		85% {
-			opacity: 0.8;
-			transform: translate(var(--drift-x), var(--drift-y)) scale(0.95);
-			filter: blur(0);
-		}
-		100% {
-			opacity: 0;
-			transform: translate(var(--drift-x), calc(var(--drift-y) - 20px)) scale(0.85);
-			filter: blur(3px);
-		}
-	}
-
-	.memory-cloud-text {
-		font-family: var(--font-display);
-		font-style: italic;
-		font-size: 0.72rem;
-		color: oklch(0.78 0.12 75 / 65%);
-		letter-spacing: 0.01em;
-	}
-
-	@media (max-width: 640px) {
-		.memory-clouds {
-			right: 50%;
-			top: 35%;
-		}
-	}
 
 	/* --- bar --- */
 
