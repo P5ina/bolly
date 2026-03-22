@@ -246,24 +246,38 @@
 
 	async function doUpdate() {
 		updating = true;
+		const oldVersion = updateInfo?.current ?? '';
 		try {
 			await applyUpdate();
 		} catch {
 			// Connection may reset when server exits — that's expected
 		}
-		// Server is restarting. Wait a bit then poll until it's back.
-		await new Promise(r => setTimeout(r, 4000));
-		for (let i = 0; i < 30; i++) {
+		// Wait for server to go DOWN first (stop responding)
+		for (let i = 0; i < 15; i++) {
+			await new Promise(r => setTimeout(r, 1000));
 			try {
-				updateInfo = await checkUpdate();
-				// Server responded — it's back
-				updating = false;
-				updateDone = true;
-				setTimeout(() => { updateDone = false; }, 8000);
-				return;
+				await checkUpdate();
+				// Still up — keep waiting
+			} catch {
+				// Server is down — proceed to wait for it to come back
+				break;
+			}
+		}
+		// Now wait for server to come BACK with a new version
+		for (let i = 0; i < 30; i++) {
+			await new Promise(r => setTimeout(r, 2000));
+			try {
+				const info = await checkUpdate();
+				if (info.current !== oldVersion || i > 15) {
+					// Version changed or waited long enough — done
+					updateInfo = info;
+					updating = false;
+					updateDone = true;
+					setTimeout(() => { updateDone = false; }, 8000);
+					return;
+				}
 			} catch {
 				// Still down, keep polling
-				await new Promise(r => setTimeout(r, 2000));
 			}
 		}
 		// Timeout
