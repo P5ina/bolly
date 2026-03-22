@@ -56,7 +56,7 @@
 
 		// toIdle → toThinking (when clip ends AND thinking restarted)
 		{ from: 'toIdle', to: 'toThinking', onEnd: true, condition: () => store.thinking },
-	};
+	];
 
 	let currentState = $state(store.mode === 'onboarding' ? 'onboarding' : 'idle');
 
