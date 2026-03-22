@@ -19,9 +19,10 @@
 			image: '/assets/feature-study.webp',
 		},
 		{
-			title: 'thinks with you',
-			desc: "Talk through ideas and decisions. It pushes back, asks questions, and helps you think deeper.",
+			title: 'transparent tool calls',
+			desc: "You see everything the agent does — every tool call, every decision. Nothing hidden.",
 			image: '/assets/feature-connection.webp',
+			video: '/assets/feature-transparent.mp4',
 		},
 		{
 			title: 'checks in on you',
