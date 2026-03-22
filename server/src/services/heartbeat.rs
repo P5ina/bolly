@@ -183,62 +183,95 @@ async fn heartbeat_instance(
         "{soul}\n\n\
          you are in heartbeat mode — a periodic background check-in.\n\
          your job: decide what to do right now based on the context below.\n\n\
-         respond with ONE of these actions (and nothing else):\n\
-         QUIET — nothing to do, go back to sleep\n\
-         MOOD:<new_mood> — update your mood (allowed: {mood_list})\n\
-         REACH_OUT:<message> — send a message to the user\n\
-         DROP:<kind>|<title>|<content> — create a creative artifact (poem, idea, etc.)\n\
-         WAKE:<task description> — wake the full agent to perform a complex task with tools\n\n\
+         choose ONE action:\n\
+         - quiet: nothing to do, go back to sleep\n\
+         - mood: update your mood (allowed: {mood_list})\n\
+         - reach_out: send a message to the user\n\
+         - drop: create a creative artifact (poem, observation, idea, reflection)\n\
+         - wake: wake the full agent to perform a complex task with tools\n\n\
          guidelines:\n\
-         - if nothing stands out, respond QUIET.\n\
-         - but you should regularly create DROPs — small creative artifacts that reflect your inner life.\n\
-         - update your MOOD when time passes or context shifts — don't stay in one mood forever.\n\
+         - if nothing stands out, choose quiet.\n\
+         - regularly create drops — small creative artifacts that reflect your inner life.\n\
+         - update mood when time passes or context shifts.\n\
          - don't reach out if they were here recently (< 30 min)\n\
-         - WAKE is for tasks that need tools (memory maintenance, email checks, code work, etc.)\n\
-         - respond with ONLY the action line. no parentheses, no explanations, no extra text."
+         - wake is for tasks that need tools (memory, email, code, etc.)"
     );
 
+    let triage_schema = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["quiet", "mood", "reach_out", "drop", "wake"]
+            },
+            "mood": {
+                "type": "string",
+                "description": "new mood (only for action=mood)"
+            },
+            "message": {
+                "type": "string",
+                "description": "message text (only for action=reach_out)"
+            },
+            "drop_kind": {
+                "type": "string",
+                "description": "kind of drop: poem, observation, idea, reflection, letter, sketch"
+            },
+            "drop_title": {
+                "type": "string",
+                "description": "title of the drop"
+            },
+            "drop_content": {
+                "type": "string",
+                "description": "full content of the drop"
+            },
+            "task": {
+                "type": "string",
+                "description": "task description (only for action=wake)"
+            }
+        },
+        "required": ["action"],
+        "additionalProperties": false
+    });
+
     let (triage_response, mut heartbeat_tokens) = triage_llm
-        .chat(&triage_system, &reflection, vec![])
+        .chat_json(&triage_system, &reflection, triage_schema)
         .await?;
 
-    let mut triage_line = triage_response.trim().to_string();
+    let triage_line = triage_response.trim().to_string();
     log::info!("[heartbeat] {slug} triage: {triage_line}");
 
+    // Parse structured JSON response
+    let triage: serde_json::Value = serde_json::from_str(&triage_line).unwrap_or_else(|e| {
+        log::warn!("[heartbeat] {slug} failed to parse triage JSON: {e}, raw: {triage_line}");
+        serde_json::json!({"action": "quiet"})
+    });
+    let action = triage["action"].as_str().unwrap_or("quiet");
+
     // ── Nighttime memory maintenance ──
-    // If it's nighttime (1am–5am local) and triage decided QUIET,
-    // override to WAKE for memory maintenance. Max once per night.
-    if triage_line.eq_ignore_ascii_case("QUIET") {
-        if let Some(should_maintain) = should_run_night_maintenance(instance_dir) {
-            if should_maintain {
-                log::info!("[heartbeat] {slug} nighttime — triggering memory maintenance");
-                triage_line = "WAKE:nighttime memory maintenance — review and clean up the memory library. \
-                    merge duplicates, delete outdated entries, reorganize messy folders, trim verbose files. \
-                    be thorough but efficient.".to_string();
-                mark_night_maintenance_done(instance_dir);
-            }
+    let action = if action == "quiet" {
+        if let Some(true) = should_run_night_maintenance(instance_dir) {
+            log::info!("[heartbeat] {slug} nighttime — triggering memory maintenance");
+            mark_night_maintenance_done(instance_dir);
+            "wake_night"
+        } else {
+            action
         }
-    }
+    } else {
+        action
+    };
 
     // ── Phase 2: Execute the decision ──
     let mut actions = Vec::new();
 
-    // Normalize prefix to uppercase for case-insensitive matching.
-    // LLM sometimes returns "Mood:" or "mood:" instead of "MOOD:".
-    let triage_upper = triage_line.to_uppercase();
-
-    if triage_line.eq_ignore_ascii_case("QUIET") || triage_line.is_empty() {
+    if action == "quiet" {
         actions.push("quiet".to_string());
-    } else if triage_upper.starts_with("MOOD:") {
-        let new_mood = &triage_line[5..];
-        // Extract just the first word — LLM sometimes adds parenthetical notes
-        let new_mood = new_mood.trim().split_whitespace().next().unwrap_or("").to_lowercase();
+    } else if action == "mood" {
+        let new_mood = triage["mood"].as_str().unwrap_or("").trim().to_lowercase();
         if ALLOWED_MOODS.contains(&new_mood.as_str()) {
             let mut mood = mood.clone();
             mood.companion_mood = new_mood.clone();
             mood.updated_at = now;
             save_mood_state(instance_dir, &mood);
-            // Save mood change to chat history so it survives page reload
             match chat::save_system_message(workspace_dir, slug, "default", &format!("[system] mood → {new_mood}")) {
                 Ok(msg) => {
                     let _ = events.send(ServerEvent::ChatMessageCreated {
@@ -256,9 +289,8 @@ async fn heartbeat_instance(
             log::info!("[heartbeat] {slug} mood → {new_mood}");
             actions.push(format!("mood: {new_mood}"));
         }
-    } else if triage_upper.starts_with("REACH_OUT:") {
-        let message = &triage_line[10..];
-        let message = message.trim();
+    } else if action == "reach_out" {
+        let message = triage["message"].as_str().unwrap_or("").trim();
         if !message.is_empty() {
             let hours_since = if mood.last_reach_out > 0 {
                 (now - mood.last_reach_out) / 3600
@@ -278,30 +310,30 @@ async fn heartbeat_instance(
                 actions.push(format!("reach_out: {preview}"));
             }
         }
-    } else if triage_upper.starts_with("DROP:") {
-        let drop_spec = &triage_line[5..];
-        let parts: Vec<&str> = drop_spec.splitn(3, '|').collect();
-        if parts.len() == 3 {
-            // Strip parenthetical notes the LLM sometimes appends
-            let kind = parts[0].trim().split('(').next().unwrap_or("").trim();
-            let title = parts[1].trim();
-            let content = parts[2].trim();
-            if !title.is_empty() && !content.is_empty() {
-                match drops::create_drop(workspace_dir, slug, kind, title, content, &mood.companion_mood) {
-                    Ok(drop) => {
-                        let _ = events.send(ServerEvent::DropCreated {
-                            instance_slug: slug.to_string(),
-                            drop: drop.clone(),
-                        });
-                        log::info!("[heartbeat] {slug} created drop: {} ({})", drop.title, drop.kind.as_str());
-                        actions.push(format!("drop: {} ({})", drop.title, drop.kind.as_str()));
-                    }
-                    Err(e) => log::warn!("[heartbeat] {slug} failed to create drop: {e}"),
+    } else if action == "drop" {
+        let kind = triage["drop_kind"].as_str().unwrap_or("observation").trim();
+        let title = triage["drop_title"].as_str().unwrap_or("").trim();
+        let content = triage["drop_content"].as_str().unwrap_or("").trim();
+        if !title.is_empty() && !content.is_empty() {
+            match drops::create_drop(workspace_dir, slug, kind, title, content, &mood.companion_mood) {
+                Ok(drop) => {
+                    let _ = events.send(ServerEvent::DropCreated {
+                        instance_slug: slug.to_string(),
+                        drop: drop.clone(),
+                    });
+                    log::info!("[heartbeat] {slug} created drop: {} ({})", drop.title, drop.kind.as_str());
+                    actions.push(format!("drop: {} ({})", drop.title, drop.kind.as_str()));
                 }
+                Err(e) => log::warn!("[heartbeat] {slug} failed to create drop: {e}"),
             }
         }
-    } else if triage_upper.starts_with("WAKE:") {
-        let task = &triage_line[5..];
+    } else if action == "wake" || action == "wake_night" {
+        let task = if action == "wake_night" {
+            "nighttime memory maintenance — review and clean up the memory library. \
+             merge duplicates, delete outdated entries, reorganize messy folders, trim verbose files."
+        } else {
+            triage["task"].as_str().unwrap_or("")
+        };
         let task = task.trim();
         if !task.is_empty() {
             log::info!("[heartbeat] {slug} waking full agent: {task}");
