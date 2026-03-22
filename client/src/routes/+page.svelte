@@ -3,13 +3,15 @@
 	import { onMount } from "svelte";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
-	import { fetchMeta } from "$lib/api/client.js";
+	import { fetchMeta, fetchChangelog, type ChangelogEntry } from "$lib/api/client.js";
 
 	const instances = getInstances();
 	const scene = getSceneStore();
 
 	let version = $state("");
 	let commit = $state("");
+	let changelog = $state<ChangelogEntry[]>([]);
+	let showChangelog = $state(false);
 
 	onMount(async () => {
 		scene.enterHome();
@@ -18,6 +20,7 @@
 			version = meta.version;
 			commit = meta.commit;
 		} catch {}
+		fetchChangelog().then(c => changelog = c).catch(() => {});
 	});
 
 	// Keep scene instances in sync
@@ -135,10 +138,30 @@
 	</div>
 
 	{#if version && uiVisible}
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="version" onclick={() => navigator.clipboard.writeText(`v${version}${commit && commit !== "dev" ? ` (${commit})` : ""}`)}>
+		<button class="version" onclick={() => showChangelog = !showChangelog}>
 			v{version}{commit && commit !== "dev" ? ` · ${commit.slice(0, 7)}` : ""}
+			{#if changelog.length > 0}
+				<span class="version-dot"></span>
+			{/if}
+		</button>
+	{/if}
+
+	{#if showChangelog && uiVisible}
+		<div class="changelog-panel">
+			<div class="changelog-header">
+				<span class="changelog-title">what's new</span>
+				<button class="changelog-close" onclick={() => showChangelog = false}>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg>
+				</button>
+			</div>
+			<div class="changelog-scroll">
+				{#each changelog.slice(0, 5) as entry}
+					<div class="changelog-entry">
+						<div class="changelog-version">{entry.version}</div>
+						<div class="changelog-body">{@html entry.body.replace(/\n/g, '<br>')}</div>
+					</div>
+				{/each}
+			</div>
 		</div>
 	{/if}
 </div>
@@ -329,7 +352,69 @@
 		position: fixed; bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
 		left: 0; right: 0; text-align: center;
 		font-family: var(--font-body); font-size: 0.68rem; letter-spacing: 0.05em;
-		color: oklch(0.50 0.06 240 / 12%); cursor: pointer; user-select: all; z-index: 100;
+		color: oklch(0.50 0.06 240 / 20%); cursor: pointer; z-index: 100;
 		animation: enter-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; animation-delay: 1s;
+		display: flex; align-items: center; justify-content: center; gap: 0.375rem;
+		pointer-events: auto;
+		background: none; border: none; font: inherit;
+		transition: color 0.2s ease;
+	}
+	.version:hover { color: oklch(0.50 0.06 240 / 40%); }
+	.version-dot {
+		width: 4px; height: 4px; border-radius: 50%;
+		background: oklch(0.78 0.12 75);
+		box-shadow: 0 0 6px oklch(0.78 0.12 75 / 50%);
+	}
+
+	.changelog-panel {
+		position: fixed; bottom: calc(2.5rem + env(safe-area-inset-bottom, 0px));
+		left: 50%; transform: translateX(-50%);
+		width: 380px; max-width: calc(100vw - 2rem); max-height: 50vh;
+		z-index: 200; pointer-events: auto;
+		background: oklch(0.06 0.015 260 / 90%);
+		backdrop-filter: blur(32px) saturate(160%);
+		-webkit-backdrop-filter: blur(32px) saturate(160%);
+		border: 1px solid oklch(1 0 0 / 8%);
+		border-top-color: oklch(1 0 0 / 14%);
+		border-radius: 1rem;
+		box-shadow: 0 8px 40px oklch(0 0 0 / 40%);
+		animation: changelog-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+		display: flex; flex-direction: column;
+	}
+	@keyframes changelog-in {
+		from { opacity: 0; transform: translateX(-50%) translateY(12px) scale(0.96); }
+		to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+	}
+
+	.changelog-header {
+		display: flex; align-items: center; justify-content: space-between;
+		padding: 0.875rem 1rem 0.5rem;
+		border-bottom: 1px solid oklch(1 0 0 / 6%);
+	}
+	.changelog-title {
+		font-family: var(--font-display); font-style: italic;
+		font-size: 0.9rem; color: oklch(0.88 0.02 75 / 70%);
+	}
+	.changelog-close {
+		color: oklch(1 0 0 / 30%); cursor: pointer;
+		background: none; border: none; padding: 0.25rem;
+		transition: color 0.2s ease;
+	}
+	.changelog-close:hover { color: oklch(1 0 0 / 60%); }
+
+	.changelog-scroll {
+		overflow-y: auto; padding: 0.75rem 1rem; display: flex;
+		flex-direction: column; gap: 0.75rem;
+	}
+	.changelog-entry {
+		padding: 0.625rem 0.75rem; border-radius: 0.5rem;
+		background: oklch(1 0 0 / 3%); border: 1px solid oklch(1 0 0 / 5%);
+	}
+	.changelog-version {
+		font-family: var(--font-mono); font-size: 0.68rem;
+		color: oklch(0.78 0.12 75 / 70%); margin-bottom: 0.25rem; letter-spacing: 0.03em;
+	}
+	.changelog-body {
+		font-size: 0.75rem; line-height: 1.55; color: oklch(0.88 0.02 75 / 45%);
 	}
 </style>
