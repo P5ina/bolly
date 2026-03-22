@@ -36,6 +36,9 @@
 	};
 
 	const transitions: AnimTransition[] = [
+		// idle → onboarding (when entering onboarding mode)
+		{ from: 'idle', to: 'onboarding', condition: () => store.mode === 'onboarding' },
+
 		// onboarding → idle (when clip ends)
 		{ from: 'onboarding', to: 'idle', onEnd: true },
 
@@ -67,6 +70,7 @@
 	// Check condition-based transitions every frame (via effect)
 	$effect(() => {
 		const _ = store.thinking; // track dependency
+		const __ = store.mode; // track mode changes
 		for (const t of transitions) {
 			if (t.from === currentState && t.condition && !t.onEnd) {
 				if (t.condition()) {
