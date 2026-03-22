@@ -238,7 +238,7 @@
 			}
 
 			// Thinking videos are 16:9, idle are square — compensate size
-			const wideVideo = currentState === 'thinking' || currentState === 'to-thinking' || currentState === 'to-idle';
+			const wideVideo = currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle';
 			if (wideVideo) ts *= 1.8;
 			const formatChanged = wideVideo !== lastWideVideo;
 
@@ -258,7 +258,7 @@
 		}
 
 		orbs = newOrbs;
-		lastWideVideo = currentState === 'thinking' || currentState === 'to-thinking' || currentState === 'to-idle';
+		lastWideVideo = currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle';
 
 		if (m !== lastMode) {
 			lastMode = m;
@@ -324,7 +324,7 @@
 					autoplay muted playsinline
 					loop={isLooping}
 					class="orb-vid"
-					class:no-mask={currentState === 'thinking' || currentState === 'to-thinking' || currentState === 'to-idle'}
+					class:no-mask={currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle'}
 					src={videoSrc}
 					onended={handleVideoEnded}
 					onloadeddata={(e) => { const v = e.target as HTMLVideoElement; v.play().catch(() => {}); }}
