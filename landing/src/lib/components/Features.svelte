@@ -115,7 +115,7 @@
 
 <style>
 	.features {
-		height: 1200vh;
+		height: 2400vh;
 		position: relative;
 	}
 
