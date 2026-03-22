@@ -8,14 +8,21 @@
 	onMount(() => {
 		if (!sectionEl || !videoEl) return;
 
+		let ticking = false;
 		function onScroll() {
-			if (!sectionEl || !videoEl) return;
-			const rect = sectionEl.getBoundingClientRect();
-			const h = sectionEl.offsetHeight - window.innerHeight;
-			const p = Math.max(0, Math.min(1, -rect.top / h));
-			progress = p;
-			if (videoEl.duration) {
-				videoEl.currentTime = p * videoEl.duration;
+			if (!ticking) {
+				requestAnimationFrame(() => {
+					if (!sectionEl || !videoEl) return;
+					const rect = sectionEl.getBoundingClientRect();
+					const h = sectionEl.offsetHeight - window.innerHeight;
+					const p = Math.max(0, Math.min(1, -rect.top / h));
+					progress = p;
+					if (videoEl.duration) {
+						videoEl.currentTime = p * videoEl.duration;
+					}
+					ticking = false;
+				});
+				ticking = true;
 			}
 		}
 
