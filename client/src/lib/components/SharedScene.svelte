@@ -374,27 +374,20 @@
 					onended={handleVideoEnded}
 				></video>
 			</button>
-			<!-- Memory clouds floating above orb -->
-			{#if orb.slug === store.selectedSlug && store.recalledMemories.length > 0}
-				<div class="memory-clouds" style="left: {orb.x}%; top: {orb.y}%; transform: translate(-50%, -50%);">
-					{#each store.recalledMemories as mem, i}
-						<div
-							class="memory-cloud"
-							style="
-								--delay: {i * 150 + 100}ms;
-								--drift-x: {(i % 2 === 0 ? -1 : 1) * (15 + i * 10)}px;
-								--drift-y: {-30 - i * 18}px;
-								--float-dur: {3.5 + i * 0.4}s;
-							"
-						>
-							{mem.path.split('/').pop()?.replace('.md', '')}
-						</div>
-					{/each}
-				</div>
-			{/if}
 		{/if}
 	{/each}
 </div>
+
+<!-- Memory clouds — fixed position, always visible above everything -->
+{#if store.recalledMemories.length > 0 && store.mode === 'chat'}
+	<div class="memory-clouds-fixed">
+		{#each store.recalledMemories as mem, i}
+			<div class="memory-cloud" style="animation-delay: {i * 120 + 50}ms;">
+				{mem.path.split('/').pop()?.replace('.md', '')}
+			</div>
+		{/each}
+	</div>
+{/if}
 
 <style>
 	.scene-root {
@@ -439,40 +432,38 @@
 		-webkit-mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 48%);
 	}
 
-	/* ── Memory clouds ── */
-	.memory-clouds {
-		position: absolute;
-		z-index: 20;
-		pointer-events: none;
+	/* ── Memory clouds (fixed) ── */
+	.memory-clouds-fixed {
+		position: fixed;
+		top: 4rem;
+		right: 1.5rem;
+		z-index: 50;
 		display: flex;
 		flex-direction: column;
-		align-items: center;
-		gap: 0.5rem;
+		align-items: flex-end;
+		gap: 0.375rem;
+		pointer-events: none;
 	}
 
 	.memory-cloud {
-		padding: 0.25rem 0.7rem;
+		padding: 0.3rem 0.75rem;
 		border-radius: 1rem;
 		background: oklch(0.78 0.12 75 / 6%);
-		backdrop-filter: blur(12px) saturate(140%);
-		-webkit-backdrop-filter: blur(12px) saturate(140%);
-		border: 1px solid oklch(0.78 0.12 75 / 12%);
-		box-shadow: 0 2px 12px oklch(0 0 0 / 15%), 0 0 20px oklch(0.78 0.12 75 / 4%);
+		backdrop-filter: blur(16px) saturate(150%);
+		-webkit-backdrop-filter: blur(16px) saturate(150%);
+		border: 1px solid oklch(0.78 0.12 75 / 10%);
 		white-space: nowrap;
 		font-family: var(--font-display);
 		font-style: italic;
 		font-size: 0.72rem;
-		color: oklch(0.78 0.12 75 / 65%);
+		color: oklch(0.78 0.12 75 / 55%);
 		opacity: 0;
-		animation: cloud-rise var(--float-dur) cubic-bezier(0.16, 1, 0.3, 1) both;
-		animation-delay: var(--delay);
+		animation: cloud-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 	}
 
-	@keyframes cloud-rise {
-		0% { opacity: 0; transform: translateY(30px) scale(0.7); filter: blur(4px); }
-		15% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
-		85% { opacity: 0.8; transform: translate(var(--drift-x), var(--drift-y)) scale(0.95); }
-		100% { opacity: 0; transform: translate(var(--drift-x), calc(var(--drift-y) - 20px)) scale(0.85); filter: blur(3px); }
+	@keyframes cloud-in {
+		from { opacity: 0; transform: translateX(12px) scale(0.9); }
+		to { opacity: 1; transform: translateX(0) scale(1); }
 	}
 
 	.orb-vid.no-mask {
