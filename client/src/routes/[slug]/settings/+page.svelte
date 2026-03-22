@@ -601,25 +601,32 @@
 
 	<div class="settings-grid">
 
-	<div class="update-section">
-		<div class="update-row">
-			<span class="update-current">v{updateInfo?.current?.replace('v','') ?? '...'}</span>
-			<button
-				class="check-update-btn"
-				disabled={checkingUpdate}
-				onclick={async () => {
-					checkingUpdate = true;
-					try {
-						updateInfo = await checkUpdate();
-					} catch {}
-					checkingUpdate = false;
-				}}
-			>
-				{checkingUpdate ? 'checking...' : 'check for updates'}
-			</button>
+	<section class="settings-section">
+		<div class="section-header">
+			<div class="section-icon">
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M12 5v14M5 12l7 7 7-7"/>
+				</svg>
+			</div>
+			<div>
+				<h3 class="section-label">updates</h3>
+				<p class="section-desc">
+					v{updateInfo?.current?.replace('v','') ?? '...'} ·
+					<button
+						class="check-update-btn"
+						disabled={checkingUpdate}
+						onclick={async () => {
+							checkingUpdate = true;
+							try { updateInfo = await checkUpdate(); } catch {}
+							checkingUpdate = false;
+						}}
+					>{checkingUpdate ? 'checking...' : 'check now'}</button>
+				</p>
+			</div>
 			<select
 				class="channel-select"
 				value={channel}
+				style="margin-left: auto;"
 				onchange={async (e) => {
 					const val = (e.target as HTMLSelectElement).value;
 					channel = val;
@@ -693,7 +700,7 @@
 				</div>
 			</div>
 		{/if}
-	</div>
+	</section>
 
 	<!-- Usage -->
 	{#if usage && (usage.tokens_4h_limit > 0 || usage.tokens_week_limit > 0 || usage.tokens_month_limit > 0)}
@@ -1428,34 +1435,19 @@
 		}
 	}
 
-	.update-section {
-		margin-bottom: 1.5rem;
-	}
-	.update-row {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.75rem;
-	}
-	.update-current {
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: oklch(0.55 0.08 240 / 30%);
-	}
 	.check-update-btn {
 		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		padding: 0.2rem 0.6rem;
-		border-radius: 0.25rem;
-		background: oklch(1 0 0 / 4%);
-		border: 1px solid oklch(1 0 0 / 8%);
-		color: oklch(0.88 0.02 75 / 60%);
+		font-size: inherit;
+		color: oklch(0.78 0.12 75 / 70%);
 		cursor: pointer;
-		transition: all 0.2s ease;
+		background: none;
+		border: none;
+		padding: 0;
+		text-decoration: underline;
+		text-underline-offset: 2px;
 	}
 	.check-update-btn:hover {
-		border-color: oklch(1 0 0 / 15%);
-		color: oklch(0.88 0.02 75 / 80%);
+		color: oklch(0.78 0.12 75);
 	}
 	.check-update-btn:disabled {
 		opacity: 0.4;
