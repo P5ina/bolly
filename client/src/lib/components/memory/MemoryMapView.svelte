@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { fetchMemory, fetchMemoryContent, searchMemory, getAuthToken, type MemorySearchResult } from "$lib/api/client.js";
-	import { Play, Music, FileText } from "lucide-svelte";
+	import { Play, Music, FileText } from "@lucide/svelte";
 	import type { MemoryEntry } from "$lib/api/types.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 
