@@ -115,7 +115,7 @@
 
 <style>
 	.features {
-		height: 400vh;
+		height: 1200vh;
 		position: relative;
 	}
 
@@ -130,19 +130,18 @@
 	}
 
 	.features-content {
-		display: flex;
-		align-items: center;
-		gap: 4rem;
-		max-width: 1100px;
+		position: relative;
 		width: 100%;
-		padding: 0 2rem;
+		height: 100%;
 	}
 
 	/* ── Text side ── */
 	.features-text {
-		flex: 0.8;
-		position: relative;
-		min-height: 200px;
+		position: absolute;
+		bottom: 4rem;
+		left: 4rem;
+		z-index: 3;
+		max-width: 480px;
 	}
 
 	.feature-item {
@@ -202,30 +201,11 @@
 		transform: scale(1.3);
 	}
 
-	/* ── Image side ── */
+	/* ── Visual — fullscreen ── */
 	.features-visual {
-		flex: 1.2;
-		position: relative;
-		aspect-ratio: 16 / 9;
-		border-radius: 1.25rem;
-		overflow: hidden;
-		border: 1px solid var(--glass-border);
-		border-top-color: var(--glass-border-top);
-		box-shadow:
-			0 8px 40px oklch(0 0 0 / 25%),
-			0 0 0 1px oklch(1 0 0 / 3%);
-	}
-
-	.features-visual::before {
-		content: '';
 		position: absolute;
-		top: 0;
-		left: 8%;
-		right: 8%;
-		height: 1px;
-		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 18%), transparent);
-		pointer-events: none;
-		z-index: 2;
+		inset: 0;
+		z-index: 1;
 	}
 
 	.feature-image {
@@ -236,7 +216,7 @@
 		object-fit: cover;
 		opacity: 0;
 		scale: 1.05;
-		transition: opacity 0.6s ease, scale 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+		transition: opacity 0.8s ease, scale 0.8s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	.feature-image-active {
@@ -244,32 +224,35 @@
 		scale: 1;
 	}
 
+	/* Dark gradient overlay for text readability */
+	.features-visual::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(
+			to top,
+			oklch(0.02 0.01 260 / 90%) 0%,
+			oklch(0.02 0.01 260 / 40%) 40%,
+			transparent 70%
+		);
+		z-index: 2;
+		pointer-events: none;
+	}
+
 	/* ── Mobile ── */
 	@media (max-width: 768px) {
 		.features {
-			height: 300vh;
-		}
-
-		.features-content {
-			flex-direction: column;
-			gap: 2rem;
-			padding: 0 1.25rem;
-		}
-
-		.features-visual {
-			width: 100%;
+			height: 800vh;
 		}
 
 		.features-text {
-			text-align: center;
+			left: 1.5rem;
+			right: 1.5rem;
+			bottom: 2.5rem;
 		}
 
-		.feature-desc {
-			margin: 0 auto;
-		}
-
-		.feature-dots {
-			justify-content: center;
+		.feature-title {
+			font-size: 1.5rem;
 		}
 	}
 </style>
