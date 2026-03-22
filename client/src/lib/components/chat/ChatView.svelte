@@ -777,19 +777,22 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		</div>
 	</header>
 
-	<!-- Memory recall ambient strip -->
+	<!-- Memory recall — floating thought bubbles -->
 	{#if recalledMemories.length > 0}
-		<div class="memory-recall">
-			<div class="memory-recall-inner">
-				<span class="memory-recall-label">remembering</span>
-				<div class="memory-recall-items">
-					{#each recalledMemories as mem, i}
-						<div class="memory-recall-item" style="animation-delay: {i * 80}ms">
-							<span class="memory-recall-path">{mem.path.split('/').pop()?.replace('.md', '')}</span>
-						</div>
-					{/each}
+		<div class="memory-clouds">
+			{#each recalledMemories as mem, i}
+				<div
+					class="memory-cloud"
+					style="
+						--delay: {i * 150 + 100}ms;
+						--drift-x: {(i % 2 === 0 ? -1 : 1) * (12 + i * 8)}px;
+						--drift-y: {-20 - i * 15}px;
+						--float-dur: {3 + i * 0.5}s;
+					"
+				>
+					<span class="memory-cloud-text">{mem.path.split('/').pop()?.replace('.md', '')}</span>
 				</div>
-			</div>
+			{/each}
 		</div>
 	{/if}
 
@@ -1006,56 +1009,72 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		}
 	}
 
-	/* ── Memory recall strip ── */
-	.memory-recall {
-		padding: 0 1.5rem;
-		animation: recall-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-	}
-
-	@keyframes recall-in {
-		from { opacity: 0; transform: translateY(-8px); }
-		to { opacity: 1; transform: translateY(0); }
-	}
-
-	.memory-recall-inner {
+	/* ── Memory recall — floating thought clouds ── */
+	.memory-clouds {
+		position: fixed;
+		right: calc(50% + 320px + (100% - 50% - 320px) / 2);
+		top: 40%;
+		transform: translate(50%, -50%);
+		z-index: 15;
+		pointer-events: none;
 		display: flex;
+		flex-direction: column;
 		align-items: center;
-		gap: 0.625rem;
-		padding: 0.375rem 0.75rem;
-		border-radius: 2rem;
-		background: oklch(0.78 0.12 75 / 4%);
-		border: 1px solid oklch(0.78 0.12 75 / 8%);
+		gap: 0.5rem;
 	}
 
-	.memory-recall-label {
-		font-family: var(--font-mono);
-		font-size: 0.65rem;
-		letter-spacing: 0.06em;
-		color: oklch(0.78 0.12 75 / 40%);
-		flex-shrink: 0;
-	}
-
-	.memory-recall-items {
-		display: flex;
-		gap: 0.375rem;
-		overflow: hidden;
-		flex-wrap: nowrap;
-	}
-
-	.memory-recall-item {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		color: oklch(0.78 0.12 75 / 60%);
-		padding: 0.125rem 0.5rem;
+	.memory-cloud {
+		padding: 0.3rem 0.75rem;
 		border-radius: 1rem;
 		background: oklch(0.78 0.12 75 / 6%);
+		backdrop-filter: blur(12px) saturate(140%);
+		-webkit-backdrop-filter: blur(12px) saturate(140%);
+		border: 1px solid oklch(0.78 0.12 75 / 12%);
+		box-shadow:
+			0 2px 12px oklch(0 0 0 / 15%),
+			0 0 20px oklch(0.78 0.12 75 / 4%);
 		white-space: nowrap;
-		animation: recall-item-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+		opacity: 0;
+		animation: cloud-rise var(--float-dur) cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: var(--delay);
 	}
 
-	@keyframes recall-item-in {
-		from { opacity: 0; transform: scale(0.8); }
-		to { opacity: 1; transform: scale(1); }
+	@keyframes cloud-rise {
+		0% {
+			opacity: 0;
+			transform: translateY(30px) scale(0.7);
+			filter: blur(4px);
+		}
+		15% {
+			opacity: 1;
+			transform: translateY(0) scale(1);
+			filter: blur(0);
+		}
+		85% {
+			opacity: 0.8;
+			transform: translate(var(--drift-x), var(--drift-y)) scale(0.95);
+			filter: blur(0);
+		}
+		100% {
+			opacity: 0;
+			transform: translate(var(--drift-x), calc(var(--drift-y) - 20px)) scale(0.85);
+			filter: blur(3px);
+		}
+	}
+
+	.memory-cloud-text {
+		font-family: var(--font-display);
+		font-style: italic;
+		font-size: 0.72rem;
+		color: oklch(0.78 0.12 75 / 65%);
+		letter-spacing: 0.01em;
+	}
+
+	@media (max-width: 640px) {
+		.memory-clouds {
+			right: 50%;
+			top: 35%;
+		}
 	}
 
 	/* --- bar --- */
