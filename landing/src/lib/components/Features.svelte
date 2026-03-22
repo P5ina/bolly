@@ -6,6 +6,7 @@
 			title: 'feels your mood',
 			desc: "Notices when you're stressed, tired, or excited — not because you said so, but from how you write.",
 			image: '/assets/feature-mood.webp',
+			video: '/assets/feature-mood.mp4',
 		},
 		{
 			title: 'remembers everything',
