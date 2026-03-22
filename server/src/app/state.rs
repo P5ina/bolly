@@ -47,17 +47,23 @@ impl AppState {
         let (events, _) = broadcast::channel(4096);
         let llm = LlmBackend::from_config(&config);
 
-        // Auto-add fal-ai MCP server if FAL_KEY is set and not already configured
+        // Auto-configure fal-ai MCP server if FAL_KEY is set
         if let Ok(fal_key) = std::env::var("FAL_KEY") {
-            if !fal_key.is_empty() && !config.mcp_servers.iter().any(|s| s.name == "fal-ai") {
-                config.mcp_servers.push(crate::config::McpServerConfig {
-                    name: "fal-ai".to_string(),
-                    url: Some("https://mcp.fal.ai/mcp".to_string()),
-                    command: None,
-                    headers: [("Authorization".to_string(), format!("Bearer {fal_key}"))]
-                        .into_iter().collect(),
-                });
-                log::info!("MCP: auto-added fal-ai (FAL_KEY present)");
+            if !fal_key.is_empty() {
+                let auth_value = format!("Bearer {fal_key}");
+                if let Some(existing) = config.mcp_servers.iter_mut().find(|s| s.name == "fal-ai") {
+                    // Ensure auth header is up to date
+                    existing.headers.insert("Authorization".to_string(), auth_value);
+                } else {
+                    config.mcp_servers.push(crate::config::McpServerConfig {
+                        name: "fal-ai".to_string(),
+                        url: Some("https://mcp.fal.ai/mcp".to_string()),
+                        command: None,
+                        headers: [("Authorization".to_string(), auth_value)]
+                            .into_iter().collect(),
+                    });
+                    log::info!("MCP: auto-added fal-ai (FAL_KEY present)");
+                }
             }
         }
 
