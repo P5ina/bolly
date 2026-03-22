@@ -348,7 +348,14 @@ export function createSceneStore(): SceneStore {
 		},
 
 		setInstances(list) { instances = list; },
-		setMusicEnabled(v) { musicEnabled = v; if (!v) stopAudio(); },
+		setMusicEnabled(v) {
+			musicEnabled = v;
+			if (!v) {
+				stopAudio();
+			} else if (mode === "chat") {
+				startChatAudio();
+			}
+		},
 
 		selectInstance(slug: string) {
 			if (mode !== "home") return;
