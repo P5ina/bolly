@@ -1180,12 +1180,14 @@
 				<div class="loading-dot" style="margin-left:auto"></div>
 			{:else}
 				<button
-					class="music-toggle"
-					class:music-toggle-on={musicEnabledVal}
+					class="switch"
+					class:switch-on={musicEnabledVal}
 					disabled={musicSaving}
 					onclick={toggleMusic}
+					role="switch"
+					aria-checked={musicEnabledVal}
 				>
-					{musicEnabledVal ? "on" : "off"}
+					<span class="switch-thumb"></span>
 				</button>
 			{/if}
 		</div>
@@ -2145,33 +2147,41 @@
 		color: oklch(0.78 0.10 200 / 60%);
 	}
 
-	.music-toggle {
+	.switch {
 		margin-left: auto;
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		letter-spacing: 0.04em;
-		padding: 0.3rem 0.75rem;
-		border-radius: 0.5rem;
-		border: 1px solid oklch(1 0 0 / 8%);
-		background: oklch(1 0 0 / 3%);
-		color: oklch(0.65 0.04 240 / 50%);
+		position: relative;
+		width: 2.5rem;
+		height: 1.375rem;
+		border-radius: 9999px;
+		border: 1px solid oklch(1 0 0 / 10%);
+		background: oklch(1 0 0 / 6%);
 		cursor: pointer;
 		transition: all 0.2s ease;
+		padding: 0;
+		flex-shrink: 0;
 	}
-	.music-toggle:hover {
-		border-color: oklch(1 0 0 / 15%);
-		color: oklch(0.80 0.04 240 / 75%);
+	.switch-thumb {
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: 1rem;
+		height: 1rem;
+		border-radius: 9999px;
+		background: oklch(0.55 0.02 240);
+		transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 	}
-	.music-toggle-on {
-		border-color: oklch(0.78 0.10 200 / 25%);
-		background: oklch(0.78 0.10 200 / 8%);
-		color: oklch(0.78 0.10 200 / 70%);
+	.switch-on {
+		background: oklch(0.78 0.12 75 / 20%);
+		border-color: oklch(0.78 0.12 75 / 30%);
 	}
-	.music-toggle-on:hover {
-		border-color: oklch(0.78 0.10 200 / 40%);
-		color: oklch(0.78 0.10 200 / 85%);
+	.switch-on .switch-thumb {
+		left: calc(100% - 1rem - 2px);
+		background: oklch(0.78 0.12 75);
 	}
-	.music-toggle:disabled {
+	.switch:hover {
+		border-color: oklch(1 0 0 / 18%);
+	}
+	.switch:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
 	}
