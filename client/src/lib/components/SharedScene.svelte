@@ -115,7 +115,10 @@
 		for (const [id, el] of Object.entries(videoRefs)) {
 			if (id === active) {
 				el.currentTime = 0;
-				el.play().catch(() => {});
+				el.play().catch(() => {
+					// Retry after a short delay if play fails
+					setTimeout(() => el.play().catch(() => {}), 100);
+				});
 			} else {
 				el.pause();
 			}
@@ -281,6 +284,12 @@
 
 		orbs = newOrbs;
 		lastWideVideo = currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle';
+
+		// Keep active video playing (browser may suspend it)
+		const activeEl = videoRefs[currentState];
+		if (activeEl && activeEl.paused && activeEl.readyState >= 2) {
+			activeEl.play().catch(() => {});
+		}
 
 		if (m !== lastMode) {
 			lastMode = m;
