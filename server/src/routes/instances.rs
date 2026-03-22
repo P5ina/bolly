@@ -613,8 +613,7 @@ async fn reindex_memory(
 async fn read_memory_file(
     State(state): State<AppState>,
     Path((instance_slug, file_path)): Path<(String, String)>,
-) -> Result<axum::response::Response, StatusCode> {
-    use axum::response::IntoResponse;
+) -> Result<axum::response::Response<axum::body::Body>, StatusCode> {
     // Validate path — prevent traversal
     if file_path.contains("..") || file_path.starts_with('/') {
         return Err(StatusCode::BAD_REQUEST);
@@ -625,9 +624,8 @@ async fn read_memory_file(
         .join("memory")
         .join(&file_path);
 
-    let bytes = fs::read(&full_path).map_err(|_| StatusCode::NOT_FOUND)?;
+    let bytes = tokio::fs::read(&full_path).await.map_err(|_| StatusCode::NOT_FOUND)?;
 
-    // Determine content type from extension
     let content_type = match full_path.extension().and_then(|e| e.to_str()) {
         Some("jpg" | "jpeg") => "image/jpeg",
         Some("png") => "image/png",
@@ -642,10 +640,16 @@ async fn read_memory_file(
         _ => "application/octet-stream",
     };
 
-    Ok((
-        [(axum::http::header::CONTENT_TYPE, content_type)],
-        bytes,
-    ).into_response())
+    let is_media = content_type.starts_with("image/") || content_type.starts_with("video/") || content_type.starts_with("audio/");
+    let filename = full_path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    let disposition = if is_media { "inline" } else { "attachment" };
+
+    axum::response::Response::builder()
+        .header(axum::http::header::CONTENT_TYPE, content_type)
+        .header(axum::http::header::CONTENT_DISPOSITION, format!("{disposition}; filename=\"{filename}\""))
+        .header(axum::http::header::CACHE_CONTROL, "public, max-age=86400")
+        .body(axum::body::Body::from(bytes))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 // ---------------------------------------------------------------------------
