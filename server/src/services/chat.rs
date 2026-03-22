@@ -351,15 +351,19 @@ pub async fn run_single_turn(
     // System prompt is fully static (soul, skills, style, integrations).
     // System prompt is fully static (soul, skills, style, integrations).
     // Mood and rhythm changes are recorded as messages in rig_history.
-    let mut system_static = system_prompt;
+    // System prompt split into two blocks for Anthropic prompt caching:
+    // Block 1 (stable): soul + skills + tools + integrations + style — cached across turns
+    // Block 2 (semi-stable): memory catalog — cached until memory changes
+    let system_stable = system_prompt;
 
-    // Memory catalog — compact list of file paths so the agent knows what it remembers.
-    let memory_catalog = memory::load_catalog_snapshot(workspace_dir, &instance_slug);
-    if !memory_catalog.is_empty() {
-        system_static.push_str(&format!("\n\n{memory_catalog}{MEMORY_FOOTER}"));
-    } else {
-        system_static.push_str(&format!("\n\n## memory\nyour memory library is empty.{MEMORY_FOOTER}"));
-    }
+    let memory_block = {
+        let memory_catalog = memory::load_catalog_snapshot(workspace_dir, &instance_slug);
+        if !memory_catalog.is_empty() {
+            format!("{memory_catalog}{MEMORY_FOOTER}")
+        } else {
+            format!("## memory\nyour memory library is empty.{MEMORY_FOOTER}")
+        }
+    };
 
     if loaded_entries.is_empty() {
         return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
@@ -369,7 +373,47 @@ pub async fn run_single_turn(
     let last_user = existing.iter().rev()
         .find(|m| m.role == ChatRole::User)
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "no user message to process"))?;
-    let prompt_msg = llm::build_multimodal_prompt(&last_user.content, workspace_dir, &instance_slug, pdf_strategy);
+    let mut prompt_msg = llm::build_multimodal_prompt(&last_user.content, workspace_dir, &instance_slug, pdf_strategy);
+
+    // ── RAG: auto-inject relevant memories into the prompt ──
+    if !google_ai_key.is_empty() && !last_user_content.is_empty() {
+        match crate::services::embedding::embed_text(
+            google_ai_key,
+            last_user_content,
+            crate::services::embedding::TaskType::RetrievalQuery,
+        ).await {
+            Ok(query_vec) => {
+                match vector_store.search(&instance_slug, query_vec, 5).await {
+                    Ok(results) => {
+                        let relevant: Vec<_> = results.into_iter().filter(|r| r.score > 0.3).collect();
+                        if !relevant.is_empty() {
+                            let mut context = String::from("\n\n[context]\nrecalled from memory:\n");
+                            for r in &relevant {
+                                context.push_str(&format!("- {}: {}\n", r.path, r.content_preview.trim()));
+                            }
+                            // Append to last text block in prompt
+                            if let llm::Message::User { ref mut content } = prompt_msg {
+                                let mut appended = false;
+                                for block in content.iter_mut() {
+                                    if let llm::ContentBlock::Text { text } = block {
+                                        text.push_str(&context);
+                                        appended = true;
+                                        break;
+                                    }
+                                }
+                                if !appended {
+                                    content.push(llm::ContentBlock::text(context));
+                                }
+                            }
+                            log::info!("[rag] injected {} memories into prompt", relevant.len());
+                        }
+                    }
+                    Err(e) => log::debug!("[rag] vector search skipped: {e}"),
+                }
+            }
+            Err(e) => log::debug!("[rag] embed skipped: {e}"),
+        }
+    }
 
     // Extract Messages from entries, stripping [context] blocks and excluding the last user message
     // (which becomes the prompt).
@@ -404,7 +448,7 @@ pub async fn run_single_turn(
         "context: model={} history_msgs={} system_prompt_len={}",
         llm.model_name(),
         history_msgs.len(),
-        system_static.len(),
+        system_stable.len(),
     );
 
     let sent_files = tools::SentFiles::default();
@@ -487,9 +531,9 @@ pub async fn run_single_turn(
 
     log::info!(
         "[chat] sending: system_prompt={} chars, tools={}, history_msgs={}",
-        system_static.len(), all_tools.len(), history_msgs.len()
+        system_stable.len(), all_tools.len(), history_msgs.len()
     );
-    let system_blocks: Vec<&str> = vec![&system_static];
+    let system_blocks: Vec<&str> = vec![&system_stable, &memory_block];
     let tool_result = llm
         .chat_with_tools_streaming(
             &system_blocks, prompt_msg, history_msgs, all_tools,
@@ -631,7 +675,8 @@ pub async fn run_single_turn(
     let estimated_tokens = if tool_result.tokens_used > 0 {
         tool_result.tokens_used as i32
     } else {
-        let input_tokens = estimate_tokens(&system_static)
+        let input_tokens = estimate_tokens(&system_stable)
+            + estimate_tokens(&memory_block)
             + estimate_tokens_from_chars(history_text_chars);
         let output_tokens: usize = assistant_messages.iter()
             .map(|m| estimate_tokens(&m.content))

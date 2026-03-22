@@ -883,11 +883,15 @@ fn build_anthropic_request(
     stream: bool,
     api_key: &str,
 ) -> serde_json::Value {
-    // System blocks — no manual cache_control needed, Anthropic auto-caches
+    // System blocks — each gets cache_control for independent caching
     let system_blocks: Vec<serde_json::Value> = system
         .iter()
         .filter(|s| !s.is_empty())
-        .map(|s| serde_json::json!({"type": "text", "text": *s}))
+        .map(|s| serde_json::json!({
+            "type": "text",
+            "text": *s,
+            "cache_control": {"type": "ephemeral"}
+        }))
         .collect();
 
     // Tool definitions
@@ -975,7 +979,6 @@ fn build_anthropic_request(
     let mut req = serde_json::json!({
         "model": model,
         "max_tokens": max_tokens,
-        "cache_control": {"type": "ephemeral"},
         "system": system_blocks,
         "messages": msgs,
     });
