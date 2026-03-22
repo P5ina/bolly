@@ -613,7 +613,8 @@ async fn reindex_memory(
 async fn read_memory_file(
     State(state): State<AppState>,
     Path((instance_slug, file_path)): Path<(String, String)>,
-) -> Result<String, StatusCode> {
+) -> Result<axum::response::Response, StatusCode> {
+    use axum::response::IntoResponse;
     // Validate path — prevent traversal
     if file_path.contains("..") || file_path.starts_with('/') {
         return Err(StatusCode::BAD_REQUEST);
@@ -623,7 +624,28 @@ async fn read_memory_file(
         .join(&instance_slug)
         .join("memory")
         .join(&file_path);
-    fs::read_to_string(&full_path).map_err(|_| StatusCode::NOT_FOUND)
+
+    let bytes = fs::read(&full_path).map_err(|_| StatusCode::NOT_FOUND)?;
+
+    // Determine content type from extension
+    let content_type = match full_path.extension().and_then(|e| e.to_str()) {
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("png") => "image/png",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("svg") => "image/svg+xml",
+        Some("mp4") => "video/mp4",
+        Some("mp3") => "audio/mpeg",
+        Some("wav") => "audio/wav",
+        Some("pdf") => "application/pdf",
+        Some("md" | "txt") => "text/plain; charset=utf-8",
+        _ => "application/octet-stream",
+    };
+
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, content_type)],
+        bytes,
+    ).into_response())
 }
 
 // ---------------------------------------------------------------------------
