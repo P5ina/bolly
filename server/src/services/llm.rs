@@ -98,9 +98,17 @@ impl ContentBlock {
     }
 
     pub fn tool_result(tool_use_id: String, content: String) -> Self {
+        // ToolDyn blanket impl wraps String output via serde_json::to_string,
+        // which adds JSON quotes: `[...]` becomes `"[...]"`. Unwrap that layer.
+        let inner = if content.starts_with('"') && content.ends_with('"') {
+            serde_json::from_str::<String>(&content).unwrap_or(content)
+        } else {
+            content
+        };
+
         // If content is a JSON array of content blocks, use directly
-        if content.starts_with('[') {
-            if let Ok(blocks) = serde_json::from_str::<serde_json::Value>(&content) {
+        if inner.starts_with('[') {
+            if let Ok(blocks) = serde_json::from_str::<serde_json::Value>(&inner) {
                 if blocks.is_array() {
                     return ContentBlock::ToolResult {
                         tool_use_id,
@@ -112,7 +120,7 @@ impl ContentBlock {
 
         ContentBlock::ToolResult {
             tool_use_id,
-            content: serde_json::Value::String(content),
+            content: serde_json::Value::String(inner),
         }
     }
 
