@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Reveal from './Reveal.svelte';
+	import { onMount } from 'svelte';
 
 	const features = [
 		{
@@ -33,48 +33,158 @@
 			image: '/assets/feature-privacy.webp',
 		},
 	];
+
+	let sectionEl: HTMLElement | undefined = $state();
+	let activeIndex = $state(0);
+	let progress = $state(0);
+
+	onMount(() => {
+		if (!sectionEl) return;
+
+		function onScroll() {
+			if (!sectionEl) return;
+			const rect = sectionEl.getBoundingClientRect();
+			const sectionHeight = sectionEl.offsetHeight - window.innerHeight;
+			const scrolled = -rect.top;
+			const p = Math.max(0, Math.min(1, scrolled / sectionHeight));
+			progress = p;
+			activeIndex = Math.min(features.length - 1, Math.floor(p * features.length));
+		}
+
+		window.addEventListener('scroll', onScroll, { passive: true });
+		onScroll();
+		return () => window.removeEventListener('scroll', onScroll);
+	});
 </script>
 
-<section class="features" id="features">
-	{#each features as f, i}
-		<div class="feature" class:feature-reverse={i % 2 === 1}>
-			<Reveal delay={0}>
-				<div class="feature-image-wrap">
-					<img src={f.image} alt={f.title} class="feature-image" loading="lazy" />
+<section class="features" id="features" bind:this={sectionEl}>
+	<div class="features-sticky">
+		<div class="features-content">
+			<div class="features-text">
+				{#each features as f, i}
+					<div class="feature-item" class:feature-active={i === activeIndex}>
+						<h3 class="feature-title">{f.title}</h3>
+						<p class="feature-desc">{f.desc}</p>
+					</div>
+				{/each}
+
+				<!-- Progress dots -->
+				<div class="feature-dots">
+					{#each features as _, i}
+						<div class="feature-dot" class:feature-dot-active={i === activeIndex}></div>
+					{/each}
 				</div>
-			</Reveal>
-			<Reveal delay={100}>
-				<div class="feature-text">
-					<h3 class="feature-title">{f.title}</h3>
-					<p class="feature-desc">{f.desc}</p>
-				</div>
-			</Reveal>
+			</div>
+
+			<div class="features-visual">
+				{#each features as f, i}
+					<img
+						src={f.image}
+						alt={f.title}
+						class="feature-image"
+						class:feature-image-active={i === activeIndex}
+						loading="lazy"
+					/>
+				{/each}
+			</div>
 		</div>
-	{/each}
+	</div>
 </section>
 
 <style>
 	.features {
-		padding: 4rem 0;
+		height: 400vh;
+		position: relative;
 	}
 
-	.feature {
+	.features-sticky {
+		position: sticky;
+		top: 0;
+		height: 100vh;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+	}
+
+	.features-content {
 		display: flex;
 		align-items: center;
 		gap: 4rem;
 		max-width: 1100px;
-		margin: 0 auto;
-		padding: 5rem 1.5rem;
+		width: 100%;
+		padding: 0 2rem;
 	}
 
-	.feature-reverse {
-		flex-direction: row-reverse;
+	/* ── Text side ── */
+	.features-text {
+		flex: 0.8;
+		position: relative;
+		min-height: 200px;
 	}
 
-	/* ── Image ── */
-	.feature-image-wrap {
+	.feature-item {
+		position: absolute;
+		top: 0;
+		left: 0;
+		opacity: 0;
+		transform: translateY(20px);
+		transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+					transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+		pointer-events: none;
+	}
+
+	.feature-active {
+		opacity: 1;
+		transform: translateY(0);
+		pointer-events: auto;
+		position: relative;
+	}
+
+	.feature-title {
+		font-family: var(--font-display);
+		font-weight: 400;
+		font-style: italic;
+		font-size: clamp(1.75rem, 3.5vw, 2.75rem);
+		line-height: 1.1;
+		letter-spacing: -0.02em;
+		color: var(--color-text);
+		margin-bottom: 1rem;
+	}
+
+	.feature-desc {
+		font-size: 1.0625rem;
+		line-height: 1.7;
+		color: var(--color-text-dim);
+		max-width: 400px;
+	}
+
+	/* ── Dots ── */
+	.feature-dots {
+		display: flex;
+		gap: 0.5rem;
+		margin-top: 2.5rem;
+	}
+
+	.feature-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: oklch(1 0 0 / 12%);
+		transition: all 0.3s ease;
+	}
+
+	.feature-dot-active {
+		background: var(--color-warm);
+		box-shadow: 0 0 8px oklch(0.78 0.12 75 / 40%);
+		transform: scale(1.3);
+	}
+
+	/* ── Image side ── */
+	.features-visual {
 		flex: 1.2;
 		position: relative;
+		aspect-ratio: 16 / 9;
 		border-radius: 1.25rem;
 		overflow: hidden;
 		border: 1px solid var(--glass-border);
@@ -84,7 +194,7 @@
 			0 0 0 1px oklch(1 0 0 / 3%);
 	}
 
-	.feature-image-wrap::before {
+	.features-visual::before {
 		content: '';
 		position: absolute;
 		top: 0;
@@ -97,49 +207,47 @@
 	}
 
 	.feature-image {
-		display: block;
+		position: absolute;
+		inset: 0;
 		width: 100%;
-		border-radius: 1.25rem;
+		height: 100%;
+		object-fit: cover;
+		opacity: 0;
+		scale: 1.05;
+		transition: opacity 0.6s ease, scale 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
-	/* ── Text ── */
-	.feature-text {
-		flex: 0.8;
-	}
-
-	.feature-title {
-		font-family: var(--font-display);
-		font-weight: 400;
-		font-style: italic;
-		font-size: clamp(1.5rem, 3vw, 2.25rem);
-		line-height: 1.15;
-		letter-spacing: -0.02em;
-		color: var(--color-text);
-		margin-bottom: 1rem;
-	}
-
-	.feature-desc {
-		font-size: 1rem;
-		line-height: 1.7;
-		color: var(--color-text-dim);
-		max-width: 420px;
+	.feature-image-active {
+		opacity: 1;
+		scale: 1;
 	}
 
 	/* ── Mobile ── */
 	@media (max-width: 768px) {
-		.feature,
-		.feature-reverse {
-			flex-direction: column;
-			gap: 2rem;
-			padding: 3rem 1.5rem;
+		.features {
+			height: 300vh;
 		}
 
-		.feature-text {
+		.features-content {
+			flex-direction: column;
+			gap: 2rem;
+			padding: 0 1.25rem;
+		}
+
+		.features-visual {
+			width: 100%;
+		}
+
+		.features-text {
 			text-align: center;
 		}
 
 		.feature-desc {
 			margin: 0 auto;
+		}
+
+		.feature-dots {
+			justify-content: center;
 		}
 	}
 </style>

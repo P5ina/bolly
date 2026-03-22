@@ -1,6 +1,10 @@
-import { ANTHROPIC_API_KEY, BOLLY_IMAGE, BOLLY_RELEASE_TOKEN, BRAVE_SEARCH_API_KEY, ELEVENLABS_API_KEY, FLY_API_TOKEN, FLY_ORG, FLY_REGION, FLY_REGISTRY_APP, GOOGLE_AI_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OPENAI_API_KEY, OPENROUTER_API_KEY, ORIGIN } from '$env/static/private';
+import { ANTHROPIC_API_KEY, BOLLY_RELEASE_TOKEN, BRAVE_SEARCH_API_KEY, ELEVENLABS_API_KEY, FLY_API_TOKEN, GOOGLE_AI_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OPENAI_API_KEY, OPENROUTER_API_KEY, ORIGIN } from '$env/static/private';
 
 const FLY_API = 'https://api.machines.dev/v1';
+const FLY_REGISTRY_APP = 'bolly';
+const FLY_ORG = 'personal';
+const FLY_REGION = 'iad';
+const BOLLY_IMAGE = 'registry.fly.io/bolly:latest';
 
 /** Platform API keys that get pushed to non-BYOK machines. */
 export function platformApiKeys(): Record<string, string> {
