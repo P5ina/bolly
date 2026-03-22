@@ -64,7 +64,9 @@ impl Tool for MemoryWriteTool {
             name: "memory_write".into(),
             description: "Create or update a memory file. Organize by folder (about/, preferences/, moments/, etc). \
                 Files in pinned/ are always loaded into your context — use for triggers, rituals, critical references. \
-                Can also save images: set image_upload_id to the upload ID and path to where you want it (e.g. moments/sunset.jpg).".into(),
+                Can also save uploaded files: set image_upload_id to the upload ID and path with the right extension. \
+                Supported: images (.jpg .png .webp .gif), documents (.pdf), video (.mp4 .mov), audio (.mp3 .wav). \
+                Example: documents/schedule.pdf, moments/sunset.jpg, recordings/voice-note.mp3".into(),
             parameters: openai_schema::<MemoryWriteArgs>(),
         }
     }
@@ -72,7 +74,7 @@ impl Tool for MemoryWriteTool {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         // Image save mode
         if let Some(upload_id) = &args.image_upload_id {
-            let clean_path = sanitize_image_path(&args.path);
+            let clean_path = sanitize_media_path(&args.path);
             if clean_path.is_empty() {
                 return Err(ToolExecError("invalid image path".into()));
             }
@@ -95,10 +97,22 @@ impl Tool for MemoryWriteTool {
             }
             fs::copy(&src, &dst).map_err(|e| ToolExecError(e.to_string()))?;
 
-            // Embed image into vector store
+            // Embed file into vector store
             if let Ok(bytes) = fs::read(&dst) {
                 if bytes.len() < 20 * 1024 * 1024 {
-                    match crate::services::embedding::embed_image(&self.google_ai_key, &bytes, mime_type).await {
+                    let is_image = mime_type.starts_with("image/");
+                    let source_type = if is_image { "media_image" }
+                        else if mime_type.starts_with("video/") { "media_video" }
+                        else if mime_type.starts_with("audio/") { "media_audio" }
+                        else { "media_document" };
+
+                    let embed_result = if is_image {
+                        crate::services::embedding::embed_image(&self.google_ai_key, &bytes, mime_type).await
+                    } else {
+                        crate::services::embedding::embed_media(&self.google_ai_key, &bytes, mime_type).await
+                    };
+
+                    match embed_result {
                         Ok(vec) => {
                             let desc = if args.content.is_empty() {
                                 clean_path.clone()
@@ -106,13 +120,13 @@ impl Tool for MemoryWriteTool {
                                 args.content.clone()
                             };
                             if let Err(e) = self.vector_store.upsert_media(
-                                &self.instance_slug, &clean_path, "media_image",
+                                &self.instance_slug, &clean_path, source_type,
                                 mime_type, &clean_path, &desc, vec,
                             ).await {
-                                log::warn!("[memory_write] vector upsert failed for image: {e}");
+                                log::warn!("[memory_write] vector upsert failed: {e}");
                             }
                         }
-                        Err(e) => log::warn!("[memory_write] embed image failed: {e}"),
+                        Err(e) => log::warn!("[memory_write] embed failed: {e}"),
                     }
                 }
             }
@@ -534,7 +548,20 @@ fn sanitize_path(path: &str) -> String {
 }
 
 /// Sanitize path for image files — allows image extensions instead of forcing .md.
-fn sanitize_image_path(path: &str) -> String {
+/// Allowed file extensions for memory storage.
+/// Matches Gemini Embedding 2 supported formats + common web formats.
+const ALLOWED_MEDIA_EXTS: &[&str] = &[
+    // Images (Gemini: PNG, JPEG; also allow web formats)
+    ".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg",
+    // Documents (Gemini: PDF)
+    ".pdf",
+    // Video (Gemini: MP4, MOV with H264/H265/AV1/VP9)
+    ".mp4", ".mov",
+    // Audio (Gemini: MP3, WAV)
+    ".mp3", ".wav",
+];
+
+fn sanitize_media_path(path: &str) -> String {
     let path = path.trim().trim_start_matches('/');
     let parts: Vec<&str> = path.split('/').collect();
     if parts.iter().any(|p| p.is_empty() || *p == ".." || p.starts_with('.')) {
@@ -542,11 +569,11 @@ fn sanitize_image_path(path: &str) -> String {
     }
     let result = parts.join("/");
     let lower = result.to_lowercase();
-    if lower.ends_with(".jpg") || lower.ends_with(".jpeg") || lower.ends_with(".png")
-        || lower.ends_with(".webp") || lower.ends_with(".gif") {
+    if ALLOWED_MEDIA_EXTS.iter().any(|ext| lower.ends_with(ext)) {
         result
     } else {
-        format!("{result}.jpg")
+        // Don't silently rename — return empty to signal unsupported format
+        String::new()
     }
 }
 
