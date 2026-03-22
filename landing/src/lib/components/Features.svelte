@@ -54,11 +54,17 @@
 			const newIndex = Math.min(features.length - 1, Math.floor(p * features.length));
 			activeIndex = newIndex;
 
-			// Scroll-driven video scrubbing for active feature
-			const featureProgress = (p * features.length) - newIndex; // 0-1 within this feature
-			const vid = videoRefs[newIndex];
-			if (vid && vid.duration) {
-				vid.currentTime = featureProgress * vid.duration;
+			// Play/pause videos based on active feature
+			for (const [idx, vid] of Object.entries(videoRefs)) {
+				if (!vid) continue;
+				if (Number(idx) === newIndex) {
+					if (vid.paused) {
+						vid.currentTime = 0;
+						vid.play().catch(() => {});
+					}
+				} else {
+					vid.pause();
+				}
 			}
 		}
 
@@ -93,6 +99,7 @@
 						<video
 							bind:this={videoRefs[i]}
 							muted
+							loop
 							playsinline
 							preload="auto"
 							class="feature-image"
@@ -116,7 +123,7 @@
 
 <style>
 	.features {
-		height: 2400vh;
+		height: 600vh;
 		position: relative;
 	}
 
