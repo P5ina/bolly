@@ -11,6 +11,7 @@
 			title: 'remembers everything',
 			desc: "Every conversation, every detail. It builds a living memory of who you are and what matters to you.",
 			image: '/assets/feature-memory.webp',
+			video: '/assets/feature-memory.mp4',
 		},
 		{
 			title: 'studies with you',
@@ -37,6 +38,7 @@
 	let sectionEl: HTMLElement | undefined = $state();
 	let activeIndex = $state(0);
 	let progress = $state(0);
+	let videoRefs: Record<number, HTMLVideoElement> = {};
 
 	onMount(() => {
 		if (!sectionEl) return;
@@ -48,7 +50,15 @@
 			const scrolled = -rect.top;
 			const p = Math.max(0, Math.min(1, scrolled / sectionHeight));
 			progress = p;
-			activeIndex = Math.min(features.length - 1, Math.floor(p * features.length));
+			const newIndex = Math.min(features.length - 1, Math.floor(p * features.length));
+			activeIndex = newIndex;
+
+			// Scroll-driven video scrubbing for active feature
+			const featureProgress = (p * features.length) - newIndex; // 0-1 within this feature
+			const vid = videoRefs[newIndex];
+			if (vid && vid.duration) {
+				vid.currentTime = featureProgress * vid.duration;
+			}
 		}
 
 		window.addEventListener('scroll', onScroll, { passive: true });
@@ -78,13 +88,25 @@
 
 			<div class="features-visual">
 				{#each features as f, i}
-					<img
-						src={f.image}
-						alt={f.title}
-						class="feature-image"
-						class:feature-image-active={i === activeIndex}
-						loading="lazy"
-					/>
+					{#if f.video}
+						<video
+							bind:this={videoRefs[i]}
+							muted
+							playsinline
+							preload="auto"
+							class="feature-image"
+							class:feature-image-active={i === activeIndex}
+							src={f.video}
+						></video>
+					{:else}
+						<img
+							src={f.image}
+							alt={f.title}
+							class="feature-image"
+							class:feature-image-active={i === activeIndex}
+							loading="lazy"
+						/>
+					{/if}
 				{/each}
 			</div>
 		</div>
