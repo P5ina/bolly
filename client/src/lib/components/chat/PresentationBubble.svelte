@@ -111,13 +111,13 @@
 		padding: 1rem 1.5rem;
 		background: linear-gradient(
 			150deg,
-			oklch(1 0 0 / 8%) 0%,
-			oklch(0.5 0.03 210 / 12%) 40%,
-			oklch(1 0 0 / 5%) 70%,
-			oklch(0.5 0.02 200 / 8%) 100%
+			oklch(0.06 0.02 210 / 85%) 0%,
+			oklch(0.04 0.015 210 / 90%) 40%,
+			oklch(0.06 0.02 200 / 85%) 70%,
+			oklch(0.04 0.015 200 / 88%) 100%
 		);
-		backdrop-filter: blur(28px) saturate(180%) brightness(1.1);
-		-webkit-backdrop-filter: blur(28px) saturate(180%) brightness(1.1);
+		backdrop-filter: blur(40px) saturate(180%) brightness(1.05);
+		-webkit-backdrop-filter: blur(40px) saturate(180%) brightness(1.05);
 		border: 1px solid oklch(1 0 0 / 12%);
 		border-top-color: oklch(1 0 0 / 22%);
 		border-bottom-color: oklch(0 0 0 / 8%);

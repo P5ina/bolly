@@ -229,9 +229,9 @@
 		margin: 0 auto;
 		overflow: hidden;
 		border-radius: 20px;
-		background: oklch(0.08 0.02 210 / 45%);
-		backdrop-filter: blur(32px) saturate(150%);
-		-webkit-backdrop-filter: blur(32px) saturate(150%);
+		background: oklch(0.05 0.02 210 / 88%);
+		backdrop-filter: blur(40px) saturate(160%);
+		-webkit-backdrop-filter: blur(40px) saturate(160%);
 		border: 1px solid oklch(0.5 0.06 200 / 12%);
 		box-shadow:
 			0 8px 40px oklch(0 0 0 / 30%),
