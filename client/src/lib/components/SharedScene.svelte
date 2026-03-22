@@ -376,18 +376,21 @@
 			</button>
 		{/if}
 	{/each}
-</div>
 
-<!-- Memory clouds — fixed position, always visible above everything -->
-{#if store.recalledMemories.length > 0 && store.mode === 'chat'}
-	<div class="memory-clouds-fixed">
-		{#each store.recalledMemories as mem, i}
-			<div class="memory-cloud" style="animation-delay: {i * 120 + 50}ms;">
-				{mem.path.split('/').pop()?.replace('.md', '')}
+	<!-- Memory clouds above the selected orb -->
+	{#if store.recalledMemories.length > 0}
+		{@const selOrb = orbs.find(o => o.slug === store.selectedSlug)}
+		{#if selOrb}
+			<div class="memory-clouds" style="left: {selOrb.x}%; top: calc({selOrb.y}% - {selOrb.size * 0.35}px);">
+				{#each store.recalledMemories as mem, i}
+					<div class="memory-cloud" style="animation-delay: {i * 120 + 50}ms;">
+						{mem.path.split('/').pop()?.replace('.md', '')}
+					</div>
+				{/each}
 			</div>
-		{/each}
-	</div>
-{/if}
+		{/if}
+	{/if}
+</div>
 
 <style>
 	.scene-root {
@@ -432,38 +435,39 @@
 		-webkit-mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 48%);
 	}
 
-	/* ── Memory clouds (fixed) ── */
-	.memory-clouds-fixed {
-		position: fixed;
-		top: 4rem;
-		right: 1.5rem;
-		z-index: 50;
+	/* ── Memory clouds (above orb) ── */
+	.memory-clouds {
+		position: absolute;
+		transform: translateX(-50%);
+		z-index: 20;
 		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
+		flex-wrap: wrap;
+		justify-content: center;
 		gap: 0.375rem;
 		pointer-events: none;
+		max-width: 300px;
 	}
 
 	.memory-cloud {
-		padding: 0.3rem 0.75rem;
+		padding: 0.25rem 0.625rem;
 		border-radius: 1rem;
-		background: oklch(0.78 0.12 75 / 6%);
+		background: oklch(0.78 0.12 75 / 8%);
 		backdrop-filter: blur(16px) saturate(150%);
 		-webkit-backdrop-filter: blur(16px) saturate(150%);
-		border: 1px solid oklch(0.78 0.12 75 / 10%);
+		border: 1px solid oklch(0.78 0.12 75 / 12%);
+		box-shadow: 0 0 12px oklch(0.78 0.12 75 / 6%);
 		white-space: nowrap;
 		font-family: var(--font-display);
 		font-style: italic;
-		font-size: 0.72rem;
-		color: oklch(0.78 0.12 75 / 55%);
+		font-size: 0.68rem;
+		color: oklch(0.78 0.12 75 / 60%);
 		opacity: 0;
-		animation: cloud-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+		animation: cloud-float 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 	}
 
-	@keyframes cloud-in {
-		from { opacity: 0; transform: translateX(12px) scale(0.9); }
-		to { opacity: 1; transform: translateX(0) scale(1); }
+	@keyframes cloud-float {
+		from { opacity: 0; transform: translateY(10px) scale(0.85); }
+		to { opacity: 1; transform: translateY(0) scale(1); }
 	}
 
 	.orb-vid.no-mask {

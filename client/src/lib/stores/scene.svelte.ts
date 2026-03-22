@@ -79,6 +79,7 @@ export function createSceneStore(): SceneStore {
 	let musicPlaying = $state(false);
 	let musicEnabled = $state(true);
 	let presenting = $state(false);
+	let recalledMemories = $state<{path: string; preview: string; score: number}[]>([]);
 
 	// Audio analyser for custom music visualizer.
 	// Uses the shared AudioContext (one per app, from audio-context.ts).
@@ -341,7 +342,8 @@ export function createSceneStore(): SceneStore {
 		get musicEnabled() { return musicEnabled; },
 		get presenting() { return presenting; },
 		set presenting(v) { presenting = v; },
-		recalledMemories: [] as {path: string; preview: string; score: number}[],
+		get recalledMemories() { return recalledMemories; },
+		set recalledMemories(v) { recalledMemories = v; },
 		getMusicFrequencyData() {
 			if (!musicAnalyser || !musicPlaying) return null;
 			const data = new Uint8Array(musicAnalyser.frequencyBinCount);

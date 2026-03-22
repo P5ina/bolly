@@ -487,7 +487,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				sending = false;
 				clearStreaming();
 				// Fade out recalled memories after a delay
-				setTimeout(() => { scene.recalledMemories = []; }, 3000);
+				setTimeout(() => { scene.recalledMemories = []; }, 6000);
 				// Don't clear turnMessageIds immediately — TTS audio may still be
 				// synthesizing. Give it time to arrive so word reveal works.
 				// Fallback: if audio hasn't arrived after 15s, reveal all.
