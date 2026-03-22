@@ -606,6 +606,7 @@
 						{@const diameter = circle.r * 2}
 						{@const showLabel = circle.r > 20}
 						{@const showSub = circle.r > 42}
+						{@const isImage = !isFolderView && circle.entry && IMAGE_EXTS.some(ext => circle.entry!.path.toLowerCase().endsWith(ext))}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							class="bubble-anchor"
@@ -632,7 +633,16 @@
 								onmouseleave={() => hoveredNode = null}
 								onclick={() => handleCircleClick(circle)}
 							>
-								<div class="bubble-core"></div>
+								{#if isImage}
+									<img
+										class="bubble-thumb"
+										src="/api/instances/{encodeURIComponent(slug)}/memory/{circle.entry?.path}"
+										alt=""
+										loading="lazy"
+									/>
+								{:else}
+									<div class="bubble-core"></div>
+								{/if}
 								<div class="bubble-shine"></div>
 								{#if isHovered}
 									<div class="bubble-ring"></div>
@@ -976,6 +986,16 @@
 		0%, 100% { transform: translate(0, 0); }
 		33% { transform: translate(var(--float-x), var(--float-y)); }
 		66% { transform: translate(calc(var(--float-x) * -0.6), calc(var(--float-y) * -0.4)); }
+	}
+
+	.bubble-thumb {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		border-radius: 50%;
+		opacity: 0.85;
 	}
 
 	.bubble-core {
