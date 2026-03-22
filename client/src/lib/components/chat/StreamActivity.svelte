@@ -11,13 +11,6 @@
 
 	let expanded = $state(false);
 
-	const accentMap: Record<string, string> = {
-		tool: "act-tool",
-		mood: "act-mood",
-		state: "act-state",
-		output: "act-output",
-	};
-
 	// Unescape literal \n and \t sequences that may come from JSON-escaped output
 	const displayLabel = $derived(
 		label.replace(/\\n/g, "\n").replace(/\\t/g, "\t")
@@ -30,127 +23,114 @@
 	const firstLine = $derived(displayLabel.split("\n")[0]);
 </script>
 
-<div class="act-row {accentMap[kind] ?? 'act-tool'}">
-	<div class="act-border"></div>
+<div class="act act-{kind}">
+	<div class="act-pip"></div>
 	<div class="act-body">
 		{#if isCollapsible}
 			<button class="act-toggle" onclick={() => expanded = !expanded}>
 				<span class="act-chevron" class:act-chevron-open={expanded}>›</span>
 				{#if kind === "output"}
-					<pre class="act-output-text act-single-line">{firstLine}</pre>
+					<pre class="act-pre act-clamp">{firstLine}</pre>
 				{:else}
-					<span class="act-label">{firstLine}</span>
+					<span class="act-text">{firstLine}</span>
 				{/if}
 			</button>
 			{#if expanded}
-				<pre class="act-output-text act-expanded">{displayLabel}</pre>
+				<pre class="act-pre act-full">{displayLabel}</pre>
 			{/if}
 		{:else if kind === "output"}
-			<pre class="act-output-text">{displayLabel}</pre>
+			<pre class="act-pre">{displayLabel}</pre>
 		{:else}
-			<span class="act-label">{displayLabel}</span>
-		{/if}
-		{#if timestamp}
-			<span class="act-time">{timestamp}</span>
+			<span class="act-text">{displayLabel}</span>
 		{/if}
 	</div>
+	{#if timestamp}
+		<span class="act-ts">{timestamp}</span>
+	{/if}
 </div>
 
 <style>
-	.act-row {
+	.act {
 		display: flex;
-		flex-direction: row-reverse;
-		gap: 0;
-		padding: 0.15rem 0;
-		animation: act-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+		align-items: flex-start;
+		gap: 0.5rem;
+		padding: 0.2rem 0;
+		animation: act-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+		max-width: 100%;
+		overflow: hidden;
 	}
 
 	@keyframes act-in {
-		from { opacity: 0; transform: translateX(4px); }
+		from { opacity: 0; transform: translateX(-4px); }
 		to { opacity: 1; transform: translateX(0); }
 	}
 
-	.act-border {
-		width: 2px;
+	/* ── pip (left accent dot) ── */
+	.act-pip {
+		width: 5px;
+		height: 5px;
+		border-radius: 50%;
 		flex-shrink: 0;
-		border-radius: 1px;
-		margin-left: 0.6rem;
+		margin-top: 0.35rem;
 		transition: background 0.3s ease;
 	}
 
-	.act-tool .act-border {
-		background: oklch(0.55 0.1 190 / 45%);
-		box-shadow: 0 0 4px oklch(0.55 0.1 190 / 15%);
-	}
-	.act-mood .act-border {
-		background: oklch(0.65 0.1 75 / 45%);
-		box-shadow: 0 0 4px oklch(0.65 0.1 75 / 15%);
-	}
-	.act-state .act-border {
-		background: oklch(0.5 0.06 200 / 35%);
-	}
-	.act-output .act-border {
-		background: oklch(0.45 0.05 200 / 25%);
-	}
+	.act-tool .act-pip { background: oklch(0.58 0.12 190 / 55%); box-shadow: 0 0 5px oklch(0.58 0.12 190 / 20%); }
+	.act-mood .act-pip { background: oklch(0.68 0.12 75 / 55%); box-shadow: 0 0 5px oklch(0.68 0.12 75 / 20%); }
+	.act-state .act-pip { background: oklch(0.50 0.06 240 / 40%); }
+	.act-output .act-pip { background: oklch(0.45 0.04 240 / 30%); }
+
+	/* ── body ── */
 	.act-body {
+		flex: 1;
+		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		align-items: flex-end;
-		gap: 0;
-		min-width: 0;
-		padding: 0.2rem 0;
-		flex: 1;
 	}
 
-	.act-label {
+	.act-text {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		letter-spacing: 0.01em;
+		color: oklch(0.58 0.04 220 / 55%);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.act-tool .act-text { color: oklch(0.60 0.08 190 / 65%); }
+	.act-mood .act-text { color: oklch(0.68 0.08 75 / 65%); }
+	.act-state .act-text { color: oklch(0.52 0.04 240 / 45%); }
+
+	.act-pre {
 		font-family: var(--font-mono);
 		font-size: 0.68rem;
-		letter-spacing: 0.02em;
-		color: oklch(0.6 0.04 200 / 50%);
-		white-space: nowrap;
-		overflow: hidden;
-		text-align: right;
-		text-overflow: ellipsis;
-	}
-
-	.act-tool .act-label {
-		color: oklch(0.6 0.08 190 / 60%);
-	}
-	.act-mood .act-label {
-		color: oklch(0.68 0.08 75 / 60%);
-	}
-	.act-state .act-label {
-		color: oklch(0.52 0.04 200 / 45%);
-	}
-
-	.act-output-text {
-		font-family: var(--font-mono);
-		font-size: 0.72rem;
 		line-height: 1.5;
-		color: oklch(0.52 0.03 200 / 45%);
+		color: oklch(0.50 0.03 220 / 45%);
 		white-space: pre-wrap;
-		word-break: break-all;
+		word-break: break-word;
 		margin: 0;
 	}
 
-	.act-single-line {
+	.act-clamp {
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 
-	.act-expanded {
-		max-height: 400px;
+	.act-full {
+		max-height: 300px;
 		overflow-y: auto;
-		padding: 0.3rem 0;
-		animation: expand-in 0.2s ease both;
+		padding: 0.25rem 0;
+		animation: expand 0.2s ease both;
 	}
 
-	@keyframes expand-in {
+	@keyframes expand {
 		from { opacity: 0; max-height: 0; }
-		to { opacity: 1; max-height: 400px; }
+		to { opacity: 1; max-height: 300px; }
 	}
 
+	/* ── toggle ── */
 	.act-toggle {
 		display: flex;
 		align-items: center;
@@ -171,7 +151,7 @@
 	.act-chevron {
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		color: oklch(0.45 0.04 200 / 35%);
+		color: oklch(0.45 0.04 220 / 35%);
 		flex-shrink: 0;
 		transition: transform 0.2s ease, color 0.2s ease;
 		line-height: 1;
@@ -181,12 +161,13 @@
 		transform: rotate(90deg);
 	}
 
-	.act-time {
+	/* ── timestamp ── */
+	.act-ts {
 		font-family: var(--font-mono);
-		font-size: 0.68rem;
-		color: oklch(0.42 0.03 200 / 30%);
+		font-size: 0.62rem;
+		color: oklch(0.42 0.03 220 / 25%);
 		white-space: nowrap;
 		flex-shrink: 0;
-		align-self: flex-start;
+		margin-top: 0.25rem;
 	}
 </style>

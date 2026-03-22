@@ -101,28 +101,12 @@ jobs:
             git log --oneline "${prev_tag}..HEAD" > /tmp/commits.txt
           fi
 
-      - name: Generate changelog with Claude
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          prompt: |
-            Read /tmp/commits.txt containing git commits since the last release.
-            Write a polished, user-friendly changelog in markdown for a stable release.
-            Group by: Features, Fixes, Improvements. Skip CI/merge/chore commits.
-            One line per change, no commit hashes. Be concise but descriptive.
-            Write the result to /tmp/changelog.md
-
       - name: Create stable release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -f /tmp/changelog.md ]; then
-            body=$(cat /tmp/changelog.md)
-          else
-            body=$(cat /tmp/commits.txt | sed 's/^/- /')
-          fi
+          body=$(cat /tmp/commits.txt | sed 's/^/- /')
           gh release create "${{ github.ref_name }}" \
             --title "${{ github.ref_name }}" \
             --notes "$body" \
