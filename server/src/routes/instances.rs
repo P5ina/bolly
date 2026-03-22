@@ -5,6 +5,15 @@ use std::fs;
 
 use crate::{app::state::AppState, domain::instance::InstanceSummary, domain::memory::MemoryEntry, services::{chat, memory, tools, workspace}};
 
+/// Public memory file route (no auth middleware) — uses ?token= query param.
+/// Used by LLM providers (Anthropic) to fetch memory images via URL.
+pub fn public_memory_router() -> Router<AppState> {
+    Router::new().route(
+        "/public/memory/{instance_slug}/{*path}",
+        get(serve_memory_file_public),
+    )
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/instances", get(list_instances))
@@ -560,10 +569,20 @@ async fn search_memory(
             // For media results, include a URL to the file
             if is_media {
                 if let Some(upload_id) = &r.upload_id {
-                    let url = if public_url.is_empty() {
-                        format!("/api/instances/{instance_slug}/uploads/{upload_id}/file")
+                    let url = if upload_id.contains('/') {
+                        // Memory-originated file
+                        if public_url.is_empty() {
+                            format!("/api/instances/{instance_slug}/memory/{upload_id}")
+                        } else {
+                            format!("{public_url}/public/memory/{instance_slug}/{upload_id}?token={auth_token}")
+                        }
                     } else {
-                        format!("{public_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}")
+                        // Upload file
+                        if public_url.is_empty() {
+                            format!("/api/instances/{instance_slug}/uploads/{upload_id}/file")
+                        } else {
+                            format!("{public_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}")
+                        }
                     };
                     obj["media_url"] = serde_json::Value::String(url);
                 }
@@ -610,19 +629,43 @@ async fn reindex_memory(
     Ok(Json(serde_json::json!({ "status": "reindexing" })))
 }
 
+#[derive(Deserialize)]
+struct MemoryTokenQuery {
+    token: Option<String>,
+}
+
+async fn serve_memory_file_public(
+    State(state): State<AppState>,
+    Path((instance_slug, file_path)): Path<(String, String)>,
+    axum::extract::Query(query): axum::extract::Query<MemoryTokenQuery>,
+) -> Result<axum::response::Response<axum::body::Body>, StatusCode> {
+    let expected = state.config.read().await.auth_token.clone();
+    if expected.is_empty() || query.token.as_deref() != Some(&expected) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    serve_memory_file_inner(&state, &instance_slug, &file_path).await
+}
+
 async fn read_memory_file(
     State(state): State<AppState>,
     Path((instance_slug, file_path)): Path<(String, String)>,
 ) -> Result<axum::response::Response<axum::body::Body>, StatusCode> {
-    // Validate path — prevent traversal
+    serve_memory_file_inner(&state, &instance_slug, &file_path).await
+}
+
+async fn serve_memory_file_inner(
+    state: &AppState,
+    instance_slug: &str,
+    file_path: &str,
+) -> Result<axum::response::Response<axum::body::Body>, StatusCode> {
     if file_path.contains("..") || file_path.starts_with('/') {
         return Err(StatusCode::BAD_REQUEST);
     }
     let full_path = state.workspace_dir
         .join("instances")
-        .join(&instance_slug)
+        .join(instance_slug)
         .join("memory")
-        .join(&file_path);
+        .join(file_path);
 
     let bytes = tokio::fs::read(&full_path).await.map_err(|_| StatusCode::NOT_FOUND)?;
 

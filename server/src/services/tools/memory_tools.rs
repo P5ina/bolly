@@ -181,12 +181,18 @@ impl Tool for MemoryWriteTool {
 
 pub struct MemoryReadTool {
     memory_dir: PathBuf,
+    instance_slug: String,
+    public_url: String,
+    auth_token: String,
 }
 
 impl MemoryReadTool {
     pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
         Self {
             memory_dir: workspace_dir.join("instances").join(instance_slug).join("memory"),
+            instance_slug: instance_slug.to_string(),
+            public_url: std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default(),
+            auth_token: std::env::var("BOLLY_AUTH_TOKEN").unwrap_or_default(),
         }
     }
 }
@@ -241,7 +247,24 @@ impl Tool for MemoryReadTool {
                 Ok(items.join("\n"))
             }
         } else if full_path.exists() {
-            fs::read_to_string(&full_path).map_err(|e| ToolExecError(e.to_string()))
+            // Check if it's a media file — return image content block with URL
+            let is_image = matches!(
+                full_path.extension().and_then(|e| e.to_str()),
+                Some("jpg" | "jpeg" | "png" | "gif" | "webp" | "svg")
+            );
+            if is_image && !self.public_url.is_empty() {
+                let url = format!(
+                    "{}/public/memory/{}/{}?token={}",
+                    self.public_url, self.instance_slug, clean_path, self.auth_token,
+                );
+                let blocks = serde_json::json!([
+                    {"type": "text", "text": format!("memory image: {clean_path}")},
+                    {"type": "image", "source": {"type": "url", "url": url}},
+                ]);
+                Ok(serde_json::to_string(&blocks).unwrap())
+            } else {
+                fs::read_to_string(&full_path).map_err(|e| ToolExecError(e.to_string()))
+            }
         } else {
             Err(ToolExecError(format!("not found: {clean_path}")))
         }
@@ -405,7 +428,6 @@ impl Tool for MemoryForgetTool {
 // ---------------------------------------------------------------------------
 
 pub struct MemorySearchTool {
-    uploads_dir: PathBuf,
     instance_slug: String,
     vector_store: Arc<VectorStore>,
     google_ai_key: String,
@@ -414,11 +436,10 @@ pub struct MemorySearchTool {
 }
 
 impl MemorySearchTool {
-    pub fn new(workspace_dir: &Path, instance_slug: &str, vector_store: Arc<VectorStore>, google_ai_key: &str) -> Self {
+    pub fn new(_workspace_dir: &Path, instance_slug: &str, vector_store: Arc<VectorStore>, google_ai_key: &str) -> Self {
         let public_url = std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default();
         let auth_token = std::env::var("BOLLY_AUTH_TOKEN").unwrap_or_default();
         Self {
-            uploads_dir: workspace_dir.join("instances").join(instance_slug).join("uploads"),
             instance_slug: instance_slug.to_string(),
             vector_store,
             google_ai_key: google_ai_key.to_string(),
@@ -513,10 +534,18 @@ impl Tool for MemorySearchTool {
                         blocks.push(serde_json::json!({"type": "text", "text": text_buf.trim()}));
                         text_buf.clear();
                     }
-                    let url = format!(
-                        "{}/public/files/{}/{upload_id}?token={}",
-                        self.public_url, self.instance_slug, self.auth_token,
-                    );
+                    // Memory-originated images use /public/memory/, uploads use /public/files/
+                    let url = if upload_id.contains('/') {
+                        format!(
+                            "{}/public/memory/{}/{upload_id}?token={}",
+                            self.public_url, self.instance_slug, self.auth_token,
+                        )
+                    } else {
+                        format!(
+                            "{}/public/files/{}/{upload_id}?token={}",
+                            self.public_url, self.instance_slug, self.auth_token,
+                        )
+                    };
                     blocks.push(serde_json::json!({"type": "image", "source": {"type": "url", "url": url}}));
                 }
             }
