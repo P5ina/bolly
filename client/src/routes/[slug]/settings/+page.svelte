@@ -603,11 +603,7 @@
 
 	<section class="settings-section">
 		<div class="section-header">
-			<div class="section-icon">
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M12 5v14M5 12l7 7 7-7"/>
-				</svg>
-			</div>
+			<img src="/icon-updates.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">updates</h3>
 				<p class="section-desc">
@@ -706,11 +702,7 @@
 	{#if usage && (usage.tokens_4h_limit > 0 || usage.tokens_week_limit > 0 || usage.tokens_month_limit > 0)}
 		<section class="settings-section">
 			<div class="section-header">
-				<div class="section-icon">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/>
-					</svg>
-				</div>
+				<img src="/icon-usage.png" alt="" class="section-icon-img" />
 				<div>
 					<h3 class="section-label">usage</h3>
 					<p class="section-desc">Token usage across time windows.</p>
@@ -760,11 +752,7 @@
 	<!-- Model Mode -->
 	<section class="settings-section">
 		<div class="section-header">
-			<div class="section-icon">
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
-				</svg>
-			</div>
+			<img src="/icon-model.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">model mode</h3>
 				<p class="section-desc">Choose how your companion picks the AI model for each message.</p>
@@ -804,12 +792,7 @@
 	<!-- Timezone -->
 	<section class="settings-section">
 		<div class="section-header">
-			<div class="section-icon tz-icon">
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-					<circle cx="12" cy="12" r="10"/>
-					<path d="M12 6v6l4 2"/>
-				</svg>
-			</div>
+			<img src="/icon-timezone.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">timezone</h3>
 				<p class="section-desc">
@@ -845,13 +828,7 @@
 	<!-- Extensions (MCP Servers) -->
 	<section class="settings-section">
 		<div class="section-header">
-			<div class="section-icon ext-icon">
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M12 2L2 7l10 5 10-5-10-5z" />
-					<path d="M2 17l10 5 10-5" />
-					<path d="M2 12l10 5 10-5" />
-				</svg>
-			</div>
+			<img src="/icon-extensions.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">extensions</h3>
 				<p class="section-desc">
@@ -967,23 +944,7 @@
 	<!-- Google Accounts -->
 	<section class="settings-section">
 		<div class="section-header">
-			<div class="section-icon">
-				<svg width="18" height="18" viewBox="0 0 24 24"
-					><path
-						d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
-						fill="#4285F4"
-					/><path
-						d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-						fill="#34A853"
-					/><path
-						d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-						fill="#FBBC05"
-					/><path
-						d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-						fill="#EA4335"
-					/></svg
-				>
-			</div>
+			<img src="/icon-google.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">google accounts</h3>
 				<p class="section-desc">
@@ -1035,12 +996,7 @@
 	<!-- Email (SMTP/IMAP) -->
 	<section class="settings-section">
 		<div class="section-header">
-			<div class="section-icon email-icon">
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-					<rect x="2" y="4" width="20" height="16" rx="2"/>
-					<path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
-				</svg>
-			</div>
+			<img src="/icon-email.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">email</h3>
 				<p class="section-desc">
@@ -1128,11 +1084,7 @@
 	<!-- GitHub -->
 	<section class="settings-section">
 		<div class="section-header">
-			<div class="section-icon gh-icon">
-				<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-					<path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
-				</svg>
-			</div>
+			<img src="/icon-github.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">github</h3>
 				<p class="section-desc">
@@ -1198,13 +1150,7 @@
 	<!-- Music -->
 	<section class="settings-section">
 		<div class="section-header">
-			<div class="section-icon voice-icon">
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M9 18V5l12-2v13"/>
-					<circle cx="6" cy="18" r="3"/>
-					<circle cx="18" cy="16" r="3"/>
-				</svg>
-			</div>
+			<img src="/icon-music.png" alt="" class="section-icon-img" />
 			<div class="section-header-text">
 				<h3 class="section-label">music</h3>
 				<p class="section-desc">
@@ -1231,13 +1177,7 @@
 	<!-- Voice -->
 	<section class="settings-section">
 		<div class="section-header">
-			<div class="section-icon voice-icon">
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-					<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-					<path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-					<path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-				</svg>
-			</div>
+			<img src="/icon-voice.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">voice</h3>
 				<p class="section-desc">
@@ -1285,12 +1225,7 @@
 	{#if !scheduledLoading && scheduledMessages.length > 0}
 		<section class="settings-section">
 			<div class="section-header">
-				<div class="section-icon">
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-						<circle cx="12" cy="12" r="10"/>
-						<polyline points="12 6 12 12 16 14"/>
-					</svg>
-				</div>
+				<img src="/icon-scheduled.png" alt="" class="section-icon-img" />
 				<div>
 					<h3 class="section-label">scheduled</h3>
 					<p class="section-desc">{scheduledMessages.length} pending message{scheduledMessages.length === 1 ? "" : "s"}</p>
@@ -1318,7 +1253,12 @@
 
 	<!-- Export / Import -->
 	<section class="settings-section">
-		<div class="section-label">data</div>
+		<div class="section-header">
+			<img src="/icon-data.png" alt="" class="section-icon-img" />
+			<div>
+				<h3 class="section-label">data</h3>
+			</div>
+		</div>
 		<div class="data-actions">
 			<button class="data-btn" onclick={handleExport}>
 				export
@@ -1754,6 +1694,13 @@
 		border-top-color: oklch(1 0 0 / 16%);
 		flex-shrink: 0;
 		box-shadow: inset 0 1px 0 oklch(1 0 0 / 6%);
+	}
+
+	.section-icon-img {
+		width: 2.25rem;
+		height: 2.25rem;
+		object-fit: contain;
+		flex-shrink: 0;
 	}
 
 	.ext-icon {
