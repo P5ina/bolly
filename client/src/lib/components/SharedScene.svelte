@@ -107,24 +107,28 @@
 	let isOnboarding = $derived(store.mode === 'onboarding');
 	let isLooping = $derived(stateConfig.loop);
 
-	// Single video element per orb — iOS limits concurrent video elements
-	let videoEl: HTMLVideoElement | undefined = $state();
+	// One video element per orb — track by slug
+	let videoRefs: Record<string, HTMLVideoElement> = {};
 	let lastSrc = '';
 
 	$effect(() => {
-		if (!videoEl) return;
 		const src = videoSrc;
 		const loop = isLooping;
 		if (src !== lastSrc) {
 			lastSrc = src;
-			videoEl.src = src;
-			videoEl.loop = loop;
-			videoEl.load();
-			videoEl.play().catch(() => {
-				setTimeout(() => videoEl?.play().catch(() => {}), 100);
-			});
+			for (const el of Object.values(videoRefs)) {
+				if (!el) continue;
+				el.src = src;
+				el.loop = loop;
+				el.load();
+				el.play().catch(() => {
+					setTimeout(() => el?.play().catch(() => {}), 100);
+				});
+			}
 		} else {
-			videoEl.loop = loop;
+			for (const el of Object.values(videoRefs)) {
+				if (el) el.loop = loop;
+			}
 		}
 	});
 
@@ -293,9 +297,11 @@
 		orbs = newOrbs;
 		lastWideVideo = currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle';
 
-		// Keep active video playing (browser may suspend it)
-		if (videoEl && videoEl.paused && videoEl.readyState >= 2) {
-			videoEl.play().catch(() => {});
+		// Keep active videos playing (browser may suspend them)
+		for (const el of Object.values(videoRefs)) {
+			if (el && el.paused && el.readyState >= 2) {
+				el.play().catch(() => {});
+			}
 		}
 
 		if (m !== lastMode) {
@@ -359,8 +365,10 @@
 				disabled={store.mode !== "home"}
 			>
 				<video
-					bind:this={videoEl}
+					bind:this={videoRefs[orb.slug]}
 					autoplay muted playsinline
+					src={videoSrc}
+					loop={isLooping}
 					class="orb-vid"
 					class:no-mask={currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle'}
 					onended={handleVideoEnded}
