@@ -353,7 +353,7 @@ export function createSceneStore(): SceneStore {
 			if (!v) {
 				stopAudio();
 			} else if (mode === "chat") {
-				startChatAudio();
+				startFullAudio();
 			}
 		},
 
