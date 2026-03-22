@@ -8,7 +8,7 @@ import { db } from '$lib/server/db/index.js';
 import { tenants } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import * as fly from '$lib/server/fly/index.js';
-import { env } from '$env/dynamic/private';
+import { ORIGIN, ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY } from '$env/static/private';
 
 type SubscriptionInfo = {
 	id: string;
@@ -168,7 +168,7 @@ export const actions: Actions = {
 		if (!locals.user) redirect(302, '/dashboard');
 
 		const customerId = await ensureCustomer(locals.user);
-		const returnUrl = `${env.ORIGIN ?? url.origin}/dashboard`;
+		const returnUrl = `${ORIGIN}/dashboard`;
 		const portalUrl = await createBillingPortalSession(customerId, returnUrl);
 		redirect(303, portalUrl);
 	},
@@ -318,9 +318,9 @@ export const actions: Actions = {
 					BOLLY_BYOK: '',
 					BOLLY_LLM_PROVIDER: '',
 					BOLLY_LLM_MODEL: '',
-					ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
-					OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
-					OPENROUTER_API_KEY: env.OPENROUTER_API_KEY ?? '',
+					ANTHROPIC_API_KEY,
+					OPENAI_API_KEY,
+					OPENROUTER_API_KEY,
 				});
 			} catch (err) {
 				console.error('Failed to restore Fly env after BYOK removal:', err);

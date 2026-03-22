@@ -1,4 +1,4 @@
-import { env } from '$env/dynamic/private';
+import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } from '$env/static/private';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -14,11 +14,11 @@ const SCOPES = [
 ].join(' ');
 
 function clientId(): string {
-	return env.GOOGLE_CLIENT_ID ?? '';
+	return GOOGLE_CLIENT_ID;
 }
 
 function clientSecret(): string {
-	return env.GOOGLE_CLIENT_SECRET ?? '';
+	return GOOGLE_CLIENT_SECRET;
 }
 
 export function getGoogleAuthUrl(redirectUri: string, state: string): string {

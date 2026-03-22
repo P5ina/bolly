@@ -1,10 +1,10 @@
-import { env } from '$env/dynamic/private';
+import { ANTHROPIC_API_KEY, BOLLY_IMAGE, BOLLY_RELEASE_TOKEN, BRAVE_SEARCH_API_KEY, ELEVENLABS_API_KEY, FLY_API_TOKEN, FLY_ORG, FLY_REGION, FLY_REGISTRY_APP, GOOGLE_AI_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OPENAI_API_KEY, OPENROUTER_API_KEY, ORIGIN } from '$env/static/private';
 
 const FLY_API = 'https://api.machines.dev/v1';
 
 /** The registry app that holds the Docker image */
 export function registryApp(): string {
-	return env.FLY_REGISTRY_APP ?? 'bolly';
+	return FLY_REGISTRY_APP;
 }
 
 export type ImageChannel = 'stable' | 'nightly';
@@ -16,8 +16,7 @@ export function imageForChannel(_channel: ImageChannel): string {
 }
 
 function headers() {
-	const raw = env.FLY_API_TOKEN ?? '';
-	const auth = raw.startsWith('FlyV1') ? raw : `Bearer ${raw}`;
+	const auth = FLY_API_TOKEN.startsWith('FlyV1') ? FLY_API_TOKEN : `Bearer ${FLY_API_TOKEN}`;
 	return {
 		Authorization: auth,
 		'Content-Type': 'application/json',
@@ -32,7 +31,7 @@ export async function createApp(name: string): Promise<{ id: string; name: strin
 		headers: headers(),
 		body: JSON.stringify({
 			app_name: name,
-			org_slug: env.FLY_ORG ?? 'personal',
+			org_slug: FLY_ORG,
 		}),
 	});
 	if (!res.ok) throw new Error(`Fly createApp failed: ${res.status} ${await res.text()}`);
@@ -119,7 +118,7 @@ export async function createVolume(
 		body: JSON.stringify({
 			name: opts.name ?? 'data',
 			size_gb: opts.sizeGb ?? 1,
-			region: opts.region ?? env.FLY_REGION ?? 'iad',
+			region: opts.region ?? FLY_REGION,
 		}),
 	});
 	if (!res.ok) throw new Error(`Fly createVolume failed: ${res.status} ${await res.text()}`);
@@ -151,28 +150,28 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 		method: 'POST',
 		headers: headers(),
 		body: JSON.stringify({
-			region: opts.region ?? env.FLY_REGION ?? 'iad',
+			region: opts.region ?? FLY_REGION,
 			config: {
-				image: env.BOLLY_IMAGE ?? imageForChannel(opts.channel ?? 'stable'),
+				image: BOLLY_IMAGE || imageForChannel(opts.channel ?? 'stable'),
 				env: {
 					BOLLY_HOME: '/data',
 					RUST_LOG: 'info,rig=warn',
 					BOLLY_CHANNEL: opts.channel ?? 'stable',
-					BOLLY_RELEASE_TOKEN: env.BOLLY_RELEASE_TOKEN ?? '',
+					BOLLY_RELEASE_TOKEN: BOLLY_RELEASE_TOKEN,
 					BOLLY_AUTH_TOKEN: opts.authToken,
 					BOLLY_INSTANCE_ID: opts.instanceId,
 					BOLLY_PUBLIC_URL: opts.publicUrl,
-					LANDING_URL: env.ORIGIN ?? '',
-					GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID ?? '',
-					GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET ?? '',
+					LANDING_URL: ORIGIN,
+					GOOGLE_CLIENT_ID: GOOGLE_CLIENT_ID,
+					GOOGLE_CLIENT_SECRET: GOOGLE_CLIENT_SECRET,
 					// Platform API keys — only for non-BYOK machines
 					...(opts.byok ? {} : {
-						OPENROUTER_API_KEY: env.OPENROUTER_API_KEY ?? '',
-						ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
-						OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
-						BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY ?? '',
-						ELEVENLABS_API_KEY: env.ELEVENLABS_API_KEY ?? '',
-						GOOGLE_AI_API_KEY: env.GOOGLE_AI_API_KEY ?? '',
+						OPENROUTER_API_KEY: OPENROUTER_API_KEY,
+						ANTHROPIC_API_KEY: ANTHROPIC_API_KEY,
+						OPENAI_API_KEY: OPENAI_API_KEY,
+						BRAVE_SEARCH_API_KEY: BRAVE_SEARCH_API_KEY,
+						ELEVENLABS_API_KEY: ELEVENLABS_API_KEY,
+						GOOGLE_AI_API_KEY: GOOGLE_AI_API_KEY,
 					}),
 				},
 				guest: {

@@ -1,6 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
-import { env } from '$env/dynamic/private';
+import { STRIPE_WEBHOOK_SECRET } from '$env/static/private';
 import { stripe } from '$lib/server/stripe/index.js';
 import { destroyTenant, provisionTenant } from '$lib/server/tenants.js';
 import { db } from '$lib/server/db/index.js';
@@ -16,7 +16,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	let event;
 	try {
-		event = stripe().webhooks.constructEvent(body, sig, env.STRIPE_WEBHOOK_SECRET!);
+		event = stripe().webhooks.constructEvent(body, sig, STRIPE_WEBHOOK_SECRET);
 	} catch {
 		error(400, 'Invalid signature');
 	}

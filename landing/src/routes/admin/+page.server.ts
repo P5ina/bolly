@@ -3,7 +3,7 @@ import type { Actions, PageServerLoad } from './$types.js';
 import { db } from '$lib/server/db/index.js';
 import { tenants, users, rateLimits } from '$lib/server/db/schema.js';
 import { eq, ne } from 'drizzle-orm';
-import { env } from '$env/dynamic/private';
+import { ADMIN_EMAILS, ANTHROPIC_API_KEY, BOLLY_RELEASE_TOKEN, BRAVE_SEARCH_API_KEY, ELEVENLABS_API_KEY, GOOGLE_AI_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OPENAI_API_KEY, OPENROUTER_API_KEY, ORIGIN } from '$env/static/private';
 import * as fly from '$lib/server/fly/index.js';
 import { provisionTenant } from '$lib/server/tenants.js';
 import { PLANS, type PlanId, stripe, priceIdForPlan } from '$lib/server/stripe/index.js';
@@ -11,7 +11,7 @@ import { sendPriceChangeEmail } from '$lib/server/email/index.js';
 
 function isAdmin(email?: string): boolean {
 	if (!email) return false;
-	const list = (env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase());
+	const list = ADMIN_EMAILS.split(',').map((e) => e.trim().toLowerCase());
 	return list.includes(email.toLowerCase());
 }
 
@@ -200,16 +200,16 @@ export const actions: Actions = {
 				// updateMachineEnv then updateMachineImage can lose env vars if the
 				// GET in updateMachineImage returns stale config.
 				await fly.updateMachineImageAndEnv(t.flyAppId, t.flyMachineId, image, {
-					BOLLY_RELEASE_TOKEN: env.BOLLY_RELEASE_TOKEN ?? '',
-					GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID ?? '',
-					GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET ?? '',
+					BOLLY_RELEASE_TOKEN,
+					GOOGLE_CLIENT_ID,
+					GOOGLE_CLIENT_SECRET,
 					...(t.byokProvider ? {} : {
-						ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
-						OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
-						OPENROUTER_API_KEY: env.OPENROUTER_API_KEY ?? '',
-						BRAVE_SEARCH_API_KEY: env.BRAVE_SEARCH_API_KEY ?? '',
-						ELEVENLABS_API_KEY: env.ELEVENLABS_API_KEY ?? '',
-						GOOGLE_AI_API_KEY: env.GOOGLE_AI_API_KEY ?? '',
+						ANTHROPIC_API_KEY,
+						OPENAI_API_KEY,
+						OPENROUTER_API_KEY,
+						BRAVE_SEARCH_API_KEY,
+						ELEVENLABS_API_KEY,
+						GOOGLE_AI_API_KEY,
 					}),
 				});
 				updated++;
@@ -461,16 +461,16 @@ export const actions: Actions = {
 				BOLLY_PUBLIC_URL: `https://${t.slug}.bollyai.dev`,
 				DATABASE_URL: '', // explicitly blank out
 				// Platform API keys — blank for BYOK, real for normal
-				OPENROUTER_API_KEY: isByok ? '' : (env.OPENROUTER_API_KEY ?? ''),
-				ANTHROPIC_API_KEY: isByok ? '' : (env.ANTHROPIC_API_KEY ?? ''),
-				OPENAI_API_KEY: isByok ? '' : (env.OPENAI_API_KEY ?? ''),
-				BRAVE_SEARCH_API_KEY: isByok ? '' : (env.BRAVE_SEARCH_API_KEY ?? ''),
-				ELEVENLABS_API_KEY: isByok ? '' : (env.ELEVENLABS_API_KEY ?? ''),
-				GOOGLE_AI_API_KEY: isByok ? '' : (env.GOOGLE_AI_API_KEY ?? ''),
-				GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID ?? '',
-				GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET ?? '',
-				LANDING_URL: env.ORIGIN ?? '',
-				BOLLY_RELEASE_TOKEN: env.BOLLY_RELEASE_TOKEN ?? '',
+				OPENROUTER_API_KEY: isByok ? '' : OPENROUTER_API_KEY,
+				ANTHROPIC_API_KEY: isByok ? '' : ANTHROPIC_API_KEY,
+				OPENAI_API_KEY: isByok ? '' : OPENAI_API_KEY,
+				BRAVE_SEARCH_API_KEY: isByok ? '' : BRAVE_SEARCH_API_KEY,
+				ELEVENLABS_API_KEY: isByok ? '' : ELEVENLABS_API_KEY,
+				GOOGLE_AI_API_KEY: isByok ? '' : GOOGLE_AI_API_KEY,
+				GOOGLE_CLIENT_ID,
+				GOOGLE_CLIENT_SECRET,
+				LANDING_URL: ORIGIN,
+				BOLLY_RELEASE_TOKEN,
 			};
 
 			// BYOK: set only the user's own key for their chosen provider
@@ -525,15 +525,15 @@ export const actions: Actions = {
 			// Sync env vars — skip platform API keys for BYOK machines
 			const envPatch: Record<string, string> = {};
 			if (!tenant.byokProvider) {
-				if (env.ANTHROPIC_API_KEY) envPatch.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
-				if (env.OPENAI_API_KEY) envPatch.OPENAI_API_KEY = env.OPENAI_API_KEY;
-				if (env.OPENROUTER_API_KEY) envPatch.OPENROUTER_API_KEY = env.OPENROUTER_API_KEY;
-				if (env.BRAVE_SEARCH_API_KEY) envPatch.BRAVE_SEARCH_API_KEY = env.BRAVE_SEARCH_API_KEY;
-				if (env.ELEVENLABS_API_KEY) envPatch.ELEVENLABS_API_KEY = env.ELEVENLABS_API_KEY;
-				if (env.GOOGLE_AI_API_KEY) envPatch.GOOGLE_AI_API_KEY = env.GOOGLE_AI_API_KEY;
+				if (ANTHROPIC_API_KEY) envPatch.ANTHROPIC_API_KEY = ANTHROPIC_API_KEY;
+				if (OPENAI_API_KEY) envPatch.OPENAI_API_KEY = OPENAI_API_KEY;
+				if (OPENROUTER_API_KEY) envPatch.OPENROUTER_API_KEY = OPENROUTER_API_KEY;
+				if (BRAVE_SEARCH_API_KEY) envPatch.BRAVE_SEARCH_API_KEY = BRAVE_SEARCH_API_KEY;
+				if (ELEVENLABS_API_KEY) envPatch.ELEVENLABS_API_KEY = ELEVENLABS_API_KEY;
+				if (GOOGLE_AI_API_KEY) envPatch.GOOGLE_AI_API_KEY = GOOGLE_AI_API_KEY;
 			}
-			if (env.GOOGLE_CLIENT_ID) envPatch.GOOGLE_CLIENT_ID = env.GOOGLE_CLIENT_ID;
-			if (env.GOOGLE_CLIENT_SECRET) envPatch.GOOGLE_CLIENT_SECRET = env.GOOGLE_CLIENT_SECRET;
+			if (GOOGLE_CLIENT_ID) envPatch.GOOGLE_CLIENT_ID = GOOGLE_CLIENT_ID;
+			if (GOOGLE_CLIENT_SECRET) envPatch.GOOGLE_CLIENT_SECRET = GOOGLE_CLIENT_SECRET;
 
 			if (Object.keys(envPatch).length > 0) {
 				await fly.updateMachineEnv(tenant.flyAppId, tenant.flyMachineId, envPatch);

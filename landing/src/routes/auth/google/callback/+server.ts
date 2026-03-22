@@ -5,7 +5,7 @@ import { generateId } from '$lib/server/auth/index.js';
 import { db } from '$lib/server/db/index.js';
 import { googleAccounts } from '$lib/server/db/schema.js';
 import { eq, and } from 'drizzle-orm';
-import { env } from '$env/dynamic/private';
+import { ORIGIN } from '$env/static/private';
 
 export const GET: RequestHandler = async ({ url, cookies }) => {
 	const code = url.searchParams.get('code');
@@ -32,7 +32,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 		throw error(400, 'Invalid state payload');
 	}
 
-	const origin = env.ORIGIN ?? url.origin;
+	const origin = ORIGIN;
 	const redirectUri = `${origin}/auth/google/callback`;
 
 	const tokens = await exchangeCode(code, redirectUri);

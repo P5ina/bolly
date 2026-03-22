@@ -1,11 +1,11 @@
 import { Resend } from 'resend';
-import { env } from '$env/dynamic/private';
+import { ORIGIN, RESEND_API_KEY } from '$env/static/private';
 
 let _resend: Resend;
 
 function resend(): Resend {
 	if (!_resend) {
-		_resend = new Resend(env.RESEND_API_KEY);
+		_resend = new Resend(RESEND_API_KEY);
 	}
 	return _resend;
 }
@@ -13,7 +13,7 @@ function resend(): Resend {
 const FROM = 'Bolly <noreply@mail.bollyai.dev>';
 
 export async function sendPasswordResetEmail(to: string, token: string) {
-	const resetUrl = `${env.ORIGIN ?? 'https://bollyai.dev'}/reset-password?token=${token}`;
+	const resetUrl = `${ORIGIN}/reset-password?token=${token}`;
 
 	await resend().emails.send({
 		from: FROM,
@@ -60,7 +60,7 @@ export async function sendPriceChangeEmail(to: string, name?: string, planName?:
 				${customMessage}
 				<p style="color: #444; font-size: 14px; line-height: 1.6;">
 					You can manage your subscription anytime from your
-					<a href="${env.ORIGIN ?? 'https://bollyai.dev'}/dashboard" style="color: #1a1a1a;">dashboard</a>.
+					<a href="${ORIGIN}/dashboard" style="color: #1a1a1a;">dashboard</a>.
 				</p>
 				<p style="color: #999; font-size: 12px; margin-top: 32px;">
 					If you have any questions, just reply to this email.

@@ -2,7 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types.js';
 import { getTenantsByUser, getTenantBySlug } from '$lib/server/tenants.js';
 import { createCheckoutSession, ensureCustomer, priceIdForPlan, type PlanId } from '$lib/server/stripe/index.js';
-import { env } from '$env/dynamic/private';
+import { ORIGIN } from '$env/static/private';
 
 // GET /api/tenants — list user's tenants
 export const GET: RequestHandler = async ({ locals }) => {
@@ -30,7 +30,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		error(409, 'That name is already taken. Please choose another.');
 	}
 
-	const origin = env.ORIGIN ?? 'https://bollyai.dev';
+	const origin = ORIGIN;
 
 	try {
 		const customerId = await ensureCustomer(locals.user);

@@ -1,5 +1,5 @@
 import Stripe from 'stripe';
-import { env } from '$env/dynamic/private';
+import { STRIPE_COMPANION_BYOK_PRICE_ID, STRIPE_COMPANION_PRICE_ID, STRIPE_SECRET_KEY, STRIPE_STARTER_BYOK_PRICE_ID, STRIPE_STARTER_PRICE_ID, STRIPE_UNLIMITED_BYOK_PRICE_ID, STRIPE_UNLIMITED_PRICE_ID } from '$env/static/private';
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
 import { users } from '$lib/server/db/schema.js';
@@ -8,7 +8,7 @@ let _stripe: Stripe | null = null;
 
 export function stripe(): Stripe {
 	if (!_stripe) {
-		_stripe = new Stripe(env.STRIPE_SECRET_KEY!, { apiVersion: '2025-02-24.acacia' });
+		_stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: '2025-02-24.acacia' });
 	}
 	return _stripe;
 }
@@ -51,16 +51,16 @@ export type PlanId = keyof typeof PLANS;
 export function priceIdForPlan(plan: PlanId, byok = false): string {
 	if (byok) {
 		const map: Record<PlanId, string> = {
-			starter: env.STRIPE_STARTER_BYOK_PRICE_ID!,
-			companion: env.STRIPE_COMPANION_BYOK_PRICE_ID!,
-			unlimited: env.STRIPE_UNLIMITED_BYOK_PRICE_ID!,
+			starter: STRIPE_STARTER_BYOK_PRICE_ID,
+			companion: STRIPE_COMPANION_BYOK_PRICE_ID,
+			unlimited: STRIPE_UNLIMITED_BYOK_PRICE_ID,
 		};
 		return map[plan];
 	}
 	const map: Record<PlanId, string> = {
-		starter: env.STRIPE_STARTER_PRICE_ID!,
-		companion: env.STRIPE_COMPANION_PRICE_ID!,
-		unlimited: env.STRIPE_UNLIMITED_PRICE_ID!,
+		starter: STRIPE_STARTER_PRICE_ID,
+		companion: STRIPE_COMPANION_PRICE_ID,
+		unlimited: STRIPE_UNLIMITED_PRICE_ID,
 	};
 	return map[plan];
 }

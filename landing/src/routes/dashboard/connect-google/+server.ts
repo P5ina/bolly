@@ -5,7 +5,7 @@ import { generateId } from '$lib/server/auth/index.js';
 import { db } from '$lib/server/db/index.js';
 import { tenants } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { env } from '$env/dynamic/private';
+import { ORIGIN } from '$env/static/private';
 
 /**
  * GET /dashboard/connect-google?token={tenantAuthToken}&instance={slug}&redirect={clientUrl}
@@ -31,7 +31,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 		throw error(401, 'Invalid auth token');
 	}
 
-	const origin = env.ORIGIN ?? url.origin;
+	const origin = ORIGIN;
 	const redirectUri = `${origin}/auth/google/callback`;
 	const nonce = generateId(32);
 

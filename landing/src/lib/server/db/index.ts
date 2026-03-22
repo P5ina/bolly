@@ -1,10 +1,10 @@
 import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
 import * as schema from './schema.js';
-import { env } from '$env/dynamic/private';
+import { DATABASE_URL } from '$env/static/private';
 
 function createDb() {
-	const sql = neon(env.DATABASE_URL!);
+	const sql = neon(DATABASE_URL);
 	return drizzle(sql, { schema });
 }
 

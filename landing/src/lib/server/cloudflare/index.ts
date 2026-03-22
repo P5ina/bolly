@@ -1,20 +1,20 @@
-import { env } from '$env/dynamic/private';
+import { BOLLY_DOMAIN, CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID } from '$env/static/private';
 
 const CF_API = 'https://api.cloudflare.com/client/v4';
 
 function headers() {
 	return {
-		Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+		Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
 		'Content-Type': 'application/json',
 	};
 }
 
 function zoneId(): string {
-	return env.CLOUDFLARE_ZONE_ID!;
+	return CLOUDFLARE_ZONE_ID;
 }
 
 export function tenantHostname(slug: string): string {
-	return `${slug}.${env.BOLLY_DOMAIN ?? 'bollyai.dev'}`;
+	return `${slug}.${BOLLY_DOMAIN}`;
 }
 
 export async function createDnsRecord(opts: {
