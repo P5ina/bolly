@@ -252,8 +252,12 @@
 		} catch {
 			// Connection may reset when server exits — that's expected
 		}
-		// Wait for server to restart, then poll until commit hash changes
-		await new Promise(r => setTimeout(r, 3000));
+		// Wait for server to go DOWN
+		for (let i = 0; i < 20; i++) {
+			await new Promise(r => setTimeout(r, 1000));
+			try { await checkUpdate(); } catch { break; }
+		}
+		// Now poll until it comes back with a new commit
 		for (let i = 0; i < 40; i++) {
 			try {
 				const info = await checkUpdate();
