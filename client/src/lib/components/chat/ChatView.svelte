@@ -49,6 +49,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	let sending = $state(false);
 	let agentRunning = $state(false);
 	let needsGoogleReconnect = $state(false);
+	let recalledMemories = $state<{path: string; preview: string; score: number}[]>([]);
 	let mood = $state(
 		(typeof localStorage !== "undefined" && localStorage.getItem("mood:" + slug)) || "calm"
 	);
@@ -486,6 +487,8 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				agentRunning = false;
 				sending = false;
 				clearStreaming();
+				// Fade out recalled memories after a delay
+				setTimeout(() => { recalledMemories = []; }, 3000);
 				// Don't clear turnMessageIds immediately — TTS audio may still be
 				// synthesizing. Give it time to arrive so word reveal works.
 				// Fallback: if audio hasn't arrived after 15s, reveal all.
@@ -509,8 +512,12 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				play("drop_received");
 				hapticDouble();
 			} else if (event.type === "memory_recall") {
-				const paths = event.memories.map((m: any) => m.path).join(", ");
-				pushActivity("tool", `memory_recall: ${paths}`);
+				recalledMemories = event.memories.map((m: any) => ({
+					path: m.path,
+					preview: m.preview,
+					score: m.score,
+				}));
+				// Auto-hide after agent finishes (handled by agent_stopped event);
 			} else if (event.type === "tool_output_chunk") {
 				// Append chunk to live output activity, or create one
 				const liveIdx = stream.findLastIndex(
@@ -770,6 +777,22 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		</div>
 	</header>
 
+	<!-- Memory recall ambient strip -->
+	{#if recalledMemories.length > 0}
+		<div class="memory-recall">
+			<div class="memory-recall-inner">
+				<span class="memory-recall-label">remembering</span>
+				<div class="memory-recall-items">
+					{#each recalledMemories as mem, i}
+						<div class="memory-recall-item" style="animation-delay: {i * 80}ms">
+							<span class="memory-recall-path">{mem.path.split('/').pop()?.replace('.md', '')}</span>
+						</div>
+					{/each}
+				</div>
+			</div>
+		</div>
+	{/if}
+
 	<!-- TODO: re-enable multi-chat when ready -->
 	<!-- {#if showChatList}
 		<div class="chat-list-overlay" onclick={() => showChatList = false} role="presentation"></div>
@@ -981,6 +1004,58 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				inset 0 0 100px oklch(0.55 0.18 360 / 8%),
 				inset 0 0 200px oklch(0.50 0.14 330 / 4%);
 		}
+	}
+
+	/* ── Memory recall strip ── */
+	.memory-recall {
+		padding: 0 1.5rem;
+		animation: recall-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	@keyframes recall-in {
+		from { opacity: 0; transform: translateY(-8px); }
+		to { opacity: 1; transform: translateY(0); }
+	}
+
+	.memory-recall-inner {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+		padding: 0.375rem 0.75rem;
+		border-radius: 2rem;
+		background: oklch(0.78 0.12 75 / 4%);
+		border: 1px solid oklch(0.78 0.12 75 / 8%);
+	}
+
+	.memory-recall-label {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		letter-spacing: 0.06em;
+		color: oklch(0.78 0.12 75 / 40%);
+		flex-shrink: 0;
+	}
+
+	.memory-recall-items {
+		display: flex;
+		gap: 0.375rem;
+		overflow: hidden;
+		flex-wrap: nowrap;
+	}
+
+	.memory-recall-item {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		color: oklch(0.78 0.12 75 / 60%);
+		padding: 0.125rem 0.5rem;
+		border-radius: 1rem;
+		background: oklch(0.78 0.12 75 / 6%);
+		white-space: nowrap;
+		animation: recall-item-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	@keyframes recall-item-in {
+		from { opacity: 0; transform: scale(0.8); }
+		to { opacity: 1; transform: scale(1); }
 	}
 
 	/* --- bar --- */
