@@ -274,35 +274,16 @@ impl McpRegistry {
         *self.connections.write().await = new_connections;
     }
 
-    /// Reconnect any servers that have dropped. Called before tool use.
+    /// Reconnect all MCP servers fresh. Called before each chat turn.
+    /// Stateless servers (fal.ai on Vercel) drop connections after each response,
+    /// so we always reconnect to guarantee tools are available.
     pub async fn ensure_connected(&self) {
         let configs = self.configs.read().await.clone();
         if configs.is_empty() {
             return;
         }
-
-        let mut conns = self.connections.write().await;
-        let connected_names: Vec<String> = conns.iter()
-            .filter(|c| !c._keepalive.is_finished())
-            .map(|c| c.name.clone())
-            .collect();
-
-        // Remove dead connections
-        conns.retain(|c| !c._keepalive.is_finished());
-
-        // Reconnect missing
-        for config in &configs {
-            if !connected_names.contains(&config.name) {
-                log::info!("MCP '{}': reconnecting...", config.name);
-                match connect_one(config).await {
-                    Ok(conn) => {
-                        log::info!("MCP '{}': reconnected, {} tools", conn.name, conn.tools.len());
-                        conns.push(conn);
-                    }
-                    Err(e) => log::error!("MCP '{}': reconnect failed: {e}", config.name),
-                }
-            }
-        }
+        let new_connections = connect_all(&configs).await;
+        *self.connections.write().await = new_connections;
     }
 
     /// List connected server names.
