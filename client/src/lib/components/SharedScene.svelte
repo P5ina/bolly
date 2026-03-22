@@ -255,10 +255,15 @@
 				}
 			} else if (m === "chat") {
 				if (isSelected) {
+					const isMobile = (container?.clientWidth ?? 800) < 640;
 					if (store.presenting) {
 						tx = 50;
 						ty = 35;
 						ts = FINAL_SCALE * BASE_SIZE * 0.8;
+					} else if (isMobile) {
+						tx = 50;
+						ty = 50;
+						ts = FINAL_SCALE * BASE_SIZE;
 					} else {
 						tx = 50 + FINAL_X * WORLD_TO_PCT;
 						ty = 50 + FINAL_Y * WORLD_TO_PCT;
