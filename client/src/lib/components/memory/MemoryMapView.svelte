@@ -381,7 +381,20 @@
 		}
 	}
 
+	const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp'];
+	const MEDIA_EXTS = [...IMAGE_EXTS, '.mp4', '.mov', '.webm', '.mp3', '.wav', '.ogg', '.pdf'];
+
+	function isMediaFile(path: string): boolean {
+		const lower = path.toLowerCase();
+		return MEDIA_EXTS.some(ext => lower.endsWith(ext));
+	}
+
 	async function openDocument(entry: MemoryEntry) {
+		// Media files: open directly via API URL
+		if (isMediaFile(entry.path)) {
+			window.open(`/api/instances/${encodeURIComponent(slug)}/memory/${entry.path}`, '_blank');
+			return;
+		}
 		viewingEntry = entry;
 		viewingLoading = true;
 		try {
