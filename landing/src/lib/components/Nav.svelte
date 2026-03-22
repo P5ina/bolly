@@ -1,4 +1,6 @@
 <script lang="ts">
+	import favicon from '$lib/assets/favicon.png';
+
 	let scrolled = $state(false);
 	let mobileOpen = $state(false);
 
@@ -18,7 +20,7 @@
 <nav class="nav" class:nav-scrolled={scrolled}>
 	<div class="nav-inner">
 		<a href="/" class="nav-brand">
-			<img src="/assets/plan-companion.png" alt="" class="nav-logo" />
+			<img src={favicon} alt="" class="nav-logo" />
 			<span class="nav-name">bolly</span>
 		</a>
 
