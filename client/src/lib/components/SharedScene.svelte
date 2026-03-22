@@ -100,6 +100,24 @@
 	let isOnboarding = $derived(store.mode === 'onboarding');
 	let isLooping = $derived(stateConfig.loop);
 
+	// Double-buffer videos to prevent flash on transition
+	let activeSrc = $state(videoSrc);
+	let nextSrc = $state('');
+	let showNext = $state(false);
+
+	$effect(() => {
+		if (videoSrc !== activeSrc && videoSrc !== nextSrc) {
+			nextSrc = videoSrc;
+			showNext = false;
+		}
+	});
+
+	function onNextPlaying() {
+		activeSrc = nextSrc;
+		nextSrc = '';
+		showNext = false;
+	}
+
 	// ── Orb state ──
 	interface OrbState {
 		slug: string;
@@ -320,15 +338,27 @@
 				style="left: {orb.x}%; top: {orb.y}%; width: {orb.size}px; height: {orb.size}px; opacity: {orb.opacity};"
 				disabled={store.mode !== "home"}
 			>
+				<!-- Active video -->
 				<video
 					autoplay muted playsinline
 					loop={isLooping}
 					class="orb-vid"
 					class:no-mask={currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle'}
-					src={videoSrc}
+					src={activeSrc}
 					onended={handleVideoEnded}
-					onloadeddata={(e) => { const v = e.target as HTMLVideoElement; v.play().catch(() => {}); }}
 				></video>
+				<!-- Next video (preloading on top) -->
+				{#if nextSrc}
+					<video
+						autoplay muted playsinline
+						loop={isLooping}
+						class="orb-vid orb-vid-next"
+						class:no-mask={currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle'}
+						src={nextSrc}
+						onplaying={onNextPlaying}
+						onended={handleVideoEnded}
+					></video>
+				{/if}
 			</button>
 		{/if}
 	{/each}
@@ -373,6 +403,11 @@
 		pointer-events: none;
 		mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 48%);
 		-webkit-mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 48%);
+	}
+
+	.orb-vid-next {
+		position: absolute;
+		inset: 0;
 	}
 
 	.orb-vid.no-mask {
