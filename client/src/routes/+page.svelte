@@ -352,14 +352,14 @@
 		position: fixed; bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
 		left: 0; right: 0; text-align: center;
 		font-family: var(--font-body); font-size: 0.68rem; letter-spacing: 0.05em;
-		color: oklch(0.50 0.06 240 / 20%); cursor: pointer; z-index: 100;
+		color: oklch(0.88 0.02 75 / 40%); cursor: pointer; z-index: 100;
 		animation: enter-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; animation-delay: 1s;
 		display: flex; align-items: center; justify-content: center; gap: 0.375rem;
 		pointer-events: auto;
 		background: none; border: none; font: inherit;
 		transition: color 0.2s ease;
 	}
-	.version:hover { color: oklch(0.50 0.06 240 / 40%); }
+	.version:hover { color: oklch(0.88 0.02 75 / 65%); }
 	.version-dot {
 		width: 4px; height: 4px; border-radius: 50%;
 		background: oklch(0.78 0.12 75);
