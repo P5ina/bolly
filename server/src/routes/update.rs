@@ -6,6 +6,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/update/check", get(check_update))
         .route("/api/update/apply", post(apply_update))
         .route("/api/update/channel", get(get_channel).put(set_channel))
+        .route("/api/update/changelog", get(get_changelog))
 }
 
 #[derive(serde::Serialize)]
@@ -204,4 +205,49 @@ async fn fetch_release_info(channel: &str) -> Option<ReleaseInfo> {
         name: data["name"].as_str().map(|s| s.to_string()),
         body: data["body"].as_str().map(|s| s.to_string()),
     })
+}
+
+#[derive(serde::Serialize)]
+struct Changelog {
+    version: String,
+    body: String,
+}
+
+async fn get_changelog(State(state): State<AppState>) -> Json<Vec<Changelog>> {
+    let channel = get_channel_value(&state.workspace_dir);
+    let repo = "triangle-int/bolly";
+
+    // Fetch recent releases from GitHub
+    let url = format!("https://api.github.com/repos/{repo}/releases?per_page=10");
+    let client = reqwest::Client::new();
+    let mut req = client.get(&url).header("User-Agent", "bolly-update");
+    if let Ok(token) = std::env::var("BOLLY_RELEASE_TOKEN") {
+        if !token.is_empty() {
+            req = req.header("Authorization", format!("token {token}"));
+        }
+    }
+
+    let resp = match req.send().await {
+        Ok(r) => r,
+        Err(_) => return Json(vec![]),
+    };
+
+    let data: Vec<serde_json::Value> = match resp.json().await {
+        Ok(d) => d,
+        Err(_) => return Json(vec![]),
+    };
+
+    let entries: Vec<Changelog> = data.iter()
+        .filter(|r| {
+            let tag = r["tag_name"].as_str().unwrap_or("");
+            if channel == "nightly" { true } else { tag != "nightly" }
+        })
+        .filter_map(|r| {
+            let version = r["tag_name"].as_str()?.to_string();
+            let body = r["body"].as_str().unwrap_or("").to_string();
+            Some(Changelog { version, body })
+        })
+        .collect();
+
+    Json(entries)
 }

@@ -595,6 +595,15 @@ export interface UpdateCheck {
 	commit: string;
 }
 
+export interface ChangelogEntry {
+	version: string;
+	body: string;
+}
+
+export function fetchChangelog(): Promise<ChangelogEntry[]> {
+	return json("/api/update/changelog");
+}
+
 export function checkUpdate(): Promise<UpdateCheck> {
 	return json("/api/update/check");
 }

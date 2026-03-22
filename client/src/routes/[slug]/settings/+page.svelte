@@ -4,6 +4,8 @@
 	import {
 		checkUpdate,
 		applyUpdate,
+		fetchChangelog,
+		type ChangelogEntry,
 		getUpdateChannel,
 		setUpdateChannel,
 		type UpdateCheck,
@@ -237,6 +239,8 @@
 	let updateInfo = $state<UpdateCheck | null>(null);
 	let updating = $state(false);
 	let checkingUpdate = $state(false);
+	let changelog = $state<ChangelogEntry[]>([]);
+	$effect(() => { fetchChangelog().then(c => changelog = c).catch(() => {}); });
 	let updateDone = $state(false);
 	let channel = $state("stable");
 	$effect(() => {
@@ -690,6 +694,27 @@
 			</div>
 		{/if}
 	</section>
+
+	<!-- Changelog -->
+	{#if changelog.length > 0}
+		<section class="settings-section changelog-section">
+			<div class="section-header">
+				<img src="/icon-updates.png" alt="" class="section-icon-img" />
+				<div>
+					<h3 class="section-label">changelog</h3>
+					<p class="section-desc">recent changes</p>
+				</div>
+			</div>
+			<div class="changelog-list">
+				{#each changelog.slice(0, 5) as entry}
+					<div class="changelog-entry">
+						<div class="changelog-version">{entry.version}</div>
+						<div class="changelog-body">{@html entry.body.replace(/\n/g, '<br>')}</div>
+					</div>
+				{/each}
+			</div>
+		</section>
+	{/if}
 
 	<!-- Usage -->
 	{#if usage && (usage.tokens_4h_limit > 0 || usage.tokens_week_limit > 0 || usage.tokens_month_limit > 0)}
@@ -1366,6 +1391,38 @@
 		.settings-page {
 			padding: 1.5rem 1rem;
 		}
+	}
+
+	.changelog-section {
+		grid-column: 1 / -1;
+	}
+
+	.changelog-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		margin-top: 0.75rem;
+	}
+
+	.changelog-entry {
+		padding: 0.75rem 1rem;
+		border-radius: 0.5rem;
+		background: oklch(1 0 0 / 2%);
+		border: 1px solid oklch(1 0 0 / 5%);
+	}
+
+	.changelog-version {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--color-warm);
+		margin-bottom: 0.375rem;
+		letter-spacing: 0.03em;
+	}
+
+	.changelog-body {
+		font-size: 0.8rem;
+		line-height: 1.6;
+		color: oklch(0.88 0.02 75 / 55%);
 	}
 
 	.check-update-btn {
