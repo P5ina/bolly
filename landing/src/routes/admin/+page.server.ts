@@ -3,7 +3,7 @@ import type { Actions, PageServerLoad } from './$types.js';
 import { db } from '$lib/server/db/index.js';
 import { tenants, users, rateLimits } from '$lib/server/db/schema.js';
 import { eq, ne } from 'drizzle-orm';
-import { ADMIN_EMAILS, ANTHROPIC_API_KEY, BOLLY_RELEASE_TOKEN, BRAVE_SEARCH_API_KEY, ELEVENLABS_API_KEY, GOOGLE_AI_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OPENAI_API_KEY, OPENROUTER_API_KEY, ORIGIN } from '$env/static/private';
+import { ADMIN_EMAILS } from '$env/static/private';
 import * as fly from '$lib/server/fly/index.js';
 import { provisionTenant } from '$lib/server/tenants.js';
 import { PLANS, type PlanId, stripe, priceIdForPlan } from '$lib/server/stripe/index.js';
@@ -200,17 +200,8 @@ export const actions: Actions = {
 				// updateMachineEnv then updateMachineImage can lose env vars if the
 				// GET in updateMachineImage returns stale config.
 				await fly.updateMachineImageAndEnv(t.flyAppId, t.flyMachineId, image, {
-					BOLLY_RELEASE_TOKEN,
-					GOOGLE_CLIENT_ID,
-					GOOGLE_CLIENT_SECRET,
-					...(t.byokProvider ? {} : {
-						ANTHROPIC_API_KEY,
-						OPENAI_API_KEY,
-						OPENROUTER_API_KEY,
-						BRAVE_SEARCH_API_KEY,
-						ELEVENLABS_API_KEY,
-						GOOGLE_AI_API_KEY,
-					}),
+					...fly.sharedKeys(),
+					...(t.byokProvider ? {} : fly.platformApiKeys()),
 				});
 				updated++;
 			} catch (e) {
@@ -452,26 +443,13 @@ export const actions: Actions = {
 			const isByok = !!(t.byokApiKey && t.byokProvider);
 
 			// Build canonical env — BYOK machines get NO platform API keys
-			const canonicalEnv: Record<string, string> = {
-				BOLLY_HOME: '/data',
-				RUST_LOG: 'info,rig=warn',
-				BOLLY_CHANNEL: (t.imageChannel as string) ?? 'stable',
-				BOLLY_AUTH_TOKEN: t.authToken ?? '',
-				BOLLY_INSTANCE_ID: t.id,
-				BOLLY_PUBLIC_URL: `https://${t.slug}.bollyai.dev`,
-				DATABASE_URL: '', // explicitly blank out
-				// Platform API keys — blank for BYOK, real for normal
-				OPENROUTER_API_KEY: isByok ? '' : OPENROUTER_API_KEY,
-				ANTHROPIC_API_KEY: isByok ? '' : ANTHROPIC_API_KEY,
-				OPENAI_API_KEY: isByok ? '' : OPENAI_API_KEY,
-				BRAVE_SEARCH_API_KEY: isByok ? '' : BRAVE_SEARCH_API_KEY,
-				ELEVENLABS_API_KEY: isByok ? '' : ELEVENLABS_API_KEY,
-				GOOGLE_AI_API_KEY: isByok ? '' : GOOGLE_AI_API_KEY,
-				GOOGLE_CLIENT_ID,
-				GOOGLE_CLIENT_SECRET,
-				LANDING_URL: ORIGIN,
-				BOLLY_RELEASE_TOKEN,
-			};
+			const canonicalEnv: Record<string, string> = fly.machineEnv({
+				authToken: t.authToken ?? '',
+				instanceId: t.id,
+				publicUrl: `https://${t.slug}.bollyai.dev`,
+				channel: (t.imageChannel as string) ?? 'stable',
+				byok: isByok,
+			});
 
 			// BYOK: set only the user's own key for their chosen provider
 			if (isByok) {
@@ -522,25 +500,12 @@ export const actions: Actions = {
 		if (!tenant.flyAppId || !tenant.flyMachineId) return fail(400, { error: 'No Fly machine' });
 
 		try {
-			// Sync env vars — skip platform API keys for BYOK machines
-			const envPatch: Record<string, string> = {};
-			if (!tenant.byokProvider) {
-				if (ANTHROPIC_API_KEY) envPatch.ANTHROPIC_API_KEY = ANTHROPIC_API_KEY;
-				if (OPENAI_API_KEY) envPatch.OPENAI_API_KEY = OPENAI_API_KEY;
-				if (OPENROUTER_API_KEY) envPatch.OPENROUTER_API_KEY = OPENROUTER_API_KEY;
-				if (BRAVE_SEARCH_API_KEY) envPatch.BRAVE_SEARCH_API_KEY = BRAVE_SEARCH_API_KEY;
-				if (ELEVENLABS_API_KEY) envPatch.ELEVENLABS_API_KEY = ELEVENLABS_API_KEY;
-				if (GOOGLE_AI_API_KEY) envPatch.GOOGLE_AI_API_KEY = GOOGLE_AI_API_KEY;
-			}
-			if (GOOGLE_CLIENT_ID) envPatch.GOOGLE_CLIENT_ID = GOOGLE_CLIENT_ID;
-			if (GOOGLE_CLIENT_SECRET) envPatch.GOOGLE_CLIENT_SECRET = GOOGLE_CLIENT_SECRET;
-
-			if (Object.keys(envPatch).length > 0) {
-				await fly.updateMachineEnv(tenant.flyAppId, tenant.flyMachineId, envPatch);
-			}
-
+			const envPatch: Record<string, string> = {
+				...fly.sharedKeys(),
+				...(tenant.byokProvider ? {} : fly.platformApiKeys()),
+			};
 			const image = fly.imageForChannel((tenant.imageChannel as fly.ImageChannel) ?? 'stable');
-			await fly.updateMachineImage(tenant.flyAppId, tenant.flyMachineId, image);
+			await fly.updateMachineImageAndEnv(tenant.flyAppId, tenant.flyMachineId, image, envPatch);
 
 			return { success: true, slug: tenant.slug };
 		} catch (e) {

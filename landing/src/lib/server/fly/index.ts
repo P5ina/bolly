@@ -2,6 +2,49 @@ import { ANTHROPIC_API_KEY, BOLLY_IMAGE, BOLLY_RELEASE_TOKEN, BRAVE_SEARCH_API_K
 
 const FLY_API = 'https://api.machines.dev/v1';
 
+/** Platform API keys that get pushed to non-BYOK machines. */
+export function platformApiKeys(): Record<string, string> {
+	return {
+		ANTHROPIC_API_KEY,
+		OPENAI_API_KEY,
+		OPENROUTER_API_KEY,
+		BRAVE_SEARCH_API_KEY,
+		ELEVENLABS_API_KEY,
+		GOOGLE_AI_API_KEY,
+	};
+}
+
+/** Shared keys pushed to ALL machines (BYOK and non-BYOK). */
+export function sharedKeys(): Record<string, string> {
+	return {
+		BOLLY_RELEASE_TOKEN,
+		GOOGLE_CLIENT_ID,
+		GOOGLE_CLIENT_SECRET,
+		LANDING_URL: ORIGIN,
+	};
+}
+
+/** Build env for a machine. Includes shared + platform keys (unless BYOK). */
+export function machineEnv(opts: {
+	authToken: string;
+	instanceId: string;
+	publicUrl: string;
+	channel?: string;
+	byok?: boolean;
+}): Record<string, string> {
+	return {
+		BOLLY_HOME: '/data',
+		RUST_LOG: 'info,rig=warn',
+		BOLLY_CHANNEL: opts.channel ?? 'stable',
+		BOLLY_AUTH_TOKEN: opts.authToken,
+		BOLLY_INSTANCE_ID: opts.instanceId,
+		BOLLY_PUBLIC_URL: opts.publicUrl,
+		DATABASE_URL: '',
+		...sharedKeys(),
+		...(opts.byok ? {} : platformApiKeys()),
+	};
+}
+
 /** The registry app that holds the Docker image */
 export function registryApp(): string {
 	return FLY_REGISTRY_APP;
@@ -153,27 +196,13 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 			region: opts.region ?? FLY_REGION,
 			config: {
 				image: BOLLY_IMAGE || imageForChannel(opts.channel ?? 'stable'),
-				env: {
-					BOLLY_HOME: '/data',
-					RUST_LOG: 'info,rig=warn',
-					BOLLY_CHANNEL: opts.channel ?? 'stable',
-					BOLLY_RELEASE_TOKEN: BOLLY_RELEASE_TOKEN,
-					BOLLY_AUTH_TOKEN: opts.authToken,
-					BOLLY_INSTANCE_ID: opts.instanceId,
-					BOLLY_PUBLIC_URL: opts.publicUrl,
-					LANDING_URL: ORIGIN,
-					GOOGLE_CLIENT_ID: GOOGLE_CLIENT_ID,
-					GOOGLE_CLIENT_SECRET: GOOGLE_CLIENT_SECRET,
-					// Platform API keys — only for non-BYOK machines
-					...(opts.byok ? {} : {
-						OPENROUTER_API_KEY: OPENROUTER_API_KEY,
-						ANTHROPIC_API_KEY: ANTHROPIC_API_KEY,
-						OPENAI_API_KEY: OPENAI_API_KEY,
-						BRAVE_SEARCH_API_KEY: BRAVE_SEARCH_API_KEY,
-						ELEVENLABS_API_KEY: ELEVENLABS_API_KEY,
-						GOOGLE_AI_API_KEY: GOOGLE_AI_API_KEY,
-					}),
-				},
+				env: machineEnv({
+					authToken: opts.authToken,
+					instanceId: opts.instanceId,
+					publicUrl: opts.publicUrl,
+					channel: opts.channel,
+					byok: opts.byok,
+				}),
 				guest: {
 					cpus: opts.cpus ?? 1,
 					memory_mb: opts.memoryMb ?? 2048,
