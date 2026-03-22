@@ -80,7 +80,7 @@
 	{/key}
 {:else}
 	<div class="instance-view">
-		{#if !presentation.active && scene.mode === "chat"}
+		{#if !presentation.active && (scene.mode === "chat" || activeTab !== "chat")}
 		<nav class="instance-tabs">
 			<a
 				href="/"
