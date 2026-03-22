@@ -27,12 +27,24 @@
 		isOnboarding && !onboardingDone ? '/orb-onboarding.mp4' : videoFiles[videoState] + '.mp4'
 	);
 	let isThinking = $derived(store.thinking);
+	let pendingIdle = $state(false); // thinking ended while transition was playing
 
 	$effect(() => {
-		if (isThinking && (videoState === 'idle' || videoState === 'to-idle')) {
-			videoState = 'to-thinking';
-		} else if (!isThinking && (videoState === 'thinking' || videoState === 'to-thinking')) {
-			videoState = 'to-idle';
+		if (isThinking) {
+			pendingIdle = false;
+			if (videoState === 'idle') {
+				videoState = 'to-thinking';
+			} else if (videoState === 'to-idle') {
+				// Already transitioning back — let it finish, then go to thinking
+				// Actually just stay, it'll go to idle then we pick it up
+			}
+		} else if (!isThinking) {
+			if (videoState === 'thinking') {
+				videoState = 'to-idle';
+			} else if (videoState === 'to-thinking') {
+				// Transition still playing — queue the return
+				pendingIdle = true;
+			}
 		}
 	});
 
@@ -42,7 +54,13 @@
 			return;
 		}
 		if (videoState === 'to-thinking') {
-			videoState = 'thinking';
+			if (pendingIdle) {
+				// Thinking ended while transition was playing — go back
+				pendingIdle = false;
+				videoState = 'to-idle';
+			} else {
+				videoState = 'thinking';
+			}
 		} else if (videoState === 'to-idle') {
 			videoState = 'idle';
 		}
