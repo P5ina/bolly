@@ -12,6 +12,7 @@
 			byokPrice: 5,
 			features: ['1M tokens / month', '10 GB storage', 'Memory & mood tracking'],
 			featured: false,
+			icon: '/assets/plan-starter.png',
 		},
 		{
 			name: 'companion',
@@ -21,6 +22,7 @@
 			features: ['3M tokens / month', '20 GB storage', 'Web browsing', 'Email integration'],
 			featured: true,
 			badge: 'popular',
+			icon: '/assets/plan-companion.png',
 		},
 		{
 			name: 'real friend',
@@ -29,6 +31,7 @@
 			byokPrice: 19,
 			features: ['10M tokens / month', '50 GB storage', 'Web browsing', 'Early access to new features'],
 			featured: false,
+			icon: '/assets/plan-friend.png',
 		},
 	];
 </script>
@@ -81,6 +84,7 @@
 						{/if}
 
 						<div class="price-card-inner">
+							<img src={plan.icon} alt="" class="plan-icon" />
 							<div class="font-display italic text-xl text-text mb-1">{plan.name}</div>
 							<div class="text-xs text-text-ghost mb-6">{plan.desc}</div>
 
@@ -129,6 +133,13 @@
 </section>
 
 <style>
+	.plan-icon {
+		width: 48px;
+		height: 48px;
+		object-fit: contain;
+		margin-bottom: 1rem;
+	}
+
 	.section-label {
 		font-size: 0.8rem;
 		letter-spacing: 0.15em;
