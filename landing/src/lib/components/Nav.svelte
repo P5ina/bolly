@@ -18,7 +18,7 @@
 <nav class="nav" class:nav-scrolled={scrolled}>
 	<div class="nav-inner">
 		<a href="/" class="nav-brand">
-			<div class="nav-logo">b</div>
+			<img src="/assets/plan-companion.png" alt="" class="nav-logo" />
 			<span class="nav-name">bolly</span>
 		</a>
 
@@ -107,18 +107,7 @@
 	.nav-logo {
 		width: 2rem;
 		height: 2rem;
-		border-radius: 0.5rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-family: var(--font-display);
-		font-style: italic;
-		font-size: 0.875rem;
-		color: var(--color-warm);
-		background: var(--glass-bg);
-		backdrop-filter: var(--glass-blur);
-		border: 1px solid var(--glass-border);
-		border-top-color: var(--glass-border-top);
+		object-fit: contain;
 	}
 
 	.nav-name {
