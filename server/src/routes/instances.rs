@@ -31,7 +31,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/memory", get(list_memory))
         .route("/api/instances/{instance_slug}/memory/search", get(search_memory))
         .route("/api/instances/{instance_slug}/memory/reindex", post(reindex_memory))
-        .route("/api/instances/{instance_slug}/memory/{*path}", get(read_memory_file))
+        .route("/api/instances/{instance_slug}/memory/{*path}", get(read_memory_file).delete(delete_memory_file))
         .route("/api/instances/{instance_slug}/email", get(get_email_config))
         .route("/api/instances/{instance_slug}/email", put(set_email_config))
         .route("/api/instances/{instance_slug}/email", delete(delete_email_config))
@@ -693,6 +693,44 @@ async fn serve_memory_file_inner(
         .header(axum::http::header::CACHE_CONTROL, "public, max-age=86400")
         .body(axum::body::Body::from(bytes))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn delete_memory_file(
+    State(state): State<AppState>,
+    Path((instance_slug, file_path)): Path<(String, String)>,
+) -> StatusCode {
+    if file_path.contains("..") || file_path.starts_with('/') {
+        return StatusCode::BAD_REQUEST;
+    }
+    let full_path = state.workspace_dir
+        .join("instances")
+        .join(&instance_slug)
+        .join("memory")
+        .join(&file_path);
+    if !full_path.exists() {
+        return StatusCode::NOT_FOUND;
+    }
+    if std::fs::remove_file(&full_path).is_err() {
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
+    // Clean up empty parent dirs
+    if let Some(parent) = full_path.parent() {
+        let memory_dir = state.workspace_dir
+            .join("instances")
+            .join(&instance_slug)
+            .join("memory");
+        let _ = memory::cleanup_empty_dirs(parent, &memory_dir);
+    }
+    // Remove from vector store
+    let vs = state.vector_store.clone();
+    let slug = instance_slug.clone();
+    let path = file_path.clone();
+    tokio::spawn(async move {
+        if let Err(e) = vs.delete_by_path(&slug, &path).await {
+            log::warn!("[delete_memory] vector delete failed: {e}");
+        }
+    });
+    StatusCode::OK
 }
 
 // ---------------------------------------------------------------------------

@@ -33,20 +33,23 @@ impl MemoryWriteTool {
 
 #[derive(Deserialize, JsonSchema)]
 pub struct MemoryWriteArgs {
-    /// Path within the memory library (e.g. "about/basics.md", "moments/sunset.jpg").
+    /// Path within the memory library (e.g. "about/basics.md", "documents/schedule.pdf", "moments/sunset.jpg").
     /// Folders will be created automatically. For text files must end with .md.
-    /// For images, use the original extension (.jpg, .png, .webp).
+    /// For uploaded files, use the original extension (.jpg, .png, .pdf, .mp4, .mp3).
     pub path: String,
-    /// Content to write. For text files: the memory content. For images: leave empty.
+    /// Content to write. For text files: the memory content. For uploaded files: optional description.
     #[serde(default)]
     pub content: String,
     /// "write" (default) to create/replace, or "append" to add to existing file.
     #[serde(default = "default_write_mode")]
     pub mode: String,
-    /// Upload ID of an image to save as a memory (e.g. "upload_1234567890").
-    /// When provided, the image is copied from uploads to the memory library.
-    #[serde(default)]
-    pub image_upload_id: Option<String>,
+    /// Upload ID of a file to save as a memory (e.g. "upload_1234567890").
+    /// When provided, the file is copied from uploads to the memory library.
+    /// Works for any uploaded file: images, PDFs, videos, audio.
+    /// IMPORTANT: when the user asks to save an uploaded file to memory, always use
+    /// this field with the upload ID — do NOT read the file and convert to markdown.
+    #[serde(default, alias = "image_upload_id")]
+    pub upload_id: Option<String>,
 }
 
 fn default_write_mode() -> String {
@@ -64,7 +67,9 @@ impl Tool for MemoryWriteTool {
             name: "memory_write".into(),
             description: "Create or update a memory file. Organize by folder (about/, preferences/, moments/, etc). \
                 Files in pinned/ are always loaded into your context — use for triggers, rituals, critical references. \
-                Can also save uploaded files: set image_upload_id to the upload ID and path with the right extension. \
+                Can save uploaded files: set upload_id to the upload ID and path with the right extension. \
+                IMPORTANT: when the user asks to save an uploaded file (image, PDF, video, audio), \
+                always preserve the original file — use upload_id, do NOT convert to markdown. \
                 Supported: images (.jpg .png .webp .gif), documents (.pdf), video (.mp4 .mov), audio (.mp3 .wav). \
                 Example: documents/schedule.pdf, moments/sunset.jpg, recordings/voice-note.mp3".into(),
             parameters: openai_schema::<MemoryWriteArgs>(),
@@ -72,11 +77,11 @@ impl Tool for MemoryWriteTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        // Image save mode
-        if let Some(upload_id) = &args.image_upload_id {
+        // Upload save mode (images, PDFs, video, audio)
+        if let Some(upload_id) = &args.upload_id {
             let clean_path = sanitize_media_path(&args.path);
             if clean_path.is_empty() {
-                return Err(ToolExecError("invalid image path".into()));
+                return Err(ToolExecError("invalid file path".into()));
             }
 
             // Find the uploaded file
@@ -139,7 +144,7 @@ impl Tool for MemoryWriteTool {
                 embed_memory_to_vector(&self.vector_store, &self.google_ai_key, &self.instance_slug, &desc_path, &args.content).await;
             }
 
-            return Ok(format!("saved image to {clean_path}"));
+            return Ok(format!("saved {clean_path}"));
         }
 
         // Text file mode

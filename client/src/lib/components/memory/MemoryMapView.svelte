@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { fetchMemory, fetchMemoryContent, searchMemory, getAuthToken, type MemorySearchResult } from "$lib/api/client.js";
+	import { fetchMemory, fetchMemoryContent, searchMemory, deleteMemoryFile, getAuthToken, type MemorySearchResult } from "$lib/api/client.js";
 	import { Play, Music, FileText } from "@lucide/svelte";
 	import type { MemoryEntry } from "$lib/api/types.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
@@ -425,6 +425,20 @@
 		}
 	}
 
+	async function handleDelete() {
+		if (!viewingEntry) return;
+		const path = viewingEntry.path;
+		try {
+			await deleteMemoryFile(slug, path);
+			toast.show("deleted");
+			viewingEntry = null;
+			viewingContent = "";
+			await load();
+		} catch {
+			toast.error("failed to delete");
+		}
+	}
+
 	function fileName(path: string): string {
 		return path.split("/").pop()?.replace(".md", "") ?? path;
 	}
@@ -519,6 +533,11 @@
 			</button>
 			<span class="memory-breadcrumb">{viewingEntry.path}</span>
 			<span class="memory-count">{formatSize(viewingEntry.size)}</span>
+			<button class="memory-delete" onclick={handleDelete} title="delete memory">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+					<path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+			</button>
 		</div>
 		<div class="doc-viewer">
 			{#if viewingLoading}
@@ -809,6 +828,18 @@
 	}
 	.memory-breadcrumb { font-family: var(--font-mono); font-size: 0.68rem; color: oklch(0.55 0.08 240 / 50%); }
 	.memory-count { font-family: var(--font-mono); font-size: 0.7rem; color: oklch(0.55 0.08 240 / 28%); letter-spacing: 0.04em; margin-left: auto; }
+	.memory-delete {
+		display: flex; align-items: center; justify-content: center;
+		width: 28px; height: 28px; color: oklch(0.55 0.08 15 / 50%);
+		background: none; border: 1px solid oklch(1 0 0 / 8%);
+		border-radius: 50%; cursor: pointer; transition: all 0.25s ease;
+		margin-left: 6px;
+	}
+	.memory-delete:hover {
+		color: oklch(0.70 0.15 15);
+		border-color: oklch(0.70 0.15 15 / 30%);
+		background: oklch(0.70 0.15 15 / 8%);
+	}
 
 	/* ═══════ Search ═══════ */
 

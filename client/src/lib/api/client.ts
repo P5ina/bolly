@@ -397,6 +397,12 @@ export async function fetchMemoryContent(slug: string, path: string): Promise<st
 	return res.text();
 }
 
+export async function deleteMemoryFile(slug: string, path: string): Promise<void> {
+	const res = await authedFetch(`/api/instances/${encodeURIComponent(slug)}/memory/${path}`, { method: 'DELETE' });
+	if (res.status === 401) throw new AuthError();
+	if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
+}
+
 export function fetchDrops(slug: string): Promise<Drop[]> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/drops`);
 }

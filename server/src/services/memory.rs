@@ -648,7 +648,7 @@ async fn embed_memory_file(
 }
 
 /// Remove empty directories up to (but not including) the base memory dir.
-fn cleanup_empty_dirs(dir: &Path, base: &Path) -> std::io::Result<()> {
+pub fn cleanup_empty_dirs(dir: &Path, base: &Path) -> std::io::Result<()> {
     if dir == base || !dir.starts_with(base) {
         return Ok(());
     }
