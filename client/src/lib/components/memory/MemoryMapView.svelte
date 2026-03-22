@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { fetchMemory, fetchMemoryContent, searchMemory, type MemorySearchResult } from "$lib/api/client.js";
+	import { fetchMemory, fetchMemoryContent, searchMemory, getAuthToken, type MemorySearchResult } from "$lib/api/client.js";
 	import type { MemoryEntry } from "$lib/api/types.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 
@@ -389,10 +389,15 @@
 		return MEDIA_EXTS.some(ext => lower.endsWith(ext));
 	}
 
+	function mediaUrl(path: string): string {
+		const token = getAuthToken() ?? '';
+		return `/api/instances/${encodeURIComponent(slug)}/memory/${path}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+	}
+
 	async function openDocument(entry: MemoryEntry) {
-		// Media files: open directly via API URL
+		// Media files: open directly via API URL with auth token
 		if (isMediaFile(entry.path)) {
-			window.open(`/api/instances/${encodeURIComponent(slug)}/memory/${entry.path}`, '_blank');
+			window.open(mediaUrl(entry.path), '_blank');
 			return;
 		}
 		viewingEntry = entry;
@@ -636,7 +641,7 @@
 								{#if isImage}
 									<img
 										class="bubble-thumb"
-										src="/api/instances/{encodeURIComponent(slug)}/memory/{circle.entry?.path}"
+										src={mediaUrl(circle.entry?.path ?? '')}
 										alt=""
 										loading="lazy"
 									/>
