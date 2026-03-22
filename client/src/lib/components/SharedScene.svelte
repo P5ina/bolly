@@ -297,7 +297,7 @@
 	}
 
 	onMount(() => {
-		if (window.innerWidth < 640) return;
+		// Mobile: animation still runs but orb is blurred/faded via CSS
 		prevTime = performance.now();
 		animate();
 	});
@@ -421,7 +421,16 @@
 	}
 
 	@media (max-width: 640px) {
-		.scene-root { display: none; }
+		.scene-root {
+			pointer-events: none;
+		}
+		.orb-btn {
+			pointer-events: none;
+		}
+		.orb-vid {
+			filter: blur(8px);
+			opacity: 0.3;
+		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {
