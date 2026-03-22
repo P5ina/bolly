@@ -178,8 +178,11 @@ async fn connect_one(config: &McpServerConfig) -> Result<McpConnection, Box<dyn 
         let mut transport_config = rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(url.as_str());
 
         // Set Authorization header as auth_header if present
+        // rmcp uses reqwest's bearer_auth() which adds "Bearer " prefix automatically,
+        // so strip it if the user included it in the header value.
         if let Some(auth) = config.headers.get("Authorization").or_else(|| config.headers.get("authorization")) {
-            transport_config.auth_header = Some(auth.clone());
+            let token = auth.strip_prefix("Bearer ").or_else(|| auth.strip_prefix("bearer ")).unwrap_or(auth);
+            transport_config.auth_header = Some(token.to_string());
         }
 
         // Set remaining custom headers
