@@ -15,25 +15,10 @@
 			video: '/assets/feature-memory.mp4',
 		},
 		{
-			title: 'studies with you',
-			desc: "Breaks down concepts, quizzes you, tracks what trips you up. A study partner that never gets tired.",
-			image: '/assets/feature-study.webp',
-		},
-		{
 			title: 'transparent tool calls',
 			desc: "You see everything the agent does — every tool call, every decision. Nothing hidden.",
 			image: '/assets/feature-connection.webp',
 			video: '/assets/feature-transparent.mp4',
-		},
-		{
-			title: 'checks in on you',
-			desc: "Every 45 minutes, it wakes up on its own. Reflects, journals, and sometimes reaches out.",
-			image: '/assets/feature-checkin.webp',
-		},
-		{
-			title: 'completely private',
-			desc: "Your conversations, memories, and feelings are fully encrypted and private. No one else can access them.",
-			image: '/assets/feature-privacy.webp',
 		},
 	];
 
@@ -124,7 +109,7 @@
 
 <style>
 	.features {
-		height: 600vh;
+		height: 400vh;
 		position: relative;
 	}
 

@@ -36,8 +36,8 @@
 	};
 
 	const transitions: AnimTransition[] = [
-		// idle → onboarding (when entering onboarding mode)
-		{ from: 'idle', to: 'onboarding', condition: () => store.mode === 'onboarding' },
+		// idle → onboarding (when entering onboarding mode, only once)
+		{ from: 'idle', to: 'onboarding', condition: () => store.mode === 'onboarding' && !onboardingPlayed },
 
 		// onboarding → idle (when clip ends)
 		{ from: 'onboarding', to: 'idle', onEnd: true },
@@ -61,6 +61,7 @@
 		{ from: 'toIdle', to: 'toThinking', onEnd: true, condition: () => store.thinking },
 	];
 
+	let onboardingPlayed = $state(store.mode !== 'onboarding');
 	let currentState = $state(store.mode === 'onboarding' ? 'onboarding' : 'idle');
 
 	// Resolve current state config
@@ -83,6 +84,8 @@
 
 	// Handle clip ended — check onEnd transitions
 	function handleVideoEnded() {
+		if (currentState === 'onboarding') onboardingPlayed = true;
+
 		// Priority: transitions with both onEnd + condition first
 		for (const t of transitions) {
 			if (t.from === currentState && t.onEnd && t.condition) {
