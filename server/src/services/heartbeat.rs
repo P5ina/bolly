@@ -179,8 +179,10 @@ async fn heartbeat_instance(
     // Haiku decides what (if anything) to do. No tools, just a structured decision.
     let triage_llm = llm.fast_variant();
     let mood_list = mood_list();
+    let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
     let triage_system = format!(
         "{soul}\n\n\
+         {heartbeat_prompt}\n\n\
          you are in heartbeat mode — a periodic background check-in.\n\
          your job: decide what to do right now based on the context below.\n\n\
          choose ONE action:\n\
