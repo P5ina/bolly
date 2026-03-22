@@ -1,6 +1,6 @@
 <script lang="ts">
 import "../app.css";
-import favicon from '$lib/assets/favicon.svg';
+import favicon from '$lib/assets/favicon.png';
 import { dev } from "$app/environment";
 import { injectAnalytics } from "@vercel/analytics/sveltekit";
 
