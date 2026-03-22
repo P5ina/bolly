@@ -107,28 +107,24 @@
 	let isOnboarding = $derived(store.mode === 'onboarding');
 	let isLooping = $derived(stateConfig.loop);
 
-	// All video clips — preloaded, only active one visible
-	const allClips = Object.entries(states).map(([id, s]) => ({
-		id,
-		src: s.clip + '.mp4',
-		loop: s.loop,
-	}));
+	// Single video element per orb — iOS limits concurrent video elements
+	let videoEl: HTMLVideoElement | undefined = $state();
+	let lastSrc = '';
 
-	let videoRefs: Record<string, HTMLVideoElement> = {};
-
-	// When state changes, play the new video from the start
 	$effect(() => {
-		const active = currentState;
-		for (const [id, el] of Object.entries(videoRefs)) {
-			if (id === active) {
-				el.currentTime = 0;
-				el.play().catch(() => {
-					// Retry after a short delay if play fails
-					setTimeout(() => el.play().catch(() => {}), 100);
-				});
-			} else {
-				el.pause();
-			}
+		if (!videoEl) return;
+		const src = videoSrc;
+		const loop = isLooping;
+		if (src !== lastSrc) {
+			lastSrc = src;
+			videoEl.src = src;
+			videoEl.loop = loop;
+			videoEl.load();
+			videoEl.play().catch(() => {
+				setTimeout(() => videoEl?.play().catch(() => {}), 100);
+			});
+		} else {
+			videoEl.loop = loop;
 		}
 	});
 
@@ -298,9 +294,8 @@
 		lastWideVideo = currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle';
 
 		// Keep active video playing (browser may suspend it)
-		const activeEl = videoRefs[currentState];
-		if (activeEl && activeEl.paused && activeEl.readyState >= 2) {
-			activeEl.play().catch(() => {});
+		if (videoEl && videoEl.paused && videoEl.readyState >= 2) {
+			videoEl.play().catch(() => {});
 		}
 
 		if (m !== lastMode) {
@@ -363,18 +358,13 @@
 				style="left: {orb.x}%; top: {orb.y}%; width: {orb.size}px; height: {orb.size}px; opacity: {orb.opacity};"
 				disabled={store.mode !== "home"}
 			>
-				{#each allClips as clip (clip.id)}
-					<video
-						bind:this={videoRefs[clip.id]}
-						muted playsinline preload="auto"
-						loop={clip.loop}
-						class="orb-vid"
-						class:orb-vid-hidden={clip.id !== currentState}
-						class:no-mask={currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle'}
-						src={clip.src}
-						onended={handleVideoEnded}
-					></video>
-				{/each}
+				<video
+					bind:this={videoEl}
+					autoplay muted playsinline
+					class="orb-vid"
+					class:no-mask={currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle'}
+					onended={handleVideoEnded}
+				></video>
 			</button>
 		{/if}
 	{/each}
@@ -421,10 +411,6 @@
 		pointer-events: none;
 		mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 48%);
 		-webkit-mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 48%);
-	}
-
-	.orb-vid-hidden {
-		visibility: hidden;
 	}
 
 	.orb-vid.no-mask {
