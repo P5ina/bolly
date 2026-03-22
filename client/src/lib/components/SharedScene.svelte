@@ -171,9 +171,15 @@
 				}
 			} else if (m === "chat") {
 				if (isSelected) {
-					tx = 50 + FINAL_X * WORLD_TO_PCT;
-					ty = 50 + FINAL_Y * WORLD_TO_PCT;
-					ts = FINAL_SCALE * BASE_SIZE;
+					if (store.presenting) {
+						tx = 50;
+						ty = 50;
+						ts = FINAL_SCALE * BASE_SIZE * 1.5;
+					} else {
+						tx = 50 + FINAL_X * WORLD_TO_PCT;
+						ty = 50 + FINAL_Y * WORLD_TO_PCT;
+						ts = FINAL_SCALE * BASE_SIZE;
+					}
 				} else {
 					ts = 0; to = 0;
 				}
