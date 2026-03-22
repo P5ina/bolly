@@ -383,9 +383,13 @@
 		{#if selOrb}
 			<div class="memory-clouds" style="left: {selOrb.x}%; top: calc({selOrb.y}% - {selOrb.size * 0.35}px);">
 				{#each store.recalledMemories as mem, i}
-					<div class="memory-cloud" style="animation-delay: {i * 120 + 50}ms;">
+					<a
+						class="memory-cloud"
+						style="animation-delay: {i * 120 + 50}ms;"
+						href="/{store.selectedSlug}/memory?open={encodeURIComponent(mem.path)}"
+					>
 						{mem.path.split('/').pop()?.replace('.md', '')}
-					</div>
+					</a>
 				{/each}
 			</div>
 		{/if}
@@ -461,8 +465,18 @@
 		font-style: italic;
 		font-size: 0.68rem;
 		color: oklch(0.78 0.12 75 / 60%);
+		text-decoration: none;
+		pointer-events: auto;
+		cursor: pointer;
 		opacity: 0;
 		animation: cloud-float 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+		transition: border-color 0.2s ease, background 0.2s ease;
+	}
+
+	.memory-cloud:hover {
+		background: oklch(0.78 0.12 75 / 14%);
+		border-color: oklch(0.78 0.12 75 / 22%);
+		color: oklch(0.78 0.12 75 / 80%);
 	}
 
 	@keyframes cloud-float {

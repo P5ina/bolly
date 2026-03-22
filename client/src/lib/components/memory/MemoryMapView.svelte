@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { fetchMemory, fetchMemoryContent, searchMemory, getAuthToken, type MemorySearchResult } from "$lib/api/client.js";
+	import { Play, Music, FileText } from "lucide-svelte";
 	import type { MemoryEntry } from "$lib/api/types.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 
@@ -382,11 +383,23 @@
 	}
 
 	const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp'];
-	const MEDIA_EXTS = [...IMAGE_EXTS, '.mp4', '.mov', '.webm', '.mp3', '.wav', '.ogg', '.pdf'];
+	const VIDEO_EXTS = ['.mp4', '.mov', '.webm'];
+	const AUDIO_EXTS = ['.mp3', '.wav', '.ogg'];
+	const PDF_EXTS = ['.pdf'];
+	const MEDIA_EXTS = [...IMAGE_EXTS, ...VIDEO_EXTS, ...AUDIO_EXTS, ...PDF_EXTS];
 
 	function isMediaFile(path: string): boolean {
 		const lower = path.toLowerCase();
 		return MEDIA_EXTS.some(ext => lower.endsWith(ext));
+	}
+
+	function mediaType(path: string): 'image' | 'video' | 'audio' | 'pdf' | 'text' {
+		const lower = path.toLowerCase();
+		if (IMAGE_EXTS.some(ext => lower.endsWith(ext))) return 'image';
+		if (VIDEO_EXTS.some(ext => lower.endsWith(ext))) return 'video';
+		if (AUDIO_EXTS.some(ext => lower.endsWith(ext))) return 'audio';
+		if (PDF_EXTS.some(ext => lower.endsWith(ext))) return 'pdf';
+		return 'text';
 	}
 
 	function mediaUrl(path: string): string {
@@ -395,12 +408,13 @@
 	}
 
 	async function openDocument(entry: MemoryEntry) {
-		// Media files: open directly via API URL with auth token
+		viewingEntry = entry;
 		if (isMediaFile(entry.path)) {
-			window.open(mediaUrl(entry.path), '_blank');
+			// Media files rendered inline — no need to fetch content
+			viewingContent = "";
+			viewingLoading = false;
 			return;
 		}
-		viewingEntry = entry;
 		viewingLoading = true;
 		try {
 			viewingContent = await fetchMemoryContent(slug, entry.path);
@@ -509,6 +523,24 @@
 		<div class="doc-viewer">
 			{#if viewingLoading}
 				<div class="doc-loading">loading...</div>
+			{:else if mediaType(viewingEntry.path) === 'image'}
+				<img src={mediaUrl(viewingEntry.path)} alt={viewingEntry.path} class="doc-media-img" />
+			{:else if mediaType(viewingEntry.path) === 'video'}
+				<video src={mediaUrl(viewingEntry.path)} controls playsinline class="doc-media-video">
+					<track kind="captions" />
+				</video>
+			{:else if mediaType(viewingEntry.path) === 'audio'}
+				<div class="doc-media-audio-wrap">
+					<div class="doc-audio-icon">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32">
+							<path d="M9 18V5l12-2v13" stroke-linecap="round" stroke-linejoin="round"/>
+							<circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+						</svg>
+					</div>
+					<audio src={mediaUrl(viewingEntry.path)} controls class="doc-media-audio"></audio>
+				</div>
+			{:else if mediaType(viewingEntry.path) === 'pdf'}
+				<iframe src={mediaUrl(viewingEntry.path)} class="doc-media-pdf" title="PDF viewer"></iframe>
 			{:else}
 				<pre class="doc-content">{viewingContent}</pre>
 			{/if}
@@ -612,6 +644,7 @@
 						{@const showLabel = circle.r > 20}
 						{@const showSub = circle.r > 42}
 						{@const isImage = !isFolderView && circle.entry && IMAGE_EXTS.some(ext => circle.entry!.path.toLowerCase().endsWith(ext))}
+						{@const fileType = !isFolderView && circle.entry ? mediaType(circle.entry.path) : 'text'}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							class="bubble-anchor"
@@ -639,12 +672,13 @@
 								onclick={() => handleCircleClick(circle)}
 							>
 								{#if isImage}
-									<img
-										class="bubble-thumb"
-										src={mediaUrl(circle.entry?.path ?? '')}
-										alt=""
-										loading="lazy"
-									/>
+									<img class="bubble-thumb" src={mediaUrl(circle.entry?.path ?? '')} alt="" loading="lazy" />
+								{:else if fileType === 'video'}
+									<div class="bubble-type-icon"><Play size={20} /></div>
+								{:else if fileType === 'audio'}
+									<div class="bubble-type-icon"><Music size={20} /></div>
+								{:else if fileType === 'pdf'}
+									<div class="bubble-type-icon"><FileText size={20} /></div>
 								{:else}
 									<div class="bubble-core"></div>
 								{/if}
@@ -885,6 +919,43 @@
 		text-align: center;
 	}
 
+	.doc-media-img {
+		max-width: 100%;
+		max-height: 70vh;
+		border-radius: 0.75rem;
+		object-fit: contain;
+	}
+
+	.doc-media-video {
+		max-width: 100%;
+		max-height: 70vh;
+		border-radius: 0.75rem;
+	}
+
+	.doc-media-audio-wrap {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 1.5rem;
+		padding: 3rem 0;
+	}
+
+	.doc-audio-icon {
+		color: oklch(0.78 0.12 75 / 30%);
+	}
+
+	.doc-media-audio {
+		width: 100%;
+		max-width: 400px;
+	}
+
+	.doc-media-pdf {
+		width: 100%;
+		height: 80vh;
+		border: none;
+		border-radius: 0.75rem;
+	}
+
 	.doc-content {
 		font-family: var(--font-body);
 		font-size: 0.78rem;
@@ -1001,6 +1072,15 @@
 		object-fit: cover;
 		border-radius: 50%;
 		opacity: 0.85;
+	}
+
+	.bubble-type-icon {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		color: oklch(0.78 0.12 75 / 40%);
+		opacity: 0.6;
 	}
 
 	.bubble-core {
