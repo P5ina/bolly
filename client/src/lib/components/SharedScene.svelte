@@ -100,23 +100,27 @@
 	let isOnboarding = $derived(store.mode === 'onboarding');
 	let isLooping = $derived(stateConfig.loop);
 
-	// Double-buffer videos to prevent flash on transition
-	let activeSrc = $state(videoSrc);
-	let nextSrc = $state('');
-	let showNext = $state(false);
+	// All video clips — preloaded, only active one visible
+	const allClips = Object.entries(states).map(([id, s]) => ({
+		id,
+		src: s.clip + '.mp4',
+		loop: s.loop,
+	}));
 
+	let videoRefs: Record<string, HTMLVideoElement> = {};
+
+	// When state changes, play the new video from the start
 	$effect(() => {
-		if (videoSrc !== activeSrc && videoSrc !== nextSrc) {
-			nextSrc = videoSrc;
-			showNext = false;
+		const active = currentState;
+		for (const [id, el] of Object.entries(videoRefs)) {
+			if (id === active) {
+				el.currentTime = 0;
+				el.play().catch(() => {});
+			} else {
+				el.pause();
+			}
 		}
 	});
-
-	function onNextPlaying() {
-		activeSrc = nextSrc;
-		nextSrc = '';
-		showNext = false;
-	}
 
 	// ── Orb state ──
 	interface OrbState {
@@ -338,27 +342,18 @@
 				style="left: {orb.x}%; top: {orb.y}%; width: {orb.size}px; height: {orb.size}px; opacity: {orb.opacity};"
 				disabled={store.mode !== "home"}
 			>
-				<!-- Active video -->
-				<video
-					autoplay muted playsinline
-					loop={isLooping}
-					class="orb-vid"
-					class:no-mask={currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle'}
-					src={activeSrc}
-					onended={handleVideoEnded}
-				></video>
-				<!-- Next video (preloading on top) -->
-				{#if nextSrc}
+				{#each allClips as clip (clip.id)}
 					<video
-						autoplay muted playsinline
-						loop={isLooping}
-						class="orb-vid orb-vid-next"
+						bind:this={videoRefs[clip.id]}
+						muted playsinline preload="auto"
+						loop={clip.loop}
+						class="orb-vid"
+						class:orb-vid-hidden={clip.id !== currentState}
 						class:no-mask={currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle'}
-						src={nextSrc}
-						onplaying={onNextPlaying}
+						src={clip.src}
 						onended={handleVideoEnded}
 					></video>
-				{/if}
+				{/each}
 			</button>
 		{/if}
 	{/each}
@@ -397,6 +392,8 @@
 	}
 
 	.orb-vid {
+		position: absolute;
+		inset: 0;
 		width: 100%;
 		height: 100%;
 		object-fit: contain;
@@ -405,9 +402,8 @@
 		-webkit-mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 48%);
 	}
 
-	.orb-vid-next {
-		position: absolute;
-		inset: 0;
+	.orb-vid-hidden {
+		visibility: hidden;
 	}
 
 	.orb-vid.no-mask {
