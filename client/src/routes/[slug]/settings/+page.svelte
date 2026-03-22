@@ -236,6 +236,7 @@
 	// Update state
 	let updateInfo = $state<UpdateCheck | null>(null);
 	let updating = $state(false);
+	let checkingUpdate = $state(false);
 	let updateDone = $state(false);
 	let channel = $state("stable");
 	$effect(() => {
@@ -589,6 +590,19 @@
 	<div class="update-section">
 		<div class="update-row">
 			<span class="update-current">v{updateInfo?.current?.replace('v','') ?? '...'}</span>
+			<button
+				class="check-update-btn"
+				disabled={checkingUpdate}
+				onclick={async () => {
+					checkingUpdate = true;
+					try {
+						updateInfo = await checkUpdate();
+					} catch {}
+					checkingUpdate = false;
+				}}
+			>
+				{checkingUpdate ? 'checking...' : 'check for updates'}
+			</button>
 			<select
 				class="channel-select"
 				value={channel}
@@ -1413,6 +1427,25 @@
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
 		color: oklch(0.55 0.08 240 / 30%);
+	}
+	.check-update-btn {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		padding: 0.2rem 0.6rem;
+		border-radius: 0.25rem;
+		background: oklch(1 0 0 / 4%);
+		border: 1px solid oklch(1 0 0 / 8%);
+		color: oklch(0.88 0.02 75 / 60%);
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+	.check-update-btn:hover {
+		border-color: oklch(1 0 0 / 15%);
+		color: oklch(0.88 0.02 75 / 80%);
+	}
+	.check-update-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 	.channel-select {
 		font-family: var(--font-mono);
