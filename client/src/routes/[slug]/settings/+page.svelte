@@ -141,8 +141,8 @@
 			await updateMusicEnabled(slug, next);
 			musicEnabledVal = next;
 			scene.setMusicEnabled(next);
-		} catch {
-			// ignore
+		} catch (e) {
+			console.error("[music] toggle failed:", e);
 		} finally {
 			musicSaving = false;
 		}
