@@ -252,21 +252,39 @@ impl Tool for MemoryReadTool {
                 Ok(items.join("\n"))
             }
         } else if full_path.exists() {
-            // Check if it's a media file — return image content block with URL
-            let is_image = matches!(
-                full_path.extension().and_then(|e| e.to_str()),
-                Some("jpg" | "jpeg" | "png" | "gif" | "webp" | "svg")
-            );
-            if is_image && !self.public_url.is_empty() {
+            let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let is_image = matches!(ext, "jpg" | "jpeg" | "png" | "gif" | "webp" | "svg");
+            let is_pdf = ext == "pdf";
+            let is_media = is_image || is_pdf || matches!(ext, "mp4" | "mov" | "mp3" | "wav");
+
+            if (is_image || is_pdf) && !self.public_url.is_empty() {
                 let url = format!(
                     "{}/public/memory/{}/{}?token={}",
                     self.public_url, self.instance_slug, clean_path, self.auth_token,
                 );
+                let block_type = if is_image { "image" } else { "document" };
                 let blocks = serde_json::json!([
-                    {"type": "text", "text": format!("memory image: {clean_path}")},
-                    {"type": "image", "source": {"type": "url", "url": url}},
+                    {"type": "text", "text": format!("memory file: {clean_path}")},
+                    {"type": block_type, "source": {"type": "url", "url": url}},
                 ]);
                 Ok(serde_json::to_string(&blocks).unwrap())
+            } else if is_media {
+                // Audio/video — return metadata only (LLM can't inline these)
+                let size = fs::metadata(&full_path).map(|m| m.len()).unwrap_or(0);
+                let kind = match ext {
+                    "mp4" | "mov" => "video",
+                    "mp3" | "wav" => "audio",
+                    _ => "file",
+                };
+                let mut out = format!("[{kind}: {clean_path}, {:.1} KB]", size as f64 / 1024.0);
+                if !self.public_url.is_empty() {
+                    let url = format!(
+                        "{}/public/memory/{}/{}?token={}",
+                        self.public_url, self.instance_slug, clean_path, self.auth_token,
+                    );
+                    out.push_str(&format!("\ndownload: {url}"));
+                }
+                Ok(out)
             } else {
                 fs::read_to_string(&full_path).map_err(|e| ToolExecError(e.to_string()))
             }

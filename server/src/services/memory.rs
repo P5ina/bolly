@@ -39,11 +39,14 @@ fn scan_dir_recursive(base: &Path, current: &Path, entries: &mut Vec<MemoryEntry
         if path.is_dir() {
             scan_dir_recursive(base, &path, entries);
         } else {
-            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
             let is_text = ext == "md";
-            let is_image = matches!(ext, "jpg" | "jpeg" | "png" | "webp" | "gif");
+            let is_media = matches!(ext.as_str(),
+                "jpg" | "jpeg" | "png" | "webp" | "gif" | "svg" |
+                "pdf" | "mp4" | "mov" | "mp3" | "wav"
+            );
 
-            if !is_text && !is_image {
+            if !is_text && !is_media {
                 continue;
             }
 
@@ -53,11 +56,18 @@ fn scan_dir_recursive(base: &Path, current: &Path, entries: &mut Vec<MemoryEntry
                 .to_string_lossy()
                 .to_string();
 
-            if is_image {
+            if is_media {
                 let size = std::fs::metadata(&path).map(|m| m.len() as usize).unwrap_or(0);
+                let kind = match ext.as_str() {
+                    "jpg" | "jpeg" | "png" | "webp" | "gif" | "svg" => "image",
+                    "pdf" => "document",
+                    "mp4" | "mov" => "video",
+                    "mp3" | "wav" => "audio",
+                    _ => "file",
+                };
                 entries.push(MemoryEntry {
                     path: rel,
-                    summary: format!("[image: {ext}]"),
+                    summary: format!("[{kind}: {ext}]"),
                     size,
                 });
             } else {
