@@ -69,7 +69,7 @@ impl AppState {
 
         // Connect to configured MCP servers
         let mcp_connections = crate::services::mcp::connect_all(&config.mcp_servers).await;
-        let mcp_registry = McpRegistry::new(mcp_connections);
+        let mcp_registry = McpRegistry::new(mcp_connections, config.mcp_servers.clone());
         let mcp_tool_count = mcp_registry.tool_count().await;
         if mcp_tool_count > 0 {
             log::info!("MCP: {} tools from external servers", mcp_tool_count);

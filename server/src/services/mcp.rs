@@ -189,9 +189,12 @@ async fn connect_one(config: &McpServerConfig) -> Result<McpConnection, Box<dyn 
         client_info.client_info = Implementation::new("bolly", env!("CARGO_PKG_VERSION"));
         let running = client_info.serve(transport).await?;
         let sink: ServerSink = running.peer().clone();
+        let conn_name = config.name.clone();
         let keepalive = tokio::spawn(async move {
-            let _hold = running;
-            std::future::pending::<()>().await;
+            match running.waiting().await {
+                Ok(reason) => log::warn!("MCP '{conn_name}': connection closed: {reason:?}"),
+                Err(e) => log::warn!("MCP '{conn_name}': connection task failed: {e}"),
+            }
         });
 
         let raw_tools = sink.list_all_tools().await?;
@@ -253,20 +256,53 @@ async fn connect_one(config: &McpServerConfig) -> Result<McpConnection, Box<dyn 
 #[derive(Clone, Default)]
 pub struct McpRegistry {
     connections: Arc<tokio::sync::RwLock<Vec<McpConnection>>>,
+    configs: Arc<tokio::sync::RwLock<Vec<McpServerConfig>>>,
 }
 
 impl McpRegistry {
-    pub fn new(connections: Vec<McpConnection>) -> Self {
+    pub fn new(connections: Vec<McpConnection>, configs: Vec<McpServerConfig>) -> Self {
         Self {
             connections: Arc::new(tokio::sync::RwLock::new(connections)),
+            configs: Arc::new(tokio::sync::RwLock::new(configs)),
         }
     }
 
     /// Replace all connections with newly connected ones.
     pub async fn reconnect(&self, configs: &[McpServerConfig]) {
         let new_connections = connect_all(configs).await;
-        let mut guard = self.connections.write().await;
-        *guard = new_connections;
+        *self.configs.write().await = configs.to_vec();
+        *self.connections.write().await = new_connections;
+    }
+
+    /// Reconnect any servers that have dropped. Called before tool use.
+    pub async fn ensure_connected(&self) {
+        let configs = self.configs.read().await.clone();
+        if configs.is_empty() {
+            return;
+        }
+
+        let mut conns = self.connections.write().await;
+        let connected_names: Vec<String> = conns.iter()
+            .filter(|c| !c._keepalive.is_finished())
+            .map(|c| c.name.clone())
+            .collect();
+
+        // Remove dead connections
+        conns.retain(|c| !c._keepalive.is_finished());
+
+        // Reconnect missing
+        for config in &configs {
+            if !connected_names.contains(&config.name) {
+                log::info!("MCP '{}': reconnecting...", config.name);
+                match connect_one(config).await {
+                    Ok(conn) => {
+                        log::info!("MCP '{}': reconnected, {} tools", conn.name, conn.tools.len());
+                        conns.push(conn);
+                    }
+                    Err(e) => log::error!("MCP '{}': reconnect failed: {e}", config.name),
+                }
+            }
+        }
     }
 
     /// List connected server names.

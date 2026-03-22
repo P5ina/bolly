@@ -465,6 +465,7 @@ pub async fn run_single_turn(
     );
 
     let sent_files = tools::SentFiles::default();
+    mcp_registry.ensure_connected().await;
     let mcp_snapshot = mcp_registry.snapshot_app_tools().await;
     let mcp_tools = mcp_registry.tools_as_dyn().await;
     let openrouter_key = chat_config
