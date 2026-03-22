@@ -73,6 +73,31 @@ CRITICAL: if you want the user to see a message",
             },
         ],
     },
+    HeartbeatUpdate {
+        id: "image-generation-v1",
+        description: "New: image generation — your companion can now create and send images",
+        preview: "\
+New section: image generation — create visual greetings, illustrate drops, \
+generate selfies and artwork using fal.ai tools",
+        patches: &[
+            // Insert image generation section before memory maintenance
+            Patch {
+                find: "## memory maintenance",
+                replace: "\
+## image generation\n\
+you can generate images using fal.ai tools when they're available. use them to:\n\
+- create a visual greeting or postcard for the user (reach_out with the image URL)\n\
+- illustrate a drop with a generated image\n\
+- create a visual surprise — a selfie, a scene, an artwork that fits the mood\n\
+- respond to user requests for images during conversation\n\
+\n\
+when generating images, be creative with prompts — describe the scene, style, lighting, \
+mood in detail. save memorable generated images to memory (moments/ folder).\n\
+\n\
+## memory maintenance",
+            },
+        ],
+    },
 ];
 
 // ---------------------------------------------------------------------------
