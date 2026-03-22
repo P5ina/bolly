@@ -435,8 +435,8 @@
 			pointer-events: none;
 		}
 		.orb-vid {
-			filter: blur(8px);
-			opacity: 0.3;
+			filter: blur(4px);
+			opacity: 0.5;
 		}
 	}
 
