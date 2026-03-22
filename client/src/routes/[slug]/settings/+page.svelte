@@ -1697,10 +1697,16 @@
 	}
 
 	.section-icon-img {
-		width: 2.25rem;
-		height: 2.25rem;
-		object-fit: contain;
+		width: 2.5rem;
+		height: 2.5rem;
+		object-fit: cover;
 		flex-shrink: 0;
+		border-radius: 0.625rem;
+		border: 1px solid oklch(1 0 0 / 10%);
+		border-top-color: oklch(1 0 0 / 18%);
+		box-shadow:
+			0 2px 8px oklch(0 0 0 / 20%),
+			inset 0 1px 0 oklch(1 0 0 / 6%);
 	}
 
 	.ext-icon {
