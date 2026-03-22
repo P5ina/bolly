@@ -57,6 +57,10 @@
 
 	<h3 class="drop-card-title">{drop.title}</h3>
 
+	{#if drop.image_url}
+		<img class="drop-card-image" src={drop.image_url} alt={drop.title} loading="lazy" />
+	{/if}
+
 	<div class="drop-card-content" class:drop-card-content-expanded={expanded}>
 		{drop.content}
 	</div>
@@ -154,6 +158,20 @@
 		font-weight: 500;
 		color: oklch(0.88 0.02 75);
 		line-height: 1.35;
+	}
+
+	.drop-card-image {
+		width: 100%;
+		border-radius: 0.5rem;
+		max-height: 280px;
+		object-fit: cover;
+		opacity: 0.85;
+		transition: opacity 0.3s ease;
+	}
+
+	.drop-card-expanded .drop-card-image {
+		max-height: none;
+		opacity: 1;
 	}
 
 	.drop-card-content {

@@ -92,6 +92,18 @@ pub fn create_drop(
     content: &str,
     mood: &str,
 ) -> io::Result<Drop> {
+    create_drop_with_image(workspace_dir, instance_slug, kind, title, content, mood, None)
+}
+
+pub fn create_drop_with_image(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    kind: &str,
+    title: &str,
+    content: &str,
+    mood: &str,
+    image_url: Option<&str>,
+) -> io::Result<Drop> {
     let drops_dir = workspace_dir
         .join("instances")
         .join(instance_slug)
@@ -110,6 +122,7 @@ pub fn create_drop(
         content: content.to_string(),
         mood: mood.to_string(),
         created_at: ts.to_string(),
+        image_url: image_url.map(|s| s.to_string()),
     };
 
     let path = drops_dir.join(format!("{id}.json"));

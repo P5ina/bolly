@@ -133,6 +133,9 @@ impl ReachOutTool {
 pub struct ReachOutArgs {
     /// The message to send to the user. Keep it natural and concise.
     pub message: String,
+    /// Optional image URL (e.g. from fal.ai generation) to include in the message.
+    #[serde(default)]
+    pub image_url: Option<String>,
 }
 
 impl Tool for ReachOutTool {
@@ -150,9 +153,16 @@ impl Tool for ReachOutTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let message = args.message.trim().to_string();
+        let mut message = args.message.trim().to_string();
         if message.is_empty() {
             return Err(ToolExecError("message cannot be empty".into()));
+        }
+        // Append image as markdown if provided
+        if let Some(url) = &args.image_url {
+            let url = url.trim();
+            if !url.is_empty() {
+                message.push_str(&format!("\n\n![image]({url})"));
+            }
         }
 
         let instance_dir = self.workspace_dir.join("instances").join(&self.instance_slug);

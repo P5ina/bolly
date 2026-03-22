@@ -226,6 +226,10 @@ async fn heartbeat_instance(
                 "type": "string",
                 "description": "full content of the drop"
             },
+            "image_url": {
+                "type": "string",
+                "description": "image URL to attach (only for action=reach_out or action=drop)"
+            },
             "task": {
                 "type": "string",
                 "description": "task description (only for action=wake)"
@@ -292,7 +296,10 @@ async fn heartbeat_instance(
             actions.push(format!("mood: {new_mood}"));
         }
     } else if action == "reach_out" {
-        let message = triage["message"].as_str().unwrap_or("").trim();
+        let mut message = triage["message"].as_str().unwrap_or("").trim().to_string();
+        if let Some(url) = triage["image_url"].as_str().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            message.push_str(&format!("\n\n![image]({url})"));
+        }
         if !message.is_empty() {
             let hours_since = if mood.last_reach_out > 0 {
                 (now - mood.last_reach_out) / 3600
@@ -303,7 +310,7 @@ async fn heartbeat_instance(
                 log::info!("[heartbeat] {slug} suppressed reach-out (too recent)");
                 actions.push("reach_out: suppressed (too recent)".to_string());
             } else {
-                deliver_spontaneous_message(workspace_dir, slug, message, events);
+                deliver_spontaneous_message(workspace_dir, slug, &message, events);
                 let mut mood = mood.clone();
                 mood.last_reach_out = now;
                 save_mood_state(instance_dir, &mood);
@@ -316,8 +323,9 @@ async fn heartbeat_instance(
         let kind = triage["drop_kind"].as_str().unwrap_or("observation").trim();
         let title = triage["drop_title"].as_str().unwrap_or("").trim();
         let content = triage["drop_content"].as_str().unwrap_or("").trim();
+        let image_url = triage["image_url"].as_str().map(|s| s.trim()).filter(|s| !s.is_empty());
         if !title.is_empty() && !content.is_empty() {
-            match drops::create_drop(workspace_dir, slug, kind, title, content, &mood.companion_mood) {
+            match drops::create_drop_with_image(workspace_dir, slug, kind, title, content, &mood.companion_mood, image_url) {
                 Ok(drop) => {
                     let _ = events.send(ServerEvent::DropCreated {
                         instance_slug: slug.to_string(),

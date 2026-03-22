@@ -98,6 +98,7 @@ export interface Drop {
 	content: string;
 	mood: string;
 	created_at: string;
+	image_url?: string;
 }
 
 export interface Thought {

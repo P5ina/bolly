@@ -9,6 +9,9 @@ pub struct Drop {
     pub content: String,
     pub mood: String,
     pub created_at: String,
+    /// Optional image URL (e.g. generated via fal.ai).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

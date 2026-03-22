@@ -1377,6 +1377,9 @@ pub struct CreateDropArgs {
     pub title: String,
     /// The creative content (text/markdown).
     pub content: String,
+    /// Optional image URL (e.g. from fal.ai generation) to attach to the drop.
+    #[serde(default)]
+    pub image_url: Option<String>,
 }
 
 impl Tool for CreateDropTool {
@@ -1400,13 +1403,14 @@ impl Tool for CreateDropTool {
             .join(&self.instance_slug);
         let mood = load_mood_state(&instance_dir);
 
-        let drop = crate::services::drops::create_drop(
+        let drop = crate::services::drops::create_drop_with_image(
             &self.workspace_dir,
             &self.instance_slug,
             &args.kind,
             &args.title,
             &args.content,
             &mood.companion_mood,
+            args.image_url.as_deref(),
         )
         .map_err(|e| ToolExecError(format!("failed to create drop: {e}")))?;
 
