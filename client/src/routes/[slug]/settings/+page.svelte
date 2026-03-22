@@ -244,13 +244,15 @@
 	let updateDone = $state(false);
 	let channel = $state("stable");
 	$effect(() => {
-		checkUpdate().then(u => updateInfo = u).catch(() => {});
+		if (!updating) checkUpdate().then(u => updateInfo = u).catch(() => {});
 		getUpdateChannel().then(r => channel = r.channel).catch(() => {});
 	});
 
+	let frozenCommit = '';
+
 	async function doUpdate() {
 		updating = true;
-		const oldCommit = updateInfo?.commit ?? '';
+		frozenCommit = updateInfo?.commit ?? '';
 		try {
 			await applyUpdate();
 		} catch {
@@ -265,7 +267,7 @@
 		for (let i = 0; i < 40; i++) {
 			try {
 				const info = await checkUpdate();
-				if (info.commit !== oldCommit) {
+				if (info.commit !== frozenCommit) {
 					updateInfo = info;
 					updating = false;
 					updateDone = true;
