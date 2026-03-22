@@ -820,7 +820,8 @@
 		{/if}
 	</section>
 
-	<!-- Extensions (MCP Servers) -->
+	<!-- Extensions (MCP Servers) — hidden for now to simplify UX -->
+	<!--
 	<section class="settings-section">
 		<div class="section-header">
 			<img src="/icon-extensions.png" alt="" class="section-icon-img" />
@@ -837,7 +838,6 @@
 				<div class="loading-dot"></div>
 			</div>
 		{:else}
-			<!-- Catalog cards -->
 			<div class="ext-catalog">
 				{#each catalog as entry}
 					{@const installed = isInstalled(entry.name)}
@@ -874,7 +874,6 @@
 				{/each}
 			</div>
 
-			<!-- Custom servers (installed but not in catalog) -->
 			{#if customServers.length > 0}
 				<div class="ext-custom-list">
 					{#each customServers as server}
@@ -897,23 +896,12 @@
 				</div>
 			{/if}
 
-			<!-- Advanced: custom server -->
 			<div class="ext-advanced">
 				{#if showCustomForm}
 					<div class="ext-custom-form">
 						<div class="ext-custom-form-title">add custom server</div>
-						<input
-							class="ext-input"
-							type="text"
-							placeholder="name"
-							bind:value={mcpNewName}
-						/>
-						<input
-							class="ext-input"
-							type="url"
-							placeholder="server url"
-							bind:value={mcpNewUrl}
-						/>
+						<input class="ext-input" type="text" placeholder="name" bind:value={mcpNewName} />
+						<input class="ext-input" type="url" placeholder="server url" bind:value={mcpNewUrl} />
 						<div class="ext-form-actions">
 							<button class="ext-form-btn ext-form-add" disabled={mcpBusy !== null} onclick={handleAddCustom}>
 								{mcpBusy ? "connecting..." : "add"}
@@ -935,6 +923,7 @@
 			<p class="error-msg">{mcpError}</p>
 		{/if}
 	</section>
+	-->
 
 	<!-- Google Accounts -->
 	<section class="settings-section">
