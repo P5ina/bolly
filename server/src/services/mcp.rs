@@ -175,7 +175,23 @@ fn extract_ui_resource_uri(tool: &rmcp::model::Tool) -> Option<String> {
 
 async fn connect_one(config: &McpServerConfig) -> Result<McpConnection, Box<dyn std::error::Error + Send + Sync>> {
     if let Some(url) = &config.url {
-        let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(url.as_str());
+        let mut transport_config = rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(url.as_str());
+
+        // Set Authorization header as auth_header if present
+        if let Some(auth) = config.headers.get("Authorization").or_else(|| config.headers.get("authorization")) {
+            transport_config.auth_header = Some(auth.clone());
+        }
+
+        // Set remaining custom headers
+        for (key, value) in &config.headers {
+            let k = key.to_lowercase();
+            if k == "authorization" { continue; }
+            if let (Ok(name), Ok(val)) = (key.parse::<reqwest::header::HeaderName>(), value.parse::<reqwest::header::HeaderValue>()) {
+                transport_config.custom_headers.insert(name, val);
+            }
+        }
+
+        let transport = rmcp::transport::StreamableHttpClientTransport::from_config(transport_config);
         let mut client_info = ClientInfo::default();
         client_info.client_info = Implementation::new("bolly", env!("CARGO_PKG_VERSION"));
         let running = client_info.serve(transport).await?;

@@ -178,6 +178,9 @@ pub struct McpServerConfig {
     pub url: Option<String>,
     /// Command for stdio transport (e.g. "node /path/to/server.js --stdio").
     pub command: Option<String>,
+    /// HTTP headers to send with requests (e.g. {"Authorization": "Bearer ..."}).
+    #[serde(default)]
+    pub headers: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]

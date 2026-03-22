@@ -218,6 +218,7 @@ async fn add_mcp_server(
             name: name.clone(),
             url: Some(url.clone()),
             command: None,
+            headers: Default::default(),
         });
         save_config(&config)?;
     }
