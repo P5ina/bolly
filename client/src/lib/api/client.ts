@@ -318,12 +318,20 @@ export function fetchMusicEnabled(slug: string): Promise<{ music_enabled: boolea
 	return json(`/api/instances/${encodeURIComponent(slug)}/music`);
 }
 
-export function updateMusicEnabled(slug: string, enabled: boolean): Promise<void> {
-	return json(`/api/instances/${encodeURIComponent(slug)}/music`, {
+export async function updateMusicEnabled(slug: string, enabled: boolean): Promise<void> {
+	const headers = {
+		...authHeaders(),
+		"Content-Type": "application/json",
+	};
+	const res = await fetch(`${BASE}/api/instances/${encodeURIComponent(slug)}/music`, {
 		method: "PUT",
-		headers: { "Content-Type": "application/json" },
+		headers,
 		body: JSON.stringify({ music_enabled: enabled }),
 	});
+	if (!res.ok) {
+		const text = await res.text().catch(() => res.statusText);
+		throw new Error(text);
+	}
 }
 
 export function fetchVoiceEnabled(slug: string): Promise<{ voice_enabled: boolean }> {
