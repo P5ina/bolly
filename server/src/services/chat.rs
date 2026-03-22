@@ -407,14 +407,17 @@ pub async fn run_single_turn(
                             }
                             log::info!("[rag] injected {} memories into prompt", relevant.len());
                             // Notify client about recalled memories
-                            let recall_summary = relevant.iter()
-                                .map(|r| format!("{} ({:.0}%)", r.path, r.score * 100.0))
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            let _ = events.send(crate::domain::events::ServerEvent::ToolOutputChunk {
+                            let recalled: Vec<_> = relevant.iter()
+                                .map(|r| crate::domain::events::RecalledMemory {
+                                    path: r.path.clone(),
+                                    preview: r.content_preview.trim().chars().take(120).collect(),
+                                    score: r.score,
+                                })
+                                .collect();
+                            let _ = events.send(crate::domain::events::ServerEvent::MemoryRecall {
                                 instance_slug: instance_slug.to_string(),
                                 chat_id: chat_id.to_string(),
-                                chunk: format!("memory_recall: {recall_summary}"),
+                                memories: recalled,
                             });
                         }
                     }

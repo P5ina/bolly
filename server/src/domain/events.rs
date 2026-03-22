@@ -85,6 +85,12 @@ pub enum ServerEvent {
         chat_id: String,
         delta: String,
     },
+    /// Automatic memory recall — shows which memories were injected into context.
+    MemoryRecall {
+        instance_slug: String,
+        chat_id: String,
+        memories: Vec<RecalledMemory>,
+    },
     /// Full chat state snapshot — client reconciles against this.
     ChatSnapshot {
         instance_slug: String,
@@ -102,4 +108,11 @@ pub enum ServerEvent {
         /// Volume 0.0–1.0 (for "play" and "set_volume").
         volume: Option<f64>,
     },
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RecalledMemory {
+    pub path: String,
+    pub preview: String,
+    pub score: f32,
 }

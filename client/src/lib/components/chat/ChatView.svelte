@@ -508,6 +508,9 @@ import McpAppViewer from "./McpAppViewer.svelte";
 				pushActivity("tool", `dropped: ${event.drop.title}`);
 				play("drop_received");
 				hapticDouble();
+			} else if (event.type === "memory_recall") {
+				const paths = event.memories.map((m: any) => m.path).join(", ");
+				pushActivity("tool", `memory_recall: ${paths}`);
 			} else if (event.type === "tool_output_chunk") {
 				// Append chunk to live output activity, or create one
 				const liveIdx = stream.findLastIndex(
