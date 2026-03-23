@@ -11,101 +11,70 @@
 		return x < 0.5 ? 8 * x * x * x * x : 1 - Math.pow(-2 * x + 2, 4) / 2;
 	}
 
-	// ── Video Animator (like Unity Animator) ──
-	// States: nodes with video clips. Transitions: edges with conditions.
-	// Each state has: clip, loop flag. Transitions fire on conditions or onEnd.
+	// ── Video Animator ──
+	// Simple state machine: intro → idle ↔ thinking (with transition clips)
+	//
+	// States:
+	//   intro      — one-shot onboarding/intro clip, plays on first visit
+	//   idle       — looping idle, default state
+	//   toThinking — one-shot transition clip (idle → thinking)
+	//   thinking   — looping thinking animation
+	//   toIdle     — one-shot transition clip (thinking → idle)
 
-	interface AnimState {
-		clip: string;       // video file path (without extension)
-		loop: boolean;
-	}
+	type OrbState = 'intro' | 'idle' | 'toThinking' | 'thinking' | 'toIdle';
 
-	interface AnimTransition {
-		from: string;
-		to: string;
-		condition?: () => boolean;  // auto-transition when true
-		onEnd?: boolean;            // transition when current clip ends
-	}
-
-	const states: Record<string, AnimState> = {
-		onboarding:   { clip: '/orb-onboarding',          loop: false },
-		idle:         { clip: '/orb-idle-loop',            loop: true  },
-		toThinking:   { clip: '/orb-idle-to-thinking',     loop: false },
-		thinking:     { clip: '/orb-thinking-loop',        loop: true  },
-		toIdle:       { clip: '/orb-thinking-to-idle',     loop: false },
+	const clips: Record<OrbState, { src: string; loop: boolean }> = {
+		intro:      { src: '/orb-onboarding.mp4',       loop: false },
+		idle:       { src: '/orb-idle-loop.mp4',         loop: true  },
+		toThinking: { src: '/orb-idle-to-thinking.mp4',  loop: false },
+		thinking:   { src: '/orb-thinking-loop.mp4',     loop: true  },
+		toIdle:     { src: '/orb-thinking-to-idle.mp4',  loop: false },
 	};
 
-	const transitions: AnimTransition[] = [
-		// idle → onboarding (when entering onboarding or intro mode, only once)
-		{ from: 'idle', to: 'onboarding', condition: () => (store.mode === 'onboarding' || store.mode === 'intro') && !onboardingPlayed },
+	// Start with intro if we haven't entered chat yet, otherwise idle
+	let introPlayed = $state(store.mode === 'chat');
+	let orbState = $state<OrbState>(store.mode === 'onboarding' ? 'intro' : 'idle');
 
-		// onboarding → idle (when clip ends)
-		{ from: 'onboarding', to: 'idle', onEnd: true },
+	let videoSrc = $derived(clips[orbState].src);
+	let isLooping = $derived(clips[orbState].loop);
+	let isOnboarding = $derived(store.mode === 'onboarding');
 
-		// idle → toThinking (when thinking starts)
-		{ from: 'idle', to: 'toThinking', condition: () => store.thinking },
-
-		// toThinking → thinking (when clip ends)
-		{ from: 'toThinking', to: 'thinking', onEnd: true },
-
-		// toThinking → toIdle (when clip ends AND thinking already stopped)
-		{ from: 'toThinking', to: 'toIdle', onEnd: true, condition: () => !store.thinking },
-
-		// thinking → toIdle (when thinking stops)
-		{ from: 'thinking', to: 'toIdle', condition: () => !store.thinking },
-
-		// toIdle → idle (when clip ends)
-		{ from: 'toIdle', to: 'idle', onEnd: true },
-
-		// toIdle → toThinking (when clip ends AND thinking restarted)
-		{ from: 'toIdle', to: 'toThinking', onEnd: true, condition: () => store.thinking },
-	];
-
-	let onboardingPlayed = $state(store.mode !== 'onboarding' && store.mode !== 'intro' && store.mode !== 'home');
-	let currentState = $state(store.mode === 'onboarding' ? 'onboarding' : 'idle');
-
-	// Resolve current state config
-	let stateConfig = $derived(states[currentState]);
-	let videoSrc = $derived(stateConfig.clip + '.mp4');
-
-	// Check condition-based transitions every frame (via effect)
+	// React to mode/thinking changes
 	$effect(() => {
-		const _ = store.thinking; // track dependency
-		const __ = store.mode; // track mode changes
-		for (const t of transitions) {
-			if (t.from === currentState && t.condition && !t.onEnd) {
-				if (t.condition()) {
-					currentState = t.to;
-					break;
-				}
+		const mode = store.mode;
+		const thinking = store.thinking;
+
+		// Trigger intro on first entering intro/onboarding mode
+		if ((mode === 'intro' || mode === 'onboarding') && !introPlayed && orbState === 'idle') {
+			orbState = 'intro';
+			return;
+		}
+
+		// Thinking transitions (only in chat mode, and only from stable states)
+		if (mode === 'chat') {
+			if (thinking && orbState === 'idle') {
+				orbState = 'toThinking';
+			} else if (!thinking && orbState === 'thinking') {
+				orbState = 'toIdle';
 			}
 		}
 	});
 
-	// Handle clip ended — check onEnd transitions
+	// Handle clip ended — advance to next state
 	function handleVideoEnded() {
-		if (currentState === 'onboarding') onboardingPlayed = true;
-
-		// Priority: transitions with both onEnd + condition first
-		for (const t of transitions) {
-			if (t.from === currentState && t.onEnd && t.condition) {
-				if (t.condition()) {
-					currentState = t.to;
-					return;
-				}
-			}
-		}
-		// Then plain onEnd transitions
-		for (const t of transitions) {
-			if (t.from === currentState && t.onEnd && !t.condition) {
-				currentState = t.to;
-				return;
-			}
+		switch (orbState) {
+			case 'intro':
+				introPlayed = true;
+				orbState = 'idle';
+				break;
+			case 'toThinking':
+				orbState = store.thinking ? 'thinking' : 'toIdle';
+				break;
+			case 'toIdle':
+				orbState = store.thinking ? 'toThinking' : 'idle';
+				break;
 		}
 	}
-
-	let isOnboarding = $derived(store.mode === 'onboarding');
-	let isLooping = $derived(stateConfig.loop);
 
 	// One video element per orb — track by slug
 	let videoRefs: Record<string, HTMLVideoElement> = {};
@@ -275,7 +244,7 @@
 			}
 
 			// Thinking videos are 16:9, idle are square — compensate size
-			const wideVideo = currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle';
+			const wideVideo = orbState === 'thinking' || orbState === 'toThinking' || orbState === 'toIdle';
 			if (wideVideo) ts *= 1.8;
 			const formatChanged = wideVideo !== lastWideVideo;
 
@@ -295,7 +264,7 @@
 		}
 
 		orbs = newOrbs;
-		lastWideVideo = currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle';
+		lastWideVideo = orbState === 'thinking' || orbState === 'toThinking' || orbState === 'toIdle';
 
 		// Keep active videos playing (browser may suspend them)
 		for (const el of Object.values(videoRefs)) {
@@ -370,7 +339,7 @@
 					src={videoSrc}
 					loop={isLooping}
 					class="orb-vid"
-					class:no-mask={currentState === 'thinking' || currentState === 'toThinking' || currentState === 'toIdle'}
+					class:no-mask={orbState === 'thinking' || orbState === 'toThinking' || orbState === 'toIdle'}
 					onended={handleVideoEnded}
 				></video>
 			</button>
