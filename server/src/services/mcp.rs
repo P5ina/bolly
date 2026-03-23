@@ -10,13 +10,13 @@ use crate::config::McpServerConfig;
 use crate::services::tool::{ToolDefinition, ToolDyn, ToolError};
 
 // ---------------------------------------------------------------------------
-// McpTool — our own wrapper replacing rig::tool::rmcp::McpTool
+// McpTool — reconnects per call for stateless MCP servers
 // ---------------------------------------------------------------------------
 
 #[derive(Clone)]
 pub struct McpTool {
     definition: rmcp::model::Tool,
-    client: ServerSink,
+    config: McpServerConfig,
 }
 
 #[derive(Debug)]
@@ -29,6 +29,71 @@ impl fmt::Display for McpToolError {
 }
 
 impl std::error::Error for McpToolError {}
+
+/// Create a fresh ServerSink connection for a single tool call.
+async fn fresh_sink(config: &McpServerConfig) -> Result<(ServerSink, tokio::task::JoinHandle<()>), Box<dyn std::error::Error + Send + Sync>> {
+    let url = config.url.as_deref().ok_or("no url")?;
+    let mut transport_config = rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(url);
+    for (key, value) in &config.headers {
+        if let (Ok(name), Ok(val)) = (key.parse::<reqwest::header::HeaderName>(), value.parse::<reqwest::header::HeaderValue>()) {
+            transport_config.custom_headers.insert(name, val);
+        }
+    }
+    let transport = rmcp::transport::StreamableHttpClientTransport::from_config(transport_config);
+    let mut client_info = ClientInfo::default();
+    client_info.client_info = Implementation::new("bolly", env!("CARGO_PKG_VERSION"));
+    let running = client_info.serve(transport).await?;
+    let sink = running.peer().clone();
+    let handle = tokio::spawn(async move {
+        let _ = running.waiting().await;
+    });
+    Ok((sink, handle))
+}
+
+fn format_result(result: rmcp::model::CallToolResult) -> Result<String, ToolError> {
+    if let Some(true) = result.is_error {
+        let error_msg: String = result
+            .content
+            .iter()
+            .filter_map(|c| c.raw.as_text().map(|t| t.text.as_str()))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let msg = if error_msg.is_empty() {
+            "No message returned".to_string()
+        } else {
+            error_msg
+        };
+        return Err(ToolError::ToolCallError(Box::new(McpToolError(msg))));
+    }
+
+    Ok(result
+        .content
+        .into_iter()
+        .map(|c| match c.raw {
+            rmcp::model::RawContent::Text(raw) => raw.text,
+            rmcp::model::RawContent::Image(raw) => {
+                format!("data:{};base64,{}", raw.mime_type, raw.data)
+            }
+            rmcp::model::RawContent::Resource(raw) => match raw.resource {
+                rmcp::model::ResourceContents::TextResourceContents {
+                    text, ..
+                } => text,
+                rmcp::model::ResourceContents::BlobResourceContents {
+                    uri,
+                    mime_type,
+                    blob,
+                    ..
+                } => format!(
+                    "{mime_type}{uri}:{blob}",
+                    mime_type = mime_type
+                        .map(|m| format!("data:{m};"))
+                        .unwrap_or_default(),
+                ),
+            },
+            other => format!("{other:?}"),
+        })
+        .collect::<String>())
+}
 
 impl ToolDyn for McpTool {
     fn name(&self) -> String {
@@ -59,73 +124,38 @@ impl ToolDyn for McpTool {
         args: String,
     ) -> Pin<Box<dyn Future<Output = Result<String, ToolError>> + Send + 'a>> {
         let name = self.definition.name.clone();
+        let config = self.config.clone();
         let arguments: Option<serde_json::Map<String, serde_json::Value>> =
             serde_json::from_str(&args).unwrap_or_default();
 
         Box::pin(async move {
+            // Fresh connection per call — stateless servers drop after each response
+            let (sink, _handle) = fresh_sink(&config).await.map_err(|e| {
+                ToolError::ToolCallError(Box::new(McpToolError(format!(
+                    "failed to connect: {e}"
+                ))))
+            })?;
+
             let mut params = rmcp::model::CallToolRequestParams::new(name);
             params.arguments = arguments;
-            let result = self
-                .client
+            let result = sink
                 .call_tool(params)
                 .await
                 .map_err(|e| {
                     ToolError::ToolCallError(Box::new(McpToolError(format!(
-                        "Tool returned an error: {e}"
+                        "{e}"
                     ))))
                 })?;
 
-            if let Some(true) = result.is_error {
-                let error_msg: String = result
-                    .content
-                    .iter()
-                    .filter_map(|c| c.raw.as_text().map(|t| t.text.as_str()))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let msg = if error_msg.is_empty() {
-                    "No message returned".to_string()
-                } else {
-                    error_msg
-                };
-                return Err(ToolError::ToolCallError(Box::new(McpToolError(msg))));
-            }
-
-            Ok(result
-                .content
-                .into_iter()
-                .map(|c| match c.raw {
-                    rmcp::model::RawContent::Text(raw) => raw.text,
-                    rmcp::model::RawContent::Image(raw) => {
-                        format!("data:{};base64,{}", raw.mime_type, raw.data)
-                    }
-                    rmcp::model::RawContent::Resource(raw) => match raw.resource {
-                        rmcp::model::ResourceContents::TextResourceContents {
-                            text, ..
-                        } => text,
-                        rmcp::model::ResourceContents::BlobResourceContents {
-                            uri,
-                            mime_type,
-                            blob,
-                            ..
-                        } => format!(
-                            "{mime_type}{uri}:{blob}",
-                            mime_type = mime_type
-                                .map(|m| format!("data:{m};"))
-                                .unwrap_or_default(),
-                        ),
-                    },
-                    other => format!("{other:?}"),
-                })
-                .collect::<String>())
+            format_result(result)
         })
     }
 }
 
 // ---------------------------------------------------------------------------
-// McpConnection
+// McpConnection — stores tool definitions and UI resources (cached at startup)
 // ---------------------------------------------------------------------------
 
-/// A connected MCP server with its tools and client handle.
 pub struct McpConnection {
     pub name: String,
     pub tools: Vec<McpTool>,
@@ -133,14 +163,73 @@ pub struct McpConnection {
     pub ui_tools: HashMap<String, String>,
     /// Resource URI → cached HTML content.
     pub resources: HashMap<String, String>,
-    #[allow(dead_code)]
-    pub sink: ServerSink,
-    /// Keep the RunningService alive — dropping this kills the transport.
-    #[allow(dead_code)]
-    _keepalive: tokio::task::JoinHandle<()>,
 }
 
-/// Connect to all configured MCP servers and return their tools.
+/// Extract `_meta.ui.resourceUri` from a tool's metadata.
+fn extract_ui_resource_uri(tool: &rmcp::model::Tool) -> Option<String> {
+    let meta = tool.meta.as_ref()?;
+    let ui = meta.0.get("ui")?.as_object()?;
+    let uri = ui.get("resourceUri")?.as_str()?;
+    Some(uri.to_string())
+}
+
+/// Connect to an MCP server, discover tools, cache UI resources, then drop the connection.
+/// Tools hold the config and will reconnect per call.
+async fn connect_one(config: &McpServerConfig) -> Result<McpConnection, Box<dyn std::error::Error + Send + Sync>> {
+    let (sink, _handle) = fresh_sink(config).await?;
+
+    let raw_tools = sink.list_all_tools().await?;
+
+    // Detect tools with MCP Apps UI
+    let mut ui_tools: HashMap<String, String> = HashMap::new();
+    for t in &raw_tools {
+        if let Some(uri) = extract_ui_resource_uri(t) {
+            log::info!("MCP '{}': tool '{}' has UI resource: {}", config.name, t.name, uri);
+            ui_tools.insert(t.name.to_string(), uri);
+        }
+    }
+
+    // Fetch HTML resources for UI tools
+    let mut resources: HashMap<String, String> = HashMap::new();
+    let unique_uris: Vec<String> = ui_tools.values().cloned().collect::<std::collections::HashSet<_>>().into_iter().collect();
+    for uri in unique_uris {
+        match sink.read_resource(ReadResourceRequestParams::new(uri.clone())).await {
+            Ok(result) => {
+                for content in &result.contents {
+                    if let rmcp::model::ResourceContents::TextResourceContents { text, .. } = &content {
+                        log::info!("MCP '{}': cached resource '{}' ({} bytes)", config.name, uri, text.len());
+                        resources.insert(uri.clone(), text.clone());
+                        break;
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("MCP '{}': failed to fetch resource '{}': {e}", config.name, uri);
+            }
+        }
+    }
+
+    let tools: Vec<McpTool> = raw_tools
+        .into_iter()
+        .map(|t| McpTool {
+            definition: t,
+            config: config.clone(),
+        })
+        .collect();
+
+    // Drop the initial connection — each tool call will create its own
+    drop(sink);
+    _handle.abort();
+
+    Ok(McpConnection {
+        name: config.name.clone(),
+        tools,
+        ui_tools,
+        resources,
+    })
+}
+
+/// Connect to all configured MCP servers, discover tools, cache resources.
 pub async fn connect_all(configs: &[McpServerConfig]) -> Vec<McpConnection> {
     let mut connections = Vec::new();
 
@@ -148,7 +237,7 @@ pub async fn connect_all(configs: &[McpServerConfig]) -> Vec<McpConnection> {
         match connect_one(config).await {
             Ok(conn) => {
                 log::info!(
-                    "MCP '{}': connected, {} tools ({} with UI)",
+                    "MCP '{}': {} tools ({} with UI)",
                     conn.name,
                     conn.tools.len(),
                     conn.ui_tools.len(),
@@ -164,95 +253,8 @@ pub async fn connect_all(configs: &[McpServerConfig]) -> Vec<McpConnection> {
     connections
 }
 
-/// Extract `_meta.ui.resourceUri` from a tool's metadata.
-fn extract_ui_resource_uri(tool: &rmcp::model::Tool) -> Option<String> {
-    let meta = tool.meta.as_ref()?;
-    // meta is Meta(JsonObject), access ui.resourceUri
-    let ui = meta.0.get("ui")?.as_object()?;
-    let uri = ui.get("resourceUri")?.as_str()?;
-    Some(uri.to_string())
-}
-
-async fn connect_one(config: &McpServerConfig) -> Result<McpConnection, Box<dyn std::error::Error + Send + Sync>> {
-    if let Some(url) = &config.url {
-        let mut transport_config = rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(url.as_str());
-
-        // Pass all headers as custom_headers (including Authorization)
-        for (key, value) in &config.headers {
-            if let (Ok(name), Ok(val)) = (key.parse::<reqwest::header::HeaderName>(), value.parse::<reqwest::header::HeaderValue>()) {
-                transport_config.custom_headers.insert(name, val);
-            }
-        }
-
-        let transport = rmcp::transport::StreamableHttpClientTransport::from_config(transport_config);
-        let mut client_info = ClientInfo::default();
-        client_info.client_info = Implementation::new("bolly", env!("CARGO_PKG_VERSION"));
-        let running = client_info.serve(transport).await?;
-        let sink: ServerSink = running.peer().clone();
-        let conn_name = config.name.clone();
-        let keepalive = tokio::spawn(async move {
-            match running.waiting().await {
-                Ok(reason) => log::warn!("MCP '{conn_name}': connection closed: {reason:?}"),
-                Err(e) => log::warn!("MCP '{conn_name}': connection task failed: {e}"),
-            }
-        });
-
-        let raw_tools = sink.list_all_tools().await?;
-
-        // Detect tools with MCP Apps UI
-        let mut ui_tools: HashMap<String, String> = HashMap::new();
-        for t in &raw_tools {
-            if let Some(uri) = extract_ui_resource_uri(t) {
-                log::info!("MCP '{}': tool '{}' has UI resource: {}", config.name, t.name, uri);
-                ui_tools.insert(t.name.to_string(), uri);
-            }
-        }
-
-        // Fetch HTML resources for UI tools
-        let mut resources: HashMap<String, String> = HashMap::new();
-        let unique_uris: Vec<String> = ui_tools.values().cloned().collect::<std::collections::HashSet<_>>().into_iter().collect();
-        for uri in unique_uris {
-            match sink.read_resource(ReadResourceRequestParams::new(uri.clone())).await {
-                Ok(result) => {
-                    for content in &result.contents {
-                        if let rmcp::model::ResourceContents::TextResourceContents { text, .. } = &content {
-                            log::info!("MCP '{}': cached resource '{}' ({} bytes)", config.name, uri, text.len());
-                            resources.insert(uri.clone(), text.clone());
-                            break;
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::warn!("MCP '{}': failed to fetch resource '{}': {e}", config.name, uri);
-                }
-            }
-        }
-
-        let tools: Vec<McpTool> = raw_tools
-            .into_iter()
-            .map(|t| McpTool {
-                definition: t,
-                client: sink.clone(),
-            })
-            .collect();
-
-        Ok(McpConnection {
-            name: config.name.clone(),
-            tools,
-            ui_tools,
-            resources,
-            sink,
-            _keepalive: keepalive,
-        })
-    } else if let Some(_command) = &config.command {
-        Err("stdio transport not yet supported".into())
-    } else {
-        Err("MCP server config must have either 'url' or 'command'".into())
-    }
-}
-
-/// A shared handle holding all active MCP connections.
-/// Cloneable and safe to pass around. Supports dynamic reconnection.
+/// A shared handle holding all MCP tool registrations.
+/// Tools are discovered once at startup and reconnect per call.
 #[derive(Clone, Default)]
 pub struct McpRegistry {
     connections: Arc<tokio::sync::RwLock<Vec<McpConnection>>>,
@@ -267,48 +269,11 @@ impl McpRegistry {
         }
     }
 
-    /// Replace all connections with newly connected ones.
+    /// Replace all connections with newly discovered ones.
     pub async fn reconnect(&self, configs: &[McpServerConfig]) {
         let new_connections = connect_all(configs).await;
         *self.configs.write().await = configs.to_vec();
         *self.connections.write().await = new_connections;
-    }
-
-    /// Reconnect any MCP servers whose transport has died. Called before each chat turn.
-    pub async fn ensure_connected(&self) {
-        let configs = self.configs.read().await.clone();
-        if configs.is_empty() {
-            return;
-        }
-
-        let mut conns = self.connections.write().await;
-
-        // Check which servers are still alive
-        let alive_names: Vec<String> = conns.iter()
-            .filter(|c| !c._keepalive.is_finished())
-            .map(|c| c.name.clone())
-            .collect();
-
-        // Remove dead connections
-        let before = conns.len();
-        conns.retain(|c| !c._keepalive.is_finished());
-        if conns.len() < before {
-            log::info!("MCP: dropped {} dead connections", before - conns.len());
-        }
-
-        // Reconnect any configured servers that aren't alive
-        for config in &configs {
-            if !alive_names.contains(&config.name) {
-                log::info!("MCP '{}': reconnecting...", config.name);
-                match connect_one(config).await {
-                    Ok(conn) => {
-                        log::info!("MCP '{}': reconnected, {} tools", conn.name, conn.tools.len());
-                        conns.push(conn);
-                    }
-                    Err(e) => log::error!("MCP '{}': reconnect failed: {e}", config.name),
-                }
-            }
-        }
     }
 
     /// List connected server names.
@@ -316,7 +281,7 @@ impl McpRegistry {
         self.connections.read().await.iter().map(|c| c.name.clone()).collect()
     }
 
-    /// Get all MCP tools as boxed ToolDyn, ready to be wrapped in ObservableTool.
+    /// Get all MCP tools as boxed ToolDyn.
     pub async fn tools_as_dyn(&self) -> Vec<Box<dyn ToolDyn>> {
         self.connections
             .read()
@@ -331,7 +296,7 @@ impl McpRegistry {
             .collect()
     }
 
-    /// Snapshot app tool info for sync access (used by ObservableTool at call time).
+    /// Snapshot app tool info for sync access.
     pub async fn snapshot_app_tools(&self) -> McpAppSnapshot {
         let guard = self.connections.read().await;
         let mut tool_html = HashMap::new();
@@ -346,14 +311,23 @@ impl McpRegistry {
     }
 
     pub async fn tool_count(&self) -> usize {
-        self.connections.read().await.iter().map(|c| c.tools.len()).sum()
+        self.connections
+            .read()
+            .await
+            .iter()
+            .map(|c| c.tools.len())
+            .sum()
     }
 }
 
-/// A sync-safe snapshot of MCP app tool info, captured once per turn.
+// ---------------------------------------------------------------------------
+// McpAppSnapshot
+// ---------------------------------------------------------------------------
+
+/// Snapshot of MCP App tool HTML (safe for sync access without holding locks).
 #[derive(Clone, Default)]
 pub struct McpAppSnapshot {
-    tool_html: HashMap<String, String>,
+    pub tool_html: HashMap<String, String>,
 }
 
 impl McpAppSnapshot {
@@ -361,7 +335,7 @@ impl McpAppSnapshot {
         self.tool_html.contains_key(tool_name)
     }
 
-    pub fn get_app_html(&self, tool_name: &str) -> Option<String> {
-        self.tool_html.get(tool_name).cloned()
+    pub fn get_html(&self, tool_name: &str) -> Option<&String> {
+        self.tool_html.get(tool_name)
     }
 }

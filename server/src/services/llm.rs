@@ -1229,7 +1229,7 @@ async fn anthropic_stream(
                                 if snap.is_app_tool(&current_tool_name) {
                                     streaming_mcp_app = true;
                                     if let Some(html) =
-                                        snap.get_app_html(&current_tool_name)
+                                        snap.get_html(&current_tool_name).cloned()
                                     {
                                         let _ =
                                             events.send(ServerEvent::McpAppStart {

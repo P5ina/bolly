@@ -346,7 +346,7 @@ impl ToolDyn for ObservableTool {
         let mut mcp_app_msg_id: Option<String> = None;
         if let Some(ref snapshot) = self.mcp_snapshot {
             if snapshot.is_app_tool(&tool_name) {
-                if let Some(html) = snapshot.get_app_html(&tool_name) {
+                if let Some(html) = snapshot.get_html(&tool_name).cloned() {
                     let msg_id = format!("mcp_app_{}_{}", tool_call_counter(), unix_millis());
                     mcp_app_msg_id = Some(msg_id.clone());
                     let app_msg = crate::domain::chat::ChatMessage {
