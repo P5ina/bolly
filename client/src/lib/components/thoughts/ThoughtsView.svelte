@@ -90,12 +90,7 @@
 		expandedIds = next;
 	}
 
-	// Filter and prepare — no grouping, just flow
-	let visibleThoughts = $derived(
-		thoughts.filter(t => !isQuiet(t) || t.actions.some(a => !a.startsWith("quiet")))
-	);
-
-	let quietCount = $derived(thoughts.length - visibleThoughts.length);
+	let visibleThoughts = $derived(thoughts);
 </script>
 
 <div class="thoughts-page">
@@ -166,11 +161,6 @@
 				</div>
 			{/each}
 
-			{#if quietCount > 0}
-				<div class="quiet-note">
-					{quietCount} quiet moment{quietCount !== 1 ? "s" : ""}
-				</div>
-			{/if}
 		</div>
 	{/if}
 </div>
