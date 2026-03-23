@@ -397,6 +397,17 @@ export async function fetchMemoryContent(slug: string, path: string): Promise<st
 	return res.text();
 }
 
+export interface VectorEntry {
+	path: string;
+	source_type: string;
+	content_preview: string;
+	upload_id?: string;
+}
+
+export function fetchVectors(slug: string): Promise<VectorEntry[]> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/memory/vectors`);
+}
+
 export async function deleteMemoryFile(slug: string, path: string): Promise<void> {
 	const res = await authedFetch(`/api/instances/${encodeURIComponent(slug)}/memory/${path}`, { method: 'DELETE' });
 	if (res.status === 401) throw new AuthError();

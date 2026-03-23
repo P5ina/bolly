@@ -31,6 +31,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/memory", get(list_memory))
         .route("/api/instances/{instance_slug}/memory/search", get(search_memory))
         .route("/api/instances/{instance_slug}/memory/reindex", post(reindex_memory))
+        .route("/api/instances/{instance_slug}/memory/vectors", get(list_vectors))
         .route("/api/instances/{instance_slug}/memory/{*path}", get(read_memory_file).delete(delete_memory_file))
         .route("/api/instances/{instance_slug}/email", get(get_email_config))
         .route("/api/instances/{instance_slug}/email", put(set_email_config))
@@ -590,6 +591,29 @@ async fn search_memory(
 
             obj
         })
+        .collect();
+
+    Ok(Json(serde_json::Value::Array(json)))
+}
+
+async fn list_vectors(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let results = state
+        .vector_store
+        .list_all(&instance_slug, 500)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let json: Vec<serde_json::Value> = results
+        .into_iter()
+        .map(|r| serde_json::json!({
+            "path": r.path,
+            "source_type": r.source_type,
+            "content_preview": r.content_preview,
+            "upload_id": r.upload_id,
+        }))
         .collect();
 
     Ok(Json(serde_json::Value::Array(json)))

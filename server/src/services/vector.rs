@@ -234,6 +234,45 @@ impl VectorStore {
         Ok(out)
     }
 
+    /// List all points with metadata (for debugging).
+    pub async fn list_all(
+        &self,
+        instance_slug: &str,
+        limit: usize,
+    ) -> Result<Vec<VectorSearchResult>, String> {
+        let collection = Self::collection(instance_slug);
+
+        // Use a zero vector to get all points sorted by... nothing useful,
+        // but it's the simplest way to scroll without pagination.
+        let results = self
+            .client
+            .search_points(
+                SearchPointsBuilder::new(
+                    &collection,
+                    vec![0.0; super::embedding::output_dim() as usize],
+                    limit as u64,
+                )
+                .with_payload(true),
+            )
+            .await
+            .map_err(|e| format!("qdrant list: {e}"))?;
+
+        Ok(results
+            .result
+            .into_iter()
+            .map(|point| {
+                let p = &point.payload;
+                VectorSearchResult {
+                    path: payload_str(p, "path"),
+                    source_type: payload_str(p, "source_type"),
+                    content_preview: payload_str(p, "content_preview"),
+                    score: point.score,
+                    upload_id: p.get("upload_id").and_then(|v| v.as_str().map(|s| s.to_string())),
+                }
+            })
+            .collect())
+    }
+
     /// Find pairs of similar text memories above a threshold (for consolidation).
     pub async fn find_similar_pairs(
         &self,

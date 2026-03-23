@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { fetchMemory, fetchMemoryContent, searchMemory, deleteMemoryFile, getAuthToken, type MemorySearchResult } from "$lib/api/client.js";
+	import { fetchMemory, fetchMemoryContent, searchMemory, deleteMemoryFile, fetchVectors, getAuthToken, type MemorySearchResult, type VectorEntry } from "$lib/api/client.js";
 	import { Play, Music, FileText } from "@lucide/svelte";
 	import type { MemoryEntry } from "$lib/api/types.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
@@ -21,6 +21,26 @@
 	// Search state
 	let searchQuery = $state("");
 	let searchOpen = $state(false);
+
+	// Debug state
+	let debugOpen = $state(false);
+	let vectors = $state<VectorEntry[]>([]);
+	let vectorsLoading = $state(false);
+
+	async function loadVectors() {
+		vectorsLoading = true;
+		try {
+			vectors = await fetchVectors(slug);
+		} catch {
+			toast.error("failed to load vectors");
+		}
+		vectorsLoading = false;
+	}
+
+	function toggleDebug() {
+		debugOpen = !debugOpen;
+		if (debugOpen && vectors.length === 0) loadVectors();
+	}
 
 	// Document viewer state
 	let viewingEntry = $state<MemoryEntry | null>(null);
@@ -583,6 +603,11 @@
 					<circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" stroke-linecap="round"/>
 				</svg>
 			</button>
+			<button class="search-toggle" class:search-toggle-active={debugOpen} onclick={toggleDebug} title="vector debug">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+					<path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+			</button>
 		</div>
 
 		{#if searchOpen}
@@ -646,7 +671,32 @@
 			{/if}
 		{/if}
 
-		{#if !searchOpen}
+		{#if debugOpen}
+			<div class="debug-panel">
+				<div class="debug-header">
+					<span class="debug-title">vectors ({vectors.length})</span>
+					<button class="debug-refresh" onclick={loadVectors}>{vectorsLoading ? "..." : "refresh"}</button>
+				</div>
+				<div class="debug-list">
+					{#each vectors as v}
+						<div class="debug-entry" class:debug-media={v.source_type.startsWith("media_")}>
+							<div class="debug-path">{v.path}</div>
+							<div class="debug-meta">
+								<span class="debug-type">{v.source_type}</span>
+								{#if v.upload_id && v.upload_id !== v.path}
+									<span class="debug-upload">upload: {v.upload_id}</span>
+								{/if}
+							</div>
+							{#if v.content_preview}
+								<div class="debug-preview">{v.content_preview.slice(0, 150)}</div>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
+		{#if !searchOpen && !debugOpen}
 		{#key viewKey}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
@@ -1203,5 +1253,51 @@
 			from { opacity: 0; transform: translateY(8px) scale(0.96); }
 			to { opacity: 1; transform: translateY(0) scale(1); }
 		}
+	}
+
+	/* ═══════ Debug panel ═══════ */
+
+	.debug-panel {
+		flex: 1; overflow-y: auto; padding: 0.5rem 1rem;
+	}
+	.debug-header {
+		display: flex; align-items: center; justify-content: space-between;
+		margin-bottom: 0.5rem;
+	}
+	.debug-title {
+		font-family: var(--font-mono); font-size: 0.7rem;
+		color: oklch(0.55 0.08 240 / 50%); letter-spacing: 0.04em;
+	}
+	.debug-refresh {
+		font-family: var(--font-mono); font-size: 0.65rem;
+		color: oklch(0.6 0.08 190 / 50%); background: none; border: 1px solid oklch(1 0 0 / 8%);
+		border-radius: 4px; padding: 0.15rem 0.5rem; cursor: pointer;
+	}
+	.debug-refresh:hover { border-color: oklch(1 0 0 / 15%); color: oklch(0.7 0.08 190 / 70%); }
+	.debug-list { display: flex; flex-direction: column; gap: 0.3rem; }
+	.debug-entry {
+		padding: 0.4rem 0.5rem; border-radius: 0.35rem;
+		background: oklch(0.08 0.015 240 / 40%); border: 1px solid oklch(1 0 0 / 4%);
+	}
+	.debug-media { border-left: 2px solid oklch(0.65 0.12 75 / 40%); }
+	.debug-path {
+		font-family: var(--font-mono); font-size: 0.68rem;
+		color: oklch(0.7 0.04 220 / 65%); word-break: break-all;
+	}
+	.debug-meta {
+		display: flex; gap: 0.5rem; margin-top: 0.15rem;
+	}
+	.debug-type {
+		font-family: var(--font-mono); font-size: 0.6rem;
+		color: oklch(0.55 0.08 190 / 50%);
+	}
+	.debug-upload {
+		font-family: var(--font-mono); font-size: 0.6rem;
+		color: oklch(0.5 0.04 220 / 35%);
+	}
+	.debug-preview {
+		font-family: var(--font-mono); font-size: 0.6rem;
+		color: oklch(0.5 0.03 220 / 40%); margin-top: 0.2rem;
+		line-height: 1.4; white-space: pre-wrap; word-break: break-word;
 	}
 </style>
