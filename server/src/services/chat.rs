@@ -1871,6 +1871,12 @@ async fn embed_recent_media(
             continue;
         }
 
+        // Skip already-embedded uploads
+        let embedded_marker = uploads_dir.join(format!("{upload_id}.embedded"));
+        if embedded_marker.exists() {
+            continue;
+        }
+
         // Only embed images, video, and audio
         let source_type = if mime_type.starts_with("image/") {
             "media_image"
@@ -1934,6 +1940,7 @@ async fn embed_recent_media(
                 {
                     log::warn!("[media_embed] upsert failed for {original_name}: {e}");
                 } else {
+                    let _ = std::fs::write(&embedded_marker, "");
                     log::info!("[media_embed] embedded {source_type} {original_name}");
                 }
             }
