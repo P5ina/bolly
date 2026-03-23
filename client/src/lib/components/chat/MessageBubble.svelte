@@ -510,19 +510,6 @@
 		font-weight: 600;
 	}
 
-	/* --- Streaming cursor (glowing teal) --- */
-	.msg-streaming::after {
-		content: "";
-		display: inline-block;
-		width: 2px;
-		height: 1.1em;
-		margin-left: 2px;
-		vertical-align: text-bottom;
-		background: var(--msg-accent);
-		border-radius: 1px;
-		box-shadow: 0 0 8px var(--msg-accent);
-		animation: cursor-glow 1.2s ease-in-out infinite;
-	}
 
 	/* --- Timestamp --- */
 	.msg-time {
