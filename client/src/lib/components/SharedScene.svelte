@@ -54,8 +54,8 @@
 		const mode = store.mode;
 		const thinking = store.thinking;
 
-		// Trigger intro on first entering intro/onboarding mode
-		if ((mode === 'intro' || mode === 'onboarding') && !introPlayed && orbState === 'idle') {
+		// Trigger intro only for onboarding (new instance), not regular navigation
+		if (mode === 'onboarding' && !introPlayed && orbState === 'idle') {
 			orbState = 'intro';
 			return;
 		}
