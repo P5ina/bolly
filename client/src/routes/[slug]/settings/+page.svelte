@@ -238,6 +238,12 @@
 	let updating = $state(false);
 	let checkingUpdate = $state(false);
 	let updateDone = $state(false);
+	let showReborn = $state(false);
+
+	function handleReload() {
+		showReborn = true;
+		setTimeout(() => location.reload(), 2400);
+	}
 	let channel = $state("stable");
 	$effect(() => {
 		if (!updating) checkUpdate().then(u => updateInfo = u).catch(() => {});
@@ -643,7 +649,7 @@
 						<span class="update-title update-title-done">updated successfully</span>
 						<span class="update-subtitle">restart to enjoy the latest version</span>
 					</div>
-					<button class="update-action-btn update-action-done" onclick={() => location.reload()}>
+					<button class="update-action-btn update-action-done" onclick={handleReload}>
 						reload
 					</button>
 				</div>
@@ -1284,7 +1290,52 @@
 	</div><!-- settings-grid -->
 </div>
 
+{#if showReborn}
+	<div class="reborn-overlay">
+		<div class="reborn-text">meet the new me</div>
+	</div>
+{/if}
+
 <style>
+	/* Reborn overlay */
+	.reborn-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 9999;
+		background: black;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		animation: reborn-fade-in 0.6s ease both;
+	}
+
+	@keyframes reborn-fade-in {
+		from { opacity: 0; }
+		to { opacity: 1; }
+	}
+
+	.reborn-text {
+		font-family: var(--font-display, 'Georgia', serif);
+		font-size: clamp(2rem, 6vw, 4.5rem);
+		font-weight: 300;
+		letter-spacing: 0.08em;
+		color: oklch(0.85 0.08 75);
+		text-align: center;
+		animation: reborn-text-in 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both;
+	}
+
+	@keyframes reborn-text-in {
+		from {
+			opacity: 0;
+			transform: translateY(30px) scale(0.92);
+			filter: blur(8px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0) scale(1);
+			filter: blur(0);
+		}
+	}
 	/* Usage */
 	.usage-windows {
 		display: flex;
