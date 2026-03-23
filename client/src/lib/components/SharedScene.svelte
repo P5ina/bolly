@@ -473,6 +473,14 @@
 			filter: blur(4px);
 			opacity: 0.5;
 		}
+		.memory-clouds {
+			position: fixed;
+			top: 5.5rem;
+			left: 50%;
+			transform: translateX(-50%);
+			max-width: 90vw;
+			z-index: 30;
+		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {
