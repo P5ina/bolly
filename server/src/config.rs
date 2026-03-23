@@ -192,21 +192,21 @@ pub enum LlmProvider {
 }
 
 impl LlmProvider {
-    /// Default model for this provider (used when no model is explicitly configured).
+    /// Default model for this provider (heavy mode / auto heavy).
     pub fn default_model(&self) -> &'static str {
         match self {
-            LlmProvider::Anthropic => "claude-sonnet-4-6",
+            LlmProvider::Anthropic => "claude-opus-4-6",
             LlmProvider::OpenAI => "gpt-5.2",
-            LlmProvider::OpenRouter => "anthropic/claude-sonnet-4-6",
+            LlmProvider::OpenRouter => "anthropic/claude-opus-4-6",
         }
     }
 
-    /// Fast/cheap model for this provider (used for triage, sentiment, etc.).
+    /// Fast model for this provider (fast mode / auto fast / triage / sentiment).
     pub fn fast_model(&self) -> &'static str {
         match self {
-            LlmProvider::Anthropic => "claude-haiku-4-5-20251001",
+            LlmProvider::Anthropic => "claude-sonnet-4-6",
             LlmProvider::OpenAI => "gpt-5.4-nano",
-            LlmProvider::OpenRouter => "google/gemini-3.1-flash-lite-preview",
+            LlmProvider::OpenRouter => "anthropic/claude-sonnet-4-6",
         }
     }
 }
