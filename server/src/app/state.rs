@@ -42,30 +42,33 @@ pub struct AppState {
     pub vector_store: Arc<VectorStore>,
 }
 
+/// Inject MCP servers from environment variables (FAL_KEY, etc.)
+fn inject_env_mcp_servers(config: &mut Config) {
+    if let Ok(fal_key) = std::env::var("FAL_KEY") {
+        if !fal_key.is_empty() {
+            let auth_value = format!("Bearer {fal_key}");
+            if let Some(existing) = config.mcp_servers.iter_mut().find(|s| s.name == "fal-ai") {
+                existing.headers.insert("Authorization".to_string(), auth_value);
+            } else {
+                config.mcp_servers.push(crate::config::McpServerConfig {
+                    name: "fal-ai".to_string(),
+                    url: Some("https://mcp.fal.ai/mcp".to_string()),
+                    command: None,
+                    headers: [("Authorization".to_string(), auth_value)]
+                        .into_iter().collect(),
+                });
+                log::info!("MCP: auto-added fal-ai (FAL_KEY present)");
+            }
+        }
+    }
+}
+
 impl AppState {
     pub async fn new(mut config: Config) -> Self {
         let (events, _) = broadcast::channel(4096);
         let llm = LlmBackend::from_config(&config);
 
-        // Auto-configure fal-ai MCP server if FAL_KEY is set
-        if let Ok(fal_key) = std::env::var("FAL_KEY") {
-            if !fal_key.is_empty() {
-                let auth_value = format!("Bearer {fal_key}");
-                if let Some(existing) = config.mcp_servers.iter_mut().find(|s| s.name == "fal-ai") {
-                    // Ensure auth header is up to date
-                    existing.headers.insert("Authorization".to_string(), auth_value);
-                } else {
-                    config.mcp_servers.push(crate::config::McpServerConfig {
-                        name: "fal-ai".to_string(),
-                        url: Some("https://mcp.fal.ai/mcp".to_string()),
-                        command: None,
-                        headers: [("Authorization".to_string(), auth_value)]
-                            .into_iter().collect(),
-                    });
-                    log::info!("MCP: auto-added fal-ai (FAL_KEY present)");
-                }
-            }
-        }
+        inject_env_mcp_servers(&mut config);
 
         // Connect to configured MCP servers
         let mcp_connections = crate::services::mcp::connect_all(&config.mcp_servers).await;
@@ -119,13 +122,16 @@ impl AppState {
 
     /// Reload config from disk and rebuild LLM if tokens changed.
     pub async fn reload_config(&self) {
-        let new_config = match config::load_config() {
+        let mut new_config = match config::load_config() {
             Ok(c) => c,
             Err(e) => {
                 log::warn!("failed to reload config: {e}");
                 return;
             }
         };
+
+        // Re-apply runtime env injections (same as AppState::new)
+        inject_env_mcp_servers(&mut new_config);
 
         let (tokens_changed, mcp_changed) = {
             let old = self.config.read().await;
