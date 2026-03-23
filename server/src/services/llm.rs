@@ -891,7 +891,8 @@ fn build_anthropic_request(
     stream: bool,
     api_key: &str,
 ) -> serde_json::Value {
-    // System blocks — each gets cache_control for independent caching
+    // System blocks — cache_control on stable blocks only (not the volatile last block)
+    let block_count = system.iter().filter(|s| !s.is_empty()).count();
     let system_blocks: Vec<serde_json::Value> = system
         .iter()
         .enumerate()
@@ -902,11 +903,15 @@ fn build_anthropic_request(
             s.hash(&mut hasher);
             let hash = hasher.finish();
             log::info!("[llm] system block[{i}]: {} chars, hash={:x}", s.len(), hash);
-            serde_json::json!({
+            let mut block = serde_json::json!({
                 "type": "text",
                 "text": *s,
-                "cache_control": {"type": "ephemeral"}
-            })
+            });
+            // Only cache non-last blocks (last is volatile time block)
+            if i < block_count - 1 {
+                block["cache_control"] = serde_json::json!({"type": "ephemeral"});
+            }
+            block
         })
         .collect();
 
