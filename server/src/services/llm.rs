@@ -667,6 +667,11 @@ async fn agent_loop(
             continue;
         }
 
+        if stop_reason == "pause_turn" {
+            log::info!("[llm] pause_turn — code execution in progress, continuing...");
+            continue;
+        }
+
         if stop_reason != "tool_use" || tool_uses.is_empty() {
             return Ok((text, total_tokens));
         }
@@ -747,9 +752,7 @@ async fn streaming_agent_loop(
 
         if stop_reason == "max_tokens" {
             log::warn!("[llm] response truncated (max_tokens reached) — requesting continuation");
-            // Accumulate text across continuation turns
             all_text.push_str(&turn_text);
-            // Don't execute truncated tool calls — ask LLM to continue instead
             messages.push(Message::User {
                 content: vec![ContentBlock::text(
                     "[system: your previous response was cut off due to length. please continue exactly where you left off.]",
@@ -758,8 +761,14 @@ async fn streaming_agent_loop(
             continue;
         }
 
+        // pause_turn: code execution skill is still running — continue with same messages
+        if stop_reason == "pause_turn" {
+            log::info!("[llm] pause_turn — code execution in progress, continuing...");
+            all_text.push_str(&turn_text);
+            continue;
+        }
+
         // For the final turn (no more tool use), only keep this turn's text.
-        // Intermediate texts from tool-use turns are saved individually below.
         all_text = turn_text.clone();
 
         if stop_reason != "tool_use" || tool_uses.is_empty() {
@@ -858,7 +867,7 @@ async fn complete_once(
 fn anthropic_headers(api_key: &str) -> reqwest::header::HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("x-api-key", api_key.parse().unwrap());
-    headers.insert("anthropic-beta", "compact-2026-01-12".parse().unwrap());
+    headers.insert("anthropic-beta", "compact-2026-01-12,code-execution-2025-08-25,skills-2025-10-02".parse().unwrap());
     headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
     headers.insert("content-type", "application/json".parse().unwrap());
     headers
@@ -989,7 +998,23 @@ fn build_anthropic_request(
     });
 
     if !tools.is_empty() {
-        req["tools"] = serde_json::Value::Array(tools);
+        // Add code_execution tool for Anthropic Agent Skills (pptx, xlsx, docx, pdf)
+        let mut all_tools = tools;
+        all_tools.push(serde_json::json!({
+            "type": "code_execution_20250825",
+            "name": "code_execution"
+        }));
+        req["tools"] = serde_json::Value::Array(all_tools);
+
+        // Enable Anthropic Skills (document generation)
+        req["container"] = serde_json::json!({
+            "skills": [
+                {"type": "anthropic", "skill_id": "pptx", "version": "latest"},
+                {"type": "anthropic", "skill_id": "xlsx", "version": "latest"},
+                {"type": "anthropic", "skill_id": "docx", "version": "latest"},
+                {"type": "anthropic", "skill_id": "pdf", "version": "latest"},
+            ]
+        });
     }
     if stream {
         req["stream"] = serde_json::json!(true);
