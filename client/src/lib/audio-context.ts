@@ -18,16 +18,27 @@ export function resumeAudioContext(): void {
 	// Create context eagerly if it doesn't exist yet — user gesture is
 	// the best time to create it (guaranteed to start in "running" state).
 	const ac = getAudioContext();
-	if (ac.state === "suspended") ac.resume();
+	if (ac.state === "suspended") {
+		// Safari requires resume() inside a user gesture handler.
+		// Also create a silent oscillator to "warm up" the context.
+		ac.resume().then(() => {
+			// Play a silent buffer to fully unlock on iOS Safari
+			const buf = ac.createBuffer(1, 1, ac.sampleRate);
+			const src = ac.createBufferSource();
+			src.buffer = buf;
+			src.connect(ac.destination);
+			src.start();
+		}).catch(() => {});
+	}
 }
 
 // Auto-resume on user interaction — DON'T remove listeners after first click,
 // because the context may get suspended again (e.g. tab backgrounded).
 if (typeof document !== "undefined") {
 	const unlock = () => resumeAudioContext();
-	document.addEventListener("click", unlock, { capture: true });
-	document.addEventListener("touchstart", unlock, { capture: true });
-	document.addEventListener("keydown", unlock, { capture: true });
+	document.addEventListener("click", unlock, { capture: true, passive: true });
+	document.addEventListener("touchstart", unlock, { capture: true, passive: true });
+	document.addEventListener("keydown", unlock, { capture: true, passive: true });
 
 	document.addEventListener("visibilitychange", () => {
 		if (document.visibilityState === "visible") resumeAudioContext();
