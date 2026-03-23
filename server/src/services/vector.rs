@@ -352,7 +352,7 @@ impl VectorStore {
         Ok(pairs)
     }
 
-    /// Backfill all existing text memories into Qdrant.
+    /// Backfill all memories (text + media) into Qdrant.
     pub async fn backfill_text_memories(
         &self,
         workspace_dir: &Path,
@@ -373,37 +373,89 @@ impl VectorStore {
                 .join("memory")
                 .join(&entry.path);
 
-            let content = match std::fs::read_to_string(&file_path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
+            let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            let is_image = matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "webp" | "gif" | "svg");
+            let is_media = is_image || matches!(ext.as_str(), "pdf" | "mp4" | "mov" | "mp3" | "wav");
 
-            let chunks = chunk_text(&content);
-            let mut chunk_vectors = Vec::new();
+            if is_media {
+                // Media file — embed with text+image (for images) or media (for others)
+                let bytes = match std::fs::read(&file_path) {
+                    Ok(b) => b,
+                    Err(_) => continue,
+                };
+                if bytes.len() > 20 * 1024 * 1024 { continue; }
 
-            for chunk in &chunks {
-                match embedding::embed_text(
-                    google_ai_key,
-                    chunk,
-                    embedding::TaskType::RetrievalDocument,
-                )
-                .await
-                {
-                    Ok(vec) => chunk_vectors.push((chunk.clone(), vec)),
-                    Err(e) => {
-                        log::warn!("[vector] backfill embed error for {}: {e}", entry.path);
-                        continue;
+                let mime_type = match ext.as_str() {
+                    "jpg" | "jpeg" => "image/jpeg",
+                    "png" => "image/png",
+                    "webp" => "image/webp",
+                    "gif" => "image/gif",
+                    "svg" => "image/svg+xml",
+                    "pdf" => "application/pdf",
+                    "mp4" => "video/mp4",
+                    "mov" => "video/quicktime",
+                    "mp3" => "audio/mpeg",
+                    "wav" => "audio/wav",
+                    _ => "application/octet-stream",
+                };
+
+                let source_type = if is_image { "media_image" }
+                    else if mime_type.starts_with("video/") { "media_video" }
+                    else if mime_type.starts_with("audio/") { "media_audio" }
+                    else { "media_document" };
+
+                let desc = &entry.path;
+                let embed_result = if is_image {
+                    embedding::embed_text_and_image(google_ai_key, desc, &bytes, mime_type).await
+                } else {
+                    embedding::embed_media(google_ai_key, &bytes, mime_type).await
+                };
+
+                match embed_result {
+                    Ok(vec) => {
+                        if let Err(e) = self.upsert_media(
+                            instance_slug, &entry.path, source_type,
+                            mime_type, &entry.path, desc, vec,
+                        ).await {
+                            log::warn!("[vector] backfill media upsert failed for {}: {e}", entry.path);
+                        }
+                        count += 1;
                     }
+                    Err(e) => log::warn!("[vector] backfill media embed error for {}: {e}", entry.path),
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            } else {
+                // Text file — chunk and embed
+                let content = match std::fs::read_to_string(&file_path) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+
+                let chunks = chunk_text(&content);
+                let mut chunk_vectors = Vec::new();
+
+                for chunk in &chunks {
+                    match embedding::embed_text(
+                        google_ai_key,
+                        chunk,
+                        embedding::TaskType::RetrievalDocument,
+                    )
+                    .await
+                    {
+                        Ok(vec) => chunk_vectors.push((chunk.clone(), vec)),
+                        Err(e) => {
+                            log::warn!("[vector] backfill embed error for {}: {e}", entry.path);
+                            continue;
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 }
 
-                // Rate limit: small delay between API calls
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            }
-
-            if !chunk_vectors.is_empty() {
-                self.upsert_text_memory(instance_slug, &entry.path, chunk_vectors)
-                    .await?;
-                count += chunks.len();
+                if !chunk_vectors.is_empty() {
+                    self.upsert_text_memory(instance_slug, &entry.path, chunk_vectors)
+                        .await?;
+                    count += chunks.len();
+                }
             }
         }
 
