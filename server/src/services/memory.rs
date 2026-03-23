@@ -536,6 +536,10 @@ do NOT save images unless they are clearly meaningful (personal photos, importan
 
         match op.action.as_str() {
             "write" => {
+                if op.content.trim().is_empty() {
+                    log::warn!("memory: skipping empty write to {clean_path}");
+                    continue;
+                }
                 if let Some(parent) = full_path.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
@@ -544,6 +548,10 @@ do NOT save images unless they are clearly meaningful (personal photos, importan
                 embed_memory_file(vector_store, google_ai_key, instance_slug, &clean_path, &op.content).await;
             }
             "append" => {
+                if op.content.trim().is_empty() {
+                    log::warn!("memory: skipping empty append to {clean_path}");
+                    continue;
+                }
                 if let Some(parent) = full_path.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
