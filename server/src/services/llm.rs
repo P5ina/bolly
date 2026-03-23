@@ -1411,12 +1411,18 @@ pub fn build_multimodal_prompt(
 
     let mut contents: Vec<ContentBlock> = Vec::new();
 
-    let clean_text = re.replace_all(text, "").trim().to_string();
-    if !clean_text.is_empty() {
-        contents.push(ContentBlock::text(&clean_text));
-    }
+    // Images first (with labels) — Claude performs best with images before text
+    let caps: Vec<_> = re.captures_iter(text).collect();
+    let num_images = caps.iter().filter(|c| {
+        let uid = &c[2];
+        super::uploads::get_upload(workspace_dir, instance_slug, uid)
+            .ok().flatten()
+            .map(|m| m.mime_type.starts_with("image/"))
+            .unwrap_or(false)
+    }).count();
+    let mut image_idx = 0;
 
-    for cap in re.captures_iter(text) {
+    for cap in &caps {
         let name = &cap[1];
         let upload_id = &cap[2];
 
@@ -1446,6 +1452,11 @@ pub fn build_multimodal_prompt(
         };
 
         if meta.mime_type.starts_with("image/") {
+            image_idx += 1;
+            // Label each image for better multi-image attention (Anthropic best practice)
+            if num_images > 1 {
+                contents.push(ContentBlock::text(&format!("Image {image_idx} ({name}):")));
+            }
             if let PdfStrategy::Url { base_url, auth_token } = pdf_strategy {
                 let url = format!(
                     "{base_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}"
@@ -1544,6 +1555,12 @@ pub fn build_multimodal_prompt(
                 bytes.len()
             )));
         }
+    }
+
+    // Text goes after images (Anthropic best practice: images before text)
+    let clean_text = re.replace_all(text, "").trim().to_string();
+    if !clean_text.is_empty() {
+        contents.push(ContentBlock::text(&clean_text));
     }
 
     if contents.is_empty() {
