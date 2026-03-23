@@ -179,38 +179,52 @@ pub const fn output_dim() -> u32 {
 // --- Internal ---
 
 async fn send(api_key: &str, req: &EmbedRequest) -> Result<Vec<f32>, String> {
-    let res = HTTP
-        .post(EMBED_URL)
-        .header("x-goog-api-key", api_key)
-        .json(req)
-        .send()
-        .await
-        .map_err(|e| format!("embedding HTTP error: {e}"))?;
+    let mut delay = 500u64; // ms
 
-    let status = res.status();
-    let body = res
-        .text()
-        .await
-        .map_err(|e| format!("embedding response read error: {e}"))?;
+    for attempt in 0..3 {
+        let res = HTTP
+            .post(EMBED_URL)
+            .header("x-goog-api-key", api_key)
+            .json(req)
+            .send()
+            .await
+            .map_err(|e| format!("embedding HTTP error: {e}"))?;
 
-    if !status.is_success() {
-        return Err(format!("embedding API {status}: {body}"));
+        let status = res.status();
+        let body = res
+            .text()
+            .await
+            .map_err(|e| format!("embedding response read error: {e}"))?;
+
+        // Retry on 5xx errors
+        if status.is_server_error() && attempt < 2 {
+            log::warn!("embedding API {status}, retrying in {delay}ms (attempt {}/3)", attempt + 1);
+            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            delay *= 2;
+            continue;
+        }
+
+        if !status.is_success() {
+            return Err(format!("embedding API {status}: {body}"));
+        }
+
+        let parsed: EmbedResponse =
+            serde_json::from_str(&body).map_err(|e| format!("embedding parse error: {e}"))?;
+
+        if let Some(err) = parsed.error {
+            return Err(format!("embedding API error: {}", err.message));
+        }
+
+        // Response may use `embedding` (singular) or `embeddings` (array)
+        if let Some(emb) = parsed.embedding {
+            return Ok(emb.values);
+        }
+        if let Some(emb) = parsed.embeddings.into_iter().next() {
+            return Ok(emb.values);
+        }
+
+        return Err("embedding API returned no embeddings".to_string());
     }
 
-    let parsed: EmbedResponse =
-        serde_json::from_str(&body).map_err(|e| format!("embedding parse error: {e}"))?;
-
-    if let Some(err) = parsed.error {
-        return Err(format!("embedding API error: {}", err.message));
-    }
-
-    // Response may use `embedding` (singular) or `embeddings` (array)
-    if let Some(emb) = parsed.embedding {
-        return Ok(emb.values);
-    }
-    if let Some(emb) = parsed.embeddings.into_iter().next() {
-        return Ok(emb.values);
-    }
-
-    Err("embedding API returned no embeddings".to_string())
+    Err("embedding API failed after 3 retries".to_string())
 }
