@@ -293,14 +293,7 @@ pub async fn run_single_turn(
     let autonomy_prompt = load_autonomy_prompt(workspace_dir, &instance_slug);
     system_prompt = format!("{system_prompt}\n\n{autonomy_prompt}");
 
-    // Current time context
     let instance_dir = workspace_dir.join("instances").join(&instance_slug);
-    let now = crate::routes::instances::format_instance_now(&instance_dir);
-    system_prompt.push_str(&format!(
-        "\n\n## time\n\
-         current time: {now}\n\
-         if you need the exact time later in the conversation, use the `get_time` tool."
-    ));
 
     system_prompt.push_str(
         "\n\n## your visual form\n\
@@ -370,11 +363,13 @@ pub async fn run_single_turn(
     let system_stable = system_prompt;
 
     let memory_block = {
+        let now = crate::routes::instances::format_instance_now(&instance_dir);
+        let time_section = format!("## time\ncurrent time: {now}\nif you need the exact time later, use the `get_time` tool.\n\n");
         let memory_catalog = memory::load_catalog_snapshot(workspace_dir, &instance_slug);
         if !memory_catalog.is_empty() {
-            format!("{memory_catalog}{MEMORY_FOOTER}")
+            format!("{time_section}{memory_catalog}{MEMORY_FOOTER}")
         } else {
-            format!("## memory\nyour memory library is empty.{MEMORY_FOOTER}")
+            format!("{time_section}## memory\nyour memory library is empty.{MEMORY_FOOTER}")
         }
     };
 
