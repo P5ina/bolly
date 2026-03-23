@@ -1760,8 +1760,17 @@ respond ONLY with those three lines."#,
     tools::save_mood_state(&instance_dir, &mood);
 
     if mood_changed {
-        // Broadcast mood change via WebSocket only — do NOT write to rig_history.
-        // Writing [system] mood messages to history causes the agent to mimic them.
+        // Save mood change to rig_history so it persists across page reloads
+        match save_system_message(workspace_dir, instance_slug, _chat_id, &format!("[system] mood → {}", mood.companion_mood)) {
+            Ok(msg) => {
+                let _ = events.send(ServerEvent::ChatMessageCreated {
+                    instance_slug: instance_slug.to_string(),
+                    chat_id: _chat_id.to_string(),
+                    message: msg,
+                });
+            }
+            Err(e) => log::warn!("failed to save mood message: {e}"),
+        }
         let _ = events.send(ServerEvent::MoodUpdated {
             instance_slug: instance_slug.to_string(),
             mood: mood.companion_mood.clone(),
