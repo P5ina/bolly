@@ -11,6 +11,7 @@ const volumes: Record<string, number> = {
 	typewriter: 0.15,
 	drop_received: 0.3,
 	error: 0.3,
+	reborn: 0.6,
 };
 
 // Minimum ms between any two sounds to prevent overlap

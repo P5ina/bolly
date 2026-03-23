@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from "$app/state";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
+	import { play } from "$lib/sounds.js";
 	import {
 		checkUpdate,
 		applyUpdate,
@@ -242,6 +243,7 @@
 
 	function handleReload() {
 		showReborn = true;
+		play('reborn');
 		setTimeout(() => location.reload(), 2400);
 	}
 	let channel = $state("stable");
