@@ -446,10 +446,6 @@ impl LlmBackend {
         &self.model
     }
 
-    /// Returns true if this backend uses an OAuth token (no server-side compaction).
-    pub fn is_oauth(&self) -> bool {
-        self.api_key.starts_with("sk-ant-oat")
-    }
 
     /// Classify whether a user message needs the heavy model.
     /// Uses the fast model with a minimal prompt. Falls back to heavy on error.
@@ -870,13 +866,8 @@ async fn complete_once(
 
 fn anthropic_headers(api_key: &str) -> reqwest::header::HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
-    if api_key.starts_with("sk-ant-oat") {
-        headers.insert("authorization", format!("Bearer {api_key}").parse().unwrap());
-        headers.insert("anthropic-beta", "oauth-2025-04-20,context-management-2025-06-27".parse().unwrap());
-    } else {
-        headers.insert("x-api-key", api_key.parse().unwrap());
-        headers.insert("anthropic-beta", "compact-2026-01-12,context-management-2025-06-27".parse().unwrap());
-    }
+    headers.insert("x-api-key", api_key.parse().unwrap());
+    headers.insert("anthropic-beta", "compact-2026-01-12,context-management-2025-06-27".parse().unwrap());
     headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
     headers.insert("content-type", "application/json".parse().unwrap());
     headers
@@ -957,11 +948,6 @@ fn build_anthropic_request(
                             log::info!("stripping empty compaction block");
                             return false;
                         }
-                        // OAuth doesn't support compaction blocks — convert to text
-                        if api_key.starts_with("sk-ant-oat") {
-                            log::info!("converting compaction block to text for OAuth");
-                            return false; // will be lost, but better than 400
-                        }
                     }
                     // Strip blocks with no recognized type (Unknown variant)
                     if block_type.is_none() {
@@ -1028,8 +1014,8 @@ fn build_anthropic_request(
     if stream {
         req["stream"] = serde_json::json!(true);
     }
-    // Server-side context compaction — only supported on opus/sonnet 4.6+ with API keys (not OAuth)
-    if !api_key.starts_with("sk-ant-oat") && (model.contains("opus-4") || model.contains("sonnet-4")) {
+    // Server-side context compaction
+    if model.contains("opus-4") || model.contains("sonnet-4") {
         req["context_management"] = serde_json::json!({
             "edits": [{"type": "compact_20260112"}]
         });
