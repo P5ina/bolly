@@ -1042,17 +1042,19 @@ async fn anthropic_complete(
     let tokens_used = if let Some(usage) = resp_json.get("usage") {
         let input = usage["input_tokens"].as_u64().unwrap_or(0);
         let output = usage["output_tokens"].as_u64().unwrap_or(0);
+        let cache_read = usage["cache_read_input_tokens"].as_u64().unwrap_or(0);
+        let cache_write = usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
         log::info!(
             "anthropic usage: input={} cache_read={} cache_write={} output={}",
-            input,
-            usage["cache_read_input_tokens"].as_u64().unwrap_or(0),
-            usage["cache_creation_input_tokens"].as_u64().unwrap_or(0),
-            output,
+            input, cache_read, cache_write, output,
         );
-        // Only count uncached input + output for rate limiting.
-        // Cache tokens (read & create) are excluded — they're heavily
-        // discounted and inflate usage unfairly.
-        input + output
+        // Normalize to output-equivalent tokens by cost ratio (Sonnet 4.6 pricing):
+        // Output: $15/M (1.0x), Input: $3/M (0.2x), Cache write: $3.75/M (0.25x), Cache read: $0.30/M (0.02x)
+        let normalized = (output as f64)
+            + (input as f64 * 0.2)
+            + (cache_write as f64 * 0.25)
+            + (cache_read as f64 * 0.02);
+        normalized as u64
     } else {
         0
     };
@@ -1142,6 +1144,8 @@ async fn anthropic_stream(
     let mut compaction_summary: Option<String> = None;
     let mut input_tokens: u64 = 0;
     let mut output_tokens: u64 = 0;
+    let mut cache_read_tokens: u64 = 0;
+    let mut cache_write_tokens: u64 = 0;
 
     // Current block being built
     let mut current_block_type = String::new();
@@ -1201,11 +1205,11 @@ async fn anthropic_stream(
                 "message_start" => {
                     if let Some(usage) = ev.get("message").and_then(|m| m.get("usage")) {
                         input_tokens = usage["input_tokens"].as_u64().unwrap_or(0);
+                        cache_read_tokens = usage["cache_read_input_tokens"].as_u64().unwrap_or(0);
+                        cache_write_tokens = usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
                         log::info!(
                             "anthropic cache: read={} write={} input={}",
-                            usage["cache_read_input_tokens"].as_u64().unwrap_or(0),
-                            usage["cache_creation_input_tokens"].as_u64().unwrap_or(0),
-                            input_tokens,
+                            cache_read_tokens, cache_write_tokens, input_tokens,
                         );
                     }
                 }
@@ -1346,8 +1350,14 @@ async fn anthropic_stream(
         }
     }
 
-    // Only count uncached input + output for rate limiting.
-    let tokens_used = input_tokens + output_tokens;
+    // Normalize to output-equivalent tokens by cost ratio
+    let tokens_used = {
+        let normalized = (output_tokens as f64)
+            + (input_tokens as f64 * 0.2)
+            + (cache_write_tokens as f64 * 0.25)
+            + (cache_read_tokens as f64 * 0.02);
+        normalized as u64
+    };
     Ok((text, tool_uses, stop_reason, compaction_summary, tokens_used))
 }
 
