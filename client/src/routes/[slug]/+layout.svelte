@@ -7,6 +7,7 @@
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
 	import { getVoiceState } from "$lib/stores/voice.svelte.js";
 	import InstanceOnboarding from "$lib/components/onboarding/InstanceOnboarding.svelte";
+	import UpdateBanner from "$lib/components/UpdateBanner.svelte";
 	let { children } = $props();
 
 	const slug = $derived(page.params.slug!);
@@ -101,6 +102,7 @@
 				</a>
 			{/each}
 			<div class="instance-tab-spacer"></div>
+			<UpdateBanner />
 			<button
 				class="instance-tab instance-tab-delete"
 				onclick={openDeleteConfirm}

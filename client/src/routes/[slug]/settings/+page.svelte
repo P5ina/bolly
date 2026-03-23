@@ -1,10 +1,8 @@
 <script lang="ts">
 	import { page } from "$app/state";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
-	import { play } from "$lib/sounds.js";
 	import {
 		checkUpdate,
-		applyUpdate,
 		getUpdateChannel,
 		setUpdateChannel,
 		type UpdateCheck,
@@ -236,57 +234,11 @@
 
 	// Update state
 	let updateInfo = $state<UpdateCheck | null>(null);
-	let updating = $state(false);
-	let checkingUpdate = $state(false);
-	let updateDone = $state(false);
-	let showReborn = $state(false);
-
-	function handleReload() {
-		showReborn = true;
-		play('reborn');
-		setTimeout(() => location.reload(), 2400);
-	}
 	let channel = $state("stable");
 	$effect(() => {
-		if (!updating) checkUpdate().then(u => updateInfo = u).catch(() => {});
+		checkUpdate().then(u => updateInfo = u).catch(() => {});
 		getUpdateChannel().then(r => channel = r.channel).catch(() => {});
 	});
-
-	let frozenCommit = '';
-
-	async function doUpdate() {
-		updating = true;
-		frozenCommit = updateInfo?.commit ?? '';
-		try {
-			await applyUpdate();
-		} catch {
-			// Connection may reset when server exits — that's expected
-		}
-		// Wait for server to go DOWN
-		for (let i = 0; i < 20; i++) {
-			await new Promise(r => setTimeout(r, 1000));
-			try { await checkUpdate(); } catch { break; }
-		}
-		// Now poll until it comes back with a new commit
-		for (let i = 0; i < 40; i++) {
-			try {
-				const info = await checkUpdate();
-				if (info.commit !== frozenCommit) {
-					updateInfo = info;
-					updating = false;
-					updateDone = true;
-					// Auto-reload with cinematic overlay
-					handleReload();
-					return;
-				}
-			} catch {
-				// Still restarting
-			}
-			await new Promise(r => setTimeout(r, 2000));
-		}
-		// Timeout
-		updating = false;
-	}
 
 	// Usage state
 	let usage = $state<Usage | null>(null);
@@ -609,19 +561,8 @@
 		<div class="section-header">
 			<img src="/icon-updates.png" alt="" class="section-icon-img" />
 			<div>
-				<h3 class="section-label">updates</h3>
-				<p class="section-desc">
-					v{updateInfo?.current?.replace('v','') ?? '...'} ·
-					<button
-						class="check-update-btn"
-						disabled={checkingUpdate}
-						onclick={async () => {
-							checkingUpdate = true;
-							try { updateInfo = await checkUpdate(); } catch {}
-							checkingUpdate = false;
-						}}
-					>{checkingUpdate ? 'checking...' : 'check now'}</button>
-				</p>
+				<h3 class="section-label">version</h3>
+				<p class="section-desc">v{updateInfo?.current?.replace('v','') ?? '...'}</p>
 			</div>
 			<select
 				class="channel-select"
@@ -631,75 +572,12 @@
 					const val = (e.target as HTMLSelectElement).value;
 					channel = val;
 					await setUpdateChannel(val);
-					updateInfo = await checkUpdate();
 				}}
 			>
 				<option value="stable">stable</option>
 				<option value="nightly">nightly</option>
 			</select>
 		</div>
-		{#if updateDone}
-			<div class="update-card update-card-done">
-				<div class="update-card-glow"></div>
-				<div class="update-card-shimmer"></div>
-				<div class="update-card-content">
-					<div class="update-icon-wrap update-icon-done">
-						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<path d="M20 6L9 17l-5-5"/>
-						</svg>
-					</div>
-					<div class="update-text">
-						<span class="update-title update-title-done">updated successfully</span>
-						<span class="update-subtitle">restart to enjoy the latest version</span>
-					</div>
-					<button class="update-action-btn update-action-done" onclick={handleReload}>
-						reload
-					</button>
-				</div>
-			</div>
-		{:else if updating}
-			<div class="update-card update-card-progress">
-				<div class="update-card-progress-bar"></div>
-				<div class="update-card-content">
-					<div class="update-icon-wrap update-icon-progress">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="update-spinner">
-							<path d="M21 12a9 9 0 11-6.219-8.56"/>
-						</svg>
-					</div>
-					<div class="update-text">
-						<span class="update-title">installing update</span>
-						<span class="update-subtitle">server restarting — hold tight</span>
-					</div>
-				</div>
-			</div>
-		{:else if updateInfo?.update_available}
-			<div class="update-card update-card-available">
-				<div class="update-card-glow"></div>
-				<div class="update-card-content">
-					<div class="update-icon-wrap update-icon-available">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<path d="M12 5v14M5 12l7 7 7-7"/>
-						</svg>
-					</div>
-					<div class="update-text">
-						<span class="update-title">new version available</span>
-						<span class="update-version-tag">
-							<span class="update-v-old">{updateInfo.current}</span>
-							<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="update-arrow">
-								<path d="M5 12h14M12 5l7 7-7 7"/>
-							</svg>
-							<span class="update-v-new">{updateInfo.latest}</span>
-						</span>
-					</div>
-					<button
-						class="update-action-btn update-action-available"
-						onclick={doUpdate}
-					>
-						update
-					</button>
-				</div>
-			</div>
-		{/if}
 	</section>
 
 	<!-- Usage -->
@@ -1293,68 +1171,7 @@
 	</div><!-- settings-grid -->
 </div>
 
-{#if showReborn}
-	<div class="reborn-overlay">
-		<video class="reborn-video" src="/orb-reborn.mp4" autoplay muted playsinline></video>
-		<div class="reborn-text">meet the new me</div>
-	</div>
-{/if}
-
 <style>
-	/* Reborn overlay */
-	.reborn-overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 9999;
-		background: black;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		animation: reborn-fade-in 0.6s ease both;
-	}
-
-	@keyframes reborn-fade-in {
-		from { opacity: 0; }
-		to { opacity: 1; }
-	}
-
-	.reborn-video {
-		position: absolute;
-		width: min(80vw, 80vh);
-		height: min(80vw, 80vh);
-		object-fit: contain;
-		opacity: 0.5;
-		animation: reborn-video-in 1.5s ease both;
-	}
-
-	@keyframes reborn-video-in {
-		from { opacity: 0; transform: scale(0.8); }
-		to { opacity: 0.5; transform: scale(1); }
-	}
-
-	.reborn-text {
-		position: relative;
-		font-family: var(--font-display, 'Georgia', serif);
-		font-size: clamp(2rem, 6vw, 4.5rem);
-		font-weight: 300;
-		letter-spacing: 0.08em;
-		color: oklch(0.85 0.08 75);
-		text-align: center;
-		animation: reborn-text-in 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.6s both;
-	}
-
-	@keyframes reborn-text-in {
-		from {
-			opacity: 0;
-			transform: translateY(30px) scale(0.92);
-			filter: blur(8px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0) scale(1);
-			filter: blur(0);
-		}
-	}
 	/* Usage */
 	.usage-windows {
 		display: flex;
