@@ -2084,7 +2084,7 @@ impl ExportProfileTool {
 pub struct ExportProfileArgs {
     /// Reason for export (e.g. "backup", "migrating to new instance").
     #[serde(default)]
-    pub reason: Option<String>,
+    pub _reason: Option<String>,
 }
 
 impl Tool for ExportProfileTool {

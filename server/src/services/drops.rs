@@ -84,17 +84,6 @@ fn check_drop_limits(drops_dir: &Path, title: &str) -> io::Result<()> {
 }
 
 /// Create a new drop and save it to disk.
-pub fn create_drop(
-    workspace_dir: &Path,
-    instance_slug: &str,
-    kind: &str,
-    title: &str,
-    content: &str,
-    mood: &str,
-) -> io::Result<Drop> {
-    create_drop_with_image(workspace_dir, instance_slug, kind, title, content, mood, None)
-}
-
 pub fn create_drop_with_image(
     workspace_dir: &Path,
     instance_slug: &str,

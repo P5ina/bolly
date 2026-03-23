@@ -510,7 +510,7 @@ pub async fn run_single_turn(
     let history_text_chars: usize = history_msgs.iter()
         .map(|m| extract_message_text_len(m))
         .sum();
-    let estimated_history_tokens = history_text_chars / 4;
+    let _estimated_history_tokens = history_text_chars / 4;
 
     log::info!(
         "[chat] sending: system_prompt={} chars, tools={}, history_msgs={}",
@@ -953,42 +953,6 @@ fn is_tool_activity(msg: &ChatMessage) -> bool {
         || msg.content.starts_with("[tool:") // backward compat with old messages
         || msg.content.starts_with("[tool activity]")
         || msg.content.starts_with("[system]")
-}
-
-/// Strip tool-call JSON that the model may have leaked into its text response
-/// instead of using the tool_use API properly.
-/// Split text by `\n\n` but preserve code blocks (``` fences) intact.
-fn split_preserving_code_blocks(text: &str) -> Vec<String> {
-    let mut parts = Vec::new();
-    let mut current = String::new();
-    let mut in_code_block = false;
-
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("```") {
-            in_code_block = !in_code_block;
-            current.push_str(line);
-            current.push('\n');
-            continue;
-        }
-        if in_code_block {
-            current.push_str(line);
-            current.push('\n');
-            continue;
-        }
-        if trimmed.is_empty() && !current.trim().is_empty() {
-            parts.push(current.trim().to_string());
-            current.clear();
-        } else {
-            current.push_str(line);
-            current.push('\n');
-        }
-    }
-    let remainder = current.trim().to_string();
-    if !remainder.is_empty() {
-        parts.push(remainder);
-    }
-    parts
 }
 
 fn strip_leaked_tool_calls(reply: &str) -> String {

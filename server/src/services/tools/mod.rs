@@ -36,7 +36,7 @@ pub use communication::{
 };
 pub use companion::{
     ALLOWED_MOODS, EditSoulTool, PlayMusicTool, SetVoiceTool,
-    clear_voice_override, get_voice_override, load_mood_state, save_mood_state,
+    get_voice_override, load_mood_state, save_mood_state,
 };
 pub use drive::{ListDriveFilesTool, ReadDriveFileTool, UploadDriveFileTool};
 pub use files::{EditFileTool, ListFilesTool, ReadFileTool, SendFileTool, WriteFileTool};
@@ -49,7 +49,7 @@ pub use system::{
     RestartMachineTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
 };
 pub use image::ViewImageTool;
-pub use media::{WatchVideoTool, ListenMusicTool, MediaType, is_youtube_url, download_youtube};
+pub use media::{WatchVideoTool, ListenMusicTool};
 pub use web::{BrowseTool, WebFetchTool, WebSearchTool};
 
 // ---------------------------------------------------------------------------

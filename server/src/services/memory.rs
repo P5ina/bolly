@@ -159,14 +159,6 @@ pub fn load_catalog_snapshot(workspace_dir: &Path, instance_slug: &str) -> Strin
     std::fs::read_to_string(&path).unwrap_or_default()
 }
 
-/// Build the memory prompt for the system prompt.
-/// NOTE: this scans disk on every call — use load_catalog_snapshot() for the static version.
-pub fn build_memory_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
-    // Delegate to rebuild logic (same format as cached version)
-    rebuild_catalog_snapshot(workspace_dir, instance_slug);
-    load_catalog_snapshot(workspace_dir, instance_slug)
-}
-
 /// Build a full library catalog for memory maintenance (heartbeat).
 /// Shows every file path, size, and first-line summary.
 pub fn build_library_catalog(workspace_dir: &Path, instance_slug: &str) -> String {
@@ -794,84 +786,3 @@ fn parse_memory_ops(response: &str) -> Vec<MemoryOp> {
     Vec::new()
 }
 
-/// Consolidate similar memories by merging them with LLM help.
-/// Finds pairs of memories with high vector similarity and asks the LLM to merge them.
-pub async fn consolidate_similar(
-    workspace_dir: &Path,
-    instance_slug: &str,
-    llm: &LlmBackend,
-    vector_store: &super::vector::VectorStore,
-    google_ai_key: &str,
-) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
-    let dir = memory_dir(workspace_dir, instance_slug);
-    let pairs = vector_store
-        .find_similar_pairs(instance_slug, 0.85)
-        .await
-        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
-
-    if pairs.is_empty() {
-        return Ok(0);
-    }
-
-    // Group pairs into clusters (simple: take first N pairs to avoid over-merging)
-    let mut merged_count = 0;
-    let mut already_merged: std::collections::HashSet<String> = std::collections::HashSet::new();
-
-    for (path_a, path_b, score) in pairs.iter().take(10) {
-        if already_merged.contains(path_a) || already_merged.contains(path_b) {
-            continue;
-        }
-
-        let file_a = dir.join(path_a);
-        let file_b = dir.join(path_b);
-
-        let content_a = match std::fs::read_to_string(&file_a) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        let content_b = match std::fs::read_to_string(&file_b) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-
-        // Ask LLM to merge
-        let merge_prompt = format!(
-            "merge these two similar memory files into one concise file.\n\n\
-             file 1 ({path_a}):\n{content_a}\n\n\
-             file 2 ({path_b}):\n{content_b}\n\n\
-             similarity score: {score:.2}\n\n\
-             respond with ONLY the merged content — no explanations, no file path."
-        );
-
-        let (merged_content, _) = llm
-            .chat(
-                "you are a memory librarian. merge the two files into one, keeping all important info. be concise.",
-                &merge_prompt,
-                vec![],
-            )
-            .await?;
-
-        // Write merged content to the first file, delete the second
-        std::fs::write(&file_a, merged_content.trim())?;
-        if file_b.exists() {
-            std::fs::remove_file(&file_b)?;
-            if let Some(parent) = file_b.parent() {
-                let _ = cleanup_empty_dirs(parent, &dir);
-            }
-        }
-
-        // Update vectors: embed merged file, delete old vectors
-        embed_memory_file(vector_store, google_ai_key, instance_slug, path_a, merged_content.trim()).await;
-        if let Err(e) = vector_store.delete_by_path(instance_slug, path_b).await {
-            log::warn!("[consolidate] vector delete failed for {path_b}: {e}");
-        }
-
-        already_merged.insert(path_a.clone());
-        already_merged.insert(path_b.clone());
-        merged_count += 1;
-
-        log::info!("[consolidate] merged {path_a} + {path_b} (similarity: {score:.2})");
-    }
-
-    Ok(merged_count)
-}

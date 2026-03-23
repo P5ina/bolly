@@ -101,28 +101,6 @@ pub async fn embed_text(
     send(api_key, &req).await
 }
 
-/// Embed an image (raw bytes).
-pub async fn embed_image(
-    api_key: &str,
-    image_bytes: &[u8],
-    mime_type: &str,
-) -> Result<Vec<f32>, String> {
-    let b64 = base64::engine::general_purpose::STANDARD.encode(image_bytes);
-    let req = EmbedRequest {
-        content: Content {
-            parts: vec![Part::InlineData {
-                inline_data: InlineData {
-                    mime_type: mime_type.to_string(),
-                    data: b64,
-                },
-            }],
-        },
-        task_type: TaskType::RetrievalDocument.as_str().to_string(),
-        output_dimensionality: OUTPUT_DIM,
-    };
-    send(api_key, &req).await
-}
-
 /// Embed any media (video, audio, PDF) as raw bytes.
 pub async fn embed_media(
     api_key: &str,

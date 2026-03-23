@@ -290,15 +290,6 @@ fn tool_use_summary(name: &str, input: &serde_json::Value) -> String {
     name.to_string()
 }
 
-fn truncate_tool_output(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        let end = s.floor_char_boundary(max);
-        format!("{}…", &s[..end])
-    }
-}
-
 /// Merge timestamps from old entries into a new message list from the LLM.
 /// Old entries that match by position keep their ts/id; new entries get fresh values.
 pub fn merge_with_timestamps(
@@ -880,7 +871,7 @@ fn build_anthropic_request(
     messages: &[Message],
     max_tokens: u64,
     stream: bool,
-    api_key: &str,
+    _api_key: &str,
 ) -> serde_json::Value {
     // System blocks — cache_control on stable blocks only (not the volatile last block)
     let block_count = system.iter().filter(|s| !s.is_empty()).count();
@@ -993,7 +984,6 @@ fn build_anthropic_request(
     let mut req = serde_json::json!({
         "model": model,
         "max_tokens": max_tokens,
-        "cache_control": {"type": "ephemeral"},
         "system": system_blocks,
         "messages": msgs,
     });
