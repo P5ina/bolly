@@ -3,7 +3,7 @@
 	import { onMount } from "svelte";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
-	import { fetchMeta, fetchChangelog, type ChangelogEntry } from "$lib/api/client.js";
+	import { fetchMeta, fetchChangelog, getUpdateChannel, setUpdateChannel, type ChangelogEntry } from "$lib/api/client.js";
 
 	const instances = getInstances();
 	const scene = getSceneStore();
@@ -12,6 +12,7 @@
 	let commit = $state("");
 	let changelog = $state<ChangelogEntry[]>([]);
 	let showChangelog = $state(false);
+	let channel = $state("stable");
 
 	onMount(async () => {
 		scene.enterHome();
@@ -21,6 +22,7 @@
 			commit = meta.commit;
 		} catch {}
 		fetchChangelog().then(c => changelog = c).catch(() => {});
+		getUpdateChannel().then(r => channel = r.channel).catch(() => {});
 	});
 
 	// Keep scene instances in sync
@@ -150,6 +152,18 @@
 		<div class="changelog-panel">
 			<div class="changelog-header">
 				<span class="changelog-title">what's new</span>
+				<select
+					class="changelog-channel"
+					value={channel}
+					onchange={async (e) => {
+						const val = (e.target as HTMLSelectElement).value;
+						channel = val;
+						await setUpdateChannel(val);
+					}}
+				>
+					<option value="stable">stable</option>
+					<option value="nightly">nightly</option>
+				</select>
 				<button class="changelog-close" onclick={() => showChangelog = false}>
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg>
 				</button>
@@ -394,6 +408,27 @@
 	.changelog-title {
 		font-family: var(--font-display); font-style: italic;
 		font-size: 0.9rem; color: oklch(0.88 0.02 75 / 70%);
+	}
+	.changelog-channel {
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		color: oklch(1 0 0 / 35%);
+		background: none;
+		border: 1px solid oklch(1 0 0 / 8%);
+		border-radius: 4px;
+		padding: 0.15rem 0.35rem;
+		cursor: pointer;
+		outline: none;
+		margin-left: auto;
+		transition: all 0.2s ease;
+	}
+	.changelog-channel:hover {
+		border-color: oklch(1 0 0 / 15%);
+		color: oklch(1 0 0 / 55%);
+	}
+	.changelog-channel option {
+		background: oklch(0.1 0.01 240);
+		color: oklch(0.8 0.04 240);
 	}
 	.changelog-close {
 		color: oklch(1 0 0 / 30%); cursor: pointer;
