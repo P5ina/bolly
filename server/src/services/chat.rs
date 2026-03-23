@@ -1838,12 +1838,14 @@ async fn embed_recent_media(
             continue;
         }
 
-        // Only embed images, video, and audio
+        // Only embed supported media types
+        // Gemini Embedding supports: image/*, video/mp4, audio/mpeg, audio/wav
+        // Skip unsupported formats like audio/mp4 (m4a), audio/ogg, etc.
         let source_type = if mime_type.starts_with("image/") {
             "media_image"
-        } else if mime_type.starts_with("video/") {
+        } else if mime_type == "video/mp4" || mime_type == "video/quicktime" {
             "media_video"
-        } else if mime_type.starts_with("audio/") {
+        } else if mime_type == "audio/mpeg" || mime_type == "audio/wav" {
             "media_audio"
         } else {
             continue;
