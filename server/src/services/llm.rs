@@ -706,17 +706,26 @@ async fn streaming_agent_loop(
     let mut all_text = String::new();
     let mut total_tokens: u64 = 0;
     let mut current_message_id = super::chat::next_id();
+    let mut active_container_id: Option<String> = None;
+    let mut all_file_ids: Vec<String> = Vec::new();
 
     loop {
         let turn = stream_once(
             backend, system, tool_defs, messages, events,
             instance_slug, chat_id, &current_message_id, mcp_snapshot,
+            active_container_id.as_deref(),
         ).await?;
 
         total_tokens += turn.tokens_used;
         let turn_text = turn.text;
         let tool_uses = turn.tool_uses;
         let stop_reason = turn.stop_reason;
+
+        // Track container_id for skills/code-execution continuations
+        if let Some(cid) = turn.container_id {
+            active_container_id = Some(cid);
+        }
+        all_file_ids.extend(turn.file_ids);
 
         // Build assistant message
         let mut assistant_content = Vec::new();
@@ -1146,8 +1155,9 @@ async fn anthropic_stream(
     chat_id: &str,
     message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
+    container_id: Option<&str>,
 ) -> Result<(String, Vec<ToolUseBlock>, String, Option<String>, u64, Option<String>, Vec<String>), Box<dyn std::error::Error + Send + Sync>> {
-    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, api_key, None);
+    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, api_key, container_id);
 
     // Use skills headers for streaming requests (they have tools + code_execution)
     let resp = http
@@ -1456,11 +1466,12 @@ async fn stream_once(
     chat_id: &str,
     message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
+    container_id: Option<&str>,
 ) -> Result<StreamOnceResult, Box<dyn std::error::Error + Send + Sync>> {
     let (text, tool_uses, stop_reason, compaction, tokens_used, container_id, file_ids) =
         anthropic_stream(
             &backend.http, &backend.api_key, &backend.model, system, tool_defs, messages,
-            16384, events, instance_slug, chat_id, message_id, mcp_snapshot,
+            16384, events, instance_slug, chat_id, message_id, mcp_snapshot, container_id,
         ).await?;
     Ok(StreamOnceResult { text, tool_uses, stop_reason, compaction, tokens_used, container_id, file_ids })
 }
