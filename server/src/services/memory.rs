@@ -470,6 +470,7 @@ rules:
 - DON'T force it — most conversations produce 0-1 ops
 - DON'T create a new file if you can append to an existing one on the same topic
 - keep files concise — a few lines each, not essays
+- NEVER create a write or append op with empty content — every write/append MUST have non-empty content
 - there are currently {file_count} files. aim for quality over quantity — merge related topics
 
 do NOT save images unless they are clearly meaningful (personal photos, important screenshots). ignore memes, random links, UI screenshots."#
@@ -492,7 +493,7 @@ do NOT save images unless they are clearly meaningful (personal photos, importan
                         "upload_id": { "type": "string" },
                         "description": { "type": "string" }
                     },
-                    "required": ["action", "path"],
+                    "required": ["action", "path", "content"],
                     "additionalProperties": false
                 }
             }
