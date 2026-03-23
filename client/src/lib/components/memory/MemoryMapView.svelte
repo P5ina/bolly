@@ -743,7 +743,7 @@
 								{#if isImage}
 									<img class="bubble-thumb" src={mediaUrl(circle.entry?.path ?? '')} alt="" loading="lazy" />
 								{:else if fileType === 'video'}
-									<div class="bubble-type-icon"><Play size={20} /></div>
+									<video class="bubble-thumb" src={mediaUrl(circle.entry?.path ?? '')} autoplay muted loop playsinline></video>
 								{:else if fileType === 'audio'}
 									<div class="bubble-type-icon"><Music size={20} /></div>
 								{:else if fileType === 'pdf'}
