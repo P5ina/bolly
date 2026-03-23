@@ -243,8 +243,8 @@
 				}
 			}
 
-			// Thinking videos are 16:9, idle are square — compensate size
-			const wideVideo = orbState === 'thinking' || orbState === 'toThinking' || orbState === 'toIdle';
+			// Non-square videos (16:9) need size compensation vs square idle
+			const wideVideo = orbState !== 'idle';
 			if (wideVideo) ts *= 1.8;
 			const formatChanged = wideVideo !== lastWideVideo;
 
@@ -264,7 +264,7 @@
 		}
 
 		orbs = newOrbs;
-		lastWideVideo = orbState === 'thinking' || orbState === 'toThinking' || orbState === 'toIdle';
+		lastWideVideo = orbState !== 'idle';
 
 		// Keep active videos playing (browser may suspend them)
 		for (const el of Object.values(videoRefs)) {
@@ -339,7 +339,7 @@
 					src={videoSrc}
 					loop={isLooping}
 					class="orb-vid"
-					class:no-mask={orbState === 'thinking' || orbState === 'toThinking' || orbState === 'toIdle'}
+					class:no-mask={orbState !== 'idle'}
 					onended={handleVideoEnded}
 				></video>
 			</button>
