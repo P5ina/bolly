@@ -111,19 +111,21 @@ impl Tool for MemoryWriteTool {
                         else if mime_type.starts_with("audio/") { "media_audio" }
                         else { "media_document" };
 
+                    let desc = if args.content.is_empty() {
+                        clean_path.clone()
+                    } else {
+                        args.content.clone()
+                    };
+
+                    // Embed with text description so text queries can find images
                     let embed_result = if is_image {
-                        crate::services::embedding::embed_image(&self.google_ai_key, &bytes, mime_type).await
+                        crate::services::embedding::embed_text_and_image(&self.google_ai_key, &desc, &bytes, mime_type).await
                     } else {
                         crate::services::embedding::embed_media(&self.google_ai_key, &bytes, mime_type).await
                     };
 
                     match embed_result {
                         Ok(vec) => {
-                            let desc = if args.content.is_empty() {
-                                clean_path.clone()
-                            } else {
-                                args.content.clone()
-                            };
                             if let Err(e) = self.vector_store.upsert_media(
                                 &self.instance_slug, &clean_path, source_type,
                                 mime_type, &clean_path, &desc, vec,

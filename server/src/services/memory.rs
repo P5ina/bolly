@@ -609,7 +609,7 @@ do NOT save images unless they are clearly meaningful (personal photos, importan
                 let desc = if op.description.is_empty() { &clean_path } else { &op.description };
                 if let Ok(bytes) = std::fs::read(&full_path) {
                     if bytes.len() < 20 * 1024 * 1024 {
-                        if let Ok(vec) = super::embedding::embed_image(google_ai_key, &bytes, mime_type).await {
+                        if let Ok(vec) = super::embedding::embed_text_and_image(google_ai_key, desc, &bytes, mime_type).await {
                             if let Err(e) = vector_store.upsert_media(
                                 instance_slug, &clean_path, "media_image",
                                 mime_type, &clean_path, desc, vec,

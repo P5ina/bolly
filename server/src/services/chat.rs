@@ -1854,8 +1854,9 @@ async fn embed_recent_media(
             continue;
         }
 
+        let desc = format!("{source_type}: {original_name}");
         let vector = match source_type {
-            "media_image" => embedding::embed_image(google_ai_key, &bytes, mime_type).await,
+            "media_image" => embedding::embed_text_and_image(google_ai_key, &desc, &bytes, mime_type).await,
             _ => embedding::embed_media(google_ai_key, &bytes, mime_type).await,
         };
 
