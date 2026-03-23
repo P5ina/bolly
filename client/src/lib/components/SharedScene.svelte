@@ -414,8 +414,6 @@
 		height: 100%;
 		object-fit: contain;
 		pointer-events: none;
-		mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 48%);
-		-webkit-mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 48%);
 	}
 
 	/* ── Memory clouds (above orb) ── */
@@ -463,10 +461,6 @@
 		to { opacity: 1; transform: translateY(0) scale(1); }
 	}
 
-	.orb-vid.no-mask {
-		mask-image: none;
-		-webkit-mask-image: none;
-	}
 
 	@media (max-width: 640px) {
 		.scene-root {
