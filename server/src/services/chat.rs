@@ -216,6 +216,19 @@ pub async fn run_single_turn(
         ));
     }
 
+    // Public file URLs — so the agent knows how to reference files externally
+    let public_url = std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default();
+    if !public_url.is_empty() {
+        system_prompt.push_str(&format!(
+            "\n\n## file URLs\n\
+             files in your instance are publicly accessible via URL. use these when tools need a URL \
+             (e.g. fal.ai image generation with a reference image):\n\
+             - uploads: {public_url}/public/files/{instance_slug}/{{upload_id}}?token={auth_token}\n\
+             - memory files: {public_url}/public/memory/{instance_slug}/{{path}}?token={auth_token}\n\
+             example: to use a memory image as input for fal.ai, pass its public URL as image_url."
+        ));
+    }
+
     // Email accounts prompt
     if has_any_email {
         let mut account_lines = Vec::new();
