@@ -881,6 +881,7 @@ fn build_anthropic_request(
     max_tokens: u64,
     stream: bool,
     _api_key: &str,
+    container_id: Option<&str>,
 ) -> serde_json::Value {
     // System blocks — cache_control on stable blocks only (not the volatile last block)
     let block_count = system.iter().filter(|s| !s.is_empty()).count();
@@ -1007,14 +1008,17 @@ fn build_anthropic_request(
         req["tools"] = serde_json::Value::Array(all_tools);
 
         // Enable Anthropic Skills (document generation)
-        req["container"] = serde_json::json!({
-            "skills": [
-                {"type": "anthropic", "skill_id": "pptx", "version": "latest"},
-                {"type": "anthropic", "skill_id": "xlsx", "version": "latest"},
-                {"type": "anthropic", "skill_id": "docx", "version": "latest"},
-                {"type": "anthropic", "skill_id": "pdf", "version": "latest"},
-            ]
-        });
+        let skills = serde_json::json!([
+            {"type": "anthropic", "skill_id": "pptx", "version": "latest"},
+            {"type": "anthropic", "skill_id": "xlsx", "version": "latest"},
+            {"type": "anthropic", "skill_id": "docx", "version": "latest"},
+            {"type": "anthropic", "skill_id": "pdf", "version": "latest"},
+        ]);
+        if let Some(cid) = container_id {
+            req["container"] = serde_json::json!({"id": cid, "skills": skills});
+        } else {
+            req["container"] = serde_json::json!({"skills": skills});
+        }
     }
     if stream {
         req["stream"] = serde_json::json!(true);
@@ -1038,7 +1042,7 @@ async fn anthropic_complete(
     messages: &[Message],
     max_tokens: u64,
 ) -> Result<(String, Vec<ToolUseBlock>, String, u64), Box<dyn std::error::Error + Send + Sync>> {
-    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, false, api_key);
+    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, false, api_key, None);
 
     let resp = http
         .post("https://api.anthropic.com/v1/messages")
@@ -1127,7 +1131,7 @@ async fn anthropic_stream(
     message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
 ) -> Result<(String, Vec<ToolUseBlock>, String, Option<String>, u64), Box<dyn std::error::Error + Send + Sync>> {
-    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, api_key);
+    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, api_key, None);
 
     let resp = http
         .post("https://api.anthropic.com/v1/messages")
