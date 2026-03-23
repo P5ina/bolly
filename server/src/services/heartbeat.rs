@@ -169,7 +169,7 @@ async fn heartbeat_instance(
 
     // ── Phase 1: Cheap triage with Haiku ──
     // Haiku decides what (if anything) to do. No tools, just a structured decision.
-    let triage_llm = llm.fast_variant();
+    let triage_llm = llm.cheap_variant();
     let mood_list = mood_list();
     let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
     let triage_system = format!(

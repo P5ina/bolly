@@ -418,9 +418,13 @@ impl LlmBackend {
         }
     }
 
-    /// Create a variant using the fast/cheap model with provider defaults.
-    pub fn fast_variant(&self) -> Self {
-        self.fast_variant_with(None)
+    /// Create a variant using the cheapest model for background tasks (Haiku).
+    pub fn cheap_variant(&self) -> Self {
+        Self {
+            http: self.http.clone(),
+            api_key: self.api_key.clone(),
+            model: "claude-haiku-4-5-20251001".to_string(),
+        }
     }
 
     pub fn pdf_strategy(&self, public_url: Option<&str>, auth_token: &str) -> PdfStrategy {
@@ -441,7 +445,7 @@ impl LlmBackend {
     /// Classify whether a user message needs the heavy model.
     /// Uses the fast model with a minimal prompt. Falls back to heavy on error.
     pub async fn classify_needs_heavy(&self, user_message: &str) -> bool {
-        let classifier = self.fast_variant();
+        let classifier = self.cheap_variant();
         let system = "Classify this message. Respond with exactly one word.\n\
             Say \"heavy\" if it needs: complex reasoning, code, analysis, creative writing, research, multi-step tasks, tool use.\n\
             Say \"fast\" if it's: casual chat, greeting, short reply, simple question, emotional support, acknowledgment.";

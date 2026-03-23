@@ -1593,7 +1593,7 @@ impl ExploreCodeTool {
         Self {
             workspace_dir: workspace_dir.to_path_buf(),
             instance_slug: instance_slug.to_string(),
-            llm: llm.fast_variant(),
+            llm: llm.cheap_variant(),
         }
     }
 }
@@ -1708,7 +1708,7 @@ impl DeepResearchTool {
         Self {
             workspace_dir: workspace_dir.to_path_buf(),
             instance_slug: instance_slug.to_string(),
-            llm: llm.fast_variant(),
+            llm: llm.cheap_variant(),
             config_path: config_path.to_path_buf(),
         }
     }

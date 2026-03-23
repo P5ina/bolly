@@ -629,7 +629,7 @@ pub async fn run_single_turn(
 
     // Background memory + sentiment extraction (AFTER rig_history is saved to avoid race conditions)
     if let Some(last_msg) = assistant_messages.last().cloned() {
-        let fast = llm.fast_variant();
+        let fast = llm.cheap_variant();
         let ws = workspace_dir.to_path_buf();
         let slug = instance_slug.clone();
         let cid = chat_id.clone();
