@@ -273,7 +273,8 @@
 					updateInfo = info;
 					updating = false;
 					updateDone = true;
-					setTimeout(() => { updateDone = false; }, 8000);
+					// Auto-reload with cinematic overlay
+					handleReload();
 					return;
 				}
 			} catch {
