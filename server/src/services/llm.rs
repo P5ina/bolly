@@ -894,12 +894,20 @@ fn build_anthropic_request(
     // System blocks — each gets cache_control for independent caching
     let system_blocks: Vec<serde_json::Value> = system
         .iter()
-        .filter(|s| !s.is_empty())
-        .map(|s| serde_json::json!({
-            "type": "text",
-            "text": *s,
-            "cache_control": {"type": "ephemeral"}
-        }))
+        .enumerate()
+        .filter(|(_, s)| !s.is_empty())
+        .map(|(i, s)| {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            s.hash(&mut hasher);
+            let hash = hasher.finish();
+            log::info!("[llm] system block[{i}]: {} chars, hash={:x}", s.len(), hash);
+            serde_json::json!({
+                "type": "text",
+                "text": *s,
+                "cache_control": {"type": "ephemeral"}
+            })
+        })
         .collect();
 
     // Tool definitions
