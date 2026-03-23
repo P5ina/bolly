@@ -26,7 +26,7 @@ base64 = "0.22"
 regex = "1"
 serde_yml = "0.0.12"
 portable-pty = "0.9"
-zip = "2"
+zip = "8"
 chrono-tz = { version = "0.10.4", features = ["case-insensitive"] }
 rust-embed = { version = "8", features = ["mime-guess"] }
 lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
