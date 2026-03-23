@@ -1,17 +1,25 @@
 <script lang="ts">
-	import { checkUpdate, applyUpdate, type UpdateCheck } from "$lib/api/client.js";
+	import { checkUpdate, applyUpdate, getUpdateChannel, setUpdateChannel, type UpdateCheck } from "$lib/api/client.js";
 	import { play } from "$lib/sounds.js";
 
 	let updateInfo = $state<UpdateCheck | null>(null);
 	let updating = $state(false);
 	let showReborn = $state(false);
 	let frozenCommit = '';
+	let channel = $state("stable");
 
 	$effect(() => {
 		checkUpdate().then(u => updateInfo = u).catch(() => {});
+		getUpdateChannel().then(r => channel = r.channel).catch(() => {});
 	});
 
 	let hasUpdate = $derived(updateInfo?.update_available ?? false);
+
+	async function switchChannel(val: string) {
+		channel = val;
+		await setUpdateChannel(val);
+		updateInfo = await checkUpdate();
+	}
 
 	async function doUpdate() {
 		if (!updateInfo) return;
@@ -53,13 +61,20 @@
 		<span class="update-dot"></span>
 		<span class="update-label">update available</span>
 	</button>
-{/if}
-
-{#if updating}
+{:else if updating}
 	<div class="update-pill update-pill-active">
 		<span class="update-spinner"></span>
 		<span class="update-label">updating...</span>
 	</div>
+{:else if !showReborn}
+	<select
+		class="channel-select"
+		value={channel}
+		onchange={(e) => switchChannel((e.target as HTMLSelectElement).value)}
+	>
+		<option value="stable">stable</option>
+		<option value="nightly">nightly</option>
+	</select>
 {/if}
 
 {#if showReborn}
@@ -70,6 +85,30 @@
 {/if}
 
 <style>
+	.channel-select {
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		color: oklch(0.6 0.04 240 / 40%);
+		background: none;
+		border: 1px solid oklch(1 0 0 / 6%);
+		border-radius: 999px;
+		padding: 0.25rem 0.5rem;
+		cursor: pointer;
+		outline: none;
+		flex-shrink: 0;
+		transition: all 0.2s ease;
+	}
+
+	.channel-select:hover {
+		border-color: oklch(1 0 0 / 12%);
+		color: oklch(0.7 0.04 240 / 60%);
+	}
+
+	.channel-select option {
+		background: oklch(0.1 0.01 240);
+		color: oklch(0.8 0.04 240);
+	}
+
 	.update-pill {
 		display: flex;
 		align-items: center;

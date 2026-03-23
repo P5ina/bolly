@@ -2,10 +2,6 @@
 	import { page } from "$app/state";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
 	import {
-		checkUpdate,
-		getUpdateChannel,
-		setUpdateChannel,
-		type UpdateCheck,
 		fetchGoogleAccounts,
 		getGoogleConnectUrl,
 		disconnectGoogleAccount,
@@ -233,12 +229,6 @@
 	}
 
 	// Update state
-	let updateInfo = $state<UpdateCheck | null>(null);
-	let channel = $state("stable");
-	$effect(() => {
-		checkUpdate().then(u => updateInfo = u).catch(() => {});
-		getUpdateChannel().then(r => channel = r.channel).catch(() => {});
-	});
 
 	// Usage state
 	let usage = $state<Usage | null>(null);
@@ -557,28 +547,6 @@
 
 	<div class="settings-grid">
 
-	<section class="settings-section">
-		<div class="section-header">
-			<img src="/icon-updates.png" alt="" class="section-icon-img" />
-			<div>
-				<h3 class="section-label">version</h3>
-				<p class="section-desc">v{updateInfo?.current?.replace('v','') ?? '...'}</p>
-			</div>
-			<select
-				class="channel-select"
-				value={channel}
-				style="margin-left: auto;"
-				onchange={async (e) => {
-					const val = (e.target as HTMLSelectElement).value;
-					channel = val;
-					await setUpdateChannel(val);
-				}}
-			>
-				<option value="stable">stable</option>
-				<option value="nightly">nightly</option>
-			</select>
-		</div>
-	</section>
 
 	<!-- Usage -->
 	{#if usage && (usage.tokens_4h_limit > 0 || usage.tokens_week_limit > 0 || usage.tokens_month_limit > 0)}
