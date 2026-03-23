@@ -1780,6 +1780,26 @@ respond ONLY with those three lines."#,
 
 }
 
+/// Convert audio file to mp3 via ffmpeg (for unsupported formats like m4a, ogg).
+async fn convert_audio_to_mp3(input: &std::path::Path) -> Option<Vec<u8>> {
+    let tmp = input.with_extension("_convert.mp3");
+    let status = tokio::process::Command::new("ffmpeg")
+        .args(["-i", &input.to_string_lossy(), "-vn", "-ar", "44100", "-ac", "1", "-b:a", "64k", "-f", "mp3", "-y"])
+        .arg(&tmp)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await
+        .ok()?;
+    if !status.success() {
+        let _ = std::fs::remove_file(&tmp);
+        return None;
+    }
+    let bytes = std::fs::read(&tmp).ok();
+    let _ = std::fs::remove_file(&tmp);
+    bytes
+}
+
 /// Embed recent image/video/audio uploads into the vector store.
 /// Scans uploads from the last 5 minutes and embeds any that aren't already indexed.
 async fn embed_recent_media(
@@ -1838,14 +1858,12 @@ async fn embed_recent_media(
             continue;
         }
 
-        // Only embed supported media types
-        // Gemini Embedding supports: image/*, video/mp4, audio/mpeg, audio/wav
-        // Skip unsupported formats like audio/mp4 (m4a), audio/ogg, etc.
+        // Only embed images, video, and audio
         let source_type = if mime_type.starts_with("image/") {
             "media_image"
-        } else if mime_type == "video/mp4" || mime_type == "video/quicktime" {
+        } else if mime_type.starts_with("video/") {
             "media_video"
-        } else if mime_type == "audio/mpeg" || mime_type == "audio/wav" {
+        } else if mime_type.starts_with("audio/") {
             "media_audio"
         } else {
             continue;
@@ -1866,9 +1884,25 @@ async fn embed_recent_media(
         }
 
         let desc = format!("{source_type}: {original_name}");
+
+        // Convert unsupported audio formats (m4a, ogg, etc.) to mp3 via ffmpeg
+        let (embed_bytes, embed_mime) = if source_type == "media_audio"
+            && mime_type != "audio/mpeg" && mime_type != "audio/wav"
+        {
+            match convert_audio_to_mp3(&file_path).await {
+                Some(mp3_bytes) => (mp3_bytes, "audio/mpeg"),
+                None => {
+                    log::warn!("[media_embed] ffmpeg conversion failed for {original_name}");
+                    continue;
+                }
+            }
+        } else {
+            (bytes, mime_type)
+        };
+
         let vector = match source_type {
-            "media_image" => embedding::embed_text_and_image(google_ai_key, &desc, &bytes, mime_type).await,
-            _ => embedding::embed_media(google_ai_key, &bytes, mime_type).await,
+            "media_image" => embedding::embed_text_and_image(google_ai_key, &desc, &embed_bytes, embed_mime).await,
+            _ => embedding::embed_media(google_ai_key, &embed_bytes, embed_mime).await,
         };
 
         match vector {
