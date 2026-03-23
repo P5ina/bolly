@@ -427,6 +427,11 @@ impl Tool for SendFileTool {
             .workspace_dir
             .join("instances")
             .join(&self.instance_slug);
+
+        // Strip absolute instance path prefix if agent passes full path
+        let instance_prefix = format!("data/instances/{}/", self.instance_slug);
+        let rel = rel.strip_prefix(&instance_prefix).unwrap_or(rel);
+
         let file_path = instance_dir.join(rel);
         log::info!("[send_file] attempting to send '{}' → {}", rel, file_path.display());
 
