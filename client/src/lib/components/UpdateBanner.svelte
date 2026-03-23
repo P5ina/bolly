@@ -52,7 +52,7 @@
 	function handleReborn() {
 		showReborn = true;
 		play('reborn');
-		setTimeout(() => location.reload(), 2400);
+		setTimeout(() => location.reload(), 5200);
 	}
 </script>
 
