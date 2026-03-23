@@ -362,16 +362,19 @@ pub async fn run_single_turn(
     // Block 2 (semi-stable): memory catalog — cached until memory changes
     let system_stable = system_prompt;
 
+    // Block 2: memory catalog (semi-stable — changes when memories update)
     let memory_block = {
-        let now = crate::routes::instances::format_instance_now(&instance_dir);
-        let time_section = format!("## time\ncurrent time: {now}\nif you need the exact time later, use the `get_time` tool.\n\n");
         let memory_catalog = memory::load_catalog_snapshot(workspace_dir, &instance_slug);
         if !memory_catalog.is_empty() {
-            format!("{time_section}{memory_catalog}{MEMORY_FOOTER}")
+            format!("{memory_catalog}{MEMORY_FOOTER}")
         } else {
-            format!("{time_section}## memory\nyour memory library is empty.{MEMORY_FOOTER}")
+            format!("## memory\nyour memory library is empty.{MEMORY_FOOTER}")
         }
     };
+
+    // Block 3: current time (changes every request — never cached)
+    let now = crate::routes::instances::format_instance_now(&instance_dir);
+    let time_block = format!("## time\ncurrent time: {now}\nif you need the exact time later, use the `get_time` tool.");
 
     if loaded_entries.is_empty() {
         return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
@@ -554,7 +557,10 @@ pub async fn run_single_turn(
         "[chat] sending: system_prompt={} chars, tools={}, history_msgs={}",
         system_stable.len(), all_tools.len(), history_msgs.len()
     );
-    let system_blocks: Vec<&str> = vec![&system_stable, &memory_block];
+    // Block 1 (stable): soul + skills + tools — cached across turns
+    // Block 2 (semi-stable): memory catalog — cached until memories change
+    // Block 3 (volatile): current time — never cached, always fresh
+    let system_blocks: Vec<&str> = vec![&system_stable, &memory_block, &time_block];
     let tool_result = llm
         .chat_with_tools_streaming(
             &system_blocks, prompt_msg, history_msgs, all_tools,
