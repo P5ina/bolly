@@ -4,6 +4,7 @@
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
 	import { fetchMeta, fetchChangelog, getUpdateChannel, setUpdateChannel, type ChangelogEntry } from "$lib/api/client.js";
+	import { Marked } from "marked";
 
 	const instances = getInstances();
 	const scene = getSceneStore();
@@ -13,6 +14,7 @@
 	let changelog = $state<ChangelogEntry[]>([]);
 	let showChangelog = $state(false);
 	let channel = $state("stable");
+	const md = new Marked({ breaks: true, gfm: true });
 
 	onMount(async () => {
 		scene.enterHome();
@@ -172,7 +174,7 @@
 				{#each changelog.slice(0, 5) as entry}
 					<div class="changelog-entry">
 						<div class="changelog-version">{entry.version}</div>
-						<div class="changelog-body">{@html entry.body.replace(/\n/g, '<br>')}</div>
+						<div class="changelog-body">{@html md.parse(entry.body)}</div>
 					</div>
 				{/each}
 			</div>
@@ -452,4 +454,22 @@
 	.changelog-body {
 		font-size: 0.75rem; line-height: 1.55; color: oklch(0.88 0.02 75 / 45%);
 	}
+	.changelog-body :global(h2) {
+		font-size: 0.8rem; font-weight: 600; color: oklch(0.88 0.02 75 / 70%);
+		margin: 0.75rem 0 0.35rem;
+	}
+	.changelog-body :global(h2:first-child) { margin-top: 0; }
+	.changelog-body :global(ul) { padding-left: 1.2rem; margin: 0.25rem 0; }
+	.changelog-body :global(li) { margin: 0.15rem 0; }
+	.changelog-body :global(strong) { color: oklch(0.88 0.02 75 / 65%); }
+	.changelog-body :global(img) {
+		max-width: 100%; border-radius: 0.5rem; margin: 0.5rem 0;
+	}
+	.changelog-body :global(video) {
+		max-width: 100%; border-radius: 0.5rem; margin: 0.5rem 0;
+	}
+	.changelog-body :global(a) {
+		color: oklch(0.65 0.1 190 / 60%); text-decoration: none;
+	}
+	.changelog-body :global(a:hover) { text-decoration: underline; }
 </style>
