@@ -867,6 +867,16 @@ async fn complete_once(
 fn anthropic_headers(api_key: &str) -> reqwest::header::HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("x-api-key", api_key.parse().unwrap());
+    headers.insert("anthropic-beta", "compact-2026-01-12".parse().unwrap());
+    headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
+    headers.insert("content-type", "application/json".parse().unwrap());
+    headers
+}
+
+/// Headers with skills beta — only for requests with tools
+fn anthropic_headers_with_skills(api_key: &str) -> reqwest::header::HeaderMap {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("x-api-key", api_key.parse().unwrap());
     headers.insert("anthropic-beta", "compact-2026-01-12,code-execution-2025-08-25,skills-2025-10-02".parse().unwrap());
     headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
     headers.insert("content-type", "application/json".parse().unwrap());
@@ -999,15 +1009,17 @@ fn build_anthropic_request(
     });
 
     if !tools.is_empty() {
-        // Add code_execution tool for Anthropic Agent Skills (pptx, xlsx, docx, pdf)
-        let mut all_tools = tools;
-        all_tools.push(serde_json::json!({
+        req["tools"] = serde_json::Value::Array(tools);
+    }
+
+    // Agent Skills (code execution + document generation) — only for streaming chat
+    if stream && !tool_defs.is_empty() {
+        let tools_arr = req["tools"].as_array_mut().unwrap();
+        tools_arr.push(serde_json::json!({
             "type": "code_execution_20250825",
             "name": "code_execution"
         }));
-        req["tools"] = serde_json::Value::Array(all_tools);
 
-        // Enable Anthropic Skills (document generation)
         let skills = serde_json::json!([
             {"type": "anthropic", "skill_id": "pptx", "version": "latest"},
             {"type": "anthropic", "skill_id": "xlsx", "version": "latest"},
@@ -1130,12 +1142,13 @@ async fn anthropic_stream(
     chat_id: &str,
     message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
-) -> Result<(String, Vec<ToolUseBlock>, String, Option<String>, u64), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, Vec<ToolUseBlock>, String, Option<String>, u64, Option<String>, Vec<String>), Box<dyn std::error::Error + Send + Sync>> {
     let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, api_key, None);
 
+    // Use skills headers for streaming requests (they have tools + code_execution)
     let resp = http
         .post("https://api.anthropic.com/v1/messages")
-        .headers(anthropic_headers(api_key))
+        .headers(anthropic_headers_with_skills(api_key))
         .json(&body)
         .send()
         .await?;
@@ -1175,6 +1188,8 @@ async fn anthropic_stream(
     let mut output_tokens: u64 = 0;
     let mut cache_read_tokens: u64 = 0;
     let mut cache_write_tokens: u64 = 0;
+    let mut container_id: Option<String> = None;
+    let mut file_ids: Vec<String> = Vec::new();
 
     // Current block being built
     let mut current_block_type = String::new();
@@ -1232,20 +1247,45 @@ async fn anthropic_stream(
 
             match event_type.as_str() {
                 "message_start" => {
-                    if let Some(usage) = ev.get("message").and_then(|m| m.get("usage")) {
-                        input_tokens = usage["input_tokens"].as_u64().unwrap_or(0);
-                        cache_read_tokens = usage["cache_read_input_tokens"].as_u64().unwrap_or(0);
-                        cache_write_tokens = usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
-                        log::info!(
-                            "anthropic cache: read={} write={} input={}",
-                            cache_read_tokens, cache_write_tokens, input_tokens,
-                        );
+                    if let Some(msg) = ev.get("message") {
+                        if let Some(usage) = msg.get("usage") {
+                            input_tokens = usage["input_tokens"].as_u64().unwrap_or(0);
+                            cache_read_tokens = usage["cache_read_input_tokens"].as_u64().unwrap_or(0);
+                            cache_write_tokens = usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
+                            log::info!(
+                                "anthropic cache: read={} write={} input={}",
+                                cache_read_tokens, cache_write_tokens, input_tokens,
+                            );
+                        }
+                        // Capture container.id for skills/code-execution
+                        if let Some(cid) = msg.pointer("/container/id").and_then(|v| v.as_str()) {
+                            container_id = Some(cid.to_string());
+                            log::info!("[llm] container_id: {cid}");
+                        }
                     }
                 }
                 "content_block_start" => {
                     if let Some(block) = ev.get("content_block") {
                         current_block_type =
                             block["type"].as_str().unwrap_or("").to_string();
+
+                        // Extract file_ids from code execution results
+                        if let Some(fid) = block.get("file_id").and_then(|v| v.as_str()) {
+                            file_ids.push(fid.to_string());
+                            log::info!("[llm] file generated: {fid}");
+                        }
+                        // Also check nested content for file refs
+                        if let Some(content) = block.get("content") {
+                            if let Some(arr) = content.as_array() {
+                                for item in arr {
+                                    if let Some(fid) = item.get("file_id").and_then(|v| v.as_str()) {
+                                        file_ids.push(fid.to_string());
+                                        log::info!("[llm] file generated (nested): {fid}");
+                                    }
+                                }
+                            }
+                        }
+
                         if current_block_type == "tool_use" {
                             current_tool_id =
                                 block["id"].as_str().unwrap_or("").to_string();
@@ -1387,7 +1427,7 @@ async fn anthropic_stream(
             + (cache_read_tokens as f64 * 0.02);
         normalized as u64
     };
-    Ok((text, tool_uses, stop_reason, compaction_summary, tokens_used))
+    Ok((text, tool_uses, stop_reason, compaction_summary, tokens_used, container_id, file_ids))
 }
 
 /// Result of a single streaming turn.
@@ -1397,6 +1437,8 @@ struct StreamOnceResult {
     stop_reason: String,
     compaction: Option<String>,
     tokens_used: u64,
+    container_id: Option<String>,
+    file_ids: Vec<String>,
 }
 
 /// Streaming dispatch: route to provider-specific streaming.
@@ -1411,12 +1453,12 @@ async fn stream_once(
     message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
 ) -> Result<StreamOnceResult, Box<dyn std::error::Error + Send + Sync>> {
-    let (text, tool_uses, stop_reason, compaction, tokens_used) =
+    let (text, tool_uses, stop_reason, compaction, tokens_used, container_id, file_ids) =
         anthropic_stream(
             &backend.http, &backend.api_key, &backend.model, system, tool_defs, messages,
             16384, events, instance_slug, chat_id, message_id, mcp_snapshot,
         ).await?;
-    Ok(StreamOnceResult { text, tool_uses, stop_reason, compaction, tokens_used })
+    Ok(StreamOnceResult { text, tool_uses, stop_reason, compaction, tokens_used, container_id, file_ids })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
