@@ -12,31 +12,41 @@
 	}
 
 	// ── Video Animator ──
-	// Simple state machine: intro → idle ↔ thinking (with transition clips)
+	// States: intro → idle ↔ morphing shapes (cube, tesseract, prism)
 	//
-	// States:
-	//   intro      — one-shot onboarding/intro clip, plays on first visit
-	//   idle       — looping idle, default state
-	//   toThinking — one-shot transition clip (idle → thinking)
-	//   thinking   — looping thinking animation
-	//   toIdle     — one-shot transition clip (thinking → idle)
+	// Thinking cycle: idle → orb-to-{shape} → {shape}-to-orb → repeat or idle
+	// Each cycle picks a random shape. Shapes never repeat consecutively.
 
-	type OrbState = 'intro' | 'idle' | 'toThinking' | 'thinking' | 'toIdle';
+	type OrbState = 'intro' | 'idle' | 'toShape' | 'fromShape';
 
-	const clips: Record<OrbState, { src: string; loop: boolean }> = {
-		intro:      { src: '/orb-onboarding.mp4',       loop: false },
-		idle:       { src: '/orb-idle-loop.mp4',         loop: true  },
-		toThinking: { src: '/orb-idle-to-thinking.mp4',  loop: false },
-		thinking:   { src: '/orb-thinking-loop.mp4',     loop: true  },
-		toIdle:     { src: '/orb-thinking-to-idle.mp4',  loop: false },
+	const shapes = ['cube', 'tesseract', 'prism'] as const;
+	type Shape = typeof shapes[number];
+
+	const shapeSrc: Record<Shape, { to: string; from: string }> = {
+		cube:       { to: '/orb-to-cube.mp4',       from: '/cube-to-orb.mp4' },
+		tesseract:  { to: '/orb-to-tesseract.mp4',  from: '/tesseract-to-orb.mp4' },
+		prism:      { to: '/orb-to-prism.mp4',      from: '/prism-to-orb.mp4' },
 	};
 
-	// Start with intro if we haven't entered chat yet, otherwise idle
 	let introPlayed = $state(store.mode === 'chat');
 	let orbState = $state<OrbState>(store.mode === 'onboarding' ? 'intro' : 'idle');
+	let currentShape = $state<Shape>('cube');
+	let lastShape = $state<Shape | null>(null);
 
-	let videoSrc = $derived(clips[orbState].src);
-	let isLooping = $derived(clips[orbState].loop);
+	function pickShape(): Shape {
+		const available = shapes.filter(s => s !== lastShape);
+		return available[Math.floor(Math.random() * available.length)];
+	}
+
+	let videoSrc = $derived.by(() => {
+		switch (orbState) {
+			case 'intro': return '/orb-onboarding.mp4';
+			case 'idle': return '/orb-idle-loop.mp4';
+			case 'toShape': return shapeSrc[currentShape].to;
+			case 'fromShape': return shapeSrc[currentShape].from;
+		}
+	});
+	let isLooping = $derived(orbState === 'idle');
 	let isOnboarding = $derived(store.mode === 'onboarding');
 
 	// React to mode/thinking changes
@@ -50,13 +60,11 @@
 			return;
 		}
 
-		// Thinking transitions (only in chat mode, and only from stable states)
-		if (mode === 'chat') {
-			if (thinking && orbState === 'idle') {
-				orbState = 'toThinking';
-			} else if (!thinking && orbState === 'thinking') {
-				orbState = 'toIdle';
-			}
+		// Start thinking: pick a shape and morph to it
+		if (mode === 'chat' && thinking && orbState === 'idle') {
+			currentShape = pickShape();
+			lastShape = currentShape;
+			orbState = 'toShape';
 		}
 	});
 
@@ -67,11 +75,20 @@
 				introPlayed = true;
 				orbState = 'idle';
 				break;
-			case 'toThinking':
-				orbState = store.thinking ? 'thinking' : 'toIdle';
+			case 'toShape':
+				// Shape reached — morph back to orb
+				orbState = 'fromShape';
 				break;
-			case 'toIdle':
-				orbState = store.thinking ? 'toThinking' : 'idle';
+			case 'fromShape':
+				if (store.thinking) {
+					// Still thinking — pick next shape and continue
+					currentShape = pickShape();
+					lastShape = currentShape;
+					orbState = 'toShape';
+				} else {
+					// Done thinking — back to idle
+					orbState = 'idle';
+				}
 				break;
 		}
 	}
@@ -118,7 +135,6 @@
 	let prevTime = 0;
 	let elapsed = 0;
 	let lastMode = '';
-	let lastWideVideo = false;
 
 	// Convert 3D world X coord to CSS left% (camera at z=5, FOV 50)
 	// At z=5 with FOV 50, visible width ≈ 2 * 5 * tan(25°) ≈ 4.66
@@ -243,12 +259,7 @@
 				}
 			}
 
-			// Non-square videos (16:9) need size compensation vs square idle
-			const wideVideo = orbState !== 'idle';
-			if (wideVideo) ts *= 1.8;
-			const formatChanged = wideVideo !== lastWideVideo;
-
-			if (useLerp && !formatChanged) {
+			if (useLerp) {
 				orb.x += (tx - orb.x) * lerpF;
 				orb.y += (ty - orb.y) * lerpF;
 				orb.size += (ts - orb.size) * lerpF;
@@ -264,7 +275,7 @@
 		}
 
 		orbs = newOrbs;
-		lastWideVideo = orbState !== 'idle';
+		// (all videos are now square — no format compensation needed)
 
 		// Keep active videos playing (browser may suspend them)
 		for (const el of Object.values(videoRefs)) {
@@ -339,8 +350,7 @@
 					src={videoSrc}
 					loop={isLooping}
 					class="orb-vid"
-					class:no-mask={orbState !== 'idle'}
-					onended={handleVideoEnded}
+						onended={handleVideoEnded}
 				></video>
 			</button>
 		{/if}
