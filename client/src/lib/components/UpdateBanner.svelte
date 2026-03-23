@@ -57,24 +57,19 @@
 </script>
 
 {#if hasUpdate && !updating && !showReborn}
-	<button class="update-pill" onclick={doUpdate}>
-		<span class="update-dot"></span>
-		<span class="update-label">update available</span>
-	</button>
-{:else if updating}
-	<div class="update-pill update-pill-active">
-		<span class="update-spinner"></span>
-		<span class="update-label">updating...</span>
+	<div class="update-bar">
+		<button class="update-pill" onclick={doUpdate}>
+			<span class="update-dot"></span>
+			<span class="update-label">update available</span>
+		</button>
 	</div>
-{:else if !showReborn}
-	<select
-		class="channel-select"
-		value={channel}
-		onchange={(e) => switchChannel((e.target as HTMLSelectElement).value)}
-	>
-		<option value="stable">stable</option>
-		<option value="nightly">nightly</option>
-	</select>
+{:else if updating}
+	<div class="update-bar">
+		<div class="update-pill update-pill-active">
+			<span class="update-spinner"></span>
+			<span class="update-label">updating...</span>
+		</div>
+	</div>
 {/if}
 
 {#if showReborn}
@@ -85,28 +80,18 @@
 {/if}
 
 <style>
-	.channel-select {
-		font-family: var(--font-mono);
-		font-size: 0.68rem;
-		color: oklch(0.6 0.04 240 / 40%);
-		background: none;
-		border: 1px solid oklch(1 0 0 / 6%);
-		border-radius: 999px;
-		padding: 0.25rem 0.5rem;
-		cursor: pointer;
-		outline: none;
-		flex-shrink: 0;
-		transition: all 0.2s ease;
+	.update-bar {
+		display: flex;
+		justify-content: center;
+		padding: 0.4rem 0;
+		background: oklch(0.65 0.15 145 / 4%);
+		border-bottom: 1px solid oklch(0.65 0.15 145 / 10%);
+		animation: bar-in 0.4s ease both;
 	}
 
-	.channel-select:hover {
-		border-color: oklch(1 0 0 / 12%);
-		color: oklch(0.7 0.04 240 / 60%);
-	}
-
-	.channel-select option {
-		background: oklch(0.1 0.01 240);
-		color: oklch(0.8 0.04 240);
+	@keyframes bar-in {
+		from { opacity: 0; transform: translateY(-100%); }
+		to { opacity: 1; transform: translateY(0); }
 	}
 
 	.update-pill {

@@ -80,6 +80,7 @@
 		<InstanceOnboarding {slug} oncomplete={handleOnboardingComplete} />
 	{/key}
 {:else}
+	<UpdateBanner />
 	<div class="instance-view">
 		{#if !presentation.active && (scene.mode === "chat" || activeTab !== "chat")}
 		<nav class="instance-tabs">
@@ -102,7 +103,6 @@
 				</a>
 			{/each}
 			<div class="instance-tab-spacer"></div>
-			<UpdateBanner />
 			<button
 				class="instance-tab instance-tab-delete"
 				onclick={openDeleteConfirm}
