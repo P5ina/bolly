@@ -916,14 +916,21 @@ fn build_anthropic_request(
         .collect();
 
     // Tool definitions
+    let tool_count = tool_defs.len();
     let tools: Vec<serde_json::Value> = tool_defs
         .iter()
-        .map(|td| {
-            serde_json::json!({
+        .enumerate()
+        .map(|(i, td)| {
+            let mut tool = serde_json::json!({
                 "name": td.name,
                 "description": td.description,
                 "input_schema": td.parameters,
-            })
+            });
+            // Cache breakpoint on last tool — caches all tools as one prefix
+            if i == tool_count - 1 {
+                tool["cache_control"] = serde_json::json!({"type": "ephemeral"});
+            }
+            tool
         })
         .collect();
 
