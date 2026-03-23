@@ -867,7 +867,7 @@ async fn complete_once(
 fn anthropic_headers(api_key: &str) -> reqwest::header::HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("x-api-key", api_key.parse().unwrap());
-    headers.insert("anthropic-beta", "compact-2026-01-12,context-management-2025-06-27".parse().unwrap());
+    headers.insert("anthropic-beta", "compact-2026-01-12".parse().unwrap());
     headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
     headers.insert("content-type", "application/json".parse().unwrap());
     headers
@@ -996,16 +996,6 @@ fn build_anthropic_request(
         "cache_control": {"type": "ephemeral"},
         "system": system_blocks,
         "messages": msgs,
-        "context_editing": {
-            "strategies": [
-                {
-                    "type": "clear_tool_uses_20250919",
-                    "trigger": {"type": "context_length", "context_length_threshold": 0.7},
-                    "keep_last": 3,
-                    "clear_tool_inputs": true,
-                }
-            ]
-        },
     });
 
     if !tools.is_empty() {
