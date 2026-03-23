@@ -1293,6 +1293,7 @@
 
 {#if showReborn}
 	<div class="reborn-overlay">
+		<video class="reborn-video" src="/orb-reborn.mp4" autoplay muted playsinline></video>
 		<div class="reborn-text">meet the new me</div>
 	</div>
 {/if}
@@ -1315,14 +1316,29 @@
 		to { opacity: 1; }
 	}
 
+	.reborn-video {
+		position: absolute;
+		width: min(80vw, 80vh);
+		height: min(80vw, 80vh);
+		object-fit: contain;
+		opacity: 0.5;
+		animation: reborn-video-in 1.5s ease both;
+	}
+
+	@keyframes reborn-video-in {
+		from { opacity: 0; transform: scale(0.8); }
+		to { opacity: 0.5; transform: scale(1); }
+	}
+
 	.reborn-text {
+		position: relative;
 		font-family: var(--font-display, 'Georgia', serif);
 		font-size: clamp(2rem, 6vw, 4.5rem);
 		font-weight: 300;
 		letter-spacing: 0.08em;
 		color: oklch(0.85 0.08 75);
 		text-align: center;
-		animation: reborn-text-in 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both;
+		animation: reborn-text-in 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.6s both;
 	}
 
 	@keyframes reborn-text-in {
