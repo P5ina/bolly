@@ -568,7 +568,7 @@ pub async fn run_single_turn(
     let reply = strip_leaked_tool_calls(&tool_result.text);
 
     // Build single assistant message from the reply
-    let file_markers = sent_files.lock().unwrap_or_else(|e| e.into_inner()).drain(..).collect::<Vec<_>>();
+    let mut file_markers = sent_files.lock().unwrap_or_else(|e| e.into_inner()).drain(..).collect::<Vec<_>>();
     let mut full_reply = reply;
     if !file_markers.is_empty() {
         if !full_reply.is_empty() {
@@ -588,6 +588,7 @@ pub async fn run_single_turn(
                     match crate::services::uploads::save_upload(workspace_dir, &instance_slug, &filename, &bytes) {
                         Ok(meta) => {
                             let marker = format!("[attached: {} ({})]", filename, meta.id);
+                            file_markers.push(marker.clone());
                             if !full_reply.is_empty() { full_reply.push('\n'); }
                             full_reply.push_str(&marker);
                             log::info!("[skills] downloaded and attached: {filename} ({} bytes)", bytes.len());
