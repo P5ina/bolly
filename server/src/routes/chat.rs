@@ -238,6 +238,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         const TURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
 
         // Route model based on model_mode setting
+        log::info!("[agent] {instance_slug}/{chat_id} — model_mode={model_mode:?}, base_model={}", llm_ref.model);
         let (effective_llm, used_heavy) = {
             use config::ModelMode;
             match model_mode {

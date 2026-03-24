@@ -158,7 +158,7 @@
 		keyError = "";
 		stage = "testing";
 		try {
-			await updateLlmConfig({ model: chosenModel ?? undefined, api_key: key });
+			await updateLlmConfig({ api_key: key });
 		} catch (err) {
 			keyError = `hmm, that didn\u2019t work. try again? (${err instanceof Error ? err.message : String(err)})`;
 			stage = "waiting-key";

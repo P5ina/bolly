@@ -207,11 +207,6 @@ fn default_heavy_multiplier() -> f32 { 1.7 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LlmConfig {
     #[serde(default)]
-    pub model: Option<String>,
-    /// Fast/cheap model override. Falls back to Sonnet if empty.
-    #[serde(default)]
-    pub fast_model: Option<String>,
-    #[serde(default)]
     pub tokens: LlmTokens,
     #[serde(default)]
     pub model_mode: ModelMode,
@@ -271,19 +266,13 @@ impl Default for Config {
 }
 
 impl LlmConfig {
-    /// The active model name, falling back to Opus.
-    pub fn model_name(&self) -> &str {
-        if let Some(ref m) = self.model {
-            if !m.is_empty() { return m; }
-        }
+    /// The heavy model (Opus).
+    pub fn model_name(&self) -> &'static str {
         DEFAULT_MODEL
     }
 
-    /// The fast/cheap model name, falling back to Sonnet.
-    pub fn fast_model_name(&self) -> &str {
-        if let Some(ref m) = self.fast_model {
-            if !m.is_empty() { return m; }
-        }
+    /// The fast model (Sonnet).
+    pub fn fast_model_name(&self) -> &'static str {
         DEFAULT_FAST_MODEL
     }
 
@@ -317,8 +306,6 @@ impl LlmConfig {
 impl Default for LlmConfig {
     fn default() -> Self {
         Self {
-            model: None,
-            fast_model: None,
             tokens: LlmTokens::default(),
             model_mode: ModelMode::default(),
             heavy_multiplier: default_heavy_multiplier(),
@@ -398,9 +385,6 @@ pub fn load_config() -> anyhow::Result<Config> {
     if let Ok(key) = env::var("ANTHROPIC_API_KEY") {
         if !key.is_empty() {
             config.llm.tokens.anthropic = key;
-            if config.llm.model.is_none() {
-                config.llm.model = Some(DEFAULT_MODEL.to_string());
-            }
         }
     }
     if let Ok(key) = env::var("OPENAI_API_KEY") {
@@ -441,17 +425,6 @@ pub fn load_config() -> anyhow::Result<Config> {
         }
     }
 
-    // Model override (set by admin panel via Fly env)
-    if let Ok(model) = env::var("BOLLY_LLM_MODEL") {
-        if !model.is_empty() {
-            config.llm.model = Some(model);
-        }
-    }
-    if let Ok(fast) = env::var("BOLLY_LLM_FAST_MODEL") {
-        if !fast.is_empty() {
-            config.llm.fast_model = Some(fast);
-        }
-    }
     if let Ok(mode) = env::var("BOLLY_MODEL_MODE") {
         match mode.to_lowercase().as_str() {
             "auto" => config.llm.model_mode = ModelMode::Auto,

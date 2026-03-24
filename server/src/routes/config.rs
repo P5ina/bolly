@@ -61,11 +61,6 @@ async fn update_llm(
     }
     let llm = root.get_mut("llm").unwrap().as_table_mut().unwrap();
 
-    // Set model if provided
-    if let Some(ref model) = request.model {
-        llm.insert("model".into(), toml::Value::String(model.clone()));
-    }
-
     // Set the Anthropic API key
     if !llm.contains_key("tokens") {
         llm.insert("tokens".into(), toml::Value::Table(toml::map::Map::new()));

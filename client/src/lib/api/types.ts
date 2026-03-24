@@ -61,7 +61,6 @@ export interface ServerMeta {
 }
 
 export interface UpdateLlmRequest {
-	model?: string;
 	api_key: string;
 }
 

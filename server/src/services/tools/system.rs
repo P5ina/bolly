@@ -995,10 +995,6 @@ impl UpdateConfigTool {
 /// Arguments for update_config tool.
 #[derive(Deserialize, JsonSchema)]
 pub struct UpdateConfigArgs {
-    /// Model name to use (e.g. "claude-opus-4-6", "claude-sonnet-4-6"). Leave null to keep current.
-    pub model: Option<String>,
-    /// Fast/cheap model name (e.g. "claude-haiku-4-5-20251001", "claude-sonnet-4-6"). Used for auto mode and background tasks. Leave null to keep current. Pass empty string to reset to default.
-    pub fast_model: Option<String>,
     /// OpenAI API key. Leave null to keep current.
     pub openai_key: Option<String>,
     /// Anthropic API key. Leave null to keep current.
@@ -1061,7 +1057,7 @@ impl Tool for UpdateConfigTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "update_config".into(),
-            description: "Update config and instance settings (model, API keys, MCP servers, timezone, companion name, GitHub token). Only provided fields change.".into(),
+            description: "Update config and instance settings (API keys, MCP servers, timezone, companion name, GitHub token). Only provided fields change.".into(),
             parameters: openai_schema::<UpdateConfigArgs>(),
         }
     }
@@ -1073,26 +1069,6 @@ impl Tool for UpdateConfigTool {
             .map_err(|e| ToolExecError(format!("failed to parse config: {e}")))?;
 
         let mut changes = Vec::new();
-
-        if let Some(model) = &args.model {
-            let m = model.trim().to_string();
-            if m.is_empty() {
-                return Err(ToolExecError("model cannot be empty".into()));
-            }
-            config.llm.model = Some(m.clone());
-            changes.push(format!("model → {m}"));
-        }
-
-        if let Some(fm) = &args.fast_model {
-            let m = fm.trim().to_string();
-            if m.is_empty() {
-                config.llm.fast_model = None; // reset to default
-                changes.push("fast_model → default".into());
-            } else {
-                config.llm.fast_model = Some(m.clone());
-                changes.push(format!("fast_model → {m}"));
-            }
-        }
 
         if let Some(mode) = &args.model_mode {
             let m = mode.trim().to_lowercase();
@@ -1242,8 +1218,7 @@ impl Tool for UpdateConfigTool {
         }
 
         // Save global config if anything changed there
-        if args.model.is_some() || args.fast_model.is_some()
-            || args.model_mode.is_some() || args.openai_key.is_some()
+        if args.model_mode.is_some() || args.openai_key.is_some()
             || args.anthropic_key.is_some() || args.brave_search_key.is_some()
             || args.add_mcp_server.is_some() || args.remove_mcp_server.is_some()
         {

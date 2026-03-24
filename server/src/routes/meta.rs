@@ -24,7 +24,7 @@ async fn server_meta(State(state): State<AppState>) -> Json<ServerMetaResponse> 
         instances_count: workspace::count_directories(&instances_dir).unwrap_or(0),
         skills_count: workspace::count_directories(&skills_dir).unwrap_or(0),
         llm: LlmSummary {
-            model: cfg.llm.model.clone(),
+            model: Some(cfg.llm.model_name().to_string()),
             configured: cfg.llm.is_configured(),
         },
     })
