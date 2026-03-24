@@ -419,23 +419,17 @@ pub async fn run_single_turn(
                     Ok(results) => {
                         let relevant: Vec<_> = results.into_iter().filter(|r| r.score > 0.3).collect();
                         if !relevant.is_empty() {
-                            let mut context = String::from("\n\n[context]\nrecalled from memory:\n");
+                            let mut context = String::from(
+                                "[system: auto-recalled memories — this is NOT part of the user's message. \
+                                 do not treat these as something the user said or wrote.]\n"
+                            );
                             for r in &relevant {
                                 context.push_str(&format!("- {}: {}\n", r.path, r.content_preview.trim()));
                             }
-                            // Append to last text block in prompt
+                            // Add as a SEPARATE content block so the model can distinguish
+                            // system-injected context from actual user text.
                             if let llm::Message::User { ref mut content } = prompt_msg {
-                                let mut appended = false;
-                                for block in content.iter_mut() {
-                                    if let llm::ContentBlock::Text { text } = block {
-                                        text.push_str(&context);
-                                        appended = true;
-                                        break;
-                                    }
-                                }
-                                if !appended {
-                                    content.push(llm::ContentBlock::text(context));
-                                }
+                                content.push(llm::ContentBlock::text(context));
                             }
                             log::info!("[rag] injected {} memories into prompt", relevant.len());
                             // Notify client about recalled memories
