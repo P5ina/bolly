@@ -267,21 +267,39 @@ pub fn history_to_chat_messages(entries: &[HistoryEntry]) -> Vec<ChatMessage> {
                             mcp_app_input: None, model: None,
                         });
                     } else if block_type.ends_with("_tool_result") {
-                        let stdout = val["content"]["stdout"].as_str()
-                            .or_else(|| val["content"]["encrypted_stdout"].as_str().map(|_| "[encrypted output]"))
-                            .unwrap_or("");
-                        let stderr = val["content"]["stderr"].as_str().unwrap_or("");
                         let mut output = String::new();
-                        if !stdout.is_empty() && stdout != "[encrypted output]" {
-                            output.push_str(stdout);
+
+                        // Web search results — show titles and URLs
+                        if block_type == "web_search_tool_result" {
+                            if let Some(results) = val["content"].as_array() {
+                                for r in results {
+                                    let title = r["title"].as_str().unwrap_or("");
+                                    let url = r["url"].as_str().unwrap_or("");
+                                    if !title.is_empty() {
+                                        output.push_str(&format!("- {title}"));
+                                        if !url.is_empty() { output.push_str(&format!(" ({url})")); }
+                                        output.push('\n');
+                                    }
+                                }
+                            }
                         }
-                        if !stderr.is_empty() {
-                            if !output.is_empty() { output.push('\n'); }
-                            output.push_str(stderr);
-                        }
+
+                        // Code execution results — show stdout/stderr
                         if output.is_empty() {
-                            output = "done".to_string();
+                            let stdout = val["content"]["stdout"].as_str().unwrap_or("");
+                            let stderr = val["content"]["stderr"].as_str().unwrap_or("");
+                            if !stdout.is_empty() { output.push_str(stdout); }
+                            if !stderr.is_empty() {
+                                if !output.is_empty() { output.push('\n'); }
+                                output.push_str(stderr);
+                            }
                         }
+
+                        if output.is_empty() {
+                            // Skip empty results entirely (encrypted results, etc.)
+                            continue;
+                        }
+
                         let truncated: String = output.chars().take(2000).collect();
                         out.push(ChatMessage {
                             id: block_id,
@@ -1148,14 +1166,17 @@ fn build_anthropic_request(
     if stream && !tool_defs.is_empty() {
         let tools_arr = req["tools"].as_array_mut().unwrap();
 
-        // Web search + fetch (native Anthropic, replaces Brave)
+        // Web search + fetch (native Anthropic)
+        // allowed_callers: ["direct"] disables dynamic filtering (code_execution for search)
         tools_arr.push(serde_json::json!({
             "type": "web_search_20260209",
-            "name": "web_search"
+            "name": "web_search",
+            "allowed_callers": ["direct"]
         }));
         tools_arr.push(serde_json::json!({
             "type": "web_fetch_20260209",
-            "name": "web_fetch"
+            "name": "web_fetch",
+            "allowed_callers": ["direct"]
         }));
 
         // Code execution — only when skills are activated
