@@ -24,11 +24,8 @@ async fn server_meta(State(state): State<AppState>) -> Json<ServerMetaResponse> 
         instances_count: workspace::count_directories(&instances_dir).unwrap_or(0),
         skills_count: workspace::count_directories(&skills_dir).unwrap_or(0),
         llm: LlmSummary {
-            provider: cfg.llm.provider,
             model: cfg.llm.model.clone(),
-            openai_configured: !cfg.llm.tokens.open_ai.trim().is_empty(),
-            anthropic_configured: !cfg.llm.tokens.anthropic.trim().is_empty(),
-            openrouter_configured: !cfg.llm.tokens.open_router.trim().is_empty(),
+            configured: cfg.llm.is_configured(),
         },
     })
 }

@@ -25,7 +25,6 @@
 	type Stage =
 		| "reveal"
 		| "intro"
-		| "picking-provider"
 		| "picking-model"
 		| "waiting-key"
 		| "testing"
@@ -43,7 +42,6 @@
 	let messageInput: HTMLTextAreaElement | undefined = $state();
 	let nameInputEl: HTMLInputElement | undefined = $state();
 	let keyInput: HTMLInputElement | undefined = $state();
-	let chosenProvider = $state<"anthropic" | "openai" | "openrouter" | null>(null);
 	let chosenModel = $state<string | null>(null);
 	let apiKeyValue = $state("");
 	let keyError = $state("");
@@ -53,25 +51,11 @@
 	let lines = $state<{ text: string; revealed: string; done: boolean }[]>([]);
 	let soulTemplates = $state<SoulTemplate[]>([]);
 
-	const MODELS: Record<string, { id: string; label: string; note: string }[]> = {
-		anthropic: [
-			{ id: "claude-sonnet-4-6", label: "sonnet 4.6", note: "balanced" },
-			{ id: "claude-opus-4-6", label: "opus 4.6", note: "powerful" },
-			{ id: "claude-haiku-4-5", label: "haiku 4.5", note: "fast" },
-		],
-		openai: [
-			{ id: "gpt-5.4", label: "gpt-5.4", note: "flagship" },
-			{ id: "gpt-5.4-pro", label: "gpt-5.4 pro", note: "max performance" },
-			{ id: "gpt-5.2", label: "gpt-5.2", note: "affordable" },
-		],
-		openrouter: [
-			{ id: "google/gemini-2.5-flash", label: "gemini 2.5 flash", note: "fast & cheap" },
-			{ id: "google/gemini-2.5-pro", label: "gemini 2.5 pro", note: "powerful" },
-			{ id: "anthropic/claude-sonnet-4", label: "claude sonnet 4", note: "balanced" },
-			{ id: "deepseek/deepseek-r1", label: "deepseek r1", note: "reasoning" },
-			{ id: "meta-llama/llama-4-maverick", label: "llama 4 maverick", note: "open source" },
-		],
-	};
+	const MODELS = [
+		{ id: "claude-sonnet-4-6", label: "sonnet 4.6", note: "balanced" },
+		{ id: "claude-opus-4-6", label: "opus 4.6", note: "powerful" },
+		{ id: "claude-haiku-4-5", label: "haiku 4.5", note: "fast" },
+	];
 
 	const LANGUAGES = [
 		{ id: "english", label: "English" },
@@ -138,7 +122,6 @@
 				const status = await fetchConfigStatus();
 				if (status.llm_configured) {
 					llmConfigured = true;
-					chosenProvider = (status.provider as "anthropic" | "openai" | "openrouter") ?? "anthropic";
 					chosenModel = status.model ?? null;
 				}
 				break;
@@ -148,33 +131,19 @@
 		}
 
 		if (!llmConfigured) {
-			await typewrite("before we begin \u2014 who should i think with?");
-			stage = "picking-provider";
+			await typewrite("before we begin \u2014 which mind should i wear?");
+			stage = "picking-model";
 		} else {
 			await typewrite("what language should we speak?");
 			stage = "picking-language";
 		}
 	}
 
-	function pickProvider(provider: "anthropic" | "openai" | "openrouter") {
-		chosenProvider = provider;
-		continueAfterProvider();
-	}
-
-	async function continueAfterProvider() {
-		stage = "intro";
-		await pause(300);
-		await typewrite(`${chosenProvider ?? "unknown"}. good choice.`);
-		await pause(400);
-		await typewrite("which mind should i wear?");
-		stage = "picking-model";
-	}
-
 	async function pickModel(modelId: string) {
 		chosenModel = modelId;
 		stage = "intro";
 		await pause(300);
-		const model = MODELS[chosenProvider!]?.find((m) => m.id === modelId);
+		const model = MODELS.find((m) => m.id === modelId);
 		await typewrite(`${model?.label ?? modelId}. noted.`);
 		await pause(400);
 		await typewrite("paste your api key and i\u2019ll wake up.");
@@ -185,11 +154,11 @@
 
 	async function submitKey() {
 		const key = apiKeyValue.trim();
-		if (!key || !chosenProvider) return;
+		if (!key) return;
 		keyError = "";
 		stage = "testing";
 		try {
-			await updateLlmConfig({ provider: chosenProvider, model: chosenModel ?? undefined, api_key: key });
+			await updateLlmConfig({ model: chosenModel ?? undefined, api_key: key });
 		} catch (err) {
 			keyError = `hmm, that didn\u2019t work. try again? (${err instanceof Error ? err.message : String(err)})`;
 			stage = "waiting-key";
@@ -327,27 +296,17 @@
 
 		<!-- Interactive sections -->
 		<div class="ob-input-area">
-			{#if stage === "picking-provider"}
-				<div class="ob-enter">
-					<div class="ob-pills">
-						<button onclick={() => pickProvider("anthropic")} class="ob-pill">anthropic</button>
-						<button onclick={() => pickProvider("openai")} class="ob-pill">openai</button>
-						<button onclick={() => pickProvider("openrouter")} class="ob-pill">openrouter</button>
-					</div>
-					<button onclick={skipConfig} class="ob-skip">skip for now</button>
-				</div>
-			{/if}
-
-			{#if stage === "picking-model" && chosenProvider}
+			{#if stage === "picking-model"}
 				<div class="ob-enter">
 					<div class="ob-pills ob-pills-grid">
-						{#each MODELS[chosenProvider] as model}
+						{#each MODELS as model}
 							<button onclick={() => pickModel(model.id)} class="ob-pill ob-pill-col">
 								<span class="ob-pill-label">{model.label}</span>
 								<span class="ob-pill-note">{model.note}</span>
 							</button>
 						{/each}
 					</div>
+					<button onclick={skipConfig} class="ob-skip">skip for now</button>
 				</div>
 			{/if}
 

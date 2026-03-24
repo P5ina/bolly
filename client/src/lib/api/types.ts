@@ -45,10 +45,8 @@ export interface InstanceSummary {
 }
 
 export interface LlmSummary {
-	provider: "anthropic" | "openai" | null;
 	model: string | null;
-	openai_configured: boolean;
-	anthropic_configured: boolean;
+	configured: boolean;
 }
 
 export interface ServerMeta {
@@ -63,7 +61,6 @@ export interface ServerMeta {
 }
 
 export interface UpdateLlmRequest {
-	provider: "anthropic" | "openai" | "openrouter";
 	model?: string;
 	api_key: string;
 }

@@ -900,15 +900,12 @@ impl Tool for GetSettingsTool {
         // LLM
         if let Ok(raw) = fs::read_to_string(&self.config_path) {
             if let Ok(config) = toml::from_str::<crate::config::Config>(&raw) {
-                let provider = config.llm.provider
-                    .map(|p| format!("{p:?}").to_lowercase())
-                    .unwrap_or_else(|| "(not set)".into());
                 let mode = match config.llm.model_mode {
                     crate::config::ModelMode::Auto => "auto",
                     crate::config::ModelMode::Fast => "fast",
                     crate::config::ModelMode::Heavy => "heavy",
                 };
-                lines.push(format!("llm: {provider} / {} (mode: {mode})", config.llm.model_name()));
+                lines.push(format!("llm: anthropic / {} (mode: {mode})", config.llm.model_name()));
                 lines.push(format!("fast model: {}", config.llm.fast_model_name()));
 
                 let keys = config.llm.configured_providers();
@@ -998,11 +995,9 @@ impl UpdateConfigTool {
 /// Arguments for update_config tool.
 #[derive(Deserialize, JsonSchema)]
 pub struct UpdateConfigArgs {
-    /// LLM provider to use: "openai" or "anthropic". Leave null to keep current.
-    pub provider: Option<String>,
-    /// Model name to use (e.g. "gpt-4o", "gpt-5.4", "claude-sonnet-4-20250514"). Leave null to keep current.
+    /// Model name to use (e.g. "claude-opus-4-6", "claude-sonnet-4-6"). Leave null to keep current.
     pub model: Option<String>,
-    /// Fast/cheap model name (e.g. "claude-haiku-4-5-20251001", "gpt-5-mini-2025-08-07"). Used for auto mode and background tasks. Leave null to keep current. Pass empty string to reset to provider default.
+    /// Fast/cheap model name (e.g. "claude-haiku-4-5-20251001", "claude-sonnet-4-6"). Used for auto mode and background tasks. Leave null to keep current. Pass empty string to reset to default.
     pub fast_model: Option<String>,
     /// OpenAI API key. Leave null to keep current.
     pub openai_key: Option<String>,
@@ -1066,7 +1061,7 @@ impl Tool for UpdateConfigTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "update_config".into(),
-            description: "Update config and instance settings (model, provider, API keys, MCP servers, timezone, companion name, GitHub token). Only provided fields change.".into(),
+            description: "Update config and instance settings (model, API keys, MCP servers, timezone, companion name, GitHub token). Only provided fields change.".into(),
             parameters: openai_schema::<UpdateConfigArgs>(),
         }
     }
@@ -1078,21 +1073,6 @@ impl Tool for UpdateConfigTool {
             .map_err(|e| ToolExecError(format!("failed to parse config: {e}")))?;
 
         let mut changes = Vec::new();
-
-        if let Some(provider) = &args.provider {
-            let p = provider.trim().to_lowercase();
-            match p.as_str() {
-                "openai" => config.llm.provider = Some(crate::config::LlmProvider::OpenAI),
-                "anthropic" => config.llm.provider = Some(crate::config::LlmProvider::Anthropic),
-                "openrouter" => config.llm.provider = Some(crate::config::LlmProvider::OpenRouter),
-                other => {
-                    return Err(ToolExecError(format!(
-                        "unknown provider \"{other}\". supported: openai, anthropic, openrouter"
-                    )));
-                }
-            }
-            changes.push(format!("provider → {p}"));
-        }
 
         if let Some(model) = &args.model {
             let m = model.trim().to_string();
@@ -1106,8 +1086,8 @@ impl Tool for UpdateConfigTool {
         if let Some(fm) = &args.fast_model {
             let m = fm.trim().to_string();
             if m.is_empty() {
-                config.llm.fast_model = None; // reset to provider default
-                changes.push("fast_model → provider default".into());
+                config.llm.fast_model = None; // reset to default
+                changes.push("fast_model → default".into());
             } else {
                 config.llm.fast_model = Some(m.clone());
                 changes.push(format!("fast_model → {m}"));
@@ -1262,7 +1242,7 @@ impl Tool for UpdateConfigTool {
         }
 
         // Save global config if anything changed there
-        if args.provider.is_some() || args.model.is_some() || args.fast_model.is_some()
+        if args.model.is_some() || args.fast_model.is_some()
             || args.model_mode.is_some() || args.openai_key.is_some()
             || args.anthropic_key.is_some() || args.brave_search_key.is_some()
             || args.add_mcp_server.is_some() || args.remove_mcp_server.is_some()

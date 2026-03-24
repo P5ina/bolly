@@ -154,7 +154,7 @@ export function updateLlmConfig(req: UpdateLlmRequest): Promise<void> {
 	});
 }
 
-export function fetchConfigStatus(): Promise<{ llm_configured: boolean; provider?: string; model?: string; model_mode?: string }> {
+export function fetchConfigStatus(): Promise<{ llm_configured: boolean; model?: string; model_mode?: string }> {
 	return json("/api/config/status");
 }
 

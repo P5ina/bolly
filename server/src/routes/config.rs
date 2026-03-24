@@ -4,7 +4,7 @@ use serde_json::json;
 
 use crate::{
     app::state::AppState,
-    config::{self, LlmProvider, McpServerConfig},
+    config::{self, McpServerConfig},
     domain::config::UpdateLlmRequest,
 };
 
@@ -29,7 +29,6 @@ async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
     };
     Json(json!({
         "llm_configured": config.llm.is_configured(),
-        "provider": config.llm.provider.map(|p| format!("{p:?}").to_lowercase()),
         "model": config.llm.model_name(),
         "fast_model": config.llm.fast_model_name(),
         "model_mode": mode,
@@ -62,47 +61,20 @@ async fn update_llm(
     }
     let llm = root.get_mut("llm").unwrap().as_table_mut().unwrap();
 
-    // Set provider
-    let provider_str = match request.provider {
-        LlmProvider::Anthropic => "anthropic",
-        LlmProvider::OpenAI => "openai",
-        LlmProvider::OpenRouter => "openrouter",
-    };
-    llm.insert(
-        "provider".into(),
-        toml::Value::String(provider_str.into()),
-    );
-
     // Set model if provided
     if let Some(ref model) = request.model {
         llm.insert("model".into(), toml::Value::String(model.clone()));
     }
 
-    // Set the appropriate token
+    // Set the Anthropic API key
     if !llm.contains_key("tokens") {
         llm.insert("tokens".into(), toml::Value::Table(toml::map::Map::new()));
     }
     let tokens = llm.get_mut("tokens").unwrap().as_table_mut().unwrap();
-    match request.provider {
-        LlmProvider::Anthropic => {
-            tokens.insert(
-                "ANTHROPIC".into(),
-                toml::Value::String(request.api_key.clone()),
-            );
-        }
-        LlmProvider::OpenAI => {
-            tokens.insert(
-                "OPEN_AI".into(),
-                toml::Value::String(request.api_key.clone()),
-            );
-        }
-        LlmProvider::OpenRouter => {
-            tokens.insert(
-                "OPENROUTER".into(),
-                toml::Value::String(request.api_key.clone()),
-            );
-        }
-    }
+    tokens.insert(
+        "ANTHROPIC".into(),
+        toml::Value::String(request.api_key.clone()),
+    );
 
     // Write back
     let new_raw = toml::to_string_pretty(&doc).map_err(|e| {
@@ -132,7 +104,6 @@ async fn update_llm(
 
     Ok(Json(json!({
         "status": "ok",
-        "provider": provider_str,
         "model": model,
     })))
 }

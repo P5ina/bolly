@@ -5,7 +5,7 @@ use base64::Engine as _;
 use futures::StreamExt;
 use tokio::sync::broadcast;
 
-use crate::config::{Config, LlmProvider};
+use crate::config::{Config, CHEAP_MODEL, DEFAULT_FAST_MODEL};
 use crate::domain::chat::{ChatMessage, ChatRole, MessageKind};
 use crate::domain::events::ServerEvent;
 use crate::services::tool::{ToolDefinition, ToolDyn};
@@ -415,7 +415,7 @@ impl LlmBackend {
             http: self.http.clone(),
             api_key: self.api_key.clone(),
             model: override_model.filter(|s| !s.is_empty())
-                .unwrap_or(LlmProvider::Anthropic.fast_model()).to_string(),
+                .unwrap_or(DEFAULT_FAST_MODEL).to_string(),
         }
     }
 
@@ -424,7 +424,7 @@ impl LlmBackend {
         Self {
             http: self.http.clone(),
             api_key: self.api_key.clone(),
-            model: "claude-haiku-4-5-20251001".to_string(),
+            model: CHEAP_MODEL.to_string(),
         }
     }
 

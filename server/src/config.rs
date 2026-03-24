@@ -183,33 +183,12 @@ pub struct McpServerConfig {
     pub headers: std::collections::HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum LlmProvider {
-    Anthropic,
-    OpenAI,
-    OpenRouter,
-}
-
-impl LlmProvider {
-    /// Default model for this provider (heavy mode / auto heavy).
-    pub fn default_model(&self) -> &'static str {
-        match self {
-            LlmProvider::Anthropic => "claude-opus-4-6",
-            LlmProvider::OpenAI => "gpt-5.2",
-            LlmProvider::OpenRouter => "anthropic/claude-opus-4-6",
-        }
-    }
-
-    /// Fast model for this provider (fast mode / auto fast / triage / sentiment).
-    pub fn fast_model(&self) -> &'static str {
-        match self {
-            LlmProvider::Anthropic => "claude-sonnet-4-6",
-            LlmProvider::OpenAI => "gpt-5.4-nano",
-            LlmProvider::OpenRouter => "anthropic/claude-sonnet-4-6",
-        }
-    }
-}
+/// Default heavy model (Opus).
+pub const DEFAULT_MODEL: &str = "claude-opus-4-6";
+/// Default fast model (Sonnet).
+pub const DEFAULT_FAST_MODEL: &str = "claude-sonnet-4-6";
+/// Cheapest model for background tasks (Haiku).
+pub const CHEAP_MODEL: &str = "claude-haiku-4-5-20251001";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -228,10 +207,8 @@ fn default_heavy_multiplier() -> f32 { 1.7 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LlmConfig {
     #[serde(default)]
-    pub provider: Option<LlmProvider>,
-    #[serde(default)]
     pub model: Option<String>,
-    /// Fast/cheap model override. Falls back to provider default (e.g. Haiku) if empty.
+    /// Fast/cheap model override. Falls back to Sonnet if empty.
     #[serde(default)]
     pub fast_model: Option<String>,
     #[serde(default)]
@@ -294,38 +271,33 @@ impl Default for Config {
 }
 
 impl LlmConfig {
-    /// The active model name, falling back to the provider's default.
+    /// The active model name, falling back to Opus.
     pub fn model_name(&self) -> &str {
         if let Some(ref m) = self.model {
             if !m.is_empty() { return m; }
         }
-        self.provider.as_ref().map_or("claude-sonnet-4-6", |p| p.default_model())
+        DEFAULT_MODEL
     }
 
-    /// The fast/cheap model name, falling back to the provider's default fast model.
+    /// The fast/cheap model name, falling back to Sonnet.
     pub fn fast_model_name(&self) -> &str {
         if let Some(ref m) = self.fast_model {
             if !m.is_empty() { return m; }
         }
-        self.provider.as_ref().map_or("claude-haiku-4-5-20251001", |p| p.fast_model())
+        DEFAULT_FAST_MODEL
     }
 
-    /// The API key for the active provider, or None if not configured.
+    /// The Anthropic API key, or None if not configured.
     pub fn api_key(&self) -> Option<&str> {
-        let key = match self.provider? {
-            LlmProvider::Anthropic => &self.tokens.anthropic,
-            LlmProvider::OpenAI => &self.tokens.open_ai,
-            LlmProvider::OpenRouter => &self.tokens.open_router,
-        };
-        if key.is_empty() { None } else { Some(key) }
+        if self.tokens.anthropic.is_empty() { None } else { Some(&self.tokens.anthropic) }
     }
 
-    /// Whether the LLM is fully configured (provider + key).
+    /// Whether the LLM is fully configured (Anthropic key present).
     pub fn is_configured(&self) -> bool {
         self.api_key().is_some()
     }
 
-    /// List of provider names that have API keys set.
+    /// List of service names that have API keys set.
     pub fn configured_providers(&self) -> Vec<&'static str> {
         let mut out = Vec::new();
         if !self.tokens.anthropic.is_empty() { out.push("anthropic"); }
@@ -335,10 +307,8 @@ impl LlmConfig {
         out
     }
 
-    /// Get API key + model for Anthropic specifically (for count_tokens API etc.).
-    /// Returns None if Anthropic is not the active provider or key is missing.
+    /// Get Anthropic API key + model (for count_tokens API etc.).
     pub fn anthropic_credentials(&self) -> Option<(&str, &str)> {
-        if self.provider != Some(LlmProvider::Anthropic) { return None; }
         let key = if self.tokens.anthropic.is_empty() { return None } else { &self.tokens.anthropic };
         Some((key, self.model_name()))
     }
@@ -347,7 +317,6 @@ impl LlmConfig {
 impl Default for LlmConfig {
     fn default() -> Self {
         Self {
-            provider: None,
             model: None,
             fast_model: None,
             tokens: LlmTokens::default(),
@@ -429,29 +398,19 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     if let Ok(key) = env::var("ANTHROPIC_API_KEY") {
         if !key.is_empty() {
             config.llm.tokens.anthropic = key;
-            // Auto-set provider and model if not already configured
-            if config.llm.provider.is_none() {
-                config.llm.provider = Some(LlmProvider::Anthropic);
-            }
             if config.llm.model.is_none() {
-                config.llm.model = Some(LlmProvider::Anthropic.default_model().to_string());
+                config.llm.model = Some(DEFAULT_MODEL.to_string());
             }
         }
     }
     if let Ok(key) = env::var("OPENAI_API_KEY") {
         if !key.is_empty() {
             config.llm.tokens.open_ai = key;
-            if config.llm.provider.is_none() {
-                config.llm.provider = Some(LlmProvider::OpenAI);
-            }
         }
     }
     if let Ok(key) = env::var("OPENROUTER_API_KEY") {
         if !key.is_empty() {
             config.llm.tokens.open_router = key;
-            if config.llm.provider.is_none() {
-                config.llm.provider = Some(LlmProvider::OpenRouter);
-            }
         }
     }
     if let Ok(key) = env::var("BRAVE_SEARCH_API_KEY") {
@@ -482,15 +441,7 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
         }
     }
 
-    // Explicit provider/model override (set by admin panel via Fly env)
-    if let Ok(provider) = env::var("BOLLY_LLM_PROVIDER") {
-        match provider.as_str() {
-            "anthropic" => config.llm.provider = Some(LlmProvider::Anthropic),
-            "openai" => config.llm.provider = Some(LlmProvider::OpenAI),
-            "openrouter" => config.llm.provider = Some(LlmProvider::OpenRouter),
-            _ => {}
-        }
-    }
+    // Model override (set by admin panel via Fly env)
     if let Ok(model) = env::var("BOLLY_LLM_MODEL") {
         if !model.is_empty() {
             config.llm.model = Some(model);
