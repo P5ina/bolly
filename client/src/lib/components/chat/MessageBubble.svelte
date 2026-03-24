@@ -100,7 +100,7 @@
 		if (!message.model) return "";
 		const m = message.model.toLowerCase();
 		if (m.includes("haiku")) return "fast";
-		if (m.includes("sonnet")) return "heavy";
+		if (m.includes("sonnet")) return "";
 		if (m.includes("opus")) return "heavy";
 		if (m.includes("mini")) return "fast";
 		if (m.includes("gpt-5.2")) return "fast";
