@@ -46,7 +46,7 @@ pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
 pub use system::{
     ClearContextTool, CreateDropTool, DeepResearchTool, ExploreCodeTool, ExportProfileTool,
     GetSettingsTool, GetTimeTool, ImportProfileTool, InteractiveSessionTool, RequestSecretTool,
-    RestartMachineTool, RunCommandTool, SearchCodeTool, UpdateConfigTool,
+    RestartMachineTool, RunCommandTool, UpdateConfigTool,
 };
 pub use image::ViewImageTool;
 pub use media::{WatchVideoTool, ListenMusicTool};
@@ -211,7 +211,6 @@ pub fn tool_summary(name: &str, args: &str) -> String {
         "write_file" => format!("writing {}", v["path"].as_str().unwrap_or("?")),
         "edit_file" => format!("editing {}", v["path"].as_str().unwrap_or("?")),
         "list_files" => format!("listing {}", v["path"].as_str().unwrap_or(".")),
-        "search_code" => format!("searching '{}'", v["query"].as_str().unwrap_or("?")),
         "run_command" => {
             let cmd = v["command"].as_str().unwrap_or("?");
             format!("$ {cmd}")
@@ -536,7 +535,6 @@ pub fn build_tools(
     }
 
     // ── Code ──
-    tools.push(wrap(Box::new(SearchCodeTool::new(workspace_dir, instance_slug))));
     tools.push(wrap(Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone()))));
     tools.push(wrap(Box::new(DeepResearchTool::new(workspace_dir, instance_slug, llm.clone(), config_path))));
 
