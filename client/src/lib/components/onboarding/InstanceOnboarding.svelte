@@ -5,8 +5,6 @@
 		applySoulTemplate,
 		fetchSoul,
 		setCompanionName,
-		fetchConfigStatus,
-		updateLlmConfig,
 	} from "$lib/api/client.js";
 	import type { SoulTemplate } from "$lib/api/types.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
@@ -40,9 +38,6 @@
 	let companionNameInput = $state("");
 	let messageInput: HTMLTextAreaElement | undefined = $state();
 	let nameInputEl: HTMLInputElement | undefined = $state();
-	let keyInput: HTMLInputElement | undefined = $state();
-	let apiKeyValue = $state("");
-	let keyError = $state("");
 	let chosenLanguage = $state(
 		typeof localStorage !== "undefined" ? (localStorage.getItem("bolly:language") ?? "english") : "english",
 	);
@@ -108,61 +103,9 @@
 		await typewrite("a new space, just for us.");
 		await pause(600);
 
-		let llmConfigured = false;
-		for (let attempt = 0; attempt < 3; attempt++) {
-			try {
-				const status = await fetchConfigStatus();
-				if (status.llm_configured) {
-					llmConfigured = true;
-				}
-				break;
-			} catch {
-				if (attempt < 2) await pause(2000);
-			}
-		}
-
-		if (!llmConfigured) {
-			await typewrite("paste your api key and i\u2019ll wake up.");
-			stage = "waiting-key";
-			await pause(100);
-			keyInput?.focus();
-		} else {
-			await typewrite("what language should we speak?");
-			stage = "picking-language";
-		}
-	}
-
-	async function submitKey() {
-		const key = apiKeyValue.trim();
-		if (!key) return;
-		keyError = "";
-		stage = "testing";
-		try {
-			await updateLlmConfig({ api_key: key });
-		} catch (err) {
-			keyError = `hmm, that didn\u2019t work. try again? (${err instanceof Error ? err.message : String(err)})`;
-			stage = "waiting-key";
-			await pause(100);
-			keyInput?.focus();
-			return;
-		}
-		await pause(300);
-		await typewrite("i can feel it. i\u2019m alive now.");
-		await pause(600);
 		await typewrite("what language should we speak?");
 		stage = "picking-language";
 	}
-
-	async function skipConfig() {
-		stage = "intro";
-		await pause(300);
-		await typewrite("alright, we\u2019ll figure that out later.");
-		await pause(600);
-		await typewrite("what language should we speak?");
-		stage = "picking-language";
-	}
-
-	function handleKeyKeydown(e: KeyboardEvent) { if (e.key === "Enter") { e.preventDefault(); submitKey(); } }
 
 	async function pickLanguage(langId: string) {
 		chosenLanguage = langId;
@@ -276,24 +219,10 @@
 
 		<!-- Interactive sections -->
 		<div class="ob-input-area">
-			{#if stage === "waiting-key"}
-				<div class="ob-enter">
-					<div class="ob-field">
-						<input bind:this={keyInput} bind:value={apiKeyValue} onkeydown={handleKeyKeydown} type="password" placeholder="sk-..." class="ob-input ob-input-mono" />
-						{#if apiKeyValue.trim()}
-							<button onclick={submitKey} class="ob-go" aria-label="Submit">→</button>
-						{/if}
-					</div>
-					{#if keyError}
-						<p class="ob-error">{keyError}</p>
-					{/if}
-				</div>
-			{/if}
-
-			{#if stage === "testing" || stage === "sending"}
+			{#if stage === "sending"}
 				<div class="ob-enter ob-center">
 					<div class="ob-spinner"></div>
-					<span class="ob-spinner-label">{stage === "testing" ? "waking up" : "thinking"}</span>
+					<span class="ob-spinner-label">thinking</span>
 				</div>
 			{/if}
 

@@ -1,16 +1,15 @@
 use axum::{Json, Router, extract::State, http::StatusCode, routing::{delete, get, post, put}};
+// Note: `put` still used by update_model_mode
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{
     app::state::AppState,
     config::{self, McpServerConfig},
-    domain::config::UpdateLlmRequest,
 };
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/api/config/llm", put(update_llm))
         .route("/api/config/model-mode", put(update_model_mode))
         .route("/api/config/status", get(get_status))
         .route("/api/config/mcp", get(list_mcp_servers))
@@ -33,74 +32,6 @@ async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
         "fast_model": config.llm.fast_model_name(),
         "model_mode": mode,
     }))
-}
-
-async fn update_llm(
-    State(state): State<AppState>,
-    Json(request): Json<UpdateLlmRequest>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    // Read current config.toml as a TOML table so we preserve unrelated fields
-    let config_path = config::config_path();
-    let raw = std::fs::read_to_string(&config_path).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("failed to read config: {e}"),
-        )
-    })?;
-    let mut doc: toml::Value = toml::from_str(&raw).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("failed to parse config: {e}"),
-        )
-    })?;
-
-    // Ensure llm table exists
-    let root = doc.as_table_mut().unwrap();
-    if !root.contains_key("llm") {
-        root.insert("llm".into(), toml::Value::Table(toml::map::Map::new()));
-    }
-    let llm = root.get_mut("llm").unwrap().as_table_mut().unwrap();
-
-    // Set the Anthropic API key
-    if !llm.contains_key("tokens") {
-        llm.insert("tokens".into(), toml::Value::Table(toml::map::Map::new()));
-    }
-    let tokens = llm.get_mut("tokens").unwrap().as_table_mut().unwrap();
-    tokens.insert(
-        "ANTHROPIC".into(),
-        toml::Value::String(request.api_key.clone()),
-    );
-
-    // Write back
-    let new_raw = toml::to_string_pretty(&doc).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("failed to serialize config: {e}"),
-        )
-    })?;
-    std::fs::write(&config_path, &new_raw).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("failed to write config: {e}"),
-        )
-    })?;
-
-    // Reload config and rebuild LLM backend
-    let new_config = config::load_config().map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("failed to reload config: {e}"),
-        )
-    })?;
-    state.rebuild_llm(&new_config).await;
-    *state.config.write().await = new_config.clone();
-
-    let model = new_config.llm.model_name();
-
-    Ok(Json(json!({
-        "status": "ok",
-        "model": model,
-    })))
 }
 
 // ---------------------------------------------------------------------------

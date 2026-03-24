@@ -162,8 +162,4 @@ impl AppState {
         }
     }
 
-    pub async fn rebuild_llm(&self, config: &Config) {
-        let new_llm = LlmBackend::from_config(config);
-        *self.llm.write().await = new_llm;
-    }
 }
