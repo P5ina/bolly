@@ -80,8 +80,8 @@
 		<InstanceOnboarding {slug} oncomplete={handleOnboardingComplete} />
 	{/key}
 {:else}
-	<UpdateBanner />
 	<div class="instance-view">
+	<UpdateBanner />
 		{#if !presentation.active && (scene.mode === "chat" || activeTab !== "chat")}
 		<nav class="instance-tabs">
 			<a
