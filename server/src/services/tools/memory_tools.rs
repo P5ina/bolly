@@ -87,7 +87,10 @@ impl Tool for MemoryWriteTool {
             // Find the uploaded file
             let meta_path = self.uploads_dir.join(format!("{upload_id}.json"));
             let meta_str = fs::read_to_string(&meta_path)
-                .map_err(|_| ToolExecError(format!("upload {upload_id} not found")))?;
+                .map_err(|e| {
+                    log::warn!("memory_write: upload meta not found at {}: {e}", meta_path.display());
+                    ToolExecError(format!("upload {upload_id} not found (path: {})", meta_path.display()))
+                })?;
             let meta: serde_json::Value = serde_json::from_str(&meta_str)
                 .map_err(|_| ToolExecError("invalid upload metadata".into()))?;
             let stored_name = meta["stored_name"].as_str()
