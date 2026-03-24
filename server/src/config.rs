@@ -223,7 +223,7 @@ impl Default for ModelMode {
     fn default() -> Self { ModelMode::Auto }
 }
 
-fn default_heavy_multiplier() -> f32 { 10.0 }
+fn default_heavy_multiplier() -> f32 { 5.0 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LlmConfig {
