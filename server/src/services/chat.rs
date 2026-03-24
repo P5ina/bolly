@@ -352,11 +352,14 @@ pub async fn run_single_turn(
          tell them it was automatically redacted for safety and ask them to use \
          the secure input instead (which you trigger via `request_secret`). \
          this is mandatory, not optional.\n\n\
-         ## code execution\n\
-         you have access to Anthropic skills that run in a code execution sandbox (Python).\n\
-         to use them, call activate_skill first. once activated, the skill is available for the rest of the conversation.\n\
+         ## code execution (two separate environments)\n\
+         you have TWO code execution environments — they are completely separate:\n\
+         - `run_command`: runs on the LOCAL server. use for file operations, installs, git, local scripts.\n\
+         - `code_execution`: runs in Anthropic's SANDBOX. use only for Anthropic skills (document generation).\n\
+         variables, files, and state do NOT persist between these environments.\n\
+         to use Anthropic skills, call activate_skill first. once activated, code_execution can use the skill.\n\
          generated files are automatically downloaded and sent to the user.\n\
-         in list_skills, skills marked [anthropic] run in the sandbox; skills marked [local] run on the server."
+         NEVER use run_command for Anthropic skill tasks. NEVER use code_execution for local server tasks."
     );
 
     // System prompt is fully static (soul, skills, style, integrations).
