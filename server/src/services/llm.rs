@@ -1069,7 +1069,7 @@ fn build_anthropic_request(
             serde_json::json!({
                 "type": "text",
                 "text": *s,
-                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                "cache_control": {"type": "ephemeral"},
             })
         })
         .collect();
@@ -1164,7 +1164,7 @@ fn build_anthropic_request(
     let mut req = serde_json::json!({
         "model": model,
         "max_tokens": max_tokens,
-        "cache_control": {"type": "ephemeral", "ttl": "1h"},
+        "cache_control": {"type": "ephemeral"},
         "system": system_blocks,
         "messages": msgs,
     });
