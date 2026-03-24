@@ -1,7 +1,6 @@
 use std::path::Path;
 use std::time::Duration;
 
-use base64::Engine as _;
 use futures::StreamExt;
 use tokio::sync::broadcast;
 
@@ -71,30 +70,6 @@ pub enum ContentBlock {
 impl ContentBlock {
     pub fn text(text: impl Into<String>) -> Self {
         ContentBlock::Text { text: text.into() }
-    }
-
-    pub fn image_base64(data: String, media_type: &str) -> Self {
-        ContentBlock::Image {
-            source: ImageSource::Base64 {
-                media_type: media_type.to_string(),
-                data,
-            },
-        }
-    }
-
-    pub fn document_base64(data: String, media_type: &str) -> Self {
-        ContentBlock::Document {
-            source: DocumentSource::Base64 {
-                media_type: media_type.to_string(),
-                data,
-            },
-        }
-    }
-
-    pub fn document_url(url: String) -> Self {
-        ContentBlock::Document {
-            source: DocumentSource::Url { url },
-        }
     }
 
     pub fn tool_result(tool_use_id: String, content: String) -> Self {
@@ -431,15 +406,6 @@ impl LlmBackend {
         }
     }
 
-    pub fn pdf_strategy(&self, public_url: Option<&str>, auth_token: &str) -> PdfStrategy {
-        match public_url {
-            Some(url) if !url.is_empty() => PdfStrategy::Url {
-                base_url: url.to_string(),
-                auth_token: auth_token.to_string(),
-            },
-            _ => PdfStrategy::NativeDocument,
-        }
-    }
 
     pub fn model_name(&self) -> &str {
         &self.model
@@ -1674,24 +1640,12 @@ async fn stream_once(
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// How to send PDFs to the LLM.
-pub enum PdfStrategy {
-    /// Send base64 document block.
-    NativeDocument,
-    /// Send a public URL.
-    Url {
-        base_url: String,
-        auth_token: String,
-    },
-}
-
-
 /// Build a multimodal Message from text + file attachments.
+/// Files with anthropic_file_id use file references; others use inline text fallback.
 pub fn build_multimodal_prompt(
     text: &str,
     workspace_dir: &Path,
     instance_slug: &str,
-    pdf_strategy: &PdfStrategy,
 ) -> Message {
     let re = regex::Regex::new(r"\[attached:\s*(.+?)\s*\((\w+)\)\]").unwrap();
 

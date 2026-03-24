@@ -89,6 +89,8 @@ pub async fn download_file(api_key: &str, file_id: &str) -> Result<(String, Vec<
 }
 
 /// Delete a file from Anthropic. Best-effort — failures are logged, not fatal.
+/// Used by compaction cleanup to delete orphaned files.
+#[allow(dead_code)]
 pub async fn delete_file(api_key: &str, file_id: &str) -> Result<(), String> {
     let client = reqwest::Client::new();
 

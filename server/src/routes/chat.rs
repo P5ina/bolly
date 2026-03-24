@@ -217,9 +217,9 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         iteration += 1;
 
         let config_path = config::config_path();
-        let (plan, auth_token, model_mode, heavy_multiplier, fast_model_name, google_ai_key) = {
+        let (plan, model_mode, heavy_multiplier, fast_model_name, google_ai_key) = {
             let cfg = state.config.read().await;
-            (cfg.plan.clone(), cfg.auth_token.clone(),
+            (cfg.plan.clone(),
              cfg.llm.model_mode, cfg.llm.heavy_multiplier, cfg.llm.fast_model_name().to_string(),
              cfg.llm.tokens.google_ai.clone())
         };
@@ -258,9 +258,6 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             }
         };
 
-        let public_url = std::env::var("BOLLY_PUBLIC_URL").ok();
-        let pdf_strategy = effective_llm.pdf_strategy(public_url.as_deref(), &auth_token);
-
         let turn_fut = chat::run_single_turn(
             &state.workspace_dir,
             &config_path,
@@ -270,7 +267,6 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             state.events.clone(),
             state.pending_secrets.clone(),
             &plan,
-            &pdf_strategy,
             &state.mcp_registry,
             voice_mode,
             state.vector_store.clone(),

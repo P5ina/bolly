@@ -606,6 +606,26 @@ do NOT save images unless they are clearly meaningful (personal photos, importan
                 }
                 log::info!("memory: saved image {clean_path} for {instance_slug}");
 
+                // Upload to Anthropic Files API for efficient LLM usage
+                if let Ok(bytes) = std::fs::read(&full_path) {
+                    let api_key = crate::config::load_config()
+                        .ok()
+                        .and_then(|c| c.llm.api_key().map(|s| s.to_string()));
+                    if let Some(key) = api_key {
+                        let fname = full_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                        match super::anthropic_files::upload_file(&key, &fname, &bytes, mime_type).await {
+                            Ok(file_id) => {
+                                let sidecar = full_path.with_extension(
+                                    format!("{}.anthropic.json", full_path.extension().unwrap_or_default().to_string_lossy())
+                                );
+                                let _ = std::fs::write(&sidecar, serde_json::json!({"file_id": file_id}).to_string());
+                                log::info!("memory: uploaded {clean_path} to Anthropic: {file_id}");
+                            }
+                            Err(e) => log::warn!("memory: Anthropic upload failed for {clean_path}: {e}"),
+                        }
+                    }
+                }
+
                 // Embed the image
                 let desc = if op.description.is_empty() { &clean_path } else { &op.description };
                 if let Ok(bytes) = std::fs::read(&full_path) {
