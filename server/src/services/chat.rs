@@ -1058,7 +1058,7 @@ pub fn compute_context_stats(
     compute_context_stats_local(workspace_dir, &instance_slug, &chat_id)
 }
 
-/// Async version that tries Anthropic count_tokens API for accurate total.
+/// Async version that uses cached real token counts from Anthropic API responses.
 pub async fn compute_context_stats_async(
     workspace_dir: PathBuf,
     instance_slug: String,
@@ -1068,25 +1068,51 @@ pub async fn compute_context_stats_async(
     let chat_id = sanitize_slug(&chat_id);
     let mut stats = compute_context_stats_local(&workspace_dir, &instance_slug, &chat_id);
 
-    // Try to get accurate total via Anthropic count_tokens API.
-    // Uses the real system prompt, messages, and full tool definitions.
-    let api_info: Option<(String, String)> = crate::config::load_config().ok().and_then(|config| {
-        let (key, model) = config.llm.anthropic_credentials()?;
-        Some((key.to_string(), model.to_string()))
-    });
-    if let Some((api_key, model)) = api_info {
-        if let Some(real_total) = count_tokens_api(
-            &api_key, &model, &workspace_dir, &instance_slug, &chat_id,
-        ).await {
-            // Use the API total as ground truth.
-            // Back-calculate history: total - system - tools.
-            // If the API total is less than our local system+tools estimate
-            // (shouldn't happen with real tool defs), keep local history estimate.
-            let local_overhead = stats.system_prompt_total_tokens + stats.tools_tokens_estimate;
-            if real_total > local_overhead {
-                stats.history_tokens_estimate = real_total - local_overhead;
+    // Use real input tokens cached from the last Anthropic API response.
+    // This is the actual token count the API reported, not an estimate.
+    if let Some(real_total) = llm::get_real_input_tokens(&instance_slug, &chat_id) {
+        let real_total = real_total as usize;
+        let local_total = stats.total_input_tokens_estimate;
+
+        if local_total > 0 && real_total > 0 {
+            // Scale all section estimates proportionally to match the real total.
+            let ratio = real_total as f64 / local_total as f64;
+            for section in &mut stats.system_prompt {
+                section.tokens = (section.tokens as f64 * ratio).round() as usize;
             }
-            stats.total_input_tokens_estimate = real_total;
+            stats.system_prompt_total_tokens =
+                stats.system_prompt.iter().map(|s| s.tokens).sum();
+            stats.tools_tokens_estimate =
+                (stats.tools_tokens_estimate as f64 * ratio).round() as usize;
+            stats.history_tokens_estimate =
+                real_total - stats.system_prompt_total_tokens - stats.tools_tokens_estimate;
+        }
+        stats.total_input_tokens_estimate = real_total;
+    } else {
+        // Fallback: try count_tokens API if no cached data (first load before any chat)
+        let api_info: Option<(String, String)> = crate::config::load_config().ok().and_then(|config| {
+            let (key, model) = config.llm.anthropic_credentials()?;
+            Some((key.to_string(), model.to_string()))
+        });
+        if let Some((api_key, model)) = api_info {
+            if let Some(real_total) = count_tokens_api(
+                &api_key, &model, &workspace_dir, &instance_slug, &chat_id,
+            ).await {
+                let local_total = stats.total_input_tokens_estimate;
+                if local_total > 0 && real_total > 0 {
+                    let ratio = real_total as f64 / local_total as f64;
+                    for section in &mut stats.system_prompt {
+                        section.tokens = (section.tokens as f64 * ratio).round() as usize;
+                    }
+                    stats.system_prompt_total_tokens =
+                        stats.system_prompt.iter().map(|s| s.tokens).sum();
+                    stats.tools_tokens_estimate =
+                        (stats.tools_tokens_estimate as f64 * ratio).round() as usize;
+                    stats.history_tokens_estimate =
+                        real_total - stats.system_prompt_total_tokens - stats.tools_tokens_estimate;
+                }
+                stats.total_input_tokens_estimate = real_total;
+            }
         }
     }
 

@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use futures::StreamExt;
@@ -8,6 +9,25 @@ use crate::config::{Config, CHEAP_MODEL, DEFAULT_FAST_MODEL};
 use crate::domain::chat::{ChatMessage, ChatRole, MessageKind};
 use crate::domain::events::ServerEvent;
 use crate::services::tool::{ToolDefinition, ToolDyn};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Real input token cache — populated from Anthropic API responses
+// ═══════════════════════════════════════════════════════════════════════════
+
+static REAL_INPUT_TOKENS: Mutex<Option<std::collections::HashMap<String, u64>>> = Mutex::new(None);
+
+/// Cache the real input token count from an Anthropic API response.
+fn cache_real_input_tokens(instance_slug: &str, chat_id: &str, tokens: u64) {
+    let key = format!("{instance_slug}/{chat_id}");
+    let mut guard = REAL_INPUT_TOKENS.lock().unwrap();
+    guard.get_or_insert_with(std::collections::HashMap::new).insert(key, tokens);
+}
+
+/// Retrieve the last real input token count for a given instance/chat.
+pub fn get_real_input_tokens(instance_slug: &str, chat_id: &str) -> Option<u64> {
+    let key = format!("{instance_slug}/{chat_id}");
+    REAL_INPUT_TOKENS.lock().unwrap().as_ref()?.get(&key).copied()
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Message types — serialize directly to Anthropic API format
@@ -1421,10 +1441,12 @@ async fn anthropic_stream(
                             input_tokens = usage["input_tokens"].as_u64().unwrap_or(0);
                             cache_read_tokens = usage["cache_read_input_tokens"].as_u64().unwrap_or(0);
                             cache_write_tokens = usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
+                            let real_total = input_tokens + cache_read_tokens + cache_write_tokens;
                             log::info!(
-                                "anthropic cache: read={} write={} input={}",
-                                cache_read_tokens, cache_write_tokens, input_tokens,
+                                "anthropic cache: read={} write={} input={} real_total={}",
+                                cache_read_tokens, cache_write_tokens, input_tokens, real_total,
                             );
+                            cache_real_input_tokens(instance_slug, chat_id, real_total);
                         }
                         // Capture container.id for skills/code-execution
                         if let Some(cid) = msg.pointer("/container/id").and_then(|v| v.as_str()) {
