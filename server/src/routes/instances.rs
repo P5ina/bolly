@@ -992,6 +992,7 @@ async fn import_instance(
             log::info!("[import] imported {} bytes into {instance_slug}", data.len());
             // Rebuild memory catalog after import
             memory::rebuild_catalog_snapshot(&state.workspace_dir, &instance_slug);
+            memory::invalidate_frozen_catalog(&instance_slug);
             Json(serde_json::json!({ "ok": true })).into_response()
         }
         Ok(_) => {

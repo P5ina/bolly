@@ -2177,6 +2177,7 @@ impl Tool for ImportProfileTool {
 
         // Rebuild memory catalog after import
         crate::services::memory::rebuild_catalog_snapshot(&self.workspace_dir, &self.instance_slug);
+        crate::services::memory::invalidate_frozen_catalog(&self.instance_slug);
 
         Ok(format!("imported profile from {}. memory catalog rebuilt.", args.source))
     }

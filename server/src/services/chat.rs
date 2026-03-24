@@ -375,9 +375,10 @@ pub async fn run_single_turn(
     // Time is injected into the user message (not system) to keep the entire system prefix stable.
     let system_stable = system_prompt;
 
-    // Block 2: memory catalog (semi-stable — changes when memories update)
+    // Block 2: memory catalog — frozen in RAM for the session.
+    // Only refreshes on context clear or compaction (not on memory writes).
     let memory_block = {
-        let memory_catalog = memory::load_catalog_snapshot(workspace_dir, &instance_slug);
+        let memory_catalog = memory::get_frozen_catalog(workspace_dir, &instance_slug);
         if !memory_catalog.is_empty() {
             format!("{memory_catalog}{MEMORY_FOOTER}")
         } else {
@@ -597,6 +598,7 @@ pub async fn run_single_turn(
         });
         if had_compaction {
             memory::rebuild_catalog_snapshot(workspace_dir, &instance_slug);
+            memory::invalidate_frozen_catalog(&instance_slug);
         }
     }
 
@@ -678,6 +680,7 @@ pub fn clear_context(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
     // Rebuild memory catalog snapshot — the static catalog in system prompt
     // must be fresh after context is cleared.
     memory::rebuild_catalog_snapshot(workspace_dir, &instance_slug);
+    memory::invalidate_frozen_catalog(&instance_slug);
 
     // No need to snapshot stats — daily_stats files are written incrementally
     // and never deleted by clear_context.

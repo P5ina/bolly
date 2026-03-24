@@ -1,8 +1,37 @@
 use std::path::Path;
+use std::sync::Mutex;
 
 use crate::domain::chat::ChatMessage;
 use crate::domain::memory::MemoryEntry;
 use crate::services::llm::LlmBackend;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Frozen catalog — cached in RAM, survives memory writes within a session.
+// Only refreshed on context clear, compaction, or server restart.
+// ═══════════════════════════════════════════════════════════════════════════
+
+static FROZEN_CATALOG: Mutex<Option<std::collections::HashMap<String, String>>> = Mutex::new(None);
+
+/// Get the frozen memory catalog for an instance.
+/// First call loads from disk and caches; subsequent calls return the cached version.
+/// This prevents system prompt changes (and cache invalidation) when memories are written.
+pub fn get_frozen_catalog(workspace_dir: &Path, instance_slug: &str) -> String {
+    let key = instance_slug.to_string();
+    let mut guard = FROZEN_CATALOG.lock().unwrap();
+    let map = guard.get_or_insert_with(std::collections::HashMap::new);
+    map.entry(key).or_insert_with(|| {
+        load_catalog_snapshot(workspace_dir, instance_slug)
+    }).clone()
+}
+
+/// Invalidate the frozen catalog for an instance.
+/// Call after context clear, compaction, or catalog rebuild.
+pub fn invalidate_frozen_catalog(instance_slug: &str) {
+    let mut guard = FROZEN_CATALOG.lock().unwrap();
+    if let Some(map) = guard.as_mut() {
+        map.remove(instance_slug);
+    }
+}
 
 fn memory_dir(workspace_dir: &Path, instance_slug: &str) -> std::path::PathBuf {
     workspace_dir
