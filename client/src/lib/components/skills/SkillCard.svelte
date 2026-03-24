@@ -21,7 +21,9 @@
 	<div class="skill-card-header">
 		<span class="skill-card-icon">{skill.icon || "~"}</span>
 		<span class="skill-card-name">{skill.name}</span>
-		{#if skill.builtin}
+		{#if skill.kind === "anthropic"}
+			<span class="skill-card-badge skill-card-badge-anthropic">anthropic</span>
+		{:else if skill.builtin}
 			<span class="skill-card-badge">built-in</span>
 		{:else if skill.source}
 			<span class="skill-card-badge skill-card-badge-community">community</span>
@@ -193,6 +195,11 @@
 	.skill-card-badge-community {
 		color: oklch(0.7 0.08 200 / 50%);
 		background: oklch(0.7 0.08 200 / 8%);
+	}
+
+	.skill-card-badge-anthropic {
+		color: oklch(0.78 0.12 75 / 60%);
+		background: oklch(0.78 0.12 75 / 10%);
 	}
 
 	.skill-card-delete {

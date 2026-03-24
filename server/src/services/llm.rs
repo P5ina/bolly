@@ -566,6 +566,7 @@ impl LlmBackend {
         chat_id: &str,
         workspace_dir: &Path,
         mcp_snapshot: Option<super::mcp::McpAppSnapshot>,
+        activated_anthropic_skills: std::sync::Arc<tokio::sync::RwLock<std::collections::HashSet<String>>>,
     ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>> {
         log::info!("chat_with_tools_streaming: {} tools", tools.len());
 
@@ -586,6 +587,7 @@ impl LlmBackend {
             chat_id,
             workspace_dir,
             mcp_snapshot.as_ref(),
+            &activated_anthropic_skills,
         )
         .await;
 
@@ -704,6 +706,7 @@ async fn streaming_agent_loop(
     chat_id: &str,
     workspace_dir: &Path,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
+    activated_anthropic_skills: &std::sync::Arc<tokio::sync::RwLock<std::collections::HashSet<String>>>,
 ) -> Result<(String, Option<String>, u64, Vec<String>), Box<dyn std::error::Error + Send + Sync>> {
     let mut all_text = String::new();
     let mut total_tokens: u64 = 0;
@@ -712,10 +715,12 @@ async fn streaming_agent_loop(
     let mut all_file_ids: Vec<String> = Vec::new();
 
     loop {
+        // Collect currently activated Anthropic skills
+        let skill_ids: Vec<String> = activated_anthropic_skills.read().await.iter().cloned().collect();
         let turn = stream_once(
             backend, system, tool_defs, messages, events,
             instance_slug, chat_id, &current_message_id, mcp_snapshot,
-            active_container_id.as_deref(),
+            active_container_id.as_deref(), &skill_ids,
         ).await?;
 
         total_tokens += turn.tokens_used;
@@ -907,6 +912,7 @@ fn build_anthropic_request(
     stream: bool,
     _api_key: &str,
     container_id: Option<&str>,
+    activated_skill_ids: &[String],
 ) -> serde_json::Value {
     // System blocks — cache_control on stable blocks only (not the volatile last block)
     let block_count = system.iter().filter(|s| !s.is_empty()).count();
@@ -1027,24 +1033,27 @@ fn build_anthropic_request(
         req["tools"] = serde_json::Value::Array(tools);
     }
 
-    // Agent Skills (code execution + document generation) — only for streaming chat
-    if stream && !tool_defs.is_empty() {
+    // Agent Skills (code execution) — only when skills are activated
+    if stream && !tool_defs.is_empty() && (!activated_skill_ids.is_empty() || container_id.is_some()) {
         let tools_arr = req["tools"].as_array_mut().unwrap();
         tools_arr.push(serde_json::json!({
             "type": "code_execution_20250825",
             "name": "code_execution"
         }));
 
-        let skills = serde_json::json!([
-            {"type": "anthropic", "skill_id": "pptx", "version": "latest"},
-            {"type": "anthropic", "skill_id": "xlsx", "version": "latest"},
-            {"type": "anthropic", "skill_id": "docx", "version": "latest"},
-            {"type": "anthropic", "skill_id": "pdf", "version": "latest"},
-        ]);
-        if let Some(cid) = container_id {
-            req["container"] = serde_json::json!({"id": cid, "skills": skills});
-        } else {
-            req["container"] = serde_json::json!({"skills": skills});
+        let skills: Vec<serde_json::Value> = activated_skill_ids.iter().map(|sid| {
+            serde_json::json!({"type": "anthropic", "skill_id": sid, "version": "latest"})
+        }).collect();
+
+        if !skills.is_empty() || container_id.is_some() {
+            let mut container = serde_json::json!({});
+            if let Some(cid) = container_id {
+                container["id"] = serde_json::json!(cid);
+            }
+            if !skills.is_empty() {
+                container["skills"] = serde_json::json!(skills);
+            }
+            req["container"] = container;
         }
     }
     if stream {
@@ -1069,7 +1078,7 @@ async fn anthropic_complete(
     messages: &[Message],
     max_tokens: u64,
 ) -> Result<(String, Vec<ToolUseBlock>, String, u64), Box<dyn std::error::Error + Send + Sync>> {
-    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, false, api_key, None);
+    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, false, api_key, None, &[]);
 
     let resp = http
         .post("https://api.anthropic.com/v1/messages")
@@ -1158,8 +1167,9 @@ async fn anthropic_stream(
     message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
     container_id: Option<&str>,
+    activated_skill_ids: &[String],
 ) -> Result<(String, Vec<ToolUseBlock>, String, Option<String>, u64, Option<String>, Vec<String>), Box<dyn std::error::Error + Send + Sync>> {
-    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, api_key, container_id);
+    let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, api_key, container_id, activated_skill_ids);
 
     // Use skills headers for streaming requests (they have tools + code_execution)
     let resp = http
@@ -1469,11 +1479,13 @@ async fn stream_once(
     message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
     container_id: Option<&str>,
+    activated_skill_ids: &[String],
 ) -> Result<StreamOnceResult, Box<dyn std::error::Error + Send + Sync>> {
     let (text, tool_uses, stop_reason, compaction, tokens_used, container_id, file_ids) =
         anthropic_stream(
             &backend.http, &backend.api_key, &backend.model, system, tool_defs, messages,
             16384, events, instance_slug, chat_id, message_id, mcp_snapshot, container_id,
+            activated_skill_ids,
         ).await?;
     Ok(StreamOnceResult { text, tool_uses, stop_reason, compaction, tokens_used, container_id, file_ids })
 }

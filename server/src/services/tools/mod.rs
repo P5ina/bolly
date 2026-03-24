@@ -461,6 +461,7 @@ pub fn build_tools(
     github_token: Option<String>,
     vector_store: Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
+    activated_anthropic_skills: Arc<tokio::sync::RwLock<std::collections::HashSet<String>>>,
 ) -> (Vec<Box<dyn ToolDyn>>, SentFiles) {
     let snap = mcp_snapshot;
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
@@ -514,7 +515,7 @@ pub fn build_tools(
 
     // ── Skills ──
     tools.push(wrap(Box::new(ListSkillsTool::new(workspace_dir))));
-    tools.push(wrap(Box::new(ActivateSkillTool::new(workspace_dir))));
+    tools.push(wrap(Box::new(ActivateSkillTool::new(workspace_dir, activated_anthropic_skills))));
     tools.push(wrap(Box::new(ReadSkillReferenceTool::new(workspace_dir))));
 
     // ── Web ──

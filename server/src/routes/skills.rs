@@ -23,7 +23,29 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn list_skills(State(state): State<AppState>) -> Json<Vec<Skill>> {
-    Json(skills::list_skills(&state.workspace_dir))
+    let mut all = skills::list_skills(&state.workspace_dir);
+
+    // Fetch Anthropic skills dynamically
+    let api_key = {
+        let cfg = state.config.read().await;
+        cfg.llm.api_key().map(|s| s.to_string())
+    };
+    if let Some(key) = api_key {
+        match crate::services::anthropic_skills::fetch_available_skills(&key).await {
+            Ok(remote) => {
+                // Avoid duplicates (by id)
+                let local_ids: std::collections::HashSet<_> = all.iter().map(|s| s.id.clone()).collect();
+                for s in remote {
+                    if !local_ids.contains(&s.id) {
+                        all.push(s);
+                    }
+                }
+            }
+            Err(e) => log::warn!("[skills] failed to fetch Anthropic skills: {e}"),
+        }
+    }
+
+    Json(all)
 }
 
 async fn get_skill(

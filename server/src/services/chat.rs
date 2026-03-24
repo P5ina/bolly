@@ -351,7 +351,12 @@ pub async fn run_single_turn(
          if the user sends something that looks like a token or API key in chat, \
          tell them it was automatically redacted for safety and ask them to use \
          the secure input instead (which you trigger via `request_secret`). \
-         this is mandatory, not optional."
+         this is mandatory, not optional.\n\n\
+         ## code execution\n\
+         you have access to Anthropic skills that run in a code execution sandbox (Python).\n\
+         to use them, call activate_skill first. once activated, the skill is available for the rest of the conversation.\n\
+         generated files are automatically downloaded and sent to the user.\n\
+         in list_skills, skills marked [anthropic] run in the sandbox; skills marked [local] run on the server."
     );
 
     // System prompt is fully static (soul, skills, style, integrations).
@@ -489,6 +494,8 @@ pub async fn run_single_turn(
         let t = if !instance_token.is_empty() { instance_token } else { global_token };
         if t.is_empty() { None } else { Some(t) }
     };
+    let activated_anthropic_skills: std::sync::Arc<tokio::sync::RwLock<std::collections::HashSet<String>>> =
+        Default::default();
     let (all_tools, sent_files) = tools::build_tools(
         workspace_dir, &instance_slug, &chat_id, brave_api_key,
         config_path, events.clone(), llm,
@@ -503,6 +510,7 @@ pub async fn run_single_turn(
         github_token,
         vector_store.clone(),
         google_ai_key,
+        activated_anthropic_skills.clone(),
     );
     tools::cache_tool_defs(&all_tools).await;
 
@@ -526,6 +534,7 @@ pub async fn run_single_turn(
             events.clone(), &instance_slug, &chat_id,
             workspace_dir,
             Some(mcp_snapshot),
+            activated_anthropic_skills,
         )
         .await;
 
@@ -1358,10 +1367,11 @@ fn unix_millis() -> u128 {
 
 /// Build a prompt section listing active skills and their instructions.
 fn build_skills_prompt(workspace_dir: &Path) -> String {
+    use crate::domain::skill::SkillKind;
     let all_skills = skills::list_skills(workspace_dir);
     let active: Vec<_> = all_skills
         .into_iter()
-        .filter(|s| s.enabled && !s.instructions.is_empty())
+        .filter(|s| s.enabled && (!s.instructions.is_empty() || s.kind == SkillKind::Anthropic))
         .collect();
 
     if active.is_empty() {
@@ -1369,14 +1379,20 @@ fn build_skills_prompt(workspace_dir: &Path) -> String {
     }
 
     let mut out = String::from("## skills\nyou have the following skills installed. \
-        when you decide to use a skill, call `activate_skill` first — it returns the full instructions and reference files. \
-        do not guess how a skill works; always activate it first to get the details.\n\n");
+        call `activate_skill` to use any skill. \
+        [local] skills return instructions for local execution. \
+        [anthropic] skills load into the code execution sandbox.\n\n");
     for skill in &active {
+        let kind_label = match skill.kind {
+            SkillKind::Local => "[local]",
+            SkillKind::Anthropic => "[anthropic]",
+        };
         let has_refs = skill.resources.iter().any(|r| r.starts_with("references/"));
         out.push_str(&format!(
-            "- **{}** (id: `{}`): {}{}\n",
+            "- **{}** (id: `{}`) {}: {}{}\n",
             skill.name,
             skill.id,
+            kind_label,
             skill.description,
             if has_refs { " [has references]" } else { "" },
         ));

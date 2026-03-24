@@ -1,5 +1,9 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
+use crate::domain::skill::SkillKind;
 use crate::services::tool::{ToolDefinition, Tool};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -81,12 +85,15 @@ impl Tool for ListSkillsTool {
 
 pub struct ActivateSkillTool {
     workspace_dir: PathBuf,
+    /// Shared set of activated Anthropic skill IDs for this chat session.
+    activated_anthropic: Arc<RwLock<HashSet<String>>>,
 }
 
 impl ActivateSkillTool {
-    pub fn new(workspace_dir: &Path) -> Self {
+    pub fn new(workspace_dir: &Path, activated: Arc<RwLock<HashSet<String>>>) -> Self {
         Self {
             workspace_dir: workspace_dir.to_path_buf(),
+            activated_anthropic: activated,
         }
     }
 }
@@ -106,7 +113,7 @@ impl Tool for ActivateSkillTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "activate_skill".into(),
-            description: "Activate a skill before using it.".into(),
+            description: "Activate a skill before using it. Local skills return instructions; Anthropic skills are loaded into the code execution sandbox.".into(),
             parameters: openai_schema::<ActivateSkillArgs>(),
         }
     }
@@ -117,22 +124,42 @@ impl Tool for ActivateSkillTool {
         let found = skills.iter().find(|s| s.name.to_lowercase() == needle || s.id == needle);
         match found {
             Some(s) if s.enabled => {
-                let mut result = format!("# {} skill activated\n\n{}", s.name, s.instructions);
-                let refs: Vec<_> = s
-                    .resources
-                    .iter()
-                    .filter(|r| r.starts_with("references/"))
-                    .collect();
-                if !refs.is_empty() {
-                    result.push_str("\n\n## reference files\n\
-                        **MANDATORY**: read these BEFORE running any commands — use `read_skill_reference` with skill_id=\"");
-                    result.push_str(&s.id);
-                    result.push_str("\":\n");
-                    for r in refs {
-                        result.push_str(&format!("- {}\n", r));
+                match s.kind {
+                    SkillKind::Local => {
+                        // Local skill: return instructions (prompt injection)
+                        let mut result = format!("# {} skill activated\n\n{}", s.name, s.instructions);
+                        let refs: Vec<_> = s
+                            .resources
+                            .iter()
+                            .filter(|r| r.starts_with("references/"))
+                            .collect();
+                        if !refs.is_empty() {
+                            result.push_str("\n\n## reference files\n\
+                                **MANDATORY**: read these BEFORE running any commands — use `read_skill_reference` with skill_id=\"");
+                            result.push_str(&s.id);
+                            result.push_str("\":\n");
+                            for r in refs {
+                                result.push_str(&format!("- {}\n", r));
+                            }
+                        }
+                        Ok(result)
+                    }
+                    SkillKind::Anthropic => {
+                        // Anthropic skill: add to container for code execution
+                        if let Some(ref sid) = s.anthropic_skill_id {
+                            let mut activated = self.activated_anthropic.write().await;
+                            activated.insert(sid.clone());
+                            Ok(format!(
+                                "# {} skill activated\n\nThis skill runs in the code execution sandbox. \
+                                 Write Python code to use it — the skill files are available at /skills/. \
+                                 Generated files will be automatically sent to the user.",
+                                s.name
+                            ))
+                        } else {
+                            Err(ToolExecError(format!("skill '{}' is missing Anthropic skill ID", s.name)))
+                        }
                     }
                 }
-                Ok(result)
             }
             Some(s) => Err(ToolExecError(format!("skill '{}' is disabled", s.name))),
             None => Err(ToolExecError(format!("skill '{}' not found", args.skill_name))),

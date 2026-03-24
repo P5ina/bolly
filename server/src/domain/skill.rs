@@ -2,6 +2,18 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+/// Whether a skill runs locally or in the Anthropic code execution sandbox.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SkillKind {
+    Local,
+    Anthropic,
+}
+
+impl Default for SkillKind {
+    fn default() -> Self { SkillKind::Local }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Skill {
     pub id: String,
@@ -13,6 +25,14 @@ pub struct Skill {
     pub builtin: bool,
     #[serde(default)]
     pub enabled: bool,
+    #[serde(default)]
+    pub kind: SkillKind,
+    /// Anthropic API skill ID (e.g. "pptx" or "skill_01..."). Only for Anthropic skills.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anthropic_skill_id: Option<String>,
+    /// Anthropic API version string. Only for Anthropic skills.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anthropic_version: Option<String>,
     /// System prompt fragment injected when this skill is active (SKILL.md body).
     #[serde(default)]
     pub instructions: String,

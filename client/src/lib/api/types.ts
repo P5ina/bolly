@@ -118,6 +118,8 @@ export interface Skill {
 	icon: string;
 	builtin: boolean;
 	enabled: boolean;
+	kind?: "local" | "anthropic";
+	anthropic_skill_id?: string;
 	instructions: string;
 	source?: SkillSource;
 	resources?: string[];
