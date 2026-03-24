@@ -80,8 +80,9 @@
 		<InstanceOnboarding {slug} oncomplete={handleOnboardingComplete} />
 	{/key}
 {:else}
-	<div class="instance-view">
+	<div class="instance-outer">
 	<UpdateBanner />
+	<div class="instance-view">
 		{#if !presentation.active && (scene.mode === "chat" || activeTab !== "chat")}
 		<nav class="instance-tabs">
 			<a
@@ -118,6 +119,7 @@
 		<div class="instance-content" class:instance-content-backdrop={activeTab !== "chat"}>
 			{@render children()}
 		</div>
+	</div>
 	</div>
 
 	{#if showDeleteConfirm}
@@ -189,10 +191,18 @@
 		50% { opacity: 0.3; transform: scale(0.7); }
 	}
 
-	.instance-view {
+	.instance-outer {
 		display: flex;
 		flex-direction: column;
 		height: 100%;
+		overflow: hidden;
+	}
+
+	.instance-view {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-height: 0;
 		max-width: 100%;
 		overflow: hidden;
 	}
