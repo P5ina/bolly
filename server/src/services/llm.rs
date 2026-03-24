@@ -890,19 +890,10 @@ async fn streaming_agent_loop(
         }
         messages.push(Message::User { content: results });
 
-        // Include any send_file markers accumulated during this tool cycle
-        {
-            let mut sf = sent_files.lock().unwrap_or_else(|e| e.into_inner());
-            if !sf.is_empty() {
-                let markers = sf.drain(..).collect::<Vec<_>>();
-                // Append to last assistant message
-                if let Some(Message::Assistant { content }) = messages.last_mut() {
-                    for m in &markers {
-                        content.push(ContentBlock::text(m));
-                    }
-                }
-            }
-        }
+        // send_file markers are NOT drained here — they accumulate in sent_files
+        // and are appended to the final assistant message after the loop ends.
+        // Draining mid-loop would lose markers because the last message at this
+        // point is a User (tool_result), not an Assistant message.
 
         // Persist rig_history after each tool cycle so restarts don't lose context.
         let rig_path = super::chat::rig_history_path(workspace_dir, instance_slug, chat_id);
