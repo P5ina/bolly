@@ -514,8 +514,8 @@ pub fn build_tools(
     }
 
     // ── Skills ──
-    tools.push(wrap(Box::new(ListSkillsTool::new(workspace_dir))));
-    tools.push(wrap(Box::new(ActivateSkillTool::new(workspace_dir, activated_anthropic_skills))));
+    tools.push(wrap(Box::new(ListSkillsTool::new(workspace_dir, &llm.api_key))));
+    tools.push(wrap(Box::new(ActivateSkillTool::new(workspace_dir, &llm.api_key, activated_anthropic_skills))));
     tools.push(wrap(Box::new(ReadSkillReferenceTool::new(workspace_dir))));
 
     // ── Web ──

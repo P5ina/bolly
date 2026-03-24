@@ -16,12 +16,14 @@ use super::{openai_schema, ToolExecError};
 
 pub struct ListSkillsTool {
     workspace_dir: PathBuf,
+    api_key: String,
 }
 
 impl ListSkillsTool {
-    pub fn new(workspace_dir: &Path) -> Self {
+    pub fn new(workspace_dir: &Path, api_key: &str) -> Self {
         Self {
             workspace_dir: workspace_dir.to_path_buf(),
+            api_key: api_key.to_string(),
         }
     }
 }
@@ -47,7 +49,20 @@ impl Tool for ListSkillsTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let skills = crate::services::skills::list_skills(&self.workspace_dir);
+        let mut skills = crate::services::skills::list_skills(&self.workspace_dir);
+
+        // Merge Anthropic skills from API
+        if !self.api_key.is_empty() {
+            if let Ok(remote) = crate::services::anthropic_skills::fetch_available_skills(&self.api_key).await {
+                let local_ids: std::collections::HashSet<_> = skills.iter().map(|s| s.id.clone()).collect();
+                for s in remote {
+                    if !local_ids.contains(&s.id) {
+                        skills.push(s);
+                    }
+                }
+            }
+        }
+
         if skills.is_empty() {
             return Ok("no skills installed".into());
         }
@@ -68,11 +83,14 @@ impl Tool for ListSkillsTool {
 
         let mut out = String::new();
         for s in &filtered {
-            let status = if s.enabled { "enabled" } else { "disabled" };
+            let kind_label = match s.kind {
+                SkillKind::Local => "local",
+                SkillKind::Anthropic => "anthropic",
+            };
             let source = s.source.as_ref().map(|src| format!(" (from {})", src.repo)).unwrap_or_default();
             out.push_str(&format!(
                 "- {} [{}]{}: {}\n",
-                s.name, status, source, s.description
+                s.name, kind_label, source, s.description
             ));
         }
         Ok(out)
@@ -85,14 +103,16 @@ impl Tool for ListSkillsTool {
 
 pub struct ActivateSkillTool {
     workspace_dir: PathBuf,
+    api_key: String,
     /// Shared set of activated Anthropic skill IDs for this chat session.
     activated_anthropic: Arc<RwLock<HashSet<String>>>,
 }
 
 impl ActivateSkillTool {
-    pub fn new(workspace_dir: &Path, activated: Arc<RwLock<HashSet<String>>>) -> Self {
+    pub fn new(workspace_dir: &Path, api_key: &str, activated: Arc<RwLock<HashSet<String>>>) -> Self {
         Self {
             workspace_dir: workspace_dir.to_path_buf(),
+            api_key: api_key.to_string(),
             activated_anthropic: activated,
         }
     }
@@ -119,7 +139,18 @@ impl Tool for ActivateSkillTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let skills = crate::services::skills::list_skills(&self.workspace_dir);
+        let mut skills = crate::services::skills::list_skills(&self.workspace_dir);
+        // Merge Anthropic skills so activate_skill can find them
+        if !self.api_key.is_empty() {
+            if let Ok(remote) = crate::services::anthropic_skills::fetch_available_skills(&self.api_key).await {
+                let local_ids: std::collections::HashSet<_> = skills.iter().map(|s| s.id.clone()).collect();
+                for s in remote {
+                    if !local_ids.contains(&s.id) {
+                        skills.push(s);
+                    }
+                }
+            }
+        }
         let needle = args.skill_name.to_lowercase();
         let found = skills.iter().find(|s| s.name.to_lowercase() == needle || s.id == needle);
         match found {
