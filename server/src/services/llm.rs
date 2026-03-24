@@ -1787,7 +1787,12 @@ pub fn build_multimodal_prompt(
                 contents.push(ContentBlock::Image {
                     source: ImageSource::File { file_id: fid.clone() },
                 });
-                log::info!("attached image (file_id): {name} ({fid})");
+                // Also make available in code_execution sandbox
+                contents.push(ContentBlock::Unknown(serde_json::json!({
+                    "type": "container_upload",
+                    "file_id": fid
+                })));
+                log::info!("attached image (file_id + container): {name} ({fid})");
             } else {
                 log::warn!("image {name} has no anthropic_file_id, skipping");
                 contents.push(ContentBlock::text(format!("[image: {name} — not yet uploaded to API]")));
@@ -1797,7 +1802,11 @@ pub fn build_multimodal_prompt(
                 contents.push(ContentBlock::Document {
                     source: DocumentSource::File { file_id: fid.clone() },
                 });
-                log::info!("attached PDF (file_id): {name} ({fid})");
+                contents.push(ContentBlock::Unknown(serde_json::json!({
+                    "type": "container_upload",
+                    "file_id": fid
+                })));
+                log::info!("attached PDF (file_id + container): {name} ({fid})");
             } else {
                 log::warn!("PDF {name} has no anthropic_file_id, skipping");
                 contents.push(ContentBlock::text(format!("[PDF: {name} — not yet uploaded to API]")));
