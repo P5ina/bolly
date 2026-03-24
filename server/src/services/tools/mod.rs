@@ -50,7 +50,7 @@ pub use system::{
 };
 pub use image::ViewImageTool;
 pub use media::{WatchVideoTool, ListenMusicTool};
-pub use web::{BrowseTool, WebFetchTool, WebSearchTool};
+pub use web::BrowseTool;
 
 // ---------------------------------------------------------------------------
 // Cached tool definitions snapshot (populated by build_tools, read by stats)
@@ -442,7 +442,6 @@ pub fn build_tools(
     workspace_dir: &Path,
     instance_slug: &str,
     chat_id: &str,
-    brave_api_key: Option<&str>,
     config_path: &Path,
     events: broadcast::Sender<ServerEvent>,
     llm: &crate::services::llm::LlmBackend,
@@ -519,8 +518,7 @@ pub fn build_tools(
     tools.push(wrap(Box::new(ReadSkillReferenceTool::new(workspace_dir))));
 
     // ── Web ──
-    tools.push(wrap(Box::new(WebSearchTool::new(brave_api_key, config_path))));
-    tools.push(wrap(Box::new(WebFetchTool)));
+    // web_search and web_fetch are native Anthropic server tools (added in llm.rs)
     tools.push(wrap(Box::new(ViewImageTool)));
     {
         let public_url = std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default();

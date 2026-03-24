@@ -1033,19 +1033,31 @@ fn build_anthropic_request(
         req["tools"] = serde_json::Value::Array(tools);
     }
 
-    // Agent Skills (code execution) — only when skills are activated
-    if stream && !tool_defs.is_empty() && (!activated_skill_ids.is_empty() || container_id.is_some()) {
+    // Anthropic server tools (always added for streaming chat with tools)
+    if stream && !tool_defs.is_empty() {
         let tools_arr = req["tools"].as_array_mut().unwrap();
+
+        // Web search + fetch (native Anthropic, replaces Brave)
         tools_arr.push(serde_json::json!({
-            "type": "code_execution_20250825",
-            "name": "code_execution"
+            "type": "web_search_20260209",
+            "name": "web_search"
+        }));
+        tools_arr.push(serde_json::json!({
+            "type": "web_fetch_20260209",
+            "name": "web_fetch"
         }));
 
-        let skills: Vec<serde_json::Value> = activated_skill_ids.iter().map(|sid| {
-            serde_json::json!({"type": "anthropic", "skill_id": sid, "version": "latest"})
-        }).collect();
+        // Code execution — only when skills are activated
+        if !activated_skill_ids.is_empty() || container_id.is_some() {
+            tools_arr.push(serde_json::json!({
+                "type": "code_execution_20250825",
+                "name": "code_execution"
+            }));
 
-        if !skills.is_empty() || container_id.is_some() {
+            let skills: Vec<serde_json::Value> = activated_skill_ids.iter().map(|sid| {
+                serde_json::json!({"type": "anthropic", "skill_id": sid, "version": "latest"})
+            }).collect();
+
             let mut container = serde_json::json!({});
             if let Some(cid) = container_id {
                 container["id"] = serde_json::json!(cid);

@@ -1675,7 +1675,6 @@ pub struct DeepResearchTool {
     workspace_dir: PathBuf,
     instance_slug: String,
     llm: crate::services::llm::LlmBackend,
-    config_path: PathBuf,
 }
 
 impl DeepResearchTool {
@@ -1683,13 +1682,12 @@ impl DeepResearchTool {
         workspace_dir: &Path,
         instance_slug: &str,
         llm: crate::services::llm::LlmBackend,
-        config_path: &Path,
+        _config_path: &Path,
     ) -> Self {
         Self {
             workspace_dir: workspace_dir.to_path_buf(),
             instance_slug: instance_slug.to_string(),
             llm: llm.cheap_variant(),
-            config_path: config_path.to_path_buf(),
         }
     }
 }
@@ -1725,17 +1723,8 @@ impl Tool for DeepResearchTool {
             return Err(ToolExecError("task cannot be empty".into()));
         }
 
-        let brave_key = crate::config::load_config()
-            .ok()
-            .map(|c| c.llm.tokens.brave_search.clone())
-            .unwrap_or_default();
-
+        // web_search and web_fetch are now native Anthropic server tools (added automatically)
         let tools: Vec<Box<dyn ToolDyn>> = vec![
-            Box::new(super::web::WebSearchTool::new(
-                if brave_key.is_empty() { None } else { Some(brave_key.as_str()) },
-                &self.config_path,
-            )),
-            Box::new(super::web::WebFetchTool),
             Box::new(super::files::ReadFileTool::new(&self.workspace_dir, &self.instance_slug)),
             Box::new(super::files::ListFilesTool::new(&self.workspace_dir, &self.instance_slug)),
             Box::new(SearchCodeTool::new(&self.workspace_dir, &self.instance_slug)),

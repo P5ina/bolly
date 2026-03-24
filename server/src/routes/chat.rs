@@ -217,9 +217,9 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         iteration += 1;
 
         let config_path = config::config_path();
-        let (brave_key, plan, auth_token, model_mode, heavy_multiplier, fast_model_name, google_ai_key) = {
+        let (plan, auth_token, model_mode, heavy_multiplier, fast_model_name, google_ai_key) = {
             let cfg = state.config.read().await;
-            (cfg.llm.tokens.brave_search.clone(), cfg.plan.clone(), cfg.auth_token.clone(),
+            (cfg.plan.clone(), cfg.auth_token.clone(),
              cfg.llm.model_mode, cfg.llm.heavy_multiplier, cfg.llm.fast_model_name().to_string(),
              cfg.llm.tokens.google_ai.clone())
         };
@@ -267,7 +267,6 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             &instance_slug,
             &chat_id,
             &effective_llm,
-            if brave_key.is_empty() { None } else { Some(brave_key.as_str()) },
             state.events.clone(),
             state.pending_secrets.clone(),
             &plan,

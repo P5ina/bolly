@@ -126,7 +126,6 @@ pub async fn run_single_turn(
     instance_slug: &str,
     chat_id: &str,
     llm: &LlmBackend,
-    brave_api_key: Option<&str>,
     events: broadcast::Sender<ServerEvent>,
     pending_secrets: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>>,
     plan: &str,
@@ -500,7 +499,7 @@ pub async fn run_single_turn(
     let activated_anthropic_skills: std::sync::Arc<tokio::sync::RwLock<std::collections::HashSet<String>>> =
         Default::default();
     let (all_tools, sent_files) = tools::build_tools(
-        workspace_dir, &instance_slug, &chat_id, brave_api_key,
+        workspace_dir, &instance_slug, &chat_id,
         config_path, events.clone(), llm,
         Some(pending_secrets),
         plan,
