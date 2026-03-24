@@ -342,6 +342,11 @@ pub async fn run_single_turn(
          if you're not sure about something, search. \
          getting it right matters more than responding fast.\n\n\
          prefer built-in tools when they exist:\n\
+         - web: use web_search and web_fetch (Anthropic server tools) for looking things up \
+           and reading web pages. they are fast, cheap, and don't need a browser.\n\
+         - browse: ONLY use `browse` for interactive tasks that need a real browser — \
+           clicking buttons, filling forms, taking screenshots, or pages that require JS rendering. \
+           never use `browse` just to read a page — use web_fetch instead.\n\
          - git/github: use github_clone, github_branch, github_commit_push, github_create_pr \
            (they handle auth automatically) instead of raw `git` commands\n\
          - files: use read_file, write_file, edit_file, list_files\n\
