@@ -1034,8 +1034,8 @@ fn build_anthropic_request(
     container_id: Option<&str>,
     activated_skill_ids: &[String],
 ) -> serde_json::Value {
-    // System blocks — cache_control on stable blocks only (not the volatile last block)
-    let block_count = system.iter().filter(|s| !s.is_empty()).count();
+    // System blocks — all blocks are stable now (time moved to user message).
+    // Each block gets cache_control to maximize prefix caching.
     let system_blocks: Vec<serde_json::Value> = system
         .iter()
         .enumerate()
@@ -1046,15 +1046,11 @@ fn build_anthropic_request(
             s.hash(&mut hasher);
             let hash = hasher.finish();
             log::info!("[llm] system block[{i}]: {} chars, hash={:x}", s.len(), hash);
-            let mut block = serde_json::json!({
+            serde_json::json!({
                 "type": "text",
                 "text": *s,
-            });
-            // Only cache non-last blocks (last is volatile time block)
-            if i < block_count - 1 {
-                block["cache_control"] = serde_json::json!({"type": "ephemeral"});
-            }
-            block
+                "cache_control": {"type": "ephemeral"},
+            })
         })
         .collect();
 
@@ -1142,9 +1138,13 @@ fn build_anthropic_request(
         *arr = merged;
     }
 
+    // Top-level cache_control: Anthropic automatically places a cache breakpoint
+    // on the last cacheable block, so the entire conversation history (system +
+    // tools + all prior messages) is cached. No manual per-message breakpoints needed.
     let mut req = serde_json::json!({
         "model": model,
         "max_tokens": max_tokens,
+        "cache_control": {"type": "ephemeral"},
         "system": system_blocks,
         "messages": msgs,
     });

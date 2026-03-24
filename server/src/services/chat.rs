@@ -368,11 +368,11 @@ pub async fn run_single_turn(
     );
 
     // System prompt is fully static (soul, skills, style, integrations).
-    // System prompt is fully static (soul, skills, style, integrations).
     // Mood and rhythm changes are recorded as messages in rig_history.
     // System prompt split into two blocks for Anthropic prompt caching:
     // Block 1 (stable): soul + skills + tools + integrations + style — cached across turns
     // Block 2 (semi-stable): memory catalog — cached until memory changes
+    // Time is injected into the user message (not system) to keep the entire system prefix stable.
     let system_stable = system_prompt;
 
     // Block 2: memory catalog (semi-stable — changes when memories update)
@@ -385,9 +385,11 @@ pub async fn run_single_turn(
         }
     };
 
-    // Block 3: current time (changes every request — never cached)
+    // Time context — prepended to user message to avoid breaking prompt cache.
+    // Putting it in system prompt would change the prefix every request,
+    // invalidating cache for tools and all messages.
     let now = crate::routes::instances::format_instance_now(&instance_dir);
-    let time_block = format!("## time\ncurrent time: {now}\nif you need the exact time later, use the `get_time` tool.");
+    let time_context = format!("[current time: {now}]\n\n");
 
     if loaded_entries.is_empty() {
         return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
@@ -398,6 +400,11 @@ pub async fn run_single_turn(
         .find(|m| m.role == ChatRole::User)
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "no user message to process"))?;
     let mut prompt_msg = llm::build_multimodal_prompt(&last_user.content, workspace_dir, &instance_slug);
+
+    // Prepend time context to user message (keeps system prompt stable for caching)
+    if let llm::Message::User { ref mut content } = prompt_msg {
+        content.insert(0, llm::ContentBlock::text(&time_context));
+    }
 
     // ── RAG: auto-inject relevant memories into the prompt ──
     if !google_ai_key.is_empty() && !last_user_content.is_empty() {
@@ -534,8 +541,8 @@ pub async fn run_single_turn(
     );
     // Block 1 (stable): soul + skills + tools — cached across turns
     // Block 2 (semi-stable): memory catalog — cached until memories change
-    // Block 3 (volatile): current time — never cached, always fresh
-    let system_blocks: Vec<&str> = vec![&system_stable, &memory_block, &time_block];
+    // Time is in the user message, not here — keeps the prefix stable for caching.
+    let system_blocks: Vec<&str> = vec![&system_stable, &memory_block];
     let tool_result = llm
         .chat_with_tools_streaming(
             &system_blocks, prompt_msg, history_msgs, all_tools,
