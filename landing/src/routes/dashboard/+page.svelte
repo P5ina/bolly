@@ -447,7 +447,7 @@
 								</form>
 							{/if}
 						</div>
-tttttt{/if}
+					{/if}
 						</div>
 					{/if}
 				{/each}

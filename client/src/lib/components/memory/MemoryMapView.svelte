@@ -634,7 +634,7 @@ ttt<!-- svelte-ignore a11y_autofocus -->
 						{@const folder = isMedia ? result.source_type?.replace("media_", "") ?? "media" : (basePath.split("/")[0] ?? "(root)")}
 						{@const preview = result.text.trim().slice(0, 200)}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
-tttttt<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
 						<div
 							class="search-result"
 							class:search-result-media={isMedia}
