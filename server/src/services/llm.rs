@@ -266,8 +266,35 @@ pub fn history_to_chat_messages(entries: &[HistoryEntry]) -> Vec<ChatMessage> {
                             mcp_app_html: None,
                             mcp_app_input: None, model: None,
                         });
+                    } else if block_type.ends_with("_tool_result") {
+                        let stdout = val["content"]["stdout"].as_str()
+                            .or_else(|| val["content"]["encrypted_stdout"].as_str().map(|_| "[encrypted output]"))
+                            .unwrap_or("");
+                        let stderr = val["content"]["stderr"].as_str().unwrap_or("");
+                        let mut output = String::new();
+                        if !stdout.is_empty() && stdout != "[encrypted output]" {
+                            output.push_str(stdout);
+                        }
+                        if !stderr.is_empty() {
+                            if !output.is_empty() { output.push('\n'); }
+                            output.push_str(stderr);
+                        }
+                        if output.is_empty() {
+                            output = "done".to_string();
+                        }
+                        let truncated: String = output.chars().take(2000).collect();
+                        out.push(ChatMessage {
+                            id: block_id,
+                            role: ChatRole::Assistant,
+                            content: truncated,
+                            created_at: ts.clone(),
+                            kind: MessageKind::ToolOutput,
+                            tool_name: None,
+                            mcp_app_html: None,
+                            mcp_app_input: None, model: None,
+                        });
                     }
-                    // Skip tool results and other unknown blocks (container_upload, etc.)
+                    // Other unknown blocks (container_upload, etc.) — skip
                 }
                 // Image, Document — skip for UI
                 _ => {}
