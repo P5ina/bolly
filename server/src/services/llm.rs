@@ -1171,10 +1171,15 @@ async fn anthropic_stream(
 ) -> anyhow::Result<(String, Vec<ToolUseBlock>, String, Option<String>, u64, Option<String>, Vec<String>)> {
     let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, api_key, container_id, activated_skill_ids);
 
-    // Use skills headers for streaming requests (they have tools + code_execution)
+    // Use skills headers only when skills are activated (requires code_execution tool)
+    let headers = if !activated_skill_ids.is_empty() {
+        anthropic_headers_with_skills(api_key)
+    } else {
+        anthropic_headers(api_key)
+    };
     let resp = http
         .post("https://api.anthropic.com/v1/messages")
-        .headers(anthropic_headers_with_skills(api_key))
+        .headers(headers)
         .json(&body)
         .send()
         .await?;
