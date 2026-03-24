@@ -203,6 +203,36 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
     const MAX_ITERATIONS: usize = 5;
     let mut iteration = 0;
 
+    // Classify model ONCE before the loop — the same model is used for all
+    // iterations of this request. Re-classifying mid-task would downgrade
+    // from heavy to fast in the middle of complex tool-use chains.
+    let classified_heavy: Option<bool> = {
+        let cfg = state.config.read().await;
+        let model_mode = cfg.llm.model_mode;
+        drop(cfg);
+        match model_mode {
+            config::ModelMode::Heavy => Some(true),
+            config::ModelMode::Fast => Some(false),
+            config::ModelMode::Auto => {
+                let llm_guard = state.llm.read().await;
+                if let Some(llm_ref) = llm_guard.as_ref() {
+                    let llm = llm_ref.clone();
+                    drop(llm_guard);
+                    let last_msg = chat::last_user_content(
+                        &state.workspace_dir, &instance_slug, &chat_id,
+                    );
+                    if let Some(msg) = last_msg {
+                        Some(llm.classify_needs_heavy(&msg).await)
+                    } else {
+                        Some(true) // default to heavy if no message
+                    }
+                } else {
+                    None // no LLM configured
+                }
+            }
+        }
+    };
+
     loop {
         if cancel.is_cancelled() {
             log::info!("[agent] {instance_slug}/{chat_id} — cancelled by user");
@@ -217,10 +247,10 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         iteration += 1;
 
         let config_path = config::config_path();
-        let (plan, model_mode, heavy_multiplier, fast_model_name, google_ai_key) = {
+        let (plan, heavy_multiplier, fast_model_name, google_ai_key) = {
             let cfg = state.config.read().await;
             (cfg.plan.clone(),
-             cfg.llm.model_mode, cfg.llm.heavy_multiplier, cfg.llm.fast_model_name().to_string(),
+             cfg.llm.heavy_multiplier, cfg.llm.fast_model_name().to_string(),
              cfg.llm.tokens.google_ai.clone())
         };
 
@@ -237,26 +267,13 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         // Timeout must exceed stream item timeout (480s) to allow long tools to complete.
         const TURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
 
-        // Route model based on model_mode setting
-        log::info!("[agent] {instance_slug}/{chat_id} — model_mode={model_mode:?}, base_model={}", llm_ref.model);
-        let (effective_llm, used_heavy) = {
-            use config::ModelMode;
-            match model_mode {
-                ModelMode::Heavy => (llm_ref.clone(), true),
-                ModelMode::Fast => (llm_ref.fast_variant_with(Some(&fast_model_name)), false),
-                ModelMode::Auto => {
-                    // Get last user message for classification
-                    let last_msg = chat::last_user_content(
-                        &state.workspace_dir, &instance_slug, &chat_id,
-                    );
-                    if let Some(msg) = last_msg {
-                        let heavy = llm_ref.classify_needs_heavy(&msg).await;
-                        if heavy { (llm_ref.clone(), true) } else { (llm_ref.fast_variant_with(Some(&fast_model_name)), false) }
-                    } else {
-                        (llm_ref.clone(), true)
-                    }
-                }
-            }
+        // Use the model decided before the loop — consistent across all iterations.
+        let used_heavy = classified_heavy.unwrap_or(true);
+        log::info!("[agent] {instance_slug}/{chat_id} — used_heavy={used_heavy}, base_model={}", llm_ref.model);
+        let effective_llm = if used_heavy {
+            llm_ref.clone()
+        } else {
+            llm_ref.fast_variant_with(Some(&fast_model_name))
         };
 
         let turn_fut = chat::run_single_turn(
