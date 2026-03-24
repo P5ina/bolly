@@ -327,6 +327,8 @@ pub enum ImageSource {
     Base64 { media_type: String, data: String },
     #[serde(rename = "url")]
     Url { url: String },
+    #[serde(rename = "file")]
+    File { file_id: String },
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -336,6 +338,8 @@ pub enum DocumentSource {
     Base64 { media_type: String, data: String },
     #[serde(rename = "url")]
     Url { url: String },
+    #[serde(rename = "file")]
+    File { file_id: String },
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -874,7 +878,7 @@ async fn streaming_agent_loop(
     // Download skill-generated files (code execution outputs)
     if !all_file_ids.is_empty() {
         for file_id in &all_file_ids {
-            match super::chat::download_skill_file(&backend.api_key, file_id).await {
+            match super::anthropic_files::download_file(&backend.api_key, file_id).await {
                 Ok((filename, bytes)) => {
                     match crate::services::uploads::save_upload(workspace_dir, instance_slug, &filename, &bytes) {
                         Ok(meta) => {
@@ -968,7 +972,7 @@ async fn complete_once(
 fn anthropic_headers(api_key: &str) -> reqwest::header::HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("x-api-key", api_key.parse().unwrap());
-    headers.insert("anthropic-beta", "compact-2026-01-12".parse().unwrap());
+    headers.insert("anthropic-beta", "compact-2026-01-12,files-api-2025-04-14".parse().unwrap());
     headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
     headers.insert("content-type", "application/json".parse().unwrap());
     headers
@@ -978,7 +982,7 @@ fn anthropic_headers(api_key: &str) -> reqwest::header::HeaderMap {
 fn anthropic_headers_with_skills(api_key: &str) -> reqwest::header::HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("x-api-key", api_key.parse().unwrap());
-    headers.insert("anthropic-beta", "compact-2026-01-12,code-execution-2025-08-25,skills-2025-10-02".parse().unwrap());
+    headers.insert("anthropic-beta", "compact-2026-01-12,files-api-2025-04-14,code-execution-2025-08-25,skills-2025-10-02".parse().unwrap());
     headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
     headers.insert("content-type", "application/json".parse().unwrap());
     headers
@@ -1735,48 +1739,44 @@ pub fn build_multimodal_prompt(
 
         if meta.mime_type.starts_with("image/") {
             image_idx += 1;
-            // Label each image for better multi-image attention (Anthropic best practice)
             if num_images > 1 {
                 contents.push(ContentBlock::text(&format!("Image {image_idx} ({name}):")));
             }
-            if let PdfStrategy::Url { base_url, auth_token } = pdf_strategy {
-                let url = format!(
-                    "{base_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}"
-                );
+            if let Some(ref fid) = meta.anthropic_file_id {
                 contents.push(ContentBlock::Image {
-                    source: ImageSource::Url { url },
+                    source: ImageSource::File { file_id: fid.clone() },
                 });
-                log::info!("attached image (URL): {name} ({}, {} bytes)", meta.mime_type, bytes.len());
+                log::info!("attached image (file_id): {name} ({fid})");
             } else {
-                let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                contents.push(ContentBlock::image_base64(b64, &meta.mime_type));
-                log::info!("attached image (base64): {name} ({}, {} bytes)", meta.mime_type, bytes.len());
+                log::warn!("image {name} has no anthropic_file_id, skipping");
+                contents.push(ContentBlock::text(format!("[image: {name} — not yet uploaded to API]")));
             }
         } else if meta.mime_type == "application/pdf" {
-            match pdf_strategy {
-                PdfStrategy::NativeDocument => {
-                    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                    contents.push(ContentBlock::document_base64(b64, "application/pdf"));
-                    log::info!("attached PDF (native document): {name} ({} bytes)", bytes.len());
-                }
-                PdfStrategy::Url {
-                    base_url,
-                    auth_token,
-                } => {
-                    let url = format!(
-                        "{base_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}"
-                    );
-                    contents.push(ContentBlock::document_url(url));
-                    log::info!("attached PDF (URL): {name} ({} bytes)", bytes.len());
-                }
+            if let Some(ref fid) = meta.anthropic_file_id {
+                contents.push(ContentBlock::Document {
+                    source: DocumentSource::File { file_id: fid.clone() },
+                });
+                log::info!("attached PDF (file_id): {name} ({fid})");
+            } else {
+                log::warn!("PDF {name} has no anthropic_file_id, skipping");
+                contents.push(ContentBlock::text(format!("[PDF: {name} — not yet uploaded to API]")));
             }
         } else if meta.mime_type.starts_with("text/") || meta.mime_type == "application/json" {
-            let text_content = String::from_utf8_lossy(&bytes);
-            let truncated: String = text_content.chars().take(10_000).collect();
-            contents.push(ContentBlock::text(format!(
-                "\n--- {name} ---\n{truncated}\n---"
-            )));
-            log::info!("attached text file: {name} ({} bytes)", bytes.len());
+            if let Some(ref fid) = meta.anthropic_file_id {
+                contents.push(ContentBlock::Unknown(serde_json::json!({
+                    "type": "container_upload",
+                    "file_id": fid
+                })));
+                log::info!("attached text file (container_upload): {name} ({fid})");
+            } else {
+                // No file_id — include as inline text (text files are small enough)
+                let text_content = String::from_utf8_lossy(&bytes);
+                let truncated: String = text_content.chars().take(10_000).collect();
+                contents.push(ContentBlock::text(format!(
+                    "\n--- {name} ---\n{truncated}\n---"
+                )));
+                log::info!("attached text file (inline): {name} ({} bytes)", bytes.len());
+            }
         } else if meta.mime_type == "application/zip" {
             match super::uploads::extract_zip(workspace_dir, instance_slug, upload_id) {
                 Ok((extract_dir, files)) => {
