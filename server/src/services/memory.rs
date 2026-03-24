@@ -354,7 +354,7 @@ pub async fn extract_and_store(
     llm: &LlmBackend,
     vector_store: &super::vector::VectorStore,
     google_ai_key: &str,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> anyhow::Result<()> {
     let dir = memory_dir(workspace_dir, instance_slug);
     std::fs::create_dir_all(&dir)?;
 

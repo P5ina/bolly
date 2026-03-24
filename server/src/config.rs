@@ -99,7 +99,7 @@ impl InstanceConfig {
     }
 
     /// Save per-instance config to `instances/{slug}/instance.toml`.
-    pub fn save(&self, workspace_dir: &Path, instance_slug: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save(&self, workspace_dir: &Path, instance_slug: &str) -> anyhow::Result<()> {
         let dir = workspace_dir.join("instances").join(instance_slug);
         fs::create_dir_all(&dir)?;
         let raw = toml::to_string_pretty(self)?;
@@ -160,7 +160,7 @@ impl EmailAccounts {
     }
 
     /// Save email accounts to `instances/{slug}/email.toml`.
-    pub fn save(accounts: &[EmailConfig], workspace_dir: &Path, instance_slug: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save(accounts: &[EmailConfig], workspace_dir: &Path, instance_slug: &str) -> anyhow::Result<()> {
         let dir = workspace_dir.join("instances").join(instance_slug);
         fs::create_dir_all(&dir)?;
         let wrapper = EmailAccounts { accounts: accounts.to_vec() };
@@ -374,7 +374,7 @@ fn ensure_workspace_layout(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
+pub fn load_config() -> anyhow::Result<Config> {
     let path = config_path();
     ensure_config_exists(&path)?;
     let raw = fs::read_to_string(&path)?;

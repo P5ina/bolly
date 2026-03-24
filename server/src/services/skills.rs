@@ -211,14 +211,14 @@ pub fn is_installed(workspace_dir: &Path, skill_id: &str) -> bool {
 /// Fetch the remote skills registry index.
 pub async fn fetch_registry(
     registry_url: &str,
-) -> Result<Vec<RegistryEntry>, Box<dyn std::error::Error + Send + Sync>> {
+) -> anyhow::Result<Vec<RegistryEntry>> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()?;
 
     let resp = client.get(registry_url).send().await?;
     if !resp.status().is_success() {
-        return Err(format!("registry returned {}", resp.status()).into());
+        return Err(anyhow::anyhow!("registry returned {}", resp.status()));
     }
 
     let entries: Vec<RegistryEntry> = resp.json().await?;
@@ -229,7 +229,7 @@ pub async fn fetch_registry(
 pub async fn install_from_registry(
     workspace_dir: &Path,
     entry: &RegistryEntry,
-) -> Result<Skill, Box<dyn std::error::Error + Send + Sync>> {
+) -> anyhow::Result<Skill> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
@@ -263,7 +263,7 @@ pub async fn install_from_registry(
     fs::write(skill_dir.join(".source.json"), &source_json)?;
 
     // Read back the installed skill
-    let skill = read_skill_dir(&skill_dir).ok_or("failed to read installed skill")?;
+    let skill = read_skill_dir(&skill_dir).ok_or_else(|| anyhow::anyhow!("failed to read installed skill"))?;
     Ok(skill)
 }
 
@@ -284,7 +284,7 @@ async fn download_github_dir(
     git_ref: &str,
     api_path: &str,
     local_dir: &Path,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> anyhow::Result<()> {
     let url = format!(
         "https://api.github.com/repos/{}/contents{}?ref={}",
         repo, api_path, git_ref
@@ -298,7 +298,7 @@ async fn download_github_dir(
         .await?;
 
     if !resp.status().is_success() {
-        return Err(format!("GitHub API returned {} for {}", resp.status(), url).into());
+        return Err(anyhow::anyhow!("GitHub API returned {} for {}", resp.status(), url));
     }
 
     let items: Vec<GitHubContent> = resp.json().await?;

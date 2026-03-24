@@ -10,7 +10,7 @@ pub fn save_thought(
     workspace_dir: &Path,
     slug: &str,
     thought: &Thought,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> anyhow::Result<()> {
     let dir = workspace_dir
         .join("instances")
         .join(slug)
@@ -27,7 +27,7 @@ pub fn save_thought(
 pub fn list_thoughts(
     workspace_dir: &Path,
     slug: &str,
-) -> Result<Vec<Thought>, Box<dyn std::error::Error + Send + Sync>> {
+) -> anyhow::Result<Vec<Thought>> {
     let dir = workspace_dir
         .join("instances")
         .join(slug)

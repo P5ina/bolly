@@ -353,10 +353,10 @@ fn is_rate_limit_error(msg: &str) -> bool {
         || msg.contains("overloaded")
 }
 
-async fn retry_on_rate_limit<F, Fut, T>(f: F) -> Result<T, Box<dyn std::error::Error + Send + Sync>>
+async fn retry_on_rate_limit<F, Fut, T>(f: F) -> anyhow::Result<T>
 where
     F: Fn() -> Fut,
-    Fut: std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
+    Fut: std::future::Future<Output = anyhow::Result<T>>,
 {
     let mut attempt = 0;
     loop {
@@ -473,7 +473,7 @@ impl LlmBackend {
         system_prompt: &str,
         prompt: &str,
         history: Vec<Message>,
-    ) -> Result<(String, u64), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> anyhow::Result<(String, u64)> {
         let backend = self.clone();
         let system = system_prompt.to_string();
         let prompt = prompt.to_string();
@@ -499,7 +499,7 @@ impl LlmBackend {
         system_prompt: &str,
         prompt: &str,
         schema: serde_json::Value,
-    ) -> Result<(String, u64), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> anyhow::Result<(String, u64)> {
         let backend = self.clone();
         let system = system_prompt.to_string();
         let prompt = prompt.to_string();
@@ -536,7 +536,7 @@ impl LlmBackend {
                 let status = resp.status();
                 let resp_text = resp.text().await?;
                 if !status.is_success() {
-                    return Err(format!("Anthropic API error {status}: {resp_text}").into());
+                    return Err(anyhow::anyhow!("Anthropic API error {status}: {resp_text}"));
                 }
 
                 let resp_json: serde_json::Value = serde_json::from_str(&resp_text)?;
@@ -567,7 +567,7 @@ impl LlmBackend {
         workspace_dir: &Path,
         mcp_snapshot: Option<super::mcp::McpAppSnapshot>,
         activated_anthropic_skills: std::sync::Arc<tokio::sync::RwLock<std::collections::HashSet<String>>>,
-    ) -> Result<ToolChatResult, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> anyhow::Result<ToolChatResult> {
         log::info!("chat_with_tools_streaming: {} tools", tools.len());
 
         let tool_defs = collect_tool_defs(&tools).await;
@@ -610,7 +610,7 @@ impl LlmBackend {
         prompt: &str,
         history: Vec<Message>,
         tools: Vec<Box<dyn ToolDyn>>,
-    ) -> Result<(String, u64), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> anyhow::Result<(String, u64)> {
         if tools.is_empty() {
             return self.chat(system_prompt, prompt, history).await;
         }
@@ -643,7 +643,7 @@ async fn agent_loop(
     tool_defs: &[ToolDefinition],
     tools: &[Box<dyn ToolDyn>],
     messages: &mut Vec<Message>,
-) -> Result<(String, u64), Box<dyn std::error::Error + Send + Sync>> {
+) -> anyhow::Result<(String, u64)> {
     let mut total_tokens: u64 = 0;
     loop {
         let (text, tool_uses, stop_reason, tokens) = complete_once(backend, system, tool_defs, messages).await?;
@@ -707,7 +707,7 @@ async fn streaming_agent_loop(
     workspace_dir: &Path,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
     activated_anthropic_skills: &std::sync::Arc<tokio::sync::RwLock<std::collections::HashSet<String>>>,
-) -> Result<(String, Option<String>, u64, Vec<String>), Box<dyn std::error::Error + Send + Sync>> {
+) -> anyhow::Result<(String, Option<String>, u64, Vec<String>)> {
     let mut all_text = String::new();
     let mut total_tokens: u64 = 0;
     let mut current_message_id = super::chat::next_id();
@@ -876,7 +876,7 @@ async fn complete_once(
     system: &[&str],
     tool_defs: &[ToolDefinition],
     messages: &[Message],
-) -> Result<(String, Vec<ToolUseBlock>, String, u64), Box<dyn std::error::Error + Send + Sync>> {
+) -> anyhow::Result<(String, Vec<ToolUseBlock>, String, u64)> {
     anthropic_complete(&backend.http, &backend.api_key, &backend.model, system, tool_defs, messages, 16384).await
 }
 
@@ -1077,7 +1077,7 @@ async fn anthropic_complete(
     tool_defs: &[ToolDefinition],
     messages: &[Message],
     max_tokens: u64,
-) -> Result<(String, Vec<ToolUseBlock>, String, u64), Box<dyn std::error::Error + Send + Sync>> {
+) -> anyhow::Result<(String, Vec<ToolUseBlock>, String, u64)> {
     let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, false, api_key, None, &[]);
 
     let resp = http
@@ -1095,7 +1095,7 @@ async fn anthropic_complete(
             messages.len(),
             serde_json::to_string(&body).map(|s| s.len()).unwrap_or(0),
         );
-        return Err(format!("Anthropic API error {status}: {resp_text}").into());
+        return Err(anyhow::anyhow!("Anthropic API error {status}: {resp_text}"));
     }
 
     let resp_json: serde_json::Value = serde_json::from_str(&resp_text)?;
@@ -1168,7 +1168,7 @@ async fn anthropic_stream(
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
     container_id: Option<&str>,
     activated_skill_ids: &[String],
-) -> Result<(String, Vec<ToolUseBlock>, String, Option<String>, u64, Option<String>, Vec<String>), Box<dyn std::error::Error + Send + Sync>> {
+) -> anyhow::Result<(String, Vec<ToolUseBlock>, String, Option<String>, u64, Option<String>, Vec<String>)> {
     let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, api_key, container_id, activated_skill_ids);
 
     // Use skills headers for streaming requests (they have tools + code_execution)
@@ -1203,7 +1203,7 @@ async fn anthropic_stream(
             }).collect();
             log::error!("[llm] msg[{i}] {role}: {:?}", types);
         }
-        return Err(format!("Anthropic API error {status}: {err_text}").into());
+        return Err(anyhow::anyhow!("Anthropic API error {status}: {err_text}"));
     }
 
     let mut text = String::new();
@@ -1438,7 +1438,7 @@ async fn anthropic_stream(
                     let error_msg = ev["error"]["message"]
                         .as_str()
                         .unwrap_or("unknown error");
-                    return Err(format!("Anthropic stream error: {error_msg}").into());
+                    return Err(anyhow::anyhow!("Anthropic stream error: {error_msg}"));
                 }
                 _ => {}
             }
@@ -1480,7 +1480,7 @@ async fn stream_once(
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
     container_id: Option<&str>,
     activated_skill_ids: &[String],
-) -> Result<StreamOnceResult, Box<dyn std::error::Error + Send + Sync>> {
+) -> anyhow::Result<StreamOnceResult> {
     let (text, tool_uses, stop_reason, compaction, tokens_used, container_id, file_ids) =
         anthropic_stream(
             &backend.http, &backend.api_key, &backend.model, system, tool_defs, messages,

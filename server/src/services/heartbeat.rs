@@ -112,7 +112,7 @@ async fn heartbeat_instance(
     events: &broadcast::Sender<ServerEvent>,
     vector_store: &Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> anyhow::Result<()> {
     let mood = load_mood_state(instance_dir);
     let now = Utc::now().timestamp();
 

@@ -31,8 +31,8 @@ impl fmt::Display for McpToolError {
 impl std::error::Error for McpToolError {}
 
 /// Create a fresh ServerSink connection for a single tool call.
-async fn fresh_sink(config: &McpServerConfig) -> Result<(ServerSink, tokio::task::JoinHandle<()>), Box<dyn std::error::Error + Send + Sync>> {
-    let url = config.url.as_deref().ok_or("no url")?;
+async fn fresh_sink(config: &McpServerConfig) -> anyhow::Result<(ServerSink, tokio::task::JoinHandle<()>)> {
+    let url = config.url.as_deref().ok_or_else(|| anyhow::anyhow!("no url"))?;
     let mut transport_config = rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(url);
     for (key, value) in &config.headers {
         if let (Ok(name), Ok(val)) = (key.parse::<reqwest::header::HeaderName>(), value.parse::<reqwest::header::HeaderValue>()) {
@@ -175,7 +175,7 @@ fn extract_ui_resource_uri(tool: &rmcp::model::Tool) -> Option<String> {
 
 /// Connect to an MCP server, discover tools, cache UI resources, then drop the connection.
 /// Tools hold the config and will reconnect per call.
-async fn connect_one(config: &McpServerConfig) -> Result<McpConnection, Box<dyn std::error::Error + Send + Sync>> {
+async fn connect_one(config: &McpServerConfig) -> anyhow::Result<McpConnection> {
     let (sink, _handle) = fresh_sink(config).await?;
 
     let raw_tools = sink.list_all_tools().await?;
