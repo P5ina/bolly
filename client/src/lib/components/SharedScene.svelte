@@ -17,7 +17,7 @@
 	// Thinking cycle: idle → orb-to-{shape} → {shape}-to-orb → repeat or idle
 	// Each cycle picks a random shape. Shapes never repeat consecutively.
 
-	type OrbState = 'intro' | 'idle' | 'toShape' | 'fromShape';
+	type VideoPhase = 'intro' | 'idle' | 'toShape' | 'fromShape';
 
 	const shapes = ['cube', 'tesseract', 'prism'] as const;
 	type Shape = typeof shapes[number];
@@ -29,7 +29,7 @@
 	};
 
 	let introPlayed = $state(store.mode === 'chat');
-	let orbState = $state<OrbState>(store.mode === 'onboarding' ? 'intro' : 'idle');
+	let orbState = $state<VideoPhase>(store.mode === 'onboarding' ? 'intro' : 'idle');
 	let currentShape = $state<Shape>('cube');
 	let lastShape = $state<Shape | null>(null);
 
@@ -341,6 +341,7 @@
 		{#if orb.visible}
 			<button
 				class="orb-btn"
+				aria-label={orb.slug}
 				style="left: {orb.x}%; top: {orb.y}%; width: {orb.size}px; height: {orb.size}px; opacity: {orb.opacity};"
 				disabled={store.mode !== "home"}
 			>

@@ -113,6 +113,7 @@
 
 			{#if showCreate}
 				<div class="create-field">
+					<!-- svelte-ignore a11y_autofocus -->
 					<input bind:value={newSlug} onkeydown={handleKeydown} placeholder="what's your name?" autofocus class="create-input" />
 					{#if newSlug.trim()}
 						<button onclick={create} class="create-go" aria-label="Create">
@@ -166,7 +167,7 @@
 					<option value="stable">stable</option>
 					<option value="nightly">nightly</option>
 				</select>
-				<button class="changelog-close" onclick={() => showChangelog = false}>
+				<button class="changelog-close" aria-label="Close" onclick={() => showChangelog = false}>
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg>
 				</button>
 			</div>

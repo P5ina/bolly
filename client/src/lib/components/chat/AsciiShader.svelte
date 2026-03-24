@@ -44,9 +44,9 @@
 		return "calm";
 	}
 
-	let moodRef = mood;
-	let thinkingRef = thinking;
-	let voiceRef = voiceAmplitude;
+	let moodRef = "calm";
+	let thinkingRef = false;
+	let voiceRef = 0;
 	$effect(() => { moodRef = mood; });
 	$effect(() => { thinkingRef = thinking; });
 	$effect(() => { voiceRef = voiceAmplitude; });

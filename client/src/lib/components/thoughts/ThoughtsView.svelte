@@ -313,17 +313,7 @@
 	}
 	.thought-more:hover { color: oklch(1 0 0 / 45%); }
 
-	/* Quiet note */
-	.quiet-note {
-		text-align: center;
-		font-family: var(--font-mono);
-		font-size: 0.6rem;
-		color: oklch(1 0 0 / 15%);
-		letter-spacing: 0.06em;
-		padding: 1rem 0;
-	}
-
-	@media (max-width: 640px) {
+@media (max-width: 640px) {
 		.thoughts-page { padding: 1.5rem 1rem; }
 	}
 </style>

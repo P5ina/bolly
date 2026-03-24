@@ -125,65 +125,6 @@
 		50% { opacity: 0.3; transform: scale(1.4); }
 	}
 
-	.update-banner {
-		position: fixed;
-		top: calc(1rem + env(safe-area-inset-top, 0px));
-		left: 50%;
-		transform: translateX(-50%);
-		display: flex;
-		align-items: center;
-		gap: 0.625rem;
-		padding: 0.4rem 0.5rem 0.4rem 1rem;
-		border-radius: 2rem;
-		background: oklch(0.065 0.015 280 / 85%);
-		backdrop-filter: blur(20px);
-		border: 1px solid oklch(0.78 0.12 75 / 15%);
-		z-index: 100;
-		animation: banner-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-	}
-
-	.update-banner-text {
-		font-family: var(--font-mono);
-		font-size: 0.68rem;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: oklch(0.78 0.12 75 / 70%);
-	}
-
-	.update-banner-btn {
-		padding: 0.2rem 0.625rem;
-		border-radius: 1rem;
-		background: oklch(0.78 0.12 75 / 12%);
-		border: 1px solid oklch(0.78 0.12 75 / 28%);
-		color: oklch(0.78 0.12 75 / 90%);
-		font-family: var(--font-mono);
-		font-size: 0.72rem;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		transition: all 0.2s ease;
-		cursor: pointer;
-	}
-	.update-banner-btn:hover {
-		background: oklch(0.78 0.12 75 / 28%);
-		border-color: oklch(0.78 0.12 75 / 35%);
-	}
-
-	.update-banner-dismiss {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 1.25rem;
-		height: 1.25rem;
-		border-radius: 50%;
-		color: oklch(0.55 0.02 280 / 40%);
-		transition: all 0.2s ease;
-		cursor: pointer;
-	}
-	.update-banner-dismiss:hover {
-		color: oklch(0.78 0.12 75 / 60%);
-		background: oklch(0.78 0.12 75 / 8%);
-	}
-
 	/* ── Dynamic Island ── */
 
 	.island {

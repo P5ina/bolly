@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from "svelte";
 	import type { ChatMessage } from "$lib/api/types.js";
 	import PresentationBubble from "./PresentationBubble.svelte";
 
@@ -38,9 +39,8 @@
 	};
 
 	let visible = $state<VisibleBubble[]>([]);
-	let seenIds = new Set<string>(
-		stream.filter(s => s.type === "message").map(s => (s as { type: "message"; data: ChatMessage }).data.id)
-	);
+	const initialIds = untrack(() => stream).filter(s => s.type === "message").map(s => (s as { type: "message"; data: ChatMessage }).data.id);
+	let seenIds = new Set<string>(initialIds);
 
 	// Watch stream for new messages
 	$effect(() => {
@@ -99,7 +99,7 @@
 	}
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div class="present-root" onclick={showInput} onkeydown={handleGlobalKey} role="application">
 	<div class="present-column" bind:this={messageColumn}>
 		<div class="present-spacer"></div>

@@ -122,6 +122,7 @@
 
 	{#if showDeleteConfirm}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div class="delete-overlay" onkeydown={(e) => e.key === 'Escape' && closeDeleteConfirm()} onclick={closeDeleteConfirm}>
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="delete-modal" onclick={(e) => e.stopPropagation()}>

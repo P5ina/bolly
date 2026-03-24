@@ -1005,6 +1005,7 @@
 					disabled={musicSaving}
 					onclick={toggleMusic}
 					role="switch"
+					aria-label="Toggle music"
 					aria-checked={musicEnabledVal}
 				>
 					<span class="switch-thumb"></span>
@@ -1214,275 +1215,6 @@
 		}
 	}
 
-	.check-update-btn {
-		font-family: var(--font-mono);
-		font-size: inherit;
-		color: oklch(0.78 0.12 75 / 70%);
-		cursor: pointer;
-		background: none;
-		border: none;
-		padding: 0;
-		text-decoration: underline;
-		text-underline-offset: 2px;
-	}
-	.check-update-btn:hover {
-		color: oklch(0.78 0.12 75);
-	}
-	.check-update-btn:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-	.channel-select {
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		padding: 0.2rem 0.4rem;
-		border-radius: 0.25rem;
-		background: oklch(1 0 0 / 4%);
-		border: 1px solid oklch(1 0 0 / 8%);
-		color: oklch(0.88 0.02 75 / 60%);
-		cursor: pointer;
-	}
-	/* ═══ Update card ═══ */
-
-	.update-card {
-		position: relative;
-		overflow: hidden;
-		border-radius: 1rem;
-		border: 1px solid oklch(0.5 0.08 155 / 10%);
-		animation: update-card-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-	}
-	.update-card::before {
-		content: "";
-		position: absolute;
-		top: 0; left: 15%; right: 15%;
-		height: 1px;
-		background: linear-gradient(90deg, transparent, oklch(0.6 0.12 155 / 18%), transparent);
-		pointer-events: none;
-	}
-	@keyframes update-card-in {
-		from { opacity: 0; transform: translateY(8px) scale(0.98); filter: blur(4px); }
-		to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
-	}
-
-	.update-card-content {
-		position: relative;
-		z-index: 2;
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.875rem 1rem;
-	}
-
-	.update-card-glow {
-		position: absolute;
-		inset: 0;
-		z-index: 0;
-		opacity: 0;
-		animation: update-glow-pulse 3s ease-in-out infinite;
-	}
-	@keyframes update-glow-pulse {
-		0%, 100% { opacity: 0.4; }
-		50% { opacity: 1; }
-	}
-
-	/* ── Available state ── */
-	.update-card-available {
-		background: linear-gradient(
-			165deg,
-			oklch(0.5 0.06 155 / 6%) 0%,
-			oklch(0.4 0.04 165 / 4%) 50%,
-			oklch(0.5 0.06 155 / 5%) 100%
-		);
-		backdrop-filter: blur(16px) saturate(140%);
-		border-color: oklch(0.55 0.10 155 / 15%);
-	}
-	.update-card-available .update-card-glow {
-		background: radial-gradient(ellipse at 30% 50%, oklch(0.55 0.14 155 / 8%) 0%, transparent 70%);
-	}
-
-	/* ── Progress state ── */
-	.update-card-progress {
-		background: linear-gradient(
-			165deg,
-			oklch(0.5 0.06 220 / 6%) 0%,
-			oklch(0.4 0.04 230 / 4%) 100%
-		);
-		backdrop-filter: blur(16px) saturate(140%);
-		border-color: oklch(0.55 0.10 220 / 12%);
-	}
-	.update-card-progress-bar {
-		position: absolute;
-		bottom: 0; left: 0;
-		height: 2px;
-		width: 30%;
-		background: linear-gradient(90deg, oklch(0.60 0.14 220 / 60%), oklch(0.65 0.18 200 / 80%));
-		border-radius: 1px;
-		animation: progress-slide 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-	}
-	@keyframes progress-slide {
-		0% { left: -30%; }
-		100% { left: 100%; }
-	}
-
-	/* ── Done state ── */
-	.update-card-done {
-		background: linear-gradient(
-			165deg,
-			oklch(0.50 0.08 155 / 8%) 0%,
-			oklch(0.45 0.06 165 / 5%) 50%,
-			oklch(0.50 0.08 155 / 7%) 100%
-		);
-		backdrop-filter: blur(16px) saturate(140%);
-		border-color: oklch(0.60 0.14 155 / 20%);
-		box-shadow:
-			0 4px 24px oklch(0.50 0.14 155 / 10%),
-			0 12px 48px oklch(0.40 0.10 155 / 5%);
-	}
-	.update-card-done .update-card-glow {
-		background: radial-gradient(ellipse at 50% 40%, oklch(0.55 0.16 155 / 12%) 0%, transparent 65%);
-		animation: update-glow-bloom 2s ease-out both;
-	}
-	@keyframes update-glow-bloom {
-		from { opacity: 0; transform: scale(0.8); }
-		to { opacity: 1; transform: scale(1); }
-	}
-	.update-card-shimmer {
-		position: absolute;
-		inset: 0;
-		z-index: 1;
-		background: linear-gradient(
-			110deg,
-			transparent 30%,
-			oklch(0.70 0.12 155 / 8%) 45%,
-			oklch(0.75 0.14 155 / 12%) 50%,
-			oklch(0.70 0.12 155 / 8%) 55%,
-			transparent 70%
-		);
-		background-size: 300% 100%;
-		animation: shimmer-sweep 2.5s ease-in-out 0.3s both;
-		pointer-events: none;
-	}
-	@keyframes shimmer-sweep {
-		from { background-position: 200% 0; }
-		to { background-position: -100% 0; }
-	}
-
-	/* ── Icons ── */
-	.update-icon-wrap {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 2rem;
-		height: 2rem;
-		border-radius: 0.5rem;
-		flex-shrink: 0;
-	}
-	.update-icon-available {
-		background: oklch(0.55 0.10 155 / 10%);
-		color: oklch(0.65 0.14 155 / 70%);
-		animation: icon-bounce 2s ease-in-out infinite;
-	}
-	@keyframes icon-bounce {
-		0%, 100% { transform: translateY(0); }
-		50% { transform: translateY(-2px); }
-	}
-	.update-icon-progress {
-		background: oklch(0.55 0.10 220 / 10%);
-		color: oklch(0.65 0.14 220 / 70%);
-	}
-	.update-spinner {
-		animation: spin 1.2s linear infinite;
-	}
-	@keyframes spin {
-		to { transform: rotate(360deg); }
-	}
-	.update-icon-done {
-		background: oklch(0.55 0.12 155 / 14%);
-		color: oklch(0.70 0.16 155 / 85%);
-		animation: icon-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-	}
-	@keyframes icon-pop {
-		from { transform: scale(0); opacity: 0; }
-		to { transform: scale(1); opacity: 1; }
-	}
-
-	/* ── Text ── */
-	.update-text {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 0.15rem;
-		min-width: 0;
-	}
-	.update-title {
-		font-family: var(--font-mono);
-		font-size: 0.72rem;
-		font-weight: 500;
-		letter-spacing: 0.04em;
-		color: oklch(0.80 0.04 155 / 75%);
-	}
-	.update-title-done {
-		color: oklch(0.72 0.14 155 / 90%);
-	}
-	.update-subtitle {
-		font-family: var(--font-body);
-		font-size: 0.68rem;
-		color: oklch(0.65 0.04 220 / 40%);
-	}
-	.update-version-tag {
-		display: flex;
-		align-items: center;
-		gap: 0.35rem;
-		font-family: var(--font-mono);
-		font-size: 0.68rem;
-	}
-	.update-v-old {
-		color: oklch(0.60 0.04 220 / 35%);
-	}
-	.update-arrow {
-		color: oklch(0.60 0.10 155 / 45%);
-	}
-	.update-v-new {
-		color: oklch(0.68 0.12 155 / 70%);
-		font-weight: 500;
-	}
-
-	/* ── Action buttons ── */
-	.update-action-btn {
-		flex-shrink: 0;
-		font-family: var(--font-mono);
-		font-size: 0.72rem;
-		font-weight: 500;
-		letter-spacing: 0.04em;
-		padding: 0.375rem 0.875rem;
-		border-radius: 0.5rem;
-		cursor: pointer;
-		transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-		white-space: nowrap;
-	}
-	.update-action-available {
-		background: oklch(0.55 0.10 155 / 12%);
-		border: 1px solid oklch(0.60 0.12 155 / 25%);
-		color: oklch(0.72 0.14 155 / 85%);
-	}
-	.update-action-available:hover {
-		background: oklch(0.55 0.12 155 / 22%);
-		border-color: oklch(0.60 0.14 155 / 40%);
-		box-shadow: 0 0 16px oklch(0.50 0.12 155 / 12%);
-		transform: translateY(-1px);
-	}
-	.update-action-done {
-		background: oklch(0.55 0.12 155 / 14%);
-		border: 1px solid oklch(0.60 0.14 155 / 30%);
-		color: oklch(0.72 0.16 155 / 90%);
-	}
-	.update-action-done:hover {
-		background: oklch(0.55 0.14 155 / 25%);
-		border-color: oklch(0.65 0.16 155 / 45%);
-		box-shadow: 0 0 20px oklch(0.50 0.14 155 / 15%);
-		transform: translateY(-1px);
-	}
-
 	.settings-section {
 		position: relative;
 		padding: 1.25rem;
@@ -1521,20 +1253,6 @@
 		margin-bottom: 1rem;
 	}
 
-	.section-icon {
-		width: 2.25rem;
-		height: 2.25rem;
-		border-radius: 0.625rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: linear-gradient(145deg, oklch(1 0 0 / 6%) 0%, oklch(0.5 0.02 240 / 8%) 100%);
-		border: 1px solid oklch(1 0 0 / 10%);
-		border-top-color: oklch(1 0 0 / 16%);
-		flex-shrink: 0;
-		box-shadow: inset 0 1px 0 oklch(1 0 0 / 6%);
-	}
-
 	.section-icon-img {
 		width: 2.5rem;
 		height: 2.5rem;
@@ -1546,14 +1264,6 @@
 		box-shadow:
 			0 2px 8px oklch(0 0 0 / 20%),
 			inset 0 1px 0 oklch(1 0 0 / 6%);
-	}
-
-	.ext-icon {
-		color: oklch(0.55 0.08 240 / 60%);
-	}
-
-	.tz-icon {
-		color: oklch(0.75 0.10 200 / 60%);
 	}
 
 	.tz-picker {
@@ -1614,159 +1324,6 @@
 		padding: 1rem;
 	}
 
-	.ext-catalog {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		margin-bottom: 0.75rem;
-	}
-
-	.ext-card {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.75rem;
-		border-radius: 0.625rem;
-		background: oklch(1 0 0 / 2.5%);
-		border: 1px solid oklch(1 0 0 / 6%);
-		transition: all 0.25s ease;
-	}
-
-	.ext-card-active {
-		border-color: oklch(0.55 0.08 240 / 15%);
-		background: oklch(0.55 0.08 240 / 4%);
-	}
-
-	.ext-card-icon {
-		width: 2.5rem;
-		height: 2.5rem;
-		border-radius: 0.5rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: oklch(0.55 0.08 240 / 6%);
-		color: oklch(0.55 0.08 240 / 50%);
-		flex-shrink: 0;
-	}
-
-	.ext-card-active .ext-card-icon {
-		background: oklch(0.55 0.08 240 / 10%);
-		color: oklch(0.55 0.08 240 / 70%);
-	}
-
-	.ext-card-body {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.15rem;
-	}
-
-	.ext-card-name {
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: oklch(0.88 0.02 75 / 75%);
-		letter-spacing: 0.01em;
-	}
-
-	.ext-card-desc {
-		font-family: var(--font-body);
-		font-size: 0.75rem;
-		color: oklch(0.88 0.02 75 / 35%);
-		line-height: 1.4;
-	}
-
-	.ext-toggle {
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		letter-spacing: 0.03em;
-		padding: 0.375rem 0.75rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		flex-shrink: 0;
-		color: oklch(0.55 0.08 240 / 70%);
-		background: oklch(0.55 0.08 240 / 8%);
-		border: 1px solid oklch(0.55 0.08 240 / 15%);
-	}
-
-	.ext-toggle:hover:not(:disabled) {
-		background: oklch(0.55 0.08 240 / 14%);
-		border-color: oklch(0.55 0.08 240 / 35%);
-	}
-
-	.ext-toggle-active {
-		color: oklch(0.70 0.12 145 / 70%);
-		background: oklch(0.70 0.12 145 / 6%);
-		border-color: oklch(0.70 0.12 145 / 15%);
-	}
-
-	.ext-toggle-active:hover:not(:disabled) {
-		color: oklch(0.65 0.12 25 / 70%);
-		background: oklch(0.65 0.12 25 / 8%);
-		border-color: oklch(0.65 0.12 25 / 20%);
-	}
-
-	.ext-toggle:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.ext-spinner {
-		display: inline-block;
-		width: 10px;
-		height: 10px;
-		border: 1.5px solid oklch(0.55 0.08 240 / 35%);
-		border-top-color: oklch(0.55 0.08 240 / 70%);
-		border-radius: 50%;
-		animation: spin 0.6s linear infinite;
-	}
-
-	@keyframes spin {
-		to { transform: rotate(360deg); }
-	}
-
-	/* --- custom servers list --- */
-
-	.ext-custom-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-		margin-bottom: 0.75rem;
-	}
-
-	.ext-custom-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0.5rem 0.75rem;
-		border-radius: 0.5rem;
-		background: oklch(1 0 0 / 3%);
-		border: 1px solid oklch(1 0 0 / 5%);
-	}
-
-	.ext-custom-info {
-		display: flex;
-		flex-direction: column;
-		gap: 0.1rem;
-	}
-
-	.ext-custom-name {
-		font-family: var(--font-mono);
-		font-size: 0.72rem;
-		color: oklch(0.88 0.02 75 / 60%);
-	}
-
-	.ext-custom-status {
-		font-family: var(--font-mono);
-		font-size: 0.68rem;
-		color: oklch(0.55 0.02 280 / 40%);
-	}
-
-	.ext-custom-connected {
-		color: oklch(0.70 0.12 145 / 70%);
-	}
-
 	.ext-remove-btn {
 		font-family: var(--font-body);
 		font-size: 0.72rem;
@@ -1785,45 +1342,6 @@
 	.ext-remove-btn:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
-	}
-
-	/* --- advanced / custom form --- */
-
-	.ext-advanced {
-		margin-top: 0.25rem;
-	}
-
-	.ext-advanced-toggle {
-		font-family: var(--font-mono);
-		font-size: 0.72rem;
-		color: oklch(0.55 0.02 280 / 35%);
-		background: none;
-		border: none;
-		cursor: pointer;
-		padding: 0.25rem 0;
-		transition: color 0.2s ease;
-		letter-spacing: 0.03em;
-	}
-	.ext-advanced-toggle:hover {
-		color: oklch(0.55 0.08 240 / 55%);
-	}
-
-	.ext-custom-form {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		padding: 0.75rem;
-		border-radius: 0.5rem;
-		background: oklch(1 0 0 / 2%);
-		border: 1px solid oklch(1 0 0 / 6%);
-	}
-
-	.ext-custom-form-title {
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: oklch(0.55 0.02 280 / 45%);
-		letter-spacing: 0.04em;
-		margin-bottom: 0.15rem;
 	}
 
 	.ext-input {
@@ -1885,38 +1403,6 @@
 
 	/* --- google / shared --- */
 
-	.reconnect-banner {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.5rem;
-		padding: 0.625rem 0.75rem;
-		border-radius: 0.5rem;
-		background: oklch(0.55 0.08 240 / 6%);
-		border: 1px solid oklch(0.55 0.08 240 / 15%);
-		margin-bottom: 0.75rem;
-	}
-	.reconnect-icon {
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		font-weight: 700;
-		color: oklch(0.55 0.08 240 / 70%);
-		background: oklch(0.55 0.08 240 / 15%);
-		width: 16px;
-		height: 16px;
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		margin-top: 1px;
-	}
-	.reconnect-text {
-		font-family: var(--font-body);
-		font-size: 0.68rem;
-		line-height: 1.4;
-		color: oklch(0.88 0.02 75 / 55%);
-	}
-
 	.accounts-list {
 		display: flex;
 		flex-direction: column;
@@ -1969,14 +1455,6 @@
 	}
 
 	/* --- github --- */
-
-	.gh-icon {
-		color: oklch(0.88 0 0 / 60%);
-	}
-
-	.voice-icon {
-		color: oklch(0.78 0.10 200 / 60%);
-	}
 
 	.switch {
 		margin-left: auto;
@@ -2059,10 +1537,6 @@
 	}
 
 	/* --- email --- */
-
-	.email-icon {
-		color: oklch(0.72 0.10 250 / 60%);
-	}
 
 	.email-form {
 		display: flex;

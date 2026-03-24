@@ -300,4 +300,9 @@ export type ServerEvent =
 			track?: string;
 			volume?: number;
 	  }
+	| {
+			type: "memory_recall";
+			instance_slug: string;
+			memories: { path: string; preview: string; score: number }[];
+	  }
 ;

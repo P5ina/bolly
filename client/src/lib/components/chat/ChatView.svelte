@@ -49,9 +49,8 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	let sending = $state(false);
 	let agentRunning = $state(false);
 	let needsGoogleReconnect = $state(false);
-	let mood = $state(
-		(typeof localStorage !== "undefined" && localStorage.getItem("mood:" + slug)) || "calm"
-	);
+	const savedMood = typeof localStorage !== "undefined" ? localStorage.getItem("mood:" + untrack(() => slug)) : null;
+	let mood = $state(savedMood || "calm");
 	let scrollContainer: HTMLDivElement | undefined = $state();
 	let isConnected = $state(false);
 	let showChatList = $state(false);
@@ -1100,82 +1099,6 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		background: oklch(0.5 0.06 200 / 6%);
 	}
 
-	/* --- chat list --- */
-
-	.chat-list-overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 3;
-	}
-
-	.chat-list {
-		position: absolute;
-		top: 2.6rem;
-		right: 1.25rem;
-		z-index: 5;
-		min-width: 180px;
-		max-height: 280px;
-		overflow-y: auto;
-		background: oklch(0.1 0.02 210 / 70%);
-		backdrop-filter: blur(20px) saturate(140%);
-		-webkit-backdrop-filter: blur(20px) saturate(140%);
-		border: 1px solid oklch(0.5 0.06 200 / 12%);
-		border-radius: 12px;
-		padding: 0.25rem;
-		box-shadow: 0 8px 40px oklch(0 0 0 / 45%), inset 0 1px 0 oklch(1 0 0 / 3%);
-		animation: list-enter 0.15s ease both;
-	}
-
-	@keyframes list-enter {
-		from { opacity: 0; transform: translateY(-4px); }
-		to { opacity: 1; transform: translateY(0); }
-	}
-
-	.chat-list-item {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		width: 100%;
-		padding: 0.4rem 0.6rem;
-		border-radius: 7px;
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		color: oklch(0.65 0.04 200 / 55%);
-		transition: all 0.15s ease;
-		text-align: left;
-	}
-
-	.chat-list-item:hover {
-		background: oklch(0.5 0.06 200 / 8%);
-		color: oklch(0.8 0.04 200 / 80%);
-	}
-
-	.chat-list-active {
-		background: oklch(0.5 0.06 200 / 10%);
-		color: oklch(0.85 0.04 200 / 85%);
-	}
-
-	.chat-list-label {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		max-width: 130px;
-	}
-
-	.chat-list-count {
-		font-size: 0.75rem;
-		color: oklch(0.45 0.03 200 / 30%);
-		flex-shrink: 0;
-	}
-
-	.chat-list-empty {
-		padding: 0.6rem;
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		color: oklch(0.45 0.03 200 / 30%);
-		text-align: center;
-	}
-
 	/* --- columns --- */
 
 	.chat-columns {
@@ -1319,11 +1242,6 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		-webkit-backdrop-filter: blur(12px);
 		border: 1px dashed oklch(0.5 0.06 200 / 12%);
 		animation: act-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
-	}
-
-	.compaction-icon {
-		color: oklch(0.5 0.06 200 / 45%);
-		flex-shrink: 0;
 	}
 
 	.compaction-text {

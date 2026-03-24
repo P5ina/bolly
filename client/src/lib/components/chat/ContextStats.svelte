@@ -48,7 +48,7 @@
 	<div class="panel" onclick={(e) => e.stopPropagation()}>
 		<div class="header">
 			<span class="title">context breakdown</span>
-			<button class="close-btn" onclick={onclose}>
+			<button class="close-btn" aria-label="Close" onclick={onclose}>
 				<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" class="w-2.5 h-2.5">
 					<path d="M2 2l8 8M10 2l-8 8" stroke-linecap="round" />
 				</svg>

@@ -450,7 +450,7 @@
 		const path = viewingEntry.path;
 		try {
 			await deleteMemoryFile(slug, path);
-			toast.show("deleted");
+			toast.success("deleted");
 			viewingEntry = null;
 			viewingContent = "";
 			await load();
@@ -546,7 +546,7 @@
 	{:else if viewingEntry}
 		<!-- Document viewer -->
 		<div class="memory-header">
-			<button class="memory-back" onclick={handleBack}>
+			<button class="memory-back" aria-label="Back" onclick={handleBack}>
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
 					<path d="M19 12H5m0 0l7 7m-7-7l7-7" stroke-linecap="round" stroke-linejoin="round"/>
 				</svg>
@@ -588,7 +588,7 @@
 		<!-- Map view -->
 		<div class="memory-header">
 			{#if focusedFolder}
-				<button class="memory-back" onclick={handleBack}>
+				<button class="memory-back" aria-label="Back" onclick={handleBack}>
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
 						<path d="M19 12H5m0 0l7 7m-7-7l7-7" stroke-linecap="round" stroke-linejoin="round"/>
 					</svg>
@@ -611,6 +611,7 @@
 		</div>
 
 		{#if searchOpen}
+ttt<!-- svelte-ignore a11y_autofocus -->
 			<div class="search-bar">
 				<input
 					class="search-input"
@@ -633,6 +634,7 @@
 						{@const folder = isMedia ? result.source_type?.replace("media_", "") ?? "media" : (basePath.split("/")[0] ?? "(root)")}
 						{@const preview = result.text.trim().slice(0, 200)}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
+tttttt<!-- svelte-ignore a11y_click_events_have_key_events -->
 						<div
 							class="search-result"
 							class:search-result-media={isMedia}
@@ -724,6 +726,7 @@
 							"
 						>
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
+ttttttt<!-- svelte-ignore a11y_click_events_have_key_events -->
 							<div
 								class="bubble bubble-clickable"
 								class:bubble-hovered={isHovered}

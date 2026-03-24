@@ -181,12 +181,14 @@
 		overflow: hidden;
 		display: -webkit-box;
 		-webkit-line-clamp: 3;
+		line-clamp: 3;
 		-webkit-box-orient: vertical;
 		white-space: pre-wrap;
 	}
 
 	.drop-card-content-expanded {
 		-webkit-line-clamp: unset;
+		line-clamp: unset;
 		color: oklch(0.78 0.12 75 / 65%);
 	}
 
