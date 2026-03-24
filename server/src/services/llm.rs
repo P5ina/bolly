@@ -783,17 +783,14 @@ async fn streaming_agent_loop(
         }
         all_file_ids.extend(turn.file_ids);
 
-        // Build assistant message
+        // Build assistant message — use ordered_content which preserves
+        // the interleaving of text, server_tool_use, and server_tool_result.
         let mut assistant_content = Vec::new();
         if let Some(ref summary) = turn.compaction {
-            // Compaction: the API will automatically drop all messages before
-            // the compaction block on the NEXT request. We just append the
-            // compaction block to the response — don't clear messages ourselves.
             log::info!(
                 "[llm] compaction block received — summary: {} chars, messages: {}",
                 summary.len(), messages.len()
             );
-
             if !summary.is_empty() {
                 assistant_content.push(ContentBlock::Compaction {
                     content: summary.clone(),
@@ -805,14 +802,8 @@ async fn streaming_agent_loop(
                 messages_compacted: messages.len(),
             });
         }
-        if !turn_text.is_empty() {
-            assistant_content.push(ContentBlock::text(&turn_text));
-        }
-        // Include server tool blocks (web_search, code_execution, etc.) so the
-        // model remembers what it did on subsequent turns.
-        for block in &turn.server_tool_blocks {
-            assistant_content.push(ContentBlock::Unknown(block.clone()));
-        }
+        // Ordered content: text and server tool blocks in their original order
+        assistant_content.extend(turn.ordered_content.into_iter());
         for tu in &tool_uses {
             assistant_content.push(ContentBlock::ToolUse {
                 id: tu.id.clone(),
@@ -1310,7 +1301,7 @@ async fn anthropic_stream(
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
     container_id: Option<&str>,
     activated_skill_ids: &[String],
-) -> anyhow::Result<(String, Vec<ToolUseBlock>, String, Option<String>, u64, Option<String>, Vec<String>, Vec<serde_json::Value>)> {
+) -> anyhow::Result<(String, Vec<ToolUseBlock>, String, Option<String>, u64, Option<String>, Vec<String>, Vec<ContentBlock>)> {
     let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, api_key, container_id, activated_skill_ids);
 
     // Use skills headers only when skills are activated (requires code_execution tool)
@@ -1363,10 +1354,11 @@ async fn anthropic_stream(
     let mut cache_write_tokens: u64 = 0;
     let mut container_id: Option<String> = None;
     let mut file_ids: Vec<String> = Vec::new();
-    // Server tool blocks (web_search, code_execution, etc.) — saved as raw JSON
-    // so they persist in rig_history and the model remembers what it did.
-    let mut server_tool_blocks: Vec<serde_json::Value> = Vec::new();
     let mut current_server_block: Option<serde_json::Value> = None;
+
+    // Ordered content blocks — preserves interleaving of text and server tools
+    let mut ordered_content: Vec<ContentBlock> = Vec::new();
+    let mut current_text_block = String::new();
 
     // Current block being built
     let mut current_block_type = String::new();
@@ -1445,6 +1437,14 @@ async fn anthropic_stream(
                     if let Some(block) = ev.get("content_block") {
                         current_block_type =
                             block["type"].as_str().unwrap_or("").to_string();
+
+                        // Flush accumulated text before server tool blocks
+                        if (current_block_type == "server_tool_use" || current_block_type.ends_with("_tool_result"))
+                            && !current_text_block.is_empty()
+                        {
+                            ordered_content.push(ContentBlock::text(&current_text_block));
+                            current_text_block.clear();
+                        }
 
                         // Save server tool blocks as raw JSON for rig_history
                         if current_block_type == "server_tool_use"
@@ -1557,6 +1557,7 @@ async fn anthropic_stream(
                                         current_compaction_text.push_str(t);
                                     } else {
                                         text.push_str(t);
+                                        current_text_block.push_str(t);
                                         let _ = events.send(ServerEvent::ChatStreamDelta {
                                             instance_slug: instance_slug.to_string(),
                                             chat_id: chat_id.to_string(),
@@ -1611,9 +1612,9 @@ async fn anthropic_stream(
                             }
                         }
                     }
-                    // Commit completed server tool block to the list
+                    // Commit completed server tool block (preserves order)
                     if let Some(block) = current_server_block.take() {
-                        server_tool_blocks.push(block);
+                        ordered_content.push(ContentBlock::Unknown(block));
                     }
                     if current_block_type == "compaction" {
                         log::info!(
@@ -1677,7 +1678,12 @@ async fn anthropic_stream(
             + (cache_read_tokens as f64 * 0.02);
         normalized as u64
     };
-    Ok((text, tool_uses, stop_reason, compaction_summary, tokens_used, container_id, file_ids, server_tool_blocks))
+    // Flush remaining text
+    if !current_text_block.is_empty() {
+        ordered_content.push(ContentBlock::text(&current_text_block));
+    }
+
+    Ok((text, tool_uses, stop_reason, compaction_summary, tokens_used, container_id, file_ids, ordered_content))
 }
 
 /// Result of a single streaming turn.
@@ -1689,7 +1695,9 @@ struct StreamOnceResult {
     tokens_used: u64,
     container_id: Option<String>,
     file_ids: Vec<String>,
-    server_tool_blocks: Vec<serde_json::Value>,
+    /// Content blocks in the order they arrived from the API.
+    /// Preserves interleaving of text, server_tool_use, and server_tool_result.
+    ordered_content: Vec<ContentBlock>,
 }
 
 /// Streaming dispatch: route to provider-specific streaming.
@@ -1706,13 +1714,13 @@ async fn stream_once(
     container_id: Option<&str>,
     activated_skill_ids: &[String],
 ) -> anyhow::Result<StreamOnceResult> {
-    let (text, tool_uses, stop_reason, compaction, tokens_used, container_id, file_ids, server_tool_blocks) =
+    let (text, tool_uses, stop_reason, compaction, tokens_used, container_id, file_ids, ordered_content) =
         anthropic_stream(
             &backend.http, &backend.api_key, &backend.model, system, tool_defs, messages,
             16384, events, instance_slug, chat_id, message_id, mcp_snapshot, container_id,
             activated_skill_ids,
         ).await?;
-    Ok(StreamOnceResult { text, tool_uses, stop_reason, compaction, tokens_used, container_id, file_ids, server_tool_blocks })
+    Ok(StreamOnceResult { text, tool_uses, stop_reason, compaction, tokens_used, container_id, file_ids, ordered_content })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
