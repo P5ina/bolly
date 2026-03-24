@@ -237,16 +237,24 @@ pub fn history_to_chat_messages(entries: &[HistoryEntry]) -> Vec<ChatMessage> {
                     });
                 }
                 ContentBlock::Unknown(val) => {
-                    // Server tool blocks (web_search, code_execution, etc.)
+                    // Server tool blocks (web_search, code_execution) — render like regular tools
                     let block_type = val["type"].as_str().unwrap_or("");
                     if block_type == "server_tool_use" {
                         let tool_name = val["name"].as_str().unwrap_or("server_tool");
                         let summary = match tool_name {
-                            "web_search" => "searching the web".to_string(),
-                            "web_fetch" => "fetching web page".to_string(),
+                            "web_search" => {
+                                let q = val["input"]["query"].as_str().unwrap_or("");
+                                if q.is_empty() { "searching the web".into() }
+                                else { format!("web search: {q}") }
+                            }
+                            "web_fetch" => {
+                                let u = val["input"]["url"].as_str().unwrap_or("");
+                                if u.is_empty() { "fetching web page".into() }
+                                else { format!("fetching {u}") }
+                            }
                             "bash_code_execution" | "code_execution" => "executing code".to_string(),
-                            "text_editor_code_execution" => "editing file in sandbox".to_string(),
-                            other => format!("server: {other}"),
+                            "text_editor_code_execution" => "editing file".to_string(),
+                            other => format!("{other}"),
                         };
                         out.push(ChatMessage {
                             id: block_id,
@@ -258,24 +266,8 @@ pub fn history_to_chat_messages(entries: &[HistoryEntry]) -> Vec<ChatMessage> {
                             mcp_app_html: None,
                             mcp_app_input: None, model: None,
                         });
-                    } else if block_type.ends_with("_tool_result") {
-                        // Server tool results — show stdout if available
-                        let stdout = val["content"]["stdout"].as_str().unwrap_or("");
-                        if !stdout.is_empty() {
-                            let truncated: String = stdout.chars().take(500).collect();
-                            out.push(ChatMessage {
-                                id: block_id,
-                                role: ChatRole::Assistant,
-                                content: truncated,
-                                created_at: ts.clone(),
-                                kind: MessageKind::ToolOutput,
-                                tool_name: None,
-                                mcp_app_html: None,
-                                mcp_app_input: None, model: None,
-                            });
-                        }
                     }
-                    // Other Unknown blocks (e.g. container_upload) — skip
+                    // Skip tool results and other unknown blocks (container_upload, etc.)
                 }
                 // Image, Document — skip for UI
                 _ => {}
