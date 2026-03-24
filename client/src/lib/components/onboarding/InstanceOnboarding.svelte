@@ -25,7 +25,6 @@
 	type Stage =
 		| "reveal"
 		| "intro"
-		| "picking-model"
 		| "waiting-key"
 		| "testing"
 		| "picking-language"
@@ -42,7 +41,6 @@
 	let messageInput: HTMLTextAreaElement | undefined = $state();
 	let nameInputEl: HTMLInputElement | undefined = $state();
 	let keyInput: HTMLInputElement | undefined = $state();
-	let chosenModel = $state<string | null>(null);
 	let apiKeyValue = $state("");
 	let keyError = $state("");
 	let chosenLanguage = $state(
@@ -50,12 +48,6 @@
 	);
 	let lines = $state<{ text: string; revealed: string; done: boolean }[]>([]);
 	let soulTemplates = $state<SoulTemplate[]>([]);
-
-	const MODELS = [
-		{ id: "claude-sonnet-4-6", label: "sonnet 4.6", note: "balanced" },
-		{ id: "claude-opus-4-6", label: "opus 4.6", note: "powerful" },
-		{ id: "claude-haiku-4-5", label: "haiku 4.5", note: "fast" },
-	];
 
 	const LANGUAGES = [
 		{ id: "english", label: "English" },
@@ -122,7 +114,6 @@
 				const status = await fetchConfigStatus();
 				if (status.llm_configured) {
 					llmConfigured = true;
-					chosenModel = status.model ?? null;
 				}
 				break;
 			} catch {
@@ -131,25 +122,14 @@
 		}
 
 		if (!llmConfigured) {
-			await typewrite("before we begin \u2014 which mind should i wear?");
-			stage = "picking-model";
+			await typewrite("paste your api key and i\u2019ll wake up.");
+			stage = "waiting-key";
+			await pause(100);
+			keyInput?.focus();
 		} else {
 			await typewrite("what language should we speak?");
 			stage = "picking-language";
 		}
-	}
-
-	async function pickModel(modelId: string) {
-		chosenModel = modelId;
-		stage = "intro";
-		await pause(300);
-		const model = MODELS.find((m) => m.id === modelId);
-		await typewrite(`${model?.label ?? modelId}. noted.`);
-		await pause(400);
-		await typewrite("paste your api key and i\u2019ll wake up.");
-		stage = "waiting-key";
-		await pause(100);
-		keyInput?.focus();
 	}
 
 	async function submitKey() {
@@ -296,20 +276,6 @@
 
 		<!-- Interactive sections -->
 		<div class="ob-input-area">
-			{#if stage === "picking-model"}
-				<div class="ob-enter">
-					<div class="ob-pills ob-pills-grid">
-						{#each MODELS as model}
-							<button onclick={() => pickModel(model.id)} class="ob-pill ob-pill-col">
-								<span class="ob-pill-label">{model.label}</span>
-								<span class="ob-pill-note">{model.note}</span>
-							</button>
-						{/each}
-					</div>
-					<button onclick={skipConfig} class="ob-skip">skip for now</button>
-				</div>
-			{/if}
-
 			{#if stage === "waiting-key"}
 				<div class="ob-enter">
 					<div class="ob-field">
