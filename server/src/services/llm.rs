@@ -1300,12 +1300,18 @@ async fn anthropic_stream(
                         current_block_type =
                             block["type"].as_str().unwrap_or("").to_string();
 
-                        // Extract file_ids from code execution results
+                        // Log code execution blocks for debugging
+                        if current_block_type.contains("execution") || current_block_type.contains("server_tool") {
+                            log::info!("[llm] code execution block: {}", serde_json::to_string(block).unwrap_or_default());
+                        }
+
+                        // Extract file_ids — check multiple locations
+                        // 1. Direct file_id on the block
                         if let Some(fid) = block.get("file_id").and_then(|v| v.as_str()) {
                             file_ids.push(fid.to_string());
                             log::info!("[llm] file generated: {fid}");
                         }
-                        // Also check nested content for file refs
+                        // 2. Nested in content array (code execution results)
                         if let Some(content) = block.get("content") {
                             if let Some(arr) = content.as_array() {
                                 for item in arr {
@@ -1314,6 +1320,11 @@ async fn anthropic_stream(
                                         log::info!("[llm] file generated (nested): {fid}");
                                     }
                                 }
+                            }
+                            // Content might be an object with file_id
+                            if let Some(fid) = content.get("file_id").and_then(|v| v.as_str()) {
+                                file_ids.push(fid.to_string());
+                                log::info!("[llm] file generated (content): {fid}");
                             }
                         }
 
@@ -1396,6 +1407,23 @@ async fn anthropic_stream(
                     }
                 }
                 "content_block_stop" => {
+                    // Extract file_ids from completed content blocks
+                    if let Some(block) = ev.get("content_block") {
+                        if let Some(fid) = block.get("file_id").and_then(|v| v.as_str()) {
+                            file_ids.push(fid.to_string());
+                            log::info!("[llm] file generated (block_stop): {fid}");
+                        }
+                        if let Some(content) = block.get("content") {
+                            if let Some(arr) = content.as_array() {
+                                for item in arr {
+                                    if let Some(fid) = item.get("file_id").and_then(|v| v.as_str()) {
+                                        file_ids.push(fid.to_string());
+                                        log::info!("[llm] file generated (block_stop nested): {fid}");
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if current_block_type == "compaction" {
                         log::info!(
                             "[llm] context compaction triggered — summary length: {} chars",

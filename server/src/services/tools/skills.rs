@@ -181,9 +181,11 @@ impl Tool for ActivateSkillTool {
                             let mut activated = self.activated_anthropic.write().await;
                             activated.insert(sid.clone());
                             Ok(format!(
-                                "# {} skill activated\n\nThis skill runs in the code execution sandbox. \
-                                 Write Python code to use it — the skill files are available at /skills/. \
-                                 Generated files will be automatically sent to the user.",
+                                "# {} skill activated\n\n\
+                                 This skill is now loaded into the code execution sandbox. \
+                                 Just use code_execution to write Python code — the skill handles everything automatically. \
+                                 Do NOT try to read skill files locally — they exist only in the sandbox. \
+                                 Generated files are automatically downloaded and sent to the user.",
                                 s.name
                             ))
                         } else {
