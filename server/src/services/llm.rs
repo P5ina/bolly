@@ -1312,9 +1312,38 @@ async fn anthropic_stream(
                         current_block_type =
                             block["type"].as_str().unwrap_or("").to_string();
 
+                        // Broadcast server tool activity (web_search, code_execution, etc.)
+                        if current_block_type == "server_tool_use" {
+                            let tool_name = block["name"].as_str().unwrap_or("server_tool");
+                            let summary = match tool_name {
+                                "web_search" => "searching the web".to_string(),
+                                "web_fetch" => "fetching web page".to_string(),
+                                "bash_code_execution" | "code_execution" => "executing code".to_string(),
+                                "text_editor_code_execution" => "editing file in sandbox".to_string(),
+                                other => format!("server: {other}"),
+                            };
+                            let msg = crate::domain::chat::ChatMessage {
+                                id: format!("srvtool_{}",
+                                    std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap().as_millis()),
+                                role: crate::domain::chat::ChatRole::Assistant,
+                                content: summary,
+                                created_at: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap().as_millis().to_string(),
+                                kind: crate::domain::chat::MessageKind::ToolCall,
+                                tool_name: Some(tool_name.to_string()),
+                                mcp_app_html: None, mcp_app_input: None, model: None,
+                            };
+                            let _ = events.send(ServerEvent::ChatMessageCreated {
+                                instance_slug: instance_slug.to_string(),
+                                chat_id: chat_id.to_string(),
+                                message: msg,
+                            });
+                        }
+
                         // Extract file_ids from code execution results
-                        // Non-streaming structure: block.content.content[].file_id
-                        // Streaming content_block_start delivers the full block
                         if current_block_type.contains("execution") || current_block_type.contains("server_tool") {
                             log::info!("[llm] execution block type={}: {}", current_block_type,
                                 serde_json::to_string(block).unwrap_or_default());
