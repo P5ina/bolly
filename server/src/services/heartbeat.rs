@@ -441,7 +441,7 @@ async fn heartbeat_instance(
                 heartbeat_tokens as i32,
             )
             .await;
-            log::info!("[heartbeat] {slug} recorded {heartbeat_tokens} tokens");
+            log::info!("[usage] {slug} heartbeat recording {heartbeat_tokens} normalized tokens");
         }
     }
 

@@ -328,6 +328,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                     } else {
                         turn.estimated_tokens
                     };
+                    log::info!("[usage] {instance_slug} recording {recorded} normalized tokens (raw={}, heavy={used_heavy})", turn.estimated_tokens);
                     rate_limit::record_usage(&state.http_client, &state.landing_url, &state.landing_auth_token, recorded).await;
                 }
 
