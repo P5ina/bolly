@@ -1,11 +1,8 @@
-use base64::Engine;
 use crate::services::tool::{ToolDefinition, Tool};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::{openai_schema, ToolExecError};
-
-const MAX_IMAGE_SIZE: usize = 5 * 1024 * 1024; // 5 MB
 
 pub struct ViewImageTool;
 
@@ -24,10 +21,10 @@ impl Tool for ViewImageTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "view_image".into(),
-            description: "Download an image from a URL. \
-                Returns the image so you can see it, and it is \
-                automatically sent to the user in chat. \
-                Use this to show images to the user (e.g. after generating one)."
+            description: "View an image from a URL. Claude fetches the image directly — \
+                no download needed. Use this when you need to examine an image. \
+                The image is NOT shown to the user — to share images, \
+                include ![description](url) in your response text."
                 .into(),
             parameters: openai_schema::<ViewImageArgs>(),
         }
@@ -39,58 +36,27 @@ impl Tool for ViewImageTool {
             return Err(ToolExecError("url cannot be empty".into()));
         }
 
+        // Quick HEAD request to validate URL is accessible and is an image
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(15))
             .build()
             .map_err(|e| ToolExecError(format!("http client error: {e}")))?;
 
         let resp = client
-            .get(url)
+            .head(url)
             .send()
             .await
-            .map_err(|e| ToolExecError(format!("failed to fetch image: {e}")))?;
+            .map_err(|e| ToolExecError(format!("failed to reach image URL: {e}")))?;
 
         if !resp.status().is_success() {
             return Err(ToolExecError(format!("HTTP {}", resp.status())));
         }
 
-        // Detect mime type from content-type header or URL extension
-        let content_type = resp
-            .headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_string();
+        log::info!("[view_image] URL-based: {url}");
 
-        let mime = if content_type.contains("image/") {
-            content_type.split(';').next().unwrap_or("image/jpeg").trim().to_string()
-        } else {
-            // Guess from URL extension
-            let lower = url.to_lowercase();
-            if lower.contains(".png") { "image/png".into() }
-            else if lower.contains(".gif") { "image/gif".into() }
-            else if lower.contains(".webp") { "image/webp".into() }
-            else { "image/jpeg".into() }
-        };
-
-        let bytes = resp
-            .bytes()
-            .await
-            .map_err(|e| ToolExecError(format!("failed to read image: {e}")))?;
-
-        if bytes.len() > MAX_IMAGE_SIZE {
-            return Err(ToolExecError(format!(
-                "image too large: {:.1} MB (max 5 MB)",
-                bytes.len() as f64 / 1024.0 / 1024.0
-            )));
-        }
-
-        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-
-        log::info!("[view_image] fetched {} ({}, {:.0} KB)", url, mime, bytes.len() as f64 / 1024.0);
-
+        // Return URL-based image content block — Claude fetches it directly
         Ok(serde_json::to_string(&serde_json::json!([
-            {"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}}
+            {"type": "image", "source": {"type": "url", "url": url}}
         ])).unwrap())
     }
 }

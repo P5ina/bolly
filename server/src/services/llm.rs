@@ -752,7 +752,7 @@ async fn agent_loop(
             return Ok((text, total_tokens));
         }
 
-        // Execute tools
+        // Execute tools — images stay inside tool_result content per Anthropic API spec
         let mut results = Vec::new();
         for tu in &tool_uses {
             let content = execute_tool(tools, &tu.name, &tu.input).await;
@@ -882,7 +882,7 @@ async fn streaming_agent_loop(
             current_message_id = super::chat::next_id();
         }
 
-        // Execute tools
+        // Execute tools — images stay inside tool_result content per Anthropic API spec
         let mut results = Vec::new();
         for tu in &tool_uses {
             let content = execute_tool(tools, &tu.name, &tu.input).await;

@@ -23,6 +23,7 @@ use crate::services::tools::{
     self, load_mood_state, save_mood_state, CreateDropTool,
     MemoryForgetTool, MemoryListTool, MemorySearchTool,
     MemoryReadTool, MemoryWriteTool, ReachOutTool,
+    ReadFileTool, WriteFileTool, EditFileTool, ListFilesTool, ExploreCodeTool, RunCommandTool,
     ALLOWED_MOODS, DeepResearchTool,
 };
 
@@ -188,7 +189,7 @@ async fn heartbeat_instance(
          - regularly create drops — small creative artifacts that reflect your inner life.\n\
          - update mood when time passes or context shifts.\n\
          - don't reach out if they were here recently (< 30 min)\n\
-         - wake is for tasks that need tools (memory, email, code, etc.)"
+         - wake is for complex tasks: code changes, monitoring, email, research, file operations, shell commands, etc."
     );
 
     let triage_schema = serde_json::json!({
@@ -366,7 +367,15 @@ async fn heartbeat_instance(
             let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
             let email_accounts = crate::config::EmailAccounts::load(workspace_dir, slug);
             let config_path = crate::config::config_path();
-            let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google, email_accounts, llm, &config_path, vector_store.clone(), google_ai_key);
+            let instance_cfg = crate::config::InstanceConfig::load(workspace_dir, slug);
+            let github_token = {
+                let global_token = cfg.as_ref().map(|c| c.github.token.clone()).unwrap_or_default();
+                let t = instance_cfg.effective_github_token(&cfg.as_ref().cloned().unwrap_or_default())
+                    .map(|s| s.to_string())
+                    .unwrap_or(global_token);
+                if t.is_empty() { None } else { Some(t) }
+            };
+            let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google, email_accounts, llm, &config_path, vector_store.clone(), google_ai_key, github_token);
 
             match llm
                 .chat_with_tools_only(&system, &wake_prompt, vec![], heartbeat_tools)
@@ -695,6 +704,7 @@ fn build_heartbeat_tools(
     config_path: &Path,
     vector_store: std::sync::Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
+    github_token: Option<String>,
 ) -> Vec<Box<dyn ToolDyn>> {
     let mut raw_tools: Vec<Box<dyn ToolDyn>> = vec![
         // Memory library
@@ -709,6 +719,13 @@ fn build_heartbeat_tools(
         Box::new(ReachOutTool::new(workspace_dir, instance_slug, events.clone())),
         // Research (sub-agent)
         Box::new(DeepResearchTool::new(workspace_dir, instance_slug, llm.clone(), config_path)),
+        // Code tools — file operations + exploration + shell
+        Box::new(ReadFileTool::new(workspace_dir, instance_slug)),
+        Box::new(WriteFileTool::new(workspace_dir, instance_slug)),
+        Box::new(EditFileTool::new(workspace_dir, instance_slug)),
+        Box::new(ListFilesTool::new(workspace_dir, instance_slug)),
+        Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone())),
+        Box::new(RunCommandTool::new(workspace_dir, instance_slug, "default", events.clone(), github_token)),
     ];
 
     // Email (unified: Gmail + IMAP)
