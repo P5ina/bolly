@@ -66,33 +66,59 @@ fn format_result(result: rmcp::model::CallToolResult) -> Result<String, ToolErro
         return Err(ToolError::ToolCallError(Box::new(McpToolError(msg))));
     }
 
-    Ok(result
-        .content
-        .into_iter()
-        .map(|c| match c.raw {
-            rmcp::model::RawContent::Text(raw) => raw.text,
-            rmcp::model::RawContent::Image(raw) => {
-                format!("data:{};base64,{}", raw.mime_type, raw.data)
-            }
-            rmcp::model::RawContent::Resource(raw) => match raw.resource {
-                rmcp::model::ResourceContents::TextResourceContents {
-                    text, ..
-                } => text,
-                rmcp::model::ResourceContents::BlobResourceContents {
-                    uri,
-                    mime_type,
-                    blob,
-                    ..
-                } => format!(
-                    "{mime_type}{uri}:{blob}",
-                    mime_type = mime_type
-                        .map(|m| format!("data:{m};"))
-                        .unwrap_or_default(),
-                ),
-            },
-            other => format!("{other:?}"),
-        })
-        .collect::<String>())
+    let has_images = result.content.iter().any(|c| matches!(&c.raw, rmcp::model::RawContent::Image(_)));
+
+    if has_images {
+        // Return JSON array of content blocks — images as base64 blocks for Claude,
+        // llm.rs will convert to URL-based blocks after saving as uploads.
+        let blocks: Vec<serde_json::Value> = result
+            .content
+            .into_iter()
+            .filter_map(|c| match c.raw {
+                rmcp::model::RawContent::Text(raw) => {
+                    Some(serde_json::json!({"type": "text", "text": raw.text}))
+                }
+                rmcp::model::RawContent::Image(raw) => {
+                    Some(serde_json::json!({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": raw.mime_type,
+                            "data": raw.data,
+                        }
+                    }))
+                }
+                _ => None,
+            })
+            .collect();
+        Ok(serde_json::to_string(&blocks).unwrap_or_default())
+    } else {
+        // Text-only: return plain string
+        Ok(result
+            .content
+            .into_iter()
+            .map(|c| match c.raw {
+                rmcp::model::RawContent::Text(raw) => raw.text,
+                rmcp::model::RawContent::Resource(raw) => match raw.resource {
+                    rmcp::model::ResourceContents::TextResourceContents {
+                        text, ..
+                    } => text,
+                    rmcp::model::ResourceContents::BlobResourceContents {
+                        uri,
+                        mime_type,
+                        blob,
+                        ..
+                    } => format!(
+                        "{mime_type}{uri}:{blob}",
+                        mime_type = mime_type
+                            .map(|m| format!("data:{m};"))
+                            .unwrap_or_default(),
+                    ),
+                },
+                other => format!("{other:?}"),
+            })
+            .collect::<String>())
+    }
 }
 
 impl ToolDyn for McpTool {

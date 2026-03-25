@@ -24,9 +24,10 @@ impl Tool for ViewImageTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "view_image".into(),
-            description: "Download and view an image from a URL. \
-                Returns the image so you can see it directly. \
-                Use this when you need to look at an image from the web."
+            description: "Download an image from a URL. \
+                Returns the image so you can see it, and it is \
+                automatically sent to the user in chat. \
+                Use this to show images to the user (e.g. after generating one)."
                 .into(),
             parameters: openai_schema::<ViewImageArgs>(),
         }

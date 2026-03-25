@@ -4,7 +4,7 @@ use crate::services::tool::{ToolDefinition, Tool};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use super::{openai_schema, ToolExecError, SentFiles};
+use super::{openai_schema, ToolExecError};
 
 // ---------------------------------------------------------------------------
 // read_file
@@ -381,100 +381,3 @@ impl Tool for ListFilesTool {
 // send_file
 // ---------------------------------------------------------------------------
 
-pub struct SendFileTool {
-    workspace_dir: PathBuf,
-    instance_slug: String,
-    sent_files: SentFiles,
-}
-
-impl SendFileTool {
-    pub fn new(workspace_dir: &Path, instance_slug: &str, sent_files: SentFiles) -> Self {
-        Self {
-            workspace_dir: workspace_dir.to_path_buf(),
-            instance_slug: instance_slug.to_string(),
-            sent_files,
-        }
-    }
-}
-
-#[derive(Deserialize, JsonSchema)]
-pub struct SendFileArgs {
-    /// Path to the file relative to the instance workspace (e.g. "output.png", "reports/summary.pdf").
-    pub path: String,
-}
-
-impl Tool for SendFileTool {
-    const NAME: &'static str = "send_file";
-    type Error = ToolExecError;
-    type Args = SendFileArgs;
-    type Output = String;
-
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "send_file".into(),
-            description: "Send a file to the chat. Images display inline, others as download links.".into(),
-            parameters: openai_schema::<SendFileArgs>(),
-        }
-    }
-
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let rel = args.path.trim().trim_start_matches('/');
-        if rel.is_empty() {
-            return Err(ToolExecError("path cannot be empty".into()));
-        }
-
-        let instance_dir = self
-            .workspace_dir
-            .join("instances")
-            .join(&self.instance_slug);
-
-        // Strip absolute instance path prefix if agent passes full path
-        let instance_prefix = format!("data/instances/{}/", self.instance_slug);
-        let rel = rel.strip_prefix(&instance_prefix).unwrap_or(rel);
-
-        let file_path = instance_dir.join(rel);
-        log::info!("[send_file] attempting to send '{}' → {}", rel, file_path.display());
-
-        let canonical = file_path.canonicalize().map_err(|e| {
-            log::warn!("[send_file] file not found: {} (resolved: {})", e, file_path.display());
-            ToolExecError(format!("file not found: {e}"))
-        })?;
-        let canonical_instance = instance_dir
-            .canonicalize()
-            .map_err(|e| ToolExecError(format!("instance dir error: {e}")))?;
-        if !canonical.starts_with(&canonical_instance) {
-            return Err(ToolExecError(
-                "path must be within the instance workspace".into(),
-            ));
-        }
-
-        if !canonical.is_file() {
-            return Err(ToolExecError(format!("'{}' is not a file", rel)));
-        }
-
-        let bytes =
-            fs::read(&canonical).map_err(|e| ToolExecError(format!("failed to read file: {e}")))?;
-
-        let original_name = canonical
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| rel.to_string());
-
-        let meta = crate::services::uploads::save_upload(
-            &self.workspace_dir,
-            &self.instance_slug,
-            &original_name,
-            &bytes,
-        )
-        .map_err(|e| ToolExecError(format!("failed to save upload: {e}")))?;
-
-        let marker = format!("[attached: {} ({})]", original_name, meta.id);
-        self.sent_files.lock().unwrap_or_else(|e| e.into_inner()).push(marker.clone());
-        log::info!("[send_file] success: pushed marker '{}' for {}", marker, self.instance_slug);
-
-        Ok(format!(
-            "file '{}' attached to chat. the user will see it.",
-            original_name
-        ))
-    }
-}

@@ -540,6 +540,20 @@
 		justify-content: flex-start;
 	}
 
+	/* Markdown images in prose */
+	.prose :global(img) {
+		max-width: 320px;
+		max-height: 280px;
+		border-radius: 10px;
+		object-fit: cover;
+		border: 1px solid oklch(0.5 0.06 200 / 12%);
+		margin: 0.35em 0;
+		cursor: pointer;
+	}
+	.prose :global(img:hover) {
+		opacity: 0.85;
+	}
+
 	.msg-img-link {
 		display: block;
 		border-radius: 10px;

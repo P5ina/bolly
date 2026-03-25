@@ -1468,13 +1468,18 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          live on this instance.\n\n\
          ## capabilities\n\
          you have real tools: read_file, write_file, edit_file, list_files, search_code, explore_code, \
-         run_command, install_package, web_search, web_fetch, current_time, send_file, \
+         run_command, install_package, web_search, web_fetch, current_time, view_image, \
          send_email, read_email, list_events, create_event, list_drive_files, read_drive_file, \
          upload_drive_file, remember/recall, \
          edit_soul, create_drop, schedule_message, update_config, get_project_state, \
          update_project_state, create_task/update_task/list_tasks, browse.\n\
          users can attach images, PDFs, and text files directly in chat — you see them automatically.\n\
          use them directly — never say you can't access something.\n\
+         ## sharing images\n\
+         when you generate or receive an image URL (e.g. from fal.ai), include it in your \
+         response as ![description](url) — the user will see it inline. \
+         do NOT call view_image just to send an image to the user — that tool is for when \
+         YOU need to examine an image. markdown image syntax is all you need to display images.\n\
          you have a heartbeat — a background loop that runs every 2 hours even when \
          the user is away. edit your heartbeat.md file to customize what you do between conversations \
          (check email, reach out, etc).\n\

@@ -39,7 +39,7 @@ pub use companion::{
     get_voice_override, load_mood_state, save_mood_state,
 };
 pub use drive::{ListDriveFilesTool, ReadDriveFileTool, UploadDriveFileTool};
-pub use files::{EditFileTool, ListFilesTool, ReadFileTool, SendFileTool, WriteFileTool};
+pub use files::{EditFileTool, ListFilesTool, ReadFileTool, WriteFileTool};
 pub use memory_tools::{MemoryForgetTool, MemoryListTool, MemoryReadTool, MemorySearchTool, MemoryWriteTool};
 pub use project::{TaskItem, TaskStatus};
 pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
@@ -258,7 +258,7 @@ pub fn tool_summary(name: &str, args: &str) -> String {
             v["skill_id"].as_str().unwrap_or("?"),
             v["filename"].as_str().unwrap_or("?")
         ),
-        "send_file" => format!("sharing {}", v["path"].as_str().unwrap_or("?")),
+        // send_file removed
         "browse" => {
             let url = v["actions"]
                 .as_array()
@@ -407,7 +407,6 @@ impl ToolDyn for ObservableTool {
             }
             if tool_name == "run_command"
                 || tool_name == "interactive_session"
-                || tool_name == "send_file"
             {
                 let output = match &result {
                     Ok(s) => s.clone(),
@@ -496,7 +495,7 @@ pub fn build_tools(
 
     // ── System ──
     tools.push(wrap(Box::new(InteractiveSessionTool::new(workspace_dir, instance_slug))));
-    tools.push(wrap(Box::new(SendFileTool::new(workspace_dir, instance_slug, sent_files.clone()))));
+    // send_file removed — images from tool results are auto-attached (see llm.rs)
     tools.push(wrap(Box::new(GetTimeTool::new(workspace_dir, instance_slug))));
     tools.push(wrap(Box::new(GetSettingsTool::new(config_path, workspace_dir, instance_slug, google.clone()))));
     tools.push(wrap(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug))));
