@@ -289,6 +289,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             voice_mode,
             state.vector_store.clone(),
             &google_ai_key,
+            state.keyword_store.clone(),
         );
 
         let result = tokio::select! {

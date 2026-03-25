@@ -10,6 +10,7 @@ use crate::{
     domain::events::ServerEvent,
     services::llm::LlmBackend,
     services::mcp::McpRegistry,
+    services::keyword_search::KeywordStore,
     services::vector::VectorStore,
 };
 
@@ -40,6 +41,8 @@ pub struct AppState {
     pub landing_auth_token: String,
     /// Qdrant vector store for semantic memory search.
     pub vector_store: Arc<VectorStore>,
+    /// BM25 keyword search over memory files.
+    pub keyword_store: Arc<KeywordStore>,
 }
 
 /// Inject MCP servers from environment variables (FAL_KEY, etc.)
@@ -117,6 +120,7 @@ impl AppState {
             landing_url,
             landing_auth_token,
             vector_store: Arc::new(vector_store),
+            keyword_store: Arc::new(KeywordStore::new()),
         }
     }
 

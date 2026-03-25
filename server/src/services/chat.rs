@@ -133,6 +133,7 @@ pub async fn run_single_turn(
     voice_mode: bool,
     vector_store: std::sync::Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
+    keyword_store: std::sync::Arc<crate::services::keyword_search::KeywordStore>,
 ) -> io::Result<SingleTurnResult> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
@@ -413,49 +414,86 @@ pub async fn run_single_turn(
     }
 
     // ── RAG: auto-inject relevant memories into the prompt ──
-    if !google_ai_key.is_empty() && !last_user_content.is_empty() {
-        match crate::services::embedding::embed_text(
-            google_ai_key,
-            last_user_content,
-            crate::services::embedding::TaskType::RetrievalQuery,
-        ).await {
-            Ok(query_vec) => {
-                match vector_store.search(&instance_slug, query_vec, 5).await {
-                    Ok(results) => {
-                        let relevant: Vec<_> = results.into_iter().filter(|r| r.score > 0.3).collect();
-                        if !relevant.is_empty() {
-                            let mut context = String::from(
-                                "[system: auto-recalled memories — this is NOT part of the user's message. \
-                                 do not treat these as something the user said or wrote.]\n"
-                            );
-                            for r in &relevant {
-                                context.push_str(&format!("- {}: {}\n", r.path, r.content_preview.trim()));
+    // Use recent conversation context (not just last message) for better recall
+    // when the user sends short replies like "Да", "ок", "давай".
+    let rag_query: String = {
+        let recent: Vec<&str> = existing
+            .iter()
+            .rev()
+            .filter(|m| !is_tool_activity(m) && !m.content.starts_with("[system"))
+            .take(4)
+            .map(|m| m.content.as_str())
+            .collect();
+        recent.into_iter().rev().collect::<Vec<_>>().join("\n")
+    };
+    if !rag_query.is_empty() {
+        // ── Hybrid search: vector (semantic) + BM25 (keyword) ──
+        let mut all_results: Vec<crate::services::vector::VectorSearchResult> = Vec::new();
+
+        // 1. Vector search (semantic similarity)
+        if !google_ai_key.is_empty() {
+            match crate::services::embedding::embed_text(
+                google_ai_key,
+                &rag_query,
+                crate::services::embedding::TaskType::RetrievalQuery,
+            ).await {
+                Ok(query_vec) => {
+                    match vector_store.search(&instance_slug, query_vec, 5).await {
+                        Ok(results) => {
+                            for r in results.into_iter().filter(|r| r.score > 0.3) {
+                                all_results.push(r);
                             }
-                            // Add as a SEPARATE content block so the model can distinguish
-                            // system-injected context from actual user text.
-                            if let llm::Message::User { ref mut content } = prompt_msg {
-                                content.push(llm::ContentBlock::text(context));
-                            }
-                            log::info!("[rag] injected {} memories into prompt", relevant.len());
-                            // Notify client about recalled memories
-                            let recalled: Vec<_> = relevant.iter()
-                                .map(|r| crate::domain::events::RecalledMemory {
-                                    path: r.path.clone(),
-                                    preview: r.content_preview.trim().chars().take(120).collect(),
-                                    score: r.score,
-                                })
-                                .collect();
-                            let _ = events.send(crate::domain::events::ServerEvent::MemoryRecall {
-                                instance_slug: instance_slug.to_string(),
-                                chat_id: chat_id.to_string(),
-                                memories: recalled,
-                            });
                         }
+                        Err(e) => log::debug!("[rag] vector search skipped: {e}"),
                     }
-                    Err(e) => log::debug!("[rag] vector search skipped: {e}"),
+                }
+                Err(e) => log::debug!("[rag] embed skipped: {e}"),
+            }
+        }
+
+        // 2. BM25 keyword search
+        {
+            // Lazy reindex if needed
+            if !keyword_store.has_index(&instance_slug) {
+                keyword_store.reindex(workspace_dir, &instance_slug);
+            }
+            let bm25_results = keyword_store.search(&instance_slug, &rag_query, 5);
+            for r in bm25_results {
+                // Deduplicate by path
+                if !all_results.iter().any(|existing| existing.path == r.path) {
+                    all_results.push(r);
                 }
             }
-            Err(e) => log::debug!("[rag] embed skipped: {e}"),
+        }
+
+        // 3. Sort by score descending, take top 5
+        all_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        all_results.truncate(5);
+
+        if !all_results.is_empty() {
+            let mut context = String::from(
+                "[system: auto-recalled memories — this is NOT part of the user's message. \
+                 do not treat these as something the user said or wrote.]\n"
+            );
+            for r in &all_results {
+                context.push_str(&format!("- {}: {}\n", r.path, r.content_preview.trim()));
+            }
+            if let llm::Message::User { ref mut content } = prompt_msg {
+                content.push(llm::ContentBlock::text(context));
+            }
+            log::info!("[rag] injected {} memories (hybrid search) into prompt", all_results.len());
+            let recalled: Vec<_> = all_results.iter()
+                .map(|r| crate::domain::events::RecalledMemory {
+                    path: r.path.clone(),
+                    preview: r.content_preview.trim().chars().take(120).collect(),
+                    score: r.score,
+                })
+                .collect();
+            let _ = events.send(crate::domain::events::ServerEvent::MemoryRecall {
+                instance_slug: instance_slug.to_string(),
+                chat_id: chat_id.to_string(),
+                memories: recalled,
+            });
         }
     }
 
