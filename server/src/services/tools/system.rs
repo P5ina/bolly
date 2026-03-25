@@ -1880,7 +1880,8 @@ impl Tool for RequestSecretTool {
         ToolDefinition {
             name: "request_secret".into(),
             description: "Prompt user for a secret (API key, password, token) via secure masked input. \
-                Written directly to the specified file, never visible to you.".into(),
+                Written directly to the specified file, never visible to you. \
+                For github token: use file=\"config\", key=\"github.token\".".into(),
             parameters: openai_schema::<RequestSecretArgs>(),
         }
     }
@@ -1938,6 +1939,26 @@ impl Tool for RequestSecretTool {
                 ToolExecError("secret request timed out after 5 minutes".into())
             })?
             .map_err(|_| ToolExecError("secret request was cancelled".into()))?;
+
+        // Special handling for well-known config targets
+        if args.file == "config" || args.file == "instance_config" {
+            match args.key.as_deref() {
+                Some("github.token" | "github_token") => {
+                    let mut instance_cfg = crate::config::InstanceConfig::load(&self.workspace_dir, &self.instance_slug);
+                    instance_cfg.github.token = value.trim().to_string();
+                    instance_cfg.save(&self.workspace_dir, &self.instance_slug)
+                        .map_err(|e| ToolExecError(format!("failed to save instance config: {e}")))?;
+                    log::info!("[request_secret] github token saved to instance config");
+                    return Ok("github token updated. changes take effect on next message.".into());
+                }
+                _ => {
+                    return Err(ToolExecError(format!(
+                        "unknown config key: {:?}. supported: github.token",
+                        args.key
+                    )));
+                }
+            }
+        }
 
         // Write secret to file
         write_secret_to_file(&file_path, args.key.as_deref(), &value)?;
