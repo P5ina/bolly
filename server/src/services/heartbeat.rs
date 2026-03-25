@@ -194,6 +194,10 @@ async fn heartbeat_instance(
     let triage_schema = serde_json::json!({
         "type": "object",
         "properties": {
+            "thought": {
+                "type": "string",
+                "description": "your brief inner monologue — what you're feeling, noticing, or thinking about right now (1-2 sentences)"
+            },
             "action": {
                 "type": "string",
                 "enum": ["quiet", "mood", "reach_out", "drop", "wake"]
@@ -227,7 +231,7 @@ async fn heartbeat_instance(
                 "description": "task description (only for action=wake)"
             }
         },
-        "required": ["action"],
+        "required": ["thought", "action"],
         "additionalProperties": false
     });
 
@@ -260,6 +264,7 @@ async fn heartbeat_instance(
 
     // ── Phase 2: Execute the decision ──
     let mut actions = Vec::new();
+    let mut final_mood = mood.companion_mood.clone();
 
     if action == "quiet" {
         actions.push("quiet".to_string());
@@ -285,6 +290,7 @@ async fn heartbeat_instance(
                 mood: new_mood.clone(),
             });
             log::info!("[heartbeat] {slug} mood → {new_mood}");
+            final_mood = new_mood.clone();
             actions.push(format!("mood: {new_mood}"));
         }
     } else if action == "reach_out" {
@@ -390,7 +396,7 @@ async fn heartbeat_instance(
         id: format!("thought_{}", unix_millis()),
         raw: triage_line.to_string(),
         actions: actions.clone(),
-        mood: mood.companion_mood.clone(),
+        mood: final_mood,
         created_at: unix_millis().to_string(),
     };
 

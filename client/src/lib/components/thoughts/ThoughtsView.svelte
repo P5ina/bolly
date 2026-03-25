@@ -71,14 +71,19 @@
 
 	function cleanRaw(raw: string): string {
 		if (!raw) return "";
-		// Strip JSON structured output
-		try { const j = JSON.parse(raw); return ""; } catch {}
+		// Extract thought field from structured JSON triage output
+		try {
+			const j = JSON.parse(raw);
+			if (j && typeof j.thought === "string" && j.thought.trim()) return j.thought.trim();
+			return "";
+		} catch {}
 		return raw.trim();
 	}
 
 	function primaryKind(t: Thought): string {
 		for (const a of t.actions) {
 			const p = parseAction(a);
+			if (p.kind.startsWith("wake")) return "wake";
 			if (p.kind !== "mood" && p.kind !== "quiet") return p.kind;
 		}
 		return "quiet";
@@ -136,8 +141,10 @@
 							<span class="thought-action thought-action-reach">reached out</span>
 						{:else if p.kind === "drop"}
 							<span class="thought-action thought-action-drop">created a drop</span>
-						{:else if p.kind === "wake"}
+						{:else if p.kind.startsWith("wake")}
 							<span class="thought-action thought-action-wake">woke up</span>
+						{:else if p.kind === "mood"}
+							<span class="thought-action thought-action-mood">mood shift</span>
 						{/if}
 					{/each}
 
@@ -280,6 +287,7 @@
 	.thought-action-reach { color: oklch(0.78 0.12 75 / 65%); background: oklch(0.78 0.12 75 / 5%); }
 	.thought-action-drop { color: oklch(0.78 0.16 310 / 65%); background: oklch(0.78 0.16 310 / 5%); }
 	.thought-action-wake { color: oklch(0.75 0.12 200 / 65%); background: oklch(0.75 0.12 200 / 5%); }
+	.thought-action-mood { color: oklch(0.78 0.15 140 / 65%); background: oklch(0.78 0.15 140 / 5%); }
 
 	/* Body text */
 	.thought-body {
