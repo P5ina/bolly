@@ -92,6 +92,13 @@
       "when": 1773737796555,
       "tag": "0012_optimal_blindfold",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1774518750498,
+      "tag": "0013_small_snowbird",
+      "breakpoints": true
     }
   ]
 }

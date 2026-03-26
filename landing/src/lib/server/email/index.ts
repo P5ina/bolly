@@ -12,6 +12,30 @@ function resend(): Resend {
 
 const FROM = 'Bolly <noreply@mail.bollyai.dev>';
 
+export async function sendVerificationEmail(to: string, token: string) {
+	const verifyUrl = `${ORIGIN}/verify-email?token=${token}`;
+
+	await resend().emails.send({
+		from: FROM,
+		to,
+		subject: 'Verify your email',
+		html: `
+			<div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
+				<h2 style="font-size: 20px; margin-bottom: 16px;">Welcome to Bolly</h2>
+				<p style="color: #666; font-size: 14px; line-height: 1.6;">
+					Verify your email address to get started.
+				</p>
+				<a href="${verifyUrl}" style="display: inline-block; margin: 24px 0; padding: 12px 24px; background: #1a1a1a; color: #fff; text-decoration: none; border-radius: 8px; font-size: 14px;">
+					Verify email
+				</a>
+				<p style="color: #999; font-size: 12px;">
+					This link expires in 24 hours. If you didn't create an account, you can safely ignore this email.
+				</p>
+			</div>
+		`,
+	});
+}
+
 export async function sendPasswordResetEmail(to: string, token: string) {
 	const resetUrl = `${ORIGIN}/reset-password?token=${token}`;
 

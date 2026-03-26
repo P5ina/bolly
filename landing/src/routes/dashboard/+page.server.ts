@@ -40,6 +40,7 @@ async function getSubscriptionInfo(subId: string): Promise<SubscriptionInfo | nu
 
 export const load: PageServerLoad = async ({ locals }) => {
 	if (!locals.user) redirect(302, '/login');
+	if (!locals.user.emailVerified) redirect(302, '/verify-email');
 
 	const tenantsList = await getTenantsByUser(locals.user.id);
 

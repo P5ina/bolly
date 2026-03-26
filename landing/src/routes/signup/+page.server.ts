@@ -2,8 +2,9 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types.js';
 import { db } from '$lib/server/db/index.js';
 import { users } from '$lib/server/db/schema.js';
-import { generateId, hashPassword, createSession, setSessionCookie } from '$lib/server/auth/index.js';
+import { generateId, hashPassword, createSession, setSessionCookie, createEmailVerificationToken } from '$lib/server/auth/index.js';
 import { createCustomer } from '$lib/server/stripe/index.js';
+import { sendVerificationEmail } from '$lib/server/email/index.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	if (locals.user) redirect(302, '/dashboard');
@@ -49,9 +50,18 @@ export const actions: Actions = {
 			throw err;
 		}
 
+		// Send verification email
+		try {
+			const token = await createEmailVerificationToken(id);
+			await sendVerificationEmail(email, token);
+		} catch (e) {
+			console.error('Failed to send verification email:', e);
+		}
+
+		// Create session (user can browse but dashboard is gated)
 		const sessionId = await createSession(id);
 		setSessionCookie(cookies, sessionId);
 
-		redirect(302, '/dashboard');
+		redirect(302, '/verify-email');
 	},
 };

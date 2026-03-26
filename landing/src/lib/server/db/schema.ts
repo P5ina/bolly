@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, pgEnum, unique } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, integer, pgEnum, unique, boolean } from 'drizzle-orm/pg-core';
 
 export const planEnum = pgEnum('plan', ['starter', 'companion', 'unlimited']);
 export const tenantStatusEnum = pgEnum('tenant_status', ['provisioning', 'running', 'stopped', 'error', 'destroyed']);
@@ -11,6 +11,7 @@ export const users = pgTable('users', {
 	email: text('email').notNull().unique(),
 	passwordHash: text('password_hash').notNull(),
 	name: text('name'),
+	emailVerified: boolean('email_verified').notNull().default(false),
 	stripeCustomerId: text('stripe_customer_id'),
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -19,6 +20,14 @@ export const users = pgTable('users', {
 
 export const sessions = pgTable('sessions', {
 	id: text('id').primaryKey(),
+	userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
+
+// ─── Email Verification Tokens ───────────────────────────────────────────────
+
+export const emailVerificationTokens = pgTable('email_verification_tokens', {
+	id: text('id').primaryKey(), // random token
 	userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
 	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 });
@@ -106,6 +115,7 @@ export type Session = typeof sessions.$inferSelect;
 export type Tenant = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
 export type RateLimit = typeof rateLimits.$inferSelect;
 export type GoogleAccount = typeof googleAccounts.$inferSelect;
 export type NewGoogleAccount = typeof googleAccounts.$inferInsert;

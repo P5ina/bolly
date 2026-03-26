@@ -32,6 +32,10 @@ export const actions: Actions = {
 		const sessionId = await createSession(user.id);
 		setSessionCookie(cookies, sessionId);
 
+		if (!user.emailVerified) {
+			redirect(302, '/verify-email');
+		}
+
 		redirect(302, '/dashboard');
 	},
 };

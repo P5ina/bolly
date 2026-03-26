@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { passwordResetTokens, sessions, users, type User } from '../db/schema.js';
+import { emailVerificationTokens, passwordResetTokens, sessions, users, type User } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { sha256 } from '@oslojs/crypto/sha2';
 import { encodeHexLowerCase } from '@oslojs/encoding';
@@ -73,6 +73,44 @@ export function deleteSessionCookie(cookies: Cookies) {
 
 export function getSessionId(cookies: Cookies): string | undefined {
 	return cookies.get(SESSION_COOKIE);
+}
+
+// ─── Email Verification ─────────────────────────────────────────────────────
+
+const VERIFICATION_TOKEN_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+
+export async function createEmailVerificationToken(userId: string): Promise<string> {
+	// Delete any existing tokens for this user
+	await db().delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, userId));
+
+	const token = generateId(40);
+	const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_DURATION);
+
+	await db().insert(emailVerificationTokens).values({ id: token, userId, expiresAt });
+	return token;
+}
+
+export async function verifyEmail(token: string): Promise<boolean> {
+	const result = await db()
+		.select()
+		.from(emailVerificationTokens)
+		.where(eq(emailVerificationTokens.id, token))
+		.limit(1);
+
+	if (result.length === 0) return false;
+
+	const row = result[0];
+	if (row.expiresAt < new Date()) {
+		await db().delete(emailVerificationTokens).where(eq(emailVerificationTokens.id, token));
+		return false;
+	}
+
+	// Mark user as verified
+	await db().update(users).set({ emailVerified: true }).where(eq(users.id, row.userId));
+	// Clean up token
+	await db().delete(emailVerificationTokens).where(eq(emailVerificationTokens.id, token));
+
+	return true;
 }
 
 // ─── Password Reset ──────────────────────────────────────────────────────────
