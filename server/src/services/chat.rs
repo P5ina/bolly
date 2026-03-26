@@ -1387,7 +1387,10 @@ fn build_skills_prompt(workspace_dir: &Path) -> String {
     let mut out = String::from("## skills\nyou have the following skills installed. \
         call `activate_skill` to use any skill. \
         [local] skills return instructions for local execution. \
-        [anthropic] skills load into the code execution sandbox.\n\n");
+        [anthropic] skills load into the code execution sandbox.\n\
+        IMPORTANT: for generating documents (PDF, DOCX, presentations, spreadsheets), \
+        ALWAYS use an [anthropic] skill — NOT a [local] skill like frontend-design. \
+        [local] skills are for building web UI, not for creating downloadable files.\n\n");
     for skill in &active {
         let kind_label = match skill.kind {
             SkillKind::Local => "[local]",

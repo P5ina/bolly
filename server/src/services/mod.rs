@@ -12,6 +12,7 @@ pub mod llm;
 pub mod mcp;
 pub mod tool;
 pub mod memory;
+pub mod memory_import;
 pub mod rhythm;
 pub mod scheduler;
 pub mod skills;

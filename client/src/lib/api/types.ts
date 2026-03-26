@@ -293,6 +293,12 @@ export type ServerEvent =
 			delta: string;
 	  }
 	| {
+			type: "import_progress";
+			instance_slug: string;
+			stage: "parsing" | "extracting" | "organizing" | "writing" | "done" | "error";
+			detail: string;
+	  }
+	| {
 			type: "music_control";
 			instance_slug: string;
 			action: string;

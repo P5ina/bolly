@@ -26,6 +26,7 @@ pub mod project;
 pub mod skills;
 pub mod system;
 pub mod image;
+pub mod import_data;
 pub mod media;
 pub mod web;
 
@@ -544,6 +545,13 @@ pub fn build_tools(
     // ── Data ──
     tools.push(wrap(Box::new(ExportProfileTool::new(workspace_dir, instance_slug, events.clone()))));
     tools.push(wrap(Box::new(ImportProfileTool::new(workspace_dir, instance_slug))));
+    {
+        let api_key = llm.api_key.clone();
+        tools.push(wrap(Box::new(import_data::ImportDataTool::new(
+            workspace_dir, instance_slug, llm.http.clone(), &api_key,
+            events.clone(), vector_store.clone(), google_ai_key,
+        ))));
+    }
 
     // ── Email (unified: Gmail + SMTP/IMAP) ──
     let has_email = google.is_some() || !email_accounts.is_empty();

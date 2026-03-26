@@ -6,6 +6,7 @@ pub mod google;
 pub mod health;
 pub mod heartbeat;
 pub mod instances;
+pub mod memory_import;
 pub mod meta;
 pub mod pwa;
 pub mod skills;

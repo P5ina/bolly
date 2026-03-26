@@ -2053,15 +2053,15 @@ pub struct ExportProfileArgs {
 }
 
 impl Tool for ExportProfileTool {
-    const NAME: &'static str = "export_profile";
+    const NAME: &'static str = "create_backup";
     type Error = ToolExecError;
     type Args = ExportProfileArgs;
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: "export_profile".into(),
-            description: "Export this instance as a downloadable .tar.gz archive. \
+            name: "create_backup".into(),
+            description: "Create a downloadable .tar.gz backup of this instance. \
                 Includes soul, memory, drops, chat history, and all data. \
                 Returns a download link the user can click.".into(),
             parameters: openai_schema::<ExportProfileArgs>(),
@@ -2136,15 +2136,15 @@ pub struct ImportProfileArgs {
 }
 
 impl Tool for ImportProfileTool {
-    const NAME: &'static str = "import_profile";
+    const NAME: &'static str = "restore_backup";
     type Error = ToolExecError;
     type Args = ImportProfileArgs;
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: "import_profile".into(),
-            description: "Import a .tar.gz profile archive into this instance. \
+            name: "restore_backup".into(),
+            description: "Restore from a .tar.gz backup archive. \
                 Merges data (soul, memory, drops, chat history) from the archive. \
                 Accepts a file path or an upload ID from a user attachment (e.g. 'upload_12345').".into(),
             parameters: openai_schema::<ImportProfileArgs>(),

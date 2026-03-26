@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use crate::domain::{chat::ChatMessage, drop::Drop, instance::InstanceSummary, thought::Thought};
+use crate::services::memory_import::{ImportStage};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -97,6 +98,12 @@ pub enum ServerEvent {
         chat_id: String,
         messages: Vec<ChatMessage>,
         agent_running: bool,
+    },
+    /// Memory import progress update.
+    ImportProgress {
+        instance_slug: String,
+        stage: ImportStage,
+        detail: String,
     },
     /// Agent requests music playback control on the client.
     MusicControl {

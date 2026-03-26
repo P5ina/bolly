@@ -11,6 +11,8 @@ struct ApiSkill {
     id: String,
     display_title: String,
     #[serde(default)]
+    description: String,
+    #[serde(default)]
     source: String,
     #[serde(default)]
     latest_version: String,
@@ -48,7 +50,7 @@ pub async fn fetch_available_skills(api_key: &str) -> Result<Vec<Skill>, String>
         Skill {
             id: s.id.clone(),
             name: s.display_title,
-            description: String::new(),
+            description: s.description,
             icon: String::new(),
             builtin,
             enabled: true,

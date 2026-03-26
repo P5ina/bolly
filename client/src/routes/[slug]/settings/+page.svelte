@@ -25,12 +25,15 @@
 		exportInstanceUrl,
 		importInstance,
 		reindexMemory,
+		importKnowledge,
 		fetchScheduledMessages,
 		cancelScheduledMessage,
 		type ScheduledMessage,
 	} from "$lib/api/client.js";
 	import type { McpServerInfo, EmailConfig } from "$lib/api/client.js";
-	import type { Usage } from "$lib/api/types.js";
+	import type { Usage, ServerEvent } from "$lib/api/types.js";
+	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
+	import { onDestroy } from "svelte";
 
 	const slug = $derived(page.params.slug!);
 	const scene = getSceneStore();
@@ -71,6 +74,45 @@
 		} finally {
 			importing = false;
 			if (importFileInput) importFileInput.value = "";
+		}
+	}
+
+	// Import knowledge
+	let importingKnowledge = $state(false);
+	let knowledgeError = $state("");
+	let knowledgeStarted = $state(false);
+	let knowledgeFileInput: HTMLInputElement | undefined = $state();
+
+	// Import progress (via WebSocket)
+	let importStage = $state<string | null>(null);
+	let importDetail = $state("");
+	const ws = getWebSocket();
+	const unsub = ws.subscribe((event: ServerEvent) => {
+		if (event.type === "import_progress" && event.instance_slug === slug) {
+			importStage = event.stage;
+			importDetail = event.detail;
+			if (event.stage === "done" || event.stage === "error") {
+				setTimeout(() => { importStage = null; importDetail = ""; }, 10000);
+			}
+		}
+	});
+	onDestroy(unsub);
+
+	async function handleImportKnowledge() {
+		const files = knowledgeFileInput?.files;
+		if (!files || files.length === 0) return;
+		importingKnowledge = true;
+		knowledgeError = "";
+		knowledgeStarted = false;
+		try {
+			await importKnowledge(slug, files);
+			knowledgeStarted = true;
+			setTimeout(() => { knowledgeStarted = false; }, 8000);
+		} catch (e) {
+			knowledgeError = e instanceof Error ? e.message : "import failed";
+		} finally {
+			importingKnowledge = false;
+			if (knowledgeFileInput) knowledgeFileInput.value = "";
 		}
 	}
 
@@ -1122,6 +1164,53 @@
 			</label>
 		</div>
 		<p class="data-hint">export downloads a .tar.gz of all instance data (soul, memory, drops, chat history). import merges into the current instance.</p>
+
+		<div class="data-actions" style="margin-top: 1.25rem;">
+			<label class="data-btn data-btn-knowledge">
+				{#if importingKnowledge}
+					uploading...
+				{:else if knowledgeStarted}
+					started!
+				{:else}
+					import knowledge
+				{/if}
+				<input
+					type="file"
+					accept=".json,.txt,.md,.csv"
+					multiple
+					bind:this={knowledgeFileInput}
+					onchange={handleImportKnowledge}
+					hidden
+					disabled={importingKnowledge}
+				/>
+			</label>
+			<span class="data-hint">drop your Claude export, notes, or any personal data — AI will extract facts and add them to memory</span>
+		</div>
+		{#if knowledgeError}
+			<p class="error-msg">{knowledgeError}</p>
+		{/if}
+		{#if knowledgeStarted && !importStage}
+			<p class="data-hint" style="color: oklch(0.72 0.15 155); margin-top: 0.5rem;">
+				processing in background — check memory after a few minutes
+			</p>
+		{/if}
+
+		{#if importStage}
+			<div class="import-progress" class:import-done={importStage === 'done'} class:import-error={importStage === 'error'}>
+				<div class="import-progress-header">
+					{#if importStage === 'done'}
+						<span class="import-progress-icon">&#10003;</span>
+					{:else if importStage === 'error'}
+						<span class="import-progress-icon">&#10007;</span>
+					{:else}
+						<span class="import-progress-spinner"></span>
+					{/if}
+					<span class="import-progress-stage">{importStage}</span>
+				</div>
+				<p class="import-progress-detail">{importDetail}</p>
+			</div>
+		{/if}
+
 		<div class="data-actions" style="margin-top: 0.75rem;">
 			<button
 				class="ext-form-btn"
@@ -1582,6 +1671,73 @@
 	.data-btn:hover {
 		background: oklch(0.55 0.08 240 / 14%);
 		border-color: oklch(0.55 0.08 240 / 25%);
+	}
+	.data-btn-knowledge {
+		color: oklch(0.78 0.12 75 / 80%);
+		background: oklch(0.78 0.12 75 / 8%);
+		border-color: oklch(0.78 0.12 75 / 18%);
+	}
+	.data-btn-knowledge:hover {
+		background: oklch(0.78 0.12 75 / 14%);
+		border-color: oklch(0.78 0.12 75 / 28%);
+	}
+	.import-progress {
+		margin-top: 0.75rem;
+		padding: 0.625rem 0.875rem;
+		border-radius: 0.5rem;
+		background: oklch(0.55 0.08 240 / 6%);
+		border: 1px solid oklch(0.55 0.08 240 / 12%);
+	}
+	.import-progress.import-done {
+		background: oklch(0.72 0.15 155 / 6%);
+		border-color: oklch(0.72 0.15 155 / 15%);
+	}
+	.import-progress.import-error {
+		background: oklch(0.65 0.15 25 / 6%);
+		border-color: oklch(0.65 0.15 25 / 15%);
+	}
+	.import-progress-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	.import-progress-stage {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: oklch(0.55 0.08 240 / 60%);
+	}
+	.import-done .import-progress-stage {
+		color: oklch(0.72 0.15 155 / 80%);
+	}
+	.import-error .import-progress-stage {
+		color: oklch(0.65 0.15 25 / 80%);
+	}
+	.import-progress-icon {
+		font-size: 0.75rem;
+	}
+	.import-done .import-progress-icon {
+		color: oklch(0.72 0.15 155);
+	}
+	.import-error .import-progress-icon {
+		color: oklch(0.65 0.15 25);
+	}
+	.import-progress-detail {
+		font-size: 0.7rem;
+		color: oklch(0.55 0.08 240 / 40%);
+		margin-top: 0.25rem;
+	}
+	.import-progress-spinner {
+		width: 12px;
+		height: 12px;
+		border: 1.5px solid oklch(0.55 0.08 240 / 20%);
+		border-top-color: oklch(0.78 0.12 75 / 60%);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+	@keyframes spin {
+		to { transform: rotate(360deg); }
 	}
 	/* Scheduled messages */
 	.sched-list {
