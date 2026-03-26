@@ -26,9 +26,9 @@
 		importInstance,
 		reindexMemory,
 		importKnowledge,
-		fetchScheduledMessages,
-		cancelScheduledMessage,
-		type ScheduledMessage,
+		fetchScheduledTasks,
+		cancelScheduledTask,
+		type ScheduledTask,
 	} from "$lib/api/client.js";
 	import type { McpServerInfo, EmailConfig } from "$lib/api/client.js";
 	import type { Usage, ServerEvent } from "$lib/api/types.js";
@@ -540,15 +540,15 @@
 		loadScheduled();
 	});
 
-	// Scheduled messages
-	let scheduledMessages = $state<ScheduledMessage[]>([]);
+	// Scheduled tasks
+	let scheduledTasks = $state<ScheduledTask[]>([]);
 	let scheduledLoading = $state(true);
 	let cancellingId = $state<string | null>(null);
 
 	async function loadScheduled() {
 		scheduledLoading = true;
 		try {
-			scheduledMessages = await fetchScheduledMessages(slug);
+			scheduledTasks = await fetchScheduledTasks(slug);
 		} catch {
 			// not critical
 		} finally {
@@ -556,11 +556,11 @@
 		}
 	}
 
-	async function cancelMessage(id: string) {
+	async function cancelTask(id: string) {
 		cancellingId = id;
 		try {
-			await cancelScheduledMessage(slug, id);
-			scheduledMessages = scheduledMessages.filter((m) => m.id !== id);
+			await cancelScheduledTask(slug, id);
+			scheduledTasks = scheduledTasks.filter((t) => t.id !== id);
 		} catch {
 			// ignore
 		} finally {
@@ -1103,29 +1103,29 @@
 		{/if}
 	</section>
 
-	<!-- Scheduled messages -->
-	{#if !scheduledLoading && scheduledMessages.length > 0}
+	<!-- Scheduled tasks -->
+	{#if !scheduledLoading && scheduledTasks.length > 0}
 		<section class="settings-section">
 			<div class="section-header">
 				<img src="/icon-scheduled.png" alt="" class="section-icon-img" />
 				<div>
 					<h3 class="section-label">scheduled</h3>
-					<p class="section-desc">{scheduledMessages.length} pending message{scheduledMessages.length === 1 ? "" : "s"}</p>
+					<p class="section-desc">{scheduledTasks.length} pending task{scheduledTasks.length === 1 ? "" : "s"}</p>
 				</div>
 			</div>
 			<div class="sched-list">
-				{#each scheduledMessages as msg (msg.id)}
+				{#each scheduledTasks as task (task.id)}
 					<div class="sched-item">
 						<div class="sched-content">
-							<span class="sched-text">{msg.message.length > 80 ? msg.message.slice(0, 80) + "…" : msg.message}</span>
-							<span class="sched-time">{formatDeliverAt(msg.deliver_at)}</span>
+							<span class="sched-text">{task.task.length > 80 ? task.task.slice(0, 80) + "…" : task.task}</span>
+							<span class="sched-time">{formatDeliverAt(task.deliver_at)}</span>
 						</div>
 						<button
 							class="sched-cancel"
-							disabled={cancellingId === msg.id}
-							onclick={() => cancelMessage(msg.id)}
+							disabled={cancellingId === task.id}
+							onclick={() => cancelTask(task.id)}
 						>
-							{cancellingId === msg.id ? "…" : "cancel"}
+							{cancellingId === task.id ? "…" : "cancel"}
 						</button>
 					</div>
 				{/each}

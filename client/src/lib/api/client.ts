@@ -295,20 +295,20 @@ export function updateVoiceId(slug: string, voiceId: string): Promise<void> {
 	});
 }
 
-export interface ScheduledMessage {
+export interface ScheduledTask {
 	id: string;
-	message: string;
+	task: string;
 	deliver_at: number;
 	created_at: number;
 }
 
-export function fetchScheduledMessages(slug: string): Promise<ScheduledMessage[]> {
+export function fetchScheduledTasks(slug: string): Promise<ScheduledTask[]> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/scheduled`);
 }
 
-export async function cancelScheduledMessage(slug: string, messageId: string): Promise<void> {
+export async function cancelScheduledTask(slug: string, taskId: string): Promise<void> {
 	const res = await authedFetch(
-		`/api/instances/${encodeURIComponent(slug)}/scheduled/${encodeURIComponent(messageId)}`,
+		`/api/instances/${encodeURIComponent(slug)}/scheduled/${encodeURIComponent(taskId)}`,
 		{ method: "DELETE" },
 	);
 	if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));

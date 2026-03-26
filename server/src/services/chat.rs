@@ -1563,7 +1563,7 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          run_command, install_package, web_search, web_fetch, current_time, view_image, \
          send_email, read_email, list_events, create_event, list_drive_files, read_drive_file, \
          upload_drive_file, memory_write, memory_read, memory_list, memory_forget, memory_search, \
-         edit_soul, create_drop, schedule_message, update_config, get_project_state, \
+         edit_soul, create_drop, schedule_agent, update_config, get_project_state, \
          update_project_state, create_task/update_task/list_tasks, browse.\n\
          users can attach images, PDFs, and text files directly in chat — you see them automatically.\n\
          use them directly — never say you can't access something.\n\n\

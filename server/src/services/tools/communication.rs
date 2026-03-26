@@ -13,14 +13,14 @@ use crate::domain::events::ServerEvent;
 use crate::services::google::GoogleClient;
 
 // ---------------------------------------------------------------------------
-// schedule_message
+// schedule_agent
 // ---------------------------------------------------------------------------
 
-pub struct ScheduleMessageTool {
+pub struct ScheduleAgentTool {
     instance_dir: PathBuf,
 }
 
-impl ScheduleMessageTool {
+impl ScheduleAgentTool {
     pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
         Self {
             instance_dir: workspace_dir.join("instances").join(instance_slug),
@@ -28,42 +28,42 @@ impl ScheduleMessageTool {
     }
 }
 
-/// A scheduled message entry.
+/// A scheduled agent task entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScheduledMessage {
+pub struct ScheduledTask {
     pub id: String,
-    pub message: String,
+    pub task: String,
     pub deliver_at: i64,
     pub created_at: i64,
 }
 
-/// Arguments for schedule_message tool.
+/// Arguments for schedule_agent tool.
 #[derive(Deserialize, JsonSchema)]
-pub struct ScheduleMessageArgs {
-    /// The message to send to the user later.
-    pub message: String,
-    /// When to deliver, in seconds from now (e.g. 10 for "in 10 seconds", 3600 for "in 1 hour", 86400 for "tomorrow").
+pub struct ScheduleAgentArgs {
+    /// What to do when the timer fires. Describe the task clearly — you'll be woken up with full tools to execute it.
+    pub task: String,
+    /// When to trigger, in seconds from now (e.g. 60 for "in 1 minute", 3600 for "in 1 hour", 86400 for "tomorrow").
     pub delay_seconds: u32,
 }
 
-impl Tool for ScheduleMessageTool {
-    const NAME: &'static str = "schedule_message";
+impl Tool for ScheduleAgentTool {
+    const NAME: &'static str = "schedule_agent";
     type Error = ToolExecError;
-    type Args = ScheduleMessageArgs;
+    type Args = ScheduleAgentArgs;
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: "schedule_message".into(),
-            description: "Schedule a message for later delivery. Delay in seconds (10=10s, 60=1m, 3600=1h, 86400=1d).".into(),
-            parameters: openai_schema::<ScheduleMessageArgs>(),
+            name: "schedule_agent".into(),
+            description: "Schedule yourself to wake up later and perform a task. You'll be triggered with full tools. Delay in seconds (60=1m, 3600=1h, 86400=1d).".into(),
+            parameters: openai_schema::<ScheduleAgentArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let message = args.message.trim().to_string();
-        if message.is_empty() {
-            return Err(ToolExecError("message cannot be empty".into()));
+        let task = args.task.trim().to_string();
+        if task.is_empty() {
+            return Err(ToolExecError("task cannot be empty".into()));
         }
 
         if args.delay_seconds == 0 {
@@ -73,9 +73,9 @@ impl Tool for ScheduleMessageTool {
         let now = Utc::now().timestamp();
         let deliver_at = now + args.delay_seconds as i64;
 
-        let scheduled = ScheduledMessage {
+        let scheduled = ScheduledTask {
             id: uuid::Uuid::new_v4().to_string(),
-            message,
+            task,
             deliver_at,
             created_at: now,
         };
@@ -105,7 +105,7 @@ impl Tool for ScheduleMessageTool {
             format!("{total}s")
         };
 
-        Ok(format!("message scheduled for delivery in {time_desc}."))
+        Ok(format!("agent wake-up scheduled in {time_desc}."))
     }
 }
 

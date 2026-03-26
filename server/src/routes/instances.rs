@@ -849,12 +849,12 @@ async fn list_scheduled(
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("json") { continue; }
             if let Ok(raw) = std::fs::read_to_string(&path) {
-                if let Ok(msg) = serde_json::from_str::<tools::ScheduledMessage>(&raw) {
+                if let Ok(task) = serde_json::from_str::<tools::ScheduledTask>(&raw) {
                     items.push(serde_json::json!({
-                        "id": msg.id,
-                        "message": msg.message,
-                        "deliver_at": msg.deliver_at,
-                        "created_at": msg.created_at,
+                        "id": task.id,
+                        "task": task.task,
+                        "deliver_at": task.deliver_at,
+                        "created_at": task.created_at,
                     }));
                 }
             }
