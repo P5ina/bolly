@@ -2,61 +2,18 @@
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import {
-		Server,
 		Play,
 		Square,
-		ExternalLink,
 		AlertTriangle,
 		Loader,
-		Cpu,
 		HardDrive,
 		MessageSquare,
 		Zap,
 		RefreshCw,
 	} from 'lucide-svelte';
 
-	const PROVIDERS = ['anthropic', 'openrouter', 'openai'] as const;
-
-	const MODELS: Record<string, { id: string; label: string }[]> = {
-		anthropic: [
-			{ id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-			{ id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
-			{ id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
-		],
-		openrouter: [
-			{ id: 'anthropic/claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
-			{ id: 'anthropic/claude-opus-4.6', label: 'Claude Opus 4.6' },
-			{ id: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' },
-			{ id: 'google/gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite' },
-			{ id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-			{ id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-			{ id: 'deepseek/deepseek-r1', label: 'DeepSeek R1' },
-		],
-		openai: [
-			{ id: 'gpt-5.4', label: 'GPT-5.4' },
-			{ id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
-			{ id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
-		],
-	};
-
-	const FAST_MODELS: Record<string, { id: string; label: string }[]> = {
-		anthropic: [
-			{ id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
-			{ id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-		],
-		openrouter: [
-			{ id: 'google/gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite' },
-			{ id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-			{ id: 'anthropic/claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
-		],
-		openai: [
-			{ id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
-			{ id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
-		],
-	};
-
 	let { data } = $props();
-	let updating = $state<string | null>(null);
+	let changingPlan = $state<string | null>(null);
 	let stopping = $state<string | null>(null);
 	let starting = $state<string | null>(null);
 	let provisioning = $state<string | null>(null);
@@ -71,21 +28,6 @@
 	let notifying = $state(false);
 	let patching = $state(false);
 	let priceMessage = $state('');
-
-	function currentModel(tenant: (typeof data.tenants)[number]) {
-		if (tenant.machine?.model) return tenant.machine.model;
-		return 'default';
-	}
-
-	function currentProvider(tenant: (typeof data.tenants)[number]) {
-		if (tenant.machine?.provider) return tenant.machine.provider;
-		return 'anthropic';
-	}
-
-	function currentFastModel(tenant: (typeof data.tenants)[number]) {
-		if (tenant.machine?.fastModel) return tenant.machine.fastModel;
-		return '';
-	}
 
 	function formatTokens(n: number) {
 		if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(0)}M`;
@@ -409,9 +351,34 @@
 										</div>
 										<div class="flex items-center gap-3 mt-1 text-xs text-text-ghost">
 											<span>{tenant.userEmail}</span>
-											<span class="px-1.5 py-0.5 rounded text-[0.625rem]"
-												style="background: var(--color-warm-ghost); border: 1px solid var(--color-border);"
-											>{tenant.plan}</span>
+											<form method="POST" action="?/changePlan" class="inline-flex" use:enhance={() => {
+												changingPlan = tenant.id;
+												actionError = null;
+												actionSuccess = null;
+												return async ({ result, update }) => {
+													changingPlan = null;
+													if (result.type === 'failure') {
+														actionError = (result.data as { error?: string })?.error ?? 'Failed to change plan';
+													} else if (result.type === 'success') {
+														actionSuccess = `Plan changed for ${tenant.slug}`;
+													}
+													await update();
+												};
+											}}>
+												<input type="hidden" name="tenantId" value={tenant.id} />
+												<select
+													name="plan"
+													class="px-1.5 py-0.5 rounded text-[0.625rem] outline-none cursor-pointer"
+													style="background: var(--color-warm-ghost); border: 1px solid var(--color-border); color: var(--color-text-ghost);"
+													value={tenant.plan}
+													disabled={changingPlan === tenant.id}
+													onchange={(e) => (e.target as HTMLElement).closest('form')!.requestSubmit()}
+												>
+													<option value="starter">starter</option>
+													<option value="companion">companion</option>
+													<option value="unlimited">unlimited</option>
+												</select>
+											</form>
 											<span>{tenant.imageChannel}</span>
 											<span>created {formatDate(tenant.createdAt)}</span>
 										</div>
@@ -561,98 +528,6 @@
 								{/if}
 							</div>
 
-							<!-- Model selector -->
-							{#if tenant.status === 'running' || tenant.status === 'stopped'}
-								<div class="mt-4 pt-4" style="border-top: 1px solid var(--color-border);">
-									<div class="flex items-center gap-2 mb-3">
-										<Server size={12} class="text-text-ghost" />
-										<span class="text-xs text-text-ghost">current:</span>
-										<span class="text-xs font-mono text-text-dim">{currentProvider(tenant)}</span>
-										<span class="text-xs text-text-ghost">/</span>
-										<span class="text-xs font-mono text-text-dim">{currentModel(tenant)}</span>
-										{#if currentFastModel(tenant)}
-											<span class="text-xs text-text-ghost">fast:</span>
-											<span class="text-xs font-mono text-text-dim">{currentFastModel(tenant)}</span>
-										{/if}
-									</div>
-									<form
-										method="POST"
-										action="?/updateModel"
-										class="flex items-center gap-2"
-										use:enhance={() => {
-											updating = tenant.id;
-											actionError = null;
-											actionSuccess = null;
-											return async ({ result, update }) => {
-												updating = null;
-												if (result.type === 'failure') {
-													actionError = (result.data as { error?: string })?.error ?? 'Failed to update';
-												} else if (result.type === 'success') {
-													actionSuccess = `Model updated for ${tenant.slug}. Machine will restart.`;
-												}
-												await update();
-											};
-										}}
-									>
-										<input type="hidden" name="tenantId" value={tenant.id} />
-										<select
-											name="provider"
-											class="py-2 px-3 rounded-lg text-xs text-text outline-none font-mono"
-											style="background: var(--color-bg-raised); border: 1px solid var(--color-border); min-width: 8rem;"
-											value={currentProvider(tenant)}
-											onchange={(e) => {
-												const form = (e.target as HTMLElement).closest('form')!;
-												const provider = (e.target as HTMLSelectElement).value;
-												const modelSelect = form.querySelector('select[name="model"]') as HTMLSelectElement;
-												const models = MODELS[provider] ?? [];
-												modelSelect.innerHTML = models.map(m =>
-													`<option value="${m.id}">${m.label}</option>`
-												).join('');
-												const fastSelect = form.querySelector('select[name="fastModel"]') as HTMLSelectElement;
-												const fastModels = FAST_MODELS[provider] ?? [];
-												fastSelect.innerHTML = '<option value="">fast: default</option>' + fastModels.map(m =>
-													`<option value="${m.id}">${m.label}</option>`
-												).join('');
-											}}
-										>
-											{#each PROVIDERS as p}
-												<option value={p} selected={currentProvider(tenant) === p}>{p}</option>
-											{/each}
-										</select>
-										<select
-											name="model"
-											class="flex-1 py-2 px-3 rounded-lg text-xs text-text outline-none font-mono"
-											style="background: var(--color-bg-raised); border: 1px solid var(--color-border);"
-										>
-											{#each (MODELS[currentProvider(tenant)] ?? []) as m}
-												<option value={m.id} selected={currentModel(tenant) === m.id}>{m.label}</option>
-											{/each}
-										</select>
-										<select
-											name="fastModel"
-											class="py-2 px-3 rounded-lg text-xs text-text outline-none font-mono"
-											style="background: var(--color-bg-raised); border: 1px solid var(--color-border); min-width: 9rem;"
-										>
-											<option value="" selected={!currentFastModel(tenant)}>fast: default</option>
-											{#each (FAST_MODELS[currentProvider(tenant)] ?? []) as m}
-												<option value={m.id} selected={currentFastModel(tenant) === m.id}>{m.label}</option>
-											{/each}
-										</select>
-										<button
-											type="submit"
-											disabled={updating === tenant.id}
-											class="py-2 px-4 rounded-lg text-xs font-medium text-warm transition-all duration-300 disabled:opacity-40"
-											style="background: oklch(0.78 0.12 75 / 12%); border: 1px solid oklch(0.78 0.12 75 / 20%);"
-										>
-											{#if updating === tenant.id}
-												<Loader size={12} class="animate-spin" />
-											{:else}
-												apply
-											{/if}
-										</button>
-									</form>
-								</div>
-							{/if}
 						</div>
 					</div>
 				{/each}

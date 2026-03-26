@@ -44,26 +44,6 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const allRateLimits = await db().select().from(rateLimits);
 	const rateLimitMap = Object.fromEntries(allRateLimits.map((r) => [r.instanceId, r]));
 
-	// Fetch current machine env for running tenants to get active model
-	const machineEnvs = await Promise.all(
-		allTenants
-			.filter((t) => t.status === 'running' && t.flyAppId && t.flyMachineId)
-			.map(async (t) => {
-				try {
-					const machine = await fly.getMachine(t.flyAppId!, t.flyMachineId!);
-					return [t.id, {
-						state: machine.state,
-						provider: machine.config?.env?.BOLLY_LLM_PROVIDER ?? null,
-						model: machine.config?.env?.BOLLY_LLM_MODEL ?? null,
-						fastModel: machine.config?.env?.BOLLY_LLM_FAST_MODEL ?? null,
-					}] as const;
-				} catch {
-					return [t.id, null] as const;
-				}
-			}),
-	);
-	const machineMap = Object.fromEntries(machineEnvs);
-
 	const allUsers = await db()
 		.select({ id: users.id, email: users.email, name: users.name })
 		.from(users)
@@ -76,43 +56,34 @@ export const load: PageServerLoad = async ({ locals }) => {
 			createdAt: t.createdAt.toISOString(),
 			updatedAt: t.updatedAt.toISOString(),
 			rateLimit: rateLimitMap[t.id] ?? null,
-			machine: machineMap[t.id] ?? null,
 		})),
 	};
 };
 
 export const actions: Actions = {
-	updateModel: async ({ request, locals }) => {
+	changePlan: async ({ request, locals }) => {
 		if (!locals.user || !isAdmin(locals.user.email)) error(403, 'Forbidden');
 
 		const form = await request.formData();
 		const tenantId = form.get('tenantId') as string;
-		const provider = form.get('provider') as string;
-		const model = form.get('model') as string;
-		const fastModel = (form.get('fastModel') as string) ?? '';
+		const plan = form.get('plan') as string;
 
-		if (!tenantId || !provider || !model) return fail(400, { error: 'Missing fields' });
-
-		const [tenant] = await db()
-			.select()
-			.from(tenants)
-			.where(eq(tenants.id, tenantId))
-			.limit(1);
-
-		if (!tenant || !tenant.flyAppId || !tenant.flyMachineId) {
-			return fail(400, { error: 'Tenant not found or not running' });
+		if (!tenantId || !['starter', 'companion', 'unlimited'].includes(plan)) {
+			return fail(400, { error: 'Invalid tenantId or plan' });
 		}
 
-		try {
-			await fly.updateMachineEnv(tenant.flyAppId, tenant.flyMachineId, {
-				BOLLY_LLM_PROVIDER: provider,
-				BOLLY_LLM_MODEL: model,
-				...(fastModel ? { BOLLY_LLM_FAST_MODEL: fastModel } : {}),
-			});
-		} catch (e) {
-			const msg = e instanceof Error ? e.message : 'Unknown error';
-			return fail(500, { error: `Failed to update machine: ${msg}` });
-		}
+		const config = PLANS[plan as PlanId];
+		await db()
+			.update(tenants)
+			.set({
+				plan: plan as PlanId,
+				storageLimit: config.storageLimit,
+				maxInstances: config.maxInstances,
+				tokensPer4h: config.tokensPer4h,
+				tokensPerMonth: config.tokensPerMonth,
+				updatedAt: new Date(),
+			})
+			.where(eq(tenants.id, tenantId));
 
 		return { success: true, tenantId };
 	},
