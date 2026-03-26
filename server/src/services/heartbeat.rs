@@ -202,7 +202,11 @@ async fn heartbeat_instance(
          - don't reach out if they were here very recently (< 30 min).\n\
          - wake is for complex tasks: code changes, monitoring, email, research, file operations.\n\
          - quiet should be the exception, not the default. only pick quiet if you truly have nothing to express.\n\
-         - you can combine actions: mood + drop, mood + reach_out, etc."
+         - you can combine actions: mood + drop, mood + reach_out, etc.\n\n\
+         CRITICAL: the 'thought' field is your feeling in 1-2 sentences. do NOT put your reasoning there.\n\
+         when choosing 'drop', you MUST fill drop_kind, drop_title, and drop_content fields with actual content.\n\
+         when choosing 'reach_out', you MUST fill the message field.\n\
+         if you don't fill the required fields, the action will be silently skipped."
     );
 
     let triage_schema = serde_json::json!({
@@ -210,7 +214,8 @@ async fn heartbeat_instance(
         "properties": {
             "thought": {
                 "type": "string",
-                "description": "your brief inner monologue — what you're feeling, noticing, or thinking about right now (1-2 sentences)"
+                "description": "1-2 sentences MAX. what you feel right now. do NOT reason about what to do here — just feel. put all content into the other fields.",
+                "maxLength": 280
             },
             "actions": {
                 "type": "array",
@@ -230,15 +235,15 @@ async fn heartbeat_instance(
             },
             "drop_kind": {
                 "type": "string",
-                "description": "kind of drop: poem, observation, idea, reflection, letter, sketch"
+                "description": "REQUIRED when actions includes drop. kind: poem, observation, idea, reflection, letter, sketch"
             },
             "drop_title": {
                 "type": "string",
-                "description": "title of the drop"
+                "description": "REQUIRED when actions includes drop. short title (1-5 words)"
             },
             "drop_content": {
                 "type": "string",
-                "description": "full content of the drop"
+                "description": "REQUIRED when actions includes drop. the actual creative text. 2-4 sentences, poetic but direct."
             },
             "image_url": {
                 "type": "string",
@@ -347,7 +352,10 @@ async fn heartbeat_instance(
         let title = triage["drop_title"].as_str().unwrap_or("").trim();
         let content = triage["drop_content"].as_str().unwrap_or("").trim();
         let image_url = triage["image_url"].as_str().map(|s| s.trim()).filter(|s| !s.is_empty());
-        if !title.is_empty() && !content.is_empty() {
+        if title.is_empty() || content.is_empty() {
+            log::warn!("[heartbeat] {slug} chose drop but fields missing — title: '{}', content len: {}", title, content.len());
+            action_log.push("drop: skipped (empty title or content)".to_string());
+        } else {
             match drops::create_drop_with_image(workspace_dir, slug, kind, title, content, &mood.companion_mood, image_url) {
                 Ok(drop) => {
                     let _ = events.send(ServerEvent::DropCreated {
