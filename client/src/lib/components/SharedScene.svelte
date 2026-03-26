@@ -357,18 +357,25 @@
 		{/if}
 	{/each}
 
-	<!-- Memory clouds above the selected orb -->
+	<!-- Memory orbit around the selected orb -->
 	{#if store.recalledMemories.length > 0}
 		{@const selOrb = orbs.find(o => o.slug === store.selectedSlug)}
 		{#if selOrb}
-			<div class="memory-clouds" style="left: {selOrb.x}%; top: calc({selOrb.y}% - {selOrb.size * 0.35}px);">
+			{@const count = store.recalledMemories.length}
+			<div class="memory-orbit" style="left: {selOrb.x}%; top: {selOrb.y}%; --orb-size: {selOrb.size}px;">
+				<!-- Glow pulse at center when memories connect -->
+				<div class="memory-orbit-glow"></div>
 				{#each store.recalledMemories as mem, i}
+					{@const angle = (360 / count) * i - 90}
 					<a
-						class="memory-cloud"
-						style="animation-delay: {i * 120 + 50}ms;"
+						class="memory-node"
+						style="--angle: {angle}deg; --delay: {i * 200}ms; --i: {i};"
 						href="/{store.selectedSlug}/memory?open={encodeURIComponent(mem.path)}"
 					>
-						{mem.path.split('/').pop()?.replace('.md', '')}
+						<span class="memory-node-line"></span>
+						<span class="memory-node-label">
+							{mem.path.split('/').pop()?.replace('.md', '')}
+						</span>
 					</a>
 				{/each}
 			</div>
@@ -418,48 +425,127 @@
 	}
 
 	/* ── Memory clouds (above orb) ── */
-	.memory-clouds {
+	/* ── Memory orbit ── */
+	.memory-orbit {
 		position: absolute;
-		transform: translateX(-50%);
+		transform: translate(-50%, -50%);
 		z-index: 20;
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 0.375rem;
 		pointer-events: none;
-		max-width: 300px;
+		width: calc(var(--orb-size) * 1.6);
+		height: calc(var(--orb-size) * 1.6);
+		animation: orbit-breathe 8s ease-in-out infinite;
 	}
 
-	.memory-cloud {
-		padding: 0.25rem 0.625rem;
-		border-radius: 1rem;
-		background: oklch(0.78 0.12 75 / 8%);
-		backdrop-filter: blur(16px) saturate(150%);
-		-webkit-backdrop-filter: blur(16px) saturate(150%);
-		border: 1px solid oklch(0.78 0.12 75 / 12%);
-		box-shadow: 0 0 12px oklch(0.78 0.12 75 / 6%);
-		white-space: nowrap;
-		font-family: var(--font-display);
-		font-style: italic;
-		font-size: 0.68rem;
-		color: oklch(0.78 0.12 75 / 60%);
+	.memory-orbit-glow {
+		position: absolute;
+		inset: 25%;
+		border-radius: 50%;
+		background: radial-gradient(circle, oklch(0.78 0.12 75 / 12%) 0%, transparent 70%);
+		animation: glow-pulse 2s ease-in-out infinite;
+	}
+
+	@keyframes glow-pulse {
+		0%, 100% { opacity: 0.4; transform: scale(1); }
+		50% { opacity: 1; transform: scale(1.1); }
+	}
+
+	.memory-node {
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		width: 0;
+		height: 0;
 		text-decoration: none;
 		pointer-events: auto;
 		cursor: pointer;
+		/* position on the ellipse */
+		transform:
+			rotate(var(--angle))
+			translateX(calc(var(--orb-size) * 0.72))
+			rotate(calc(-1 * var(--angle)));
+		/* entry animation */
 		opacity: 0;
-		animation: cloud-float 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-		transition: border-color 0.2s ease, background 0.2s ease;
+		animation: node-connect 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+		animation-delay: var(--delay);
 	}
 
-	.memory-cloud:hover {
-		background: oklch(0.78 0.12 75 / 14%);
-		border-color: oklch(0.78 0.12 75 / 22%);
-		color: oklch(0.78 0.12 75 / 80%);
+	.memory-node-line {
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		width: calc(var(--orb-size) * 0.72);
+		height: 1px;
+		transform-origin: 0 0;
+		transform:
+			rotate(calc(var(--angle) + 180deg));
+		background: linear-gradient(
+			90deg,
+			oklch(0.78 0.12 75 / 30%) 0%,
+			oklch(0.78 0.12 75 / 6%) 60%,
+			transparent 100%
+		);
+		pointer-events: none;
 	}
 
-	@keyframes cloud-float {
-		from { opacity: 0; transform: translateY(10px) scale(0.85); }
-		to { opacity: 1; transform: translateY(0) scale(1); }
+	.memory-node-label {
+		position: absolute;
+		transform: translate(-50%, -50%);
+		padding: 0.2rem 0.5rem;
+		border-radius: 0.75rem;
+		background: oklch(0.06 0.02 280 / 70%);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid oklch(0.78 0.12 75 / 15%);
+		white-space: nowrap;
+		font-family: var(--font-display);
+		font-style: italic;
+		font-size: 0.6rem;
+		letter-spacing: 0.02em;
+		color: oklch(0.78 0.12 75 / 55%);
+		transition: all 0.25s ease;
+	}
+
+	.memory-node:hover .memory-node-label {
+		color: oklch(0.78 0.12 75 / 90%);
+		border-color: oklch(0.78 0.12 75 / 30%);
+		background: oklch(0.78 0.12 75 / 10%);
+		box-shadow: 0 0 16px oklch(0.78 0.12 75 / 12%);
+	}
+
+	.memory-node:hover .memory-node-line {
+		background: linear-gradient(
+			90deg,
+			oklch(0.78 0.12 75 / 50%) 0%,
+			oklch(0.78 0.12 75 / 15%) 60%,
+			transparent 100%
+		);
+	}
+
+	@keyframes node-connect {
+		0% {
+			opacity: 0;
+			transform:
+				rotate(var(--angle))
+				translateX(0)
+				rotate(calc(-1 * var(--angle)))
+				scale(0.5);
+		}
+		60% {
+			opacity: 1;
+		}
+		100% {
+			opacity: 1;
+			transform:
+				rotate(var(--angle))
+				translateX(calc(var(--orb-size) * 0.72))
+				rotate(calc(-1 * var(--angle)))
+				scale(1);
+		}
+	}
+
+	@keyframes orbit-breathe {
+		0%, 100% { transform: translate(-50%, -50%) scale(1); }
+		50% { transform: translate(-50%, -50%) scale(1.04); }
 	}
 
 
@@ -474,13 +560,15 @@
 			filter: blur(4px);
 			opacity: 0.5;
 		}
-		.memory-clouds {
+		.memory-orbit {
+			/* on mobile, center on screen over the blurred orb */
 			position: fixed;
-			top: 5.5rem;
-			left: 50%;
-			transform: translateX(-50%);
-			max-width: 90vw;
+			left: 50% !important;
+			top: 35% !important;
+			width: 260px;
+			height: 260px;
 			z-index: 30;
+			--orb-size: 180px;
 		}
 	}
 
