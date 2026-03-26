@@ -38,7 +38,7 @@
 	let switchingChannel = $state<string | null>(null);
 	let creating = $state(false);
 	let slugInput = $state('');
-	let selectedPlan = $state<'starter' | 'companion' | 'unlimited'>('starter');
+	let selectedPlan = $state<'starter' | 'companion' | 'unlimited'>('companion');
 	let createByok = $state(false);
 	let errorMsg = $state('');
 	let showCreate = $state(false);
@@ -153,40 +153,20 @@
 						</div>
 					</div>
 
-					<!-- step 2: plan -->
+					<!-- step 2: plan (beta — companion only) -->
 					<div class="create-step create-step-plan">
-						<p class="create-hint">choose your plan</p>
+						<p class="create-hint">beta plan</p>
 						<div class="create-plan-grid">
-							{#each [
-								{ id: 'starter', name: 'Starter', price: 12, byokPrice: 5, tokens: '1M', desc: 'for exploring' },
-								{ id: 'companion', name: 'Companion', price: 29, byokPrice: 10, tokens: '3M', desc: 'for daily use', featured: true },
-								{ id: 'unlimited', name: 'Real Friend', price: 59, byokPrice: 19, tokens: '10M', desc: 'no limits' },
-							] as plan}
-								<button
-									class="create-plan-card"
-									class:create-plan-selected={selectedPlan === plan.id}
-									class:create-plan-featured={plan.featured}
-									onclick={() => selectedPlan = plan.id as typeof selectedPlan}
-								>
-									{#if plan.featured}
-										<span class="create-plan-badge">popular</span>
-									{/if}
-									<span class="create-plan-name">{plan.name}</span>
-									<span class="create-plan-price">
-										\${BYOK_ENABLED && createByok ? plan.byokPrice : plan.price}<span class="create-plan-period">/mo</span>
-									</span>
-									<span class="create-plan-tokens">{plan.tokens} tokens</span>
-									<span class="create-plan-desc">{plan.desc}</span>
-								</button>
-							{/each}
+							<div class="create-plan-card create-plan-selected create-plan-featured">
+								<span class="create-plan-badge">beta</span>
+								<span class="create-plan-name">Companion</span>
+								<span class="create-plan-price">
+									$29<span class="create-plan-period">/mo</span>
+								</span>
+								<span class="create-plan-tokens">50M tokens</span>
+								<span class="create-plan-desc">for daily use</span>
+							</div>
 						</div>
-						{#if BYOK_ENABLED}<label class="create-byok-toggle">
-							<input type="checkbox" bind:checked={createByok} />
-							<span>bring your own API key</span>
-							{#if createByok}
-								<span class="create-byok-note">hosting-only pricing</span>
-							{/if}
-						</label>{/if}
 					</div>
 
 					<!-- action -->
@@ -204,9 +184,7 @@
 								<div class="create-submit-spinner"></div>
 								creating...
 							{:else}
-								begin — ${createByok
-									? (selectedPlan === 'starter' ? 5 : selectedPlan === 'companion' ? 10 : 19)
-									: (selectedPlan === 'starter' ? 12 : selectedPlan === 'companion' ? 29 : 59)}/mo
+								begin — $29/mo
 							{/if}
 						</button>
 					</div>

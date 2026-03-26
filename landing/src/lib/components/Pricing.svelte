@@ -6,32 +6,14 @@
 
 	const plans = [
 		{
-			name: 'starter',
-			desc: 'See if it clicks',
-			price: 12,
-			byokPrice: 5,
-			features: ['1M tokens / month', '10 GB storage', 'Memory & mood tracking'],
-			featured: false,
-			icon: '/assets/plan-starter.png',
-		},
-		{
 			name: 'companion',
 			desc: 'For everyday life',
 			price: 29,
 			byokPrice: 10,
-			features: ['3M tokens / month', '20 GB storage', 'Web browsing', 'Email integration'],
+			features: ['50M tokens / month', '20 GB storage', 'Web browsing', 'Email integration'],
 			featured: true,
-			badge: 'popular',
+			badge: 'beta',
 			icon: '/assets/plan-companion.png',
-		},
-		{
-			name: 'real friend',
-			desc: 'No limits',
-			price: 59,
-			byokPrice: 19,
-			features: ['10M tokens / month', '50 GB storage', 'Web browsing', 'Early access to new features'],
-			featured: false,
-			icon: '/assets/plan-friend.png',
 		},
 	];
 </script>
@@ -253,8 +235,8 @@
 
 	@media (min-width: 768px) {
 		.pricing-grid {
-			grid-template-columns: repeat(3, 1fr);
-			max-width: none;
+			grid-template-columns: 1fr;
+			max-width: 380px;
 			align-items: stretch;
 		}
 	}

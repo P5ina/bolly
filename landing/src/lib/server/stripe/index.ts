@@ -31,8 +31,8 @@ export const PLANS = {
 		cpus: 2,
 		memoryMb: 4096,
 		maxInstances: 3,
-		tokensPer4h: 200_000,
-		tokensPerMonth: 3_000_000,
+		tokensPer4h: 7_000_000,
+		tokensPerMonth: 50_000_000,
 	},
 	unlimited: {
 		name: 'Real Friend',
