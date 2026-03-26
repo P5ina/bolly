@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import {
+		Server,
 		Play,
 		Square,
 		AlertTriangle,
