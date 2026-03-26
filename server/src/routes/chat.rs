@@ -333,36 +333,12 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                     rate_limit::record_usage(&state.http_client, &state.landing_url, &state.landing_auth_token, recorded).await;
                 }
 
-                // Check if the agent wants to continue or if a new user message arrived
-                let last_content = turn.messages
-                    .last()
-                    .map(|m| m.content.as_str())
-                    .unwrap_or("");
-
-                if !should_continue(last_content) {
-                    if has_pending_user_message(&state, &instance_slug, &chat_id).await {
-                        log::info!("[agent] {instance_slug}/{chat_id} — new user message arrived, continuing");
-                        continue;
-                    }
-                    break;
+                // Check if a new user message arrived while agent was processing
+                if has_pending_user_message(&state, &instance_slug, &chat_id).await {
+                    log::info!("[agent] {instance_slug}/{chat_id} — new user message arrived, continuing");
+                    continue;
                 }
-
-                log::info!(
-                    "[agent] {instance_slug}/{chat_id} — iteration {iteration}, continuing"
-                );
-
-                let continue_msg = chat::save_user_message(
-                    &state.workspace_dir,
-                    &instance_slug,
-                    &chat_id,
-                    "[continue — the user is waiting for you to finish]",
-                )
-                .ok();
-
-                if continue_msg.is_none() {
-                    log::warn!("[agent] {instance_slug}/{chat_id} — failed to save continue message");
-                    break;
-                }
+                break;
             }
             Err(e) => {
                 let msg = e.to_string();
@@ -474,30 +450,6 @@ async fn has_pending_user_message(state: &AppState, instance_slug: &str, chat_id
         }
         Err(_) => false,
     }
-}
-
-fn should_continue(response: &str) -> bool {
-    let lower = response.to_lowercase();
-    let continue_phrases = [
-        "let me continue",
-        "i'll continue",
-        "continuing",
-        "next step",
-        "now i'll",
-        "now let me",
-        "moving on to",
-        "let me now",
-        "i'll now",
-        "working on",
-        "let me work on",
-        "[continue]",
-    ];
-    for phrase in &continue_phrases {
-        if lower.contains(phrase) {
-            return true;
-        }
-    }
-    false
 }
 
 async fn list_chats(
