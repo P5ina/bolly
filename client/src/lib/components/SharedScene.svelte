@@ -431,8 +431,8 @@
 		transform: translate(-50%, -50%);
 		z-index: 20;
 		pointer-events: none;
-		width: calc(var(--orb-size) * 1.6);
-		height: calc(var(--orb-size) * 1.6);
+		width: calc(var(--orb-size) * 1.0);
+		height: calc(var(--orb-size) * 1.0);
 		animation: orbit-breathe 8s ease-in-out infinite;
 	}
 
@@ -461,7 +461,7 @@
 		/* position on the ellipse */
 		transform:
 			rotate(var(--angle))
-			translateX(calc(var(--orb-size) * 0.72))
+			translateX(calc(var(--orb-size) * 0.42))
 			rotate(calc(-1 * var(--angle)));
 		/* entry animation */
 		opacity: 0;
@@ -473,7 +473,7 @@
 		position: absolute;
 		left: 50%;
 		top: 50%;
-		width: calc(var(--orb-size) * 0.72);
+		width: calc(var(--orb-size) * 0.42);
 		height: 1px;
 		transform-origin: 0 0;
 		transform:
@@ -537,7 +537,7 @@
 			opacity: 1;
 			transform:
 				rotate(var(--angle))
-				translateX(calc(var(--orb-size) * 0.72))
+				translateX(calc(var(--orb-size) * 0.42))
 				rotate(calc(-1 * var(--angle)))
 				scale(1);
 		}
