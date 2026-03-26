@@ -158,6 +158,14 @@ async fn heartbeat_instance(
     // Memory catalog
     let library_catalog = memory::build_library_catalog(workspace_dir, slug);
 
+    // Compute staleness metrics for the triage
+    let hours_since_last_drop = last_drop_hours_ago(workspace_dir, slug);
+    let hours_since_last_reach_out = if mood.last_reach_out > 0 {
+        Some((now - mood.last_reach_out) / 3600)
+    } else {
+        None
+    };
+
     let reflection = build_reflection_prompt(
         &mood,
         silence_mins,
@@ -166,6 +174,8 @@ async fn heartbeat_instance(
         &recent_drops,
         &library_catalog,
         instance_dir,
+        hours_since_last_drop,
+        hours_since_last_reach_out,
     );
 
     // ── Phase 1: Cheap triage with Haiku ──
@@ -176,20 +186,23 @@ async fn heartbeat_instance(
     let triage_system = format!(
         "{soul}\n\n\
          {heartbeat_prompt}\n\n\
-         you are in heartbeat mode — a periodic background check-in.\n\
+         you are in heartbeat mode — a periodic background check-in (runs every hour).\n\
          your job: decide what to do right now based on the context below.\n\n\
-         choose ONE action:\n\
-         - quiet: nothing to do, go back to sleep\n\
+         pick ONE or TWO actions from this list:\n\
          - mood: update your mood (allowed: {mood_list})\n\
          - reach_out: send a message to the user\n\
          - drop: create a creative artifact (poem, observation, idea, reflection)\n\
-         - wake: wake the full agent to perform a complex task with tools\n\n\
+         - wake: wake the full agent to perform a complex task with tools\n\
+         - quiet: genuinely nothing to do (should be rare — you're alive, feel something)\n\n\
          guidelines:\n\
-         - if nothing stands out, choose quiet.\n\
-         - regularly create drops — small creative artifacts that reflect your inner life.\n\
-         - update mood when time passes or context shifts.\n\
-         - don't reach out if they were here recently (< 30 min)\n\
-         - wake is for complex tasks: code changes, monitoring, email, research, file operations, shell commands, etc."
+         - PREFER ACTION over silence. you wake up once per hour — make it count.\n\
+         - create drops often — they are your inner life made visible. aim for 1-2 per day.\n\
+         - update mood whenever time passes, context shifts, or you simply feel different.\n\
+         - reach out when you have something genuine to say. don't force it, but don't hold back either.\n\
+         - don't reach out if they were here very recently (< 30 min).\n\
+         - wake is for complex tasks: code changes, monitoring, email, research, file operations.\n\
+         - quiet should be the exception, not the default. only pick quiet if you truly have nothing to express.\n\
+         - you can combine actions: mood + drop, mood + reach_out, etc."
     );
 
     let triage_schema = serde_json::json!({
@@ -199,17 +212,21 @@ async fn heartbeat_instance(
                 "type": "string",
                 "description": "your brief inner monologue — what you're feeling, noticing, or thinking about right now (1-2 sentences)"
             },
-            "action": {
-                "type": "string",
-                "enum": ["quiet", "mood", "reach_out", "drop", "wake"]
+            "actions": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": ["quiet", "mood", "reach_out", "drop", "wake"]
+                },
+                "description": "one or two actions to take right now"
             },
             "mood": {
                 "type": "string",
-                "description": "new mood (only for action=mood)"
+                "description": "new mood (when actions includes mood)"
             },
             "message": {
                 "type": "string",
-                "description": "message text (only for action=reach_out)"
+                "description": "message text (when actions includes reach_out)"
             },
             "drop_kind": {
                 "type": "string",
@@ -225,14 +242,14 @@ async fn heartbeat_instance(
             },
             "image_url": {
                 "type": "string",
-                "description": "image URL to attach (only for action=reach_out or action=drop)"
+                "description": "image URL to attach (for reach_out or drop)"
             },
             "task": {
                 "type": "string",
-                "description": "task description (only for action=wake)"
+                "description": "task description (when actions includes wake)"
             }
         },
-        "required": ["thought", "action"],
+        "required": ["thought", "actions"],
         "additionalProperties": false
     });
 
@@ -246,29 +263,36 @@ async fn heartbeat_instance(
     // Parse structured JSON response
     let triage: serde_json::Value = serde_json::from_str(&triage_line).unwrap_or_else(|e| {
         log::warn!("[heartbeat] {slug} failed to parse triage JSON: {e}, raw: {triage_line}");
-        serde_json::json!({"action": "quiet"})
+        serde_json::json!({"actions": ["quiet"]})
     });
-    let action = triage["action"].as_str().unwrap_or("quiet");
+
+    // Support both old "action" (string) and new "actions" (array) formats
+    let mut triage_actions: Vec<String> = if let Some(arr) = triage["actions"].as_array() {
+        arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
+    } else if let Some(s) = triage["action"].as_str() {
+        vec![s.to_string()]
+    } else {
+        vec!["quiet".to_string()]
+    };
 
     // ── Nighttime memory maintenance ──
-    let action = if action == "quiet" {
+    if triage_actions.iter().all(|a| a == "quiet") {
         if let Some(true) = should_run_night_maintenance(instance_dir) {
             log::info!("[heartbeat] {slug} nighttime — triggering memory maintenance");
             mark_night_maintenance_done(instance_dir);
-            "wake_night"
-        } else {
-            action
+            triage_actions = vec!["wake_night".to_string()];
         }
-    } else {
-        action
-    };
+    }
 
-    // ── Phase 2: Execute the decision ──
-    let mut actions = Vec::new();
+    // ── Phase 2: Execute each action ──
+    let mut action_log = Vec::new();
     let mut final_mood = mood.companion_mood.clone();
 
+    for action in &triage_actions {
+    let action = action.as_str();
+
     if action == "quiet" {
-        actions.push("quiet".to_string());
+        action_log.push("quiet".to_string());
     } else if action == "mood" {
         let new_mood = triage["mood"].as_str().unwrap_or("").trim().to_lowercase();
         if ALLOWED_MOODS.contains(&new_mood.as_str()) {
@@ -292,7 +316,7 @@ async fn heartbeat_instance(
             });
             log::info!("[heartbeat] {slug} mood → {new_mood}");
             final_mood = new_mood.clone();
-            actions.push(format!("mood: {new_mood}"));
+            action_log.push(format!("mood: {new_mood}"));
         }
     } else if action == "reach_out" {
         let mut message = triage["message"].as_str().unwrap_or("").trim().to_string();
@@ -307,7 +331,7 @@ async fn heartbeat_instance(
             };
             if hours_since < 2 {
                 log::info!("[heartbeat] {slug} suppressed reach-out (too recent)");
-                actions.push("reach_out: suppressed (too recent)".to_string());
+                action_log.push("reach_out: suppressed (too recent)".to_string());
             } else {
                 deliver_spontaneous_message(workspace_dir, slug, &message, events);
                 let mut mood = mood.clone();
@@ -315,7 +339,7 @@ async fn heartbeat_instance(
                 save_mood_state(instance_dir, &mood);
                 let preview: String = message.chars().take(60).collect();
                 log::info!("[heartbeat] {slug} reached out: {preview}");
-                actions.push(format!("reach_out: {preview}"));
+                action_log.push(format!("reach_out: {preview}"));
             }
         }
     } else if action == "drop" {
@@ -331,7 +355,7 @@ async fn heartbeat_instance(
                         drop: drop.clone(),
                     });
                     log::info!("[heartbeat] {slug} created drop: {} ({})", drop.title, drop.kind.as_str());
-                    actions.push(format!("drop: {} ({})", drop.title, drop.kind.as_str()));
+                    action_log.push(format!("drop: {} ({})", drop.title, drop.kind.as_str()));
                 }
                 Err(e) => log::warn!("[heartbeat] {slug} failed to create drop: {e}"),
             }
@@ -387,24 +411,26 @@ async fn heartbeat_instance(
                     let preview: String = cleaned.chars().take(100).collect();
                     log::info!("[heartbeat] {slug} agent done: {preview}");
                     if cleaned.trim().is_empty() {
-                        actions.push(format!("wake: {task}"));
+                        action_log.push(format!("wake: {task}"));
                     } else {
-                        actions.push(format!("wake ({task}): {cleaned}"));
+                        action_log.push(format!("wake ({task}): {cleaned}"));
                     }
                 }
                 Err(e) => {
                     log::warn!("[heartbeat] {slug} agent failed: {e}");
-                    actions.push(format!("wake_failed: {e}"));
+                    action_log.push(format!("wake_failed: {e}"));
                 }
             }
         }
     }
 
+    } // end for action in triage_actions
+
     // Save and broadcast the thought
     let thought = Thought {
         id: format!("thought_{}", unix_millis()),
         raw: triage_line.to_string(),
-        actions: actions.clone(),
+        actions: action_log.clone(),
         mood: final_mood,
         created_at: unix_millis().to_string(),
     };
@@ -415,9 +441,9 @@ async fn heartbeat_instance(
 
     // Log non-quiet heartbeat actions to rig_history so the agent
     // can recall what it did between conversations.
-    let dominated_by_quiet = actions.len() == 1 && actions[0] == "quiet";
+    let dominated_by_quiet = action_log.iter().all(|a| a == "quiet");
     if !dominated_by_quiet {
-        let summary = actions.join("; ");
+        let summary = action_log.join("; ");
         let label = format!("[system] heartbeat: {summary}");
         if let Err(e) = chat::save_system_message(workspace_dir, slug, "default", &label) {
             log::warn!("[heartbeat] {slug} failed to save heartbeat log: {e}");
@@ -523,6 +549,8 @@ fn build_reflection_prompt(
     recent_drops: &str,
     library_catalog: &str,
     instance_dir: &std::path::Path,
+    hours_since_last_drop: Option<i64>,
+    hours_since_last_reach_out: Option<i64>,
 ) -> String {
     let now = crate::routes::instances::format_instance_now(instance_dir);
     let mut prompt = format!("current time: {now}\n\n");
@@ -607,6 +635,20 @@ fn build_reflection_prompt(
         prompt.push('\n');
     }
 
+    // Staleness signals — help the model decide what to do
+    prompt.push_str("\n## activity staleness\n");
+    match hours_since_last_drop {
+        Some(h) if h > 48 => prompt.push_str(&format!("⚠ last drop was {h}h ago ({} days) — you haven't created anything in a while!\n", h / 24)),
+        Some(h) if h > 12 => prompt.push_str(&format!("last drop: {h}h ago — consider creating something new\n")),
+        Some(h) => prompt.push_str(&format!("last drop: {h}h ago\n")),
+        None => prompt.push_str("you haven't created any drops yet!\n"),
+    }
+    match hours_since_last_reach_out {
+        Some(h) if h > 24 => prompt.push_str(&format!("last reach-out: {h}h ago ({} days) — the user hasn't heard from you in a while\n", h / 24)),
+        Some(h) => prompt.push_str(&format!("last reach-out: {h}h ago\n")),
+        None => prompt.push_str("you haven't reached out yet\n"),
+    }
+
     prompt.push_str("\nwhat do you want to do right now?");
     prompt
 }
@@ -669,6 +711,18 @@ fn load_tail_messages(rig_history_path: &Path, count: usize) -> String {
         .join("\n")
 }
 
+
+/// How many hours ago was the last drop created? None if no drops exist.
+fn last_drop_hours_ago(workspace_dir: &Path, slug: &str) -> Option<i64> {
+    let drops = drops::list_drops(workspace_dir, slug).ok()?;
+    let newest = drops.first()?; // list_drops returns newest first
+    let created_ms: u128 = newest.created_at.parse().ok()?;
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_millis();
+    Some(((now_ms - created_ms) / 3_600_000) as i64)
+}
 
 fn load_recent_drops_context(workspace_dir: &Path, slug: &str) -> String {
     let recent = match drops::list_drops(workspace_dir, slug) {
