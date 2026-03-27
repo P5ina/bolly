@@ -216,6 +216,15 @@ impl Tool for ReachOutTool {
             let _ = std::fs::write(&messages_path, json);
         }
 
+        // Also save to rig_history (single source of truth for chat reload)
+        let rig_entry = crate::services::llm::HistoryEntry::new(
+            crate::services::llm::Message::assistant(&message),
+            now.to_string(),
+            format!("hb_{now}"),
+        );
+        let rig_path = chat_dir.join("rig_history.json");
+        crate::services::chat::append_to_rig_history(&rig_path, &rig_entry);
+
         let _ = self.events.send(ServerEvent::ChatMessageCreated {
             instance_slug: self.instance_slug.clone(),
             chat_id: "default".to_string(),
