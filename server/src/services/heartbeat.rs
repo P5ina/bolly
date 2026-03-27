@@ -214,7 +214,7 @@ async fn heartbeat_instance(
         "properties": {
             "thought": {
                 "type": "string",
-                "description": "1-2 sentences MAX. what you feel right now. do NOT reason about what to do here — just feel. put all content into the other fields."
+                "description": "1-2 sentences. what you feel right now."
             },
             "actions": {
                 "type": "array",
@@ -230,23 +230,7 @@ async fn heartbeat_instance(
             },
             "message": {
                 "type": "string",
-                "description": "message text (when actions includes reach_out)"
-            },
-            "drop_kind": {
-                "type": "string",
-                "description": "REQUIRED when actions includes drop. kind: poem, observation, idea, reflection, letter, sketch"
-            },
-            "drop_title": {
-                "type": "string",
-                "description": "REQUIRED when actions includes drop. short title (1-5 words)"
-            },
-            "drop_content": {
-                "type": "string",
-                "description": "REQUIRED when actions includes drop. the actual creative text. 2-4 sentences, poetic but direct."
-            },
-            "image_url": {
-                "type": "string",
-                "description": "image URL to attach (for reach_out or drop)"
+                "description": "message to send (when actions includes reach_out)"
             },
             "task": {
                 "type": "string",
@@ -347,24 +331,33 @@ async fn heartbeat_instance(
             }
         }
     } else if action == "drop" {
-        let kind = triage["drop_kind"].as_str().unwrap_or("observation").trim();
-        let title = triage["drop_title"].as_str().unwrap_or("").trim();
-        let content = triage["drop_content"].as_str().unwrap_or("").trim();
-        let image_url = triage["image_url"].as_str().map(|s| s.trim()).filter(|s| !s.is_empty());
-        if title.is_empty() || content.is_empty() {
-            log::warn!("[heartbeat] {slug} chose drop but fields missing — title: '{}', content len: {}", title, content.len());
-            action_log.push("drop_skipped: empty title or content".to_string());
-        } else {
-            match drops::create_drop_with_image(workspace_dir, slug, kind, title, content, &mood.companion_mood, image_url) {
-                Ok(drop) => {
-                    let _ = events.send(ServerEvent::DropCreated {
-                        instance_slug: slug.to_string(),
-                        drop: drop.clone(),
-                    });
-                    log::info!("[heartbeat] {slug} created drop: {} ({})", drop.title, drop.kind.as_str());
-                    action_log.push(format!("drop: {} ({})", drop.title, drop.kind.as_str()));
-                }
-                Err(e) => log::warn!("[heartbeat] {slug} failed to create drop: {e}"),
+        // Delegate drop creation to the main agent — Haiku just decides, the real model creates.
+        let thought_ctx = triage["thought"].as_str().unwrap_or("").trim();
+        log::info!("[heartbeat] {slug} delegating drop to main agent");
+
+        let drop_system = format!(
+            "{soul}\n\nyou are in heartbeat mode. create a single drop — a small creative artifact \
+             that reflects your inner life right now. use the create_drop tool.\n\n\
+             your current mood: {final_mood}\n\
+             your inner thought: {thought_ctx}\n\n\
+             IMPORTANT: call create_drop NOW on your first response. \
+             2-4 sentences, poetic but direct. no fluff."
+        );
+
+        let drop_tools: Vec<Box<dyn ToolDyn>> = vec![
+            Box::new(CreateDropTool::new(workspace_dir, slug, events.clone())),
+        ];
+
+        match llm.chat_with_tools_only(&drop_system, &reflection, vec![], drop_tools).await {
+            Ok((response, drop_tokens)) => {
+                heartbeat_tokens += drop_tokens;
+                let preview: String = response.chars().take(80).collect();
+                log::info!("[heartbeat] {slug} drop agent done: {preview}");
+                action_log.push(format!("drop: {preview}"));
+            }
+            Err(e) => {
+                log::warn!("[heartbeat] {slug} drop agent failed: {e}");
+                action_log.push(format!("drop_failed: {e}"));
             }
         }
     } else if action == "wake" || action == "wake_night" {
