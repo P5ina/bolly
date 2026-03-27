@@ -215,6 +215,31 @@ pub async fn run_single_turn(
         ));
     }
 
+    // Child agents
+    let agents_dir = workspace_dir.join("instances").join(&instance_slug).join("agents");
+    let agent_count = std::fs::read_dir(&agents_dir)
+        .map(|e| e.filter_map(Result::ok).filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("toml")).count())
+        .unwrap_or(0);
+    if agent_count > 0 {
+        let agent_names: Vec<String> = std::fs::read_dir(&agents_dir)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("toml"))
+            .filter_map(|e| e.path().file_stem().map(|s| s.to_string_lossy().to_string()))
+            .collect();
+        system_prompt.push_str(&format!(
+            "\n\n## child agents\n\
+             you have {agent_count} child agents ({}). \
+             they run autonomously on their own schedules during heartbeat. \
+             configs are TOML files in: {}\n\
+             to create a new child agent, write a TOML file to agents/{{name}}.toml with: \
+             name, description, prompt, interval_hours, model (heavy/default/fast/cheap), tools (true/false), enabled (true/false).",
+            agent_names.join(", "),
+            agents_dir.display(),
+        ));
+    }
+
     // File access — local paths and public URLs
     let instance_dir = workspace_dir.join("instances").join(&instance_slug);
     let uploads_path = instance_dir.join("uploads");
