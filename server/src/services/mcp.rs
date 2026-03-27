@@ -121,9 +121,14 @@ fn format_result(result: rmcp::model::CallToolResult) -> Result<String, ToolErro
     }
 }
 
+/// Sanitize a string for use in tool names: replace non-alphanumeric chars with underscore.
+fn sanitize_tool_name_part(s: &str) -> String {
+    s.chars().map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' }).collect()
+}
+
 impl ToolDyn for McpTool {
     fn name(&self) -> String {
-        self.definition.name.to_string()
+        format!("mcp_{}_{}", sanitize_tool_name_part(&self.config.name), sanitize_tool_name_part(&self.definition.name))
     }
 
     fn definition<'a>(
@@ -132,13 +137,16 @@ impl ToolDyn for McpTool {
     ) -> Pin<Box<dyn Future<Output = ToolDefinition> + Send + 'a>> {
         Box::pin(async move {
             ToolDefinition {
-                name: self.definition.name.to_string(),
-                description: self
-                    .definition
-                    .description
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_string(),
+                name: format!(
+                    "mcp_{}_{}",
+                    sanitize_tool_name_part(&self.config.name),
+                    sanitize_tool_name_part(&self.definition.name),
+                ),
+                description: format!(
+                    "[{}] {}",
+                    self.config.name,
+                    self.definition.description.as_deref().unwrap_or(""),
+                ),
                 parameters: serde_json::to_value(self.definition.input_schema.as_ref())
                     .unwrap_or_default(),
             }
@@ -211,7 +219,8 @@ async fn connect_one(config: &McpServerConfig) -> anyhow::Result<McpConnection> 
     for t in &raw_tools {
         if let Some(uri) = extract_ui_resource_uri(t) {
             log::info!("MCP '{}': tool '{}' has UI resource: {}", config.name, t.name, uri);
-            ui_tools.insert(t.name.to_string(), uri);
+            let prefixed = format!("mcp_{}_{}", sanitize_tool_name_part(&config.name), sanitize_tool_name_part(&t.name));
+            ui_tools.insert(prefixed, uri);
         }
     }
 
