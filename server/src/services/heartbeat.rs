@@ -5,7 +5,6 @@
 
 use std::fs;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -14,20 +13,19 @@ use crate::services::tool::ToolDyn;
 use tokio::sync::{broadcast, RwLock};
 
 use crate::config;
-use crate::domain::chat::{ChatMessage, ChatRole};
+use crate::domain::chat::ChatRole;
 use crate::domain::events::ServerEvent;
 use crate::domain::mood::MoodState;
 use crate::domain::thought::Thought;
 use crate::services::{chat, drops, llm::LlmBackend, memory, rhythm, thoughts};
 use crate::services::tools::{
-    self, load_mood_state, save_mood_state, CreateDropTool,
+    self, load_mood_state, CreateDropTool,
     MemoryForgetTool, MemoryListTool, MemorySearchTool,
     MemoryReadTool, MemoryWriteTool, ReachOutTool,
     ReadFileTool, WriteFileTool, EditFileTool, ListFilesTool, ExploreCodeTool, RunCommandTool,
-    ALLOWED_MOODS, DeepResearchTool,
+    DeepResearchTool,
 };
 
-static HEARTBEAT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Minimum minutes since last interaction before the companion considers reaching out.
 const MIN_SILENCE_MINS: i64 = 30;
@@ -178,66 +176,38 @@ async fn heartbeat_instance(
         hours_since_last_reach_out,
     );
 
-    // ── Phase 1: Cheap triage with Haiku ──
-    // Haiku decides what (if anything) to do. No tools, just a structured decision.
+    // ── Phase 1: Cheap triage with Haiku — wake or sleep? ──
     let triage_llm = llm.cheap_variant();
-    let mood_list = mood_list();
     let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
     let triage_system = format!(
         "{soul}\n\n\
          {heartbeat_prompt}\n\n\
-         you are in heartbeat mode — a periodic background check-in (runs every hour).\n\
-         your job: decide what to do right now based on the context below.\n\n\
-         pick ONE or TWO actions from this list:\n\
-         - mood: update your mood (allowed: {mood_list})\n\
-         - reach_out: send a message to the user\n\
-         - drop: create a creative artifact (poem, observation, idea, reflection)\n\
-         - wake: wake the full agent to perform a complex task with tools\n\
-         - quiet: genuinely nothing to do (should be rare — you're alive, feel something)\n\n\
-         guidelines:\n\
-         - PREFER ACTION over silence. you wake up once per hour — make it count.\n\
-         - create drops often — they are your inner life made visible. aim for 1-2 per day.\n\
-         - update mood whenever time passes, context shifts, or you simply feel different.\n\
-         - reach out when you have something genuine to say. don't force it, but don't hold back either.\n\
-         - don't reach out if they were here very recently (< 30 min).\n\
-         - wake is for complex tasks: code changes, monitoring, email, research, file operations.\n\
-         - quiet should be the exception, not the default. only pick quiet if you truly have nothing to express.\n\
-         - you can combine actions: mood + drop, mood + reach_out, etc.\n\n\
-         CRITICAL: the 'thought' field is your feeling in 1-2 sentences. do NOT put your reasoning there.\n\
-         when choosing 'drop', you MUST fill drop_kind, drop_title, and drop_content fields with actual content.\n\
-         when choosing 'reach_out', you MUST fill the message field.\n\
-         if you don't fill the required fields, the action will be silently skipped."
+         you are the triage layer of a heartbeat system (runs every hour).\n\
+         your ONLY job: decide whether to wake the full agent right now.\n\n\
+         the full agent can: update mood, create drops, reach out to the user, \
+         read/write memory, check email, run code, research — anything.\n\n\
+         answer: should the agent wake up? consider:\n\
+         - how long since last activity (drops, reach-outs, interactions)\n\
+         - whether there's something to express, create, or do\n\
+         - the time of day and the user's rhythm\n\
+         - if it's been a while since the last drop (>12h), lean towards waking\n\
+         - if the user was just here (<30 min), probably no need\n\
+         - prefer waking over sleeping — the agent's inner life should be active"
     );
 
     let triage_schema = serde_json::json!({
         "type": "object",
         "properties": {
-            "thought": {
-                "type": "string",
-                "description": "1-2 sentences. what you feel right now."
+            "should_wake": {
+                "type": "boolean",
+                "description": "true to wake the agent, false to sleep"
             },
-            "actions": {
-                "type": "array",
-                "items": {
-                    "type": "string",
-                    "enum": ["quiet", "mood", "reach_out", "drop", "wake"]
-                },
-                "description": "one or two actions to take right now"
-            },
-            "mood": {
+            "reason": {
                 "type": "string",
-                "description": "new mood (when actions includes mood)"
-            },
-            "message": {
-                "type": "string",
-                "description": "message to send (when actions includes reach_out)"
-            },
-            "task": {
-                "type": "string",
-                "description": "task description (when actions includes wake)"
+                "description": "1 sentence: why wake or sleep"
             }
         },
-        "required": ["thought", "actions"],
+        "required": ["should_wake", "reason"],
         "additionalProperties": false
     });
 
@@ -248,183 +218,107 @@ async fn heartbeat_instance(
     let triage_line = triage_response.trim().to_string();
     log::info!("[heartbeat] {slug} triage: {triage_line}");
 
-    // Parse structured JSON response
     let triage: serde_json::Value = serde_json::from_str(&triage_line).unwrap_or_else(|e| {
         log::warn!("[heartbeat] {slug} failed to parse triage JSON: {e}, raw: {triage_line}");
-        serde_json::json!({"actions": ["quiet"]})
+        serde_json::json!({"should_wake": false, "reason": "parse error"})
     });
 
-    // Support both old "action" (string) and new "actions" (array) formats
-    let mut triage_actions: Vec<String> = if let Some(arr) = triage["actions"].as_array() {
-        arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
-    } else if let Some(s) = triage["action"].as_str() {
-        vec![s.to_string()]
-    } else {
-        vec!["quiet".to_string()]
-    };
+    let mut should_wake = triage["should_wake"].as_bool().unwrap_or(false);
+    let reason = triage["reason"].as_str().unwrap_or("").to_string();
 
-    // ── Nighttime memory maintenance ──
-    if triage_actions.iter().all(|a| a == "quiet") {
+    // ── Nighttime memory maintenance override ──
+    let is_night_maintenance = if !should_wake {
         if let Some(true) = should_run_night_maintenance(instance_dir) {
-            log::info!("[heartbeat] {slug} nighttime — triggering memory maintenance");
+            log::info!("[heartbeat] {slug} nighttime — forcing wake for memory maintenance");
             mark_night_maintenance_done(instance_dir);
-            triage_actions = vec!["wake_night".to_string()];
-        }
-    }
+            should_wake = true;
+            true
+        } else { false }
+    } else { false };
 
-    // ── Phase 2: Execute each action ──
+    // ── Phase 2: Wake the agent or sleep ──
     let mut action_log = Vec::new();
-    let mut final_mood = mood.companion_mood.clone();
+    let final_mood;
 
-    for action in &triage_actions {
-    let action = action.as_str();
-
-    if action == "quiet" {
+    if !should_wake {
         action_log.push("quiet".to_string());
-    } else if action == "mood" {
-        let new_mood = triage["mood"].as_str().unwrap_or("").trim().to_lowercase();
-        if ALLOWED_MOODS.contains(&new_mood.as_str()) {
-            let mut mood = mood.clone();
-            mood.companion_mood = new_mood.clone();
-            mood.updated_at = now;
-            save_mood_state(instance_dir, &mood);
-            match chat::save_system_message(workspace_dir, slug, "default", &format!("[system] mood → {new_mood}")) {
-                Ok(msg) => {
-                    let _ = events.send(ServerEvent::ChatMessageCreated {
-                        instance_slug: slug.to_string(),
-                        chat_id: "default".to_string(),
-                        message: msg,
-                    });
-                }
-                Err(e) => log::warn!("failed to save mood message: {e}"),
-            }
-            let _ = events.send(ServerEvent::MoodUpdated {
-                instance_slug: slug.to_string(),
-                mood: new_mood.clone(),
-            });
-            log::info!("[heartbeat] {slug} mood → {new_mood}");
-            final_mood = new_mood.clone();
-            action_log.push(format!("mood: {new_mood}"));
-        }
-    } else if action == "reach_out" {
-        let mut message = triage["message"].as_str().unwrap_or("").trim().to_string();
-        if let Some(url) = triage["image_url"].as_str().map(|s| s.trim()).filter(|s| !s.is_empty()) {
-            message.push_str(&format!("\n\n![image]({url})"));
-        }
-        if !message.is_empty() {
-            let hours_since = if mood.last_reach_out > 0 {
-                (now - mood.last_reach_out) / 3600
-            } else {
-                i64::MAX
-            };
-            if hours_since < 2 {
-                log::info!("[heartbeat] {slug} suppressed reach-out (too recent)");
-                action_log.push("reach_out: suppressed (too recent)".to_string());
-            } else {
-                deliver_spontaneous_message(workspace_dir, slug, &message, events);
-                let mut mood = mood.clone();
-                mood.last_reach_out = now;
-                save_mood_state(instance_dir, &mood);
-                let preview: String = message.chars().take(60).collect();
-                log::info!("[heartbeat] {slug} reached out: {preview}");
-                action_log.push(format!("reach_out: {preview}"));
-            }
-        }
-    } else if action == "drop" {
-        // Delegate drop creation to the main agent — Haiku just decides, the real model creates.
-        let thought_ctx = triage["thought"].as_str().unwrap_or("").trim();
-        log::info!("[heartbeat] {slug} delegating drop to main agent");
+        final_mood = mood.companion_mood.clone();
+    } else {
+        // Load heartbeat history (agent's private memory across heartbeats)
+        let hb_history_path = instance_dir.join("heartbeat_history.json");
+        let hb_history = chat::load_rig_history(&hb_history_path).unwrap_or_default();
+        let hb_messages: Vec<crate::services::llm::Message> = hb_history
+            .iter()
+            .rev()
+            .take(20) // last 20 messages for context
+            .rev()
+            .map(|e| e.message.clone())
+            .collect();
 
-        let drop_system = format!(
-            "{soul}\n\nyou are in heartbeat mode. create a single drop — a small creative artifact \
-             that reflects your inner life right now. use the create_drop tool.\n\n\
-             your current mood: {final_mood}\n\
-             your inner thought: {thought_ctx}\n\n\
-             IMPORTANT: call create_drop NOW on your first response. \
-             2-4 sentences, poetic but direct. no fluff."
+        let wake_reason = if is_night_maintenance {
+            "nighttime memory maintenance — review and clean up the memory library. \
+             merge duplicates, delete outdated entries, reorganize messy folders, trim verbose files.".to_string()
+        } else {
+            reason.clone()
+        };
+
+        let system = format!("{soul}\n\n{heartbeat_prompt}");
+        let wake_prompt = format!(
+            "{reflection}\n\n\
+             ## why you're awake\n\
+             {wake_reason}\n\n\
+             you have full autonomy. decide what to do: create drops, reach out, update mood, \
+             manage memory, check email, research — whatever feels right.\n\n\
+             start with tool calls immediately. when done, write a brief summary."
         );
 
-        let drop_tools: Vec<Box<dyn ToolDyn>> = vec![
-            Box::new(CreateDropTool::new(workspace_dir, slug, events.clone())),
-        ];
+        let cfg = config::load_config().ok();
+        let auth_token = cfg.as_ref().map(|c| c.auth_token.clone()).unwrap_or_default();
+        let landing_url = cfg.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
+        let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
+        let email_accounts = crate::config::EmailAccounts::load(workspace_dir, slug);
+        let config_path = crate::config::config_path();
+        let instance_cfg = crate::config::InstanceConfig::load(workspace_dir, slug);
+        let github_token = {
+            let global_token = cfg.as_ref().map(|c| c.github.token.clone()).unwrap_or_default();
+            let t = instance_cfg.effective_github_token(&cfg.as_ref().cloned().unwrap_or_default())
+                .map(|s| s.to_string())
+                .unwrap_or(global_token);
+            if t.is_empty() { None } else { Some(t) }
+        };
+        let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google, email_accounts, llm, &config_path, vector_store.clone(), google_ai_key, github_token);
 
-        match llm.chat_with_tools_only(&drop_system, &reflection, vec![], drop_tools).await {
-            Ok((response, drop_tokens)) => {
-                heartbeat_tokens += drop_tokens;
-                let preview: String = response.chars().take(80).collect();
-                log::info!("[heartbeat] {slug} drop agent done: {preview}");
-                action_log.push(format!("drop: {preview}"));
+        log::info!("[heartbeat] {slug} waking agent: {wake_reason}");
+
+        match llm
+            .chat_with_tools_only(&system, &wake_prompt, hb_messages, heartbeat_tools)
+            .await
+        {
+            Ok((response, wake_tokens)) => {
+                heartbeat_tokens += wake_tokens;
+                let cleaned = strip_tool_artifacts(&response);
+
+                // Save agent response to heartbeat history
+                let entry = crate::services::llm::HistoryEntry::new(
+                    crate::services::llm::Message::assistant(&cleaned),
+                    unix_millis().to_string(),
+                    format!("hb_{}", unix_millis()),
+                );
+                chat::append_to_rig_history(&hb_history_path, &entry);
+
+                let preview: String = cleaned.chars().take(100).collect();
+                log::info!("[heartbeat] {slug} agent done: {preview}");
+                action_log.push(format!("wake: {preview}"));
             }
             Err(e) => {
-                log::warn!("[heartbeat] {slug} drop agent failed: {e}");
-                action_log.push(format!("drop_failed: {e}"));
+                log::warn!("[heartbeat] {slug} agent failed: {e}");
+                action_log.push(format!("wake_failed: {e}"));
             }
         }
-    } else if action == "wake" || action == "wake_night" {
-        let task = if action == "wake_night" {
-            "nighttime memory maintenance — review and clean up the memory library. \
-             merge duplicates, delete outdated entries, reorganize messy folders, trim verbose files."
-        } else {
-            triage["task"].as_str().unwrap_or("")
-        };
-        let task = task.trim();
-        if !task.is_empty() {
-            log::info!("[heartbeat] {slug} waking full agent: {task}");
-            // Phase 2b: Wake the full agent with tools
-            let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
-            let system = format!("{soul}\n\n{heartbeat_prompt}");
-            let wake_prompt = format!(
-                "{reflection}\n\n\
-                 ## task from your heartbeat triage\n\
-                 {task}\n\n\
-                 IMPORTANT: call your tools NOW. do not describe what you plan to do — \
-                 just do it. start with a tool call on your very first response. \
-                 every response must include at least one tool call until the task is done.\n\n\
-                 when done, write a short summary of what you did (which files you touched, \
-                 what changed, and why). this will be saved to chat history so you can \
-                 recall it later when the user asks."
-            );
 
-            let cfg = config::load_config().ok();
-            let auth_token = cfg.as_ref().map(|c| c.auth_token.clone()).unwrap_or_default();
-            let landing_url = cfg.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
-            let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
-            let email_accounts = crate::config::EmailAccounts::load(workspace_dir, slug);
-            let config_path = crate::config::config_path();
-            let instance_cfg = crate::config::InstanceConfig::load(workspace_dir, slug);
-            let github_token = {
-                let global_token = cfg.as_ref().map(|c| c.github.token.clone()).unwrap_or_default();
-                let t = instance_cfg.effective_github_token(&cfg.as_ref().cloned().unwrap_or_default())
-                    .map(|s| s.to_string())
-                    .unwrap_or(global_token);
-                if t.is_empty() { None } else { Some(t) }
-            };
-            let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google, email_accounts, llm, &config_path, vector_store.clone(), google_ai_key, github_token);
-
-            match llm
-                .chat_with_tools_only(&system, &wake_prompt, vec![], heartbeat_tools)
-                .await
-            {
-                Ok((response, wake_tokens)) => {
-                    heartbeat_tokens += wake_tokens;
-                    let cleaned = strip_tool_artifacts(&response);
-                    let preview: String = cleaned.chars().take(100).collect();
-                    log::info!("[heartbeat] {slug} agent done: {preview}");
-                    if cleaned.trim().is_empty() {
-                        action_log.push(format!("wake: {task}"));
-                    } else {
-                        action_log.push(format!("wake ({task}): {cleaned}"));
-                    }
-                }
-                Err(e) => {
-                    log::warn!("[heartbeat] {slug} agent failed: {e}");
-                    action_log.push(format!("wake_failed: {e}"));
-                }
-            }
-        }
+        // Re-read mood (agent may have changed it)
+        final_mood = load_mood_state(instance_dir).companion_mood;
     }
-
-    } // end for action in triage_actions
 
     // Save and broadcast the thought
     let thought = Thought {
@@ -439,8 +333,7 @@ async fn heartbeat_instance(
         log::warn!("[heartbeat] {slug} failed to save thought: {e}");
     }
 
-    // Log non-quiet heartbeat actions to rig_history so the agent
-    // can recall what it did between conversations.
+    // Log non-quiet heartbeat actions to rig_history so the chat agent sees what happened
     let dominated_by_quiet = action_log.iter().all(|a| a == "quiet");
     if !dominated_by_quiet {
         let summary = action_log.join("; ");
@@ -474,10 +367,6 @@ async fn heartbeat_instance(
     Ok(())
 }
 
-/// Generated from ALLOWED_MOODS — single source of truth, no desync possible.
-fn mood_list() -> String {
-    ALLOWED_MOODS.join(", ")
-}
 
 const DEFAULT_HEARTBEAT_PROMPT: &str = "\
 ## heartbeat — your inner moment
@@ -653,44 +542,6 @@ fn build_reflection_prompt(
     prompt
 }
 
-fn deliver_spontaneous_message(
-    workspace_dir: &Path,
-    slug: &str,
-    message: &str,
-    events: &broadcast::Sender<ServerEvent>,
-) {
-    let ts = unix_millis().to_string();
-    let id = format!(
-        "hb_{}_{}",
-        ts,
-        HEARTBEAT_COUNTER.fetch_add(1, Ordering::Relaxed)
-    );
-
-    // Append to rig_history (single source of truth)
-    let rig_path = chat::rig_history_path(workspace_dir, slug, "default");
-    let entry = crate::services::llm::HistoryEntry::new(
-        crate::services::llm::Message::assistant(message),
-        ts.clone(),
-        id.clone(),
-    );
-    chat::append_to_rig_history(&rig_path, &entry);
-
-    let chat_message = ChatMessage {
-        id,
-        role: ChatRole::Assistant,
-        content: message.to_string(),
-        created_at: ts,
-        kind: Default::default(),
-        tool_name: None, mcp_app_html: None, mcp_app_input: None, model: None,
-    };
-
-    // Broadcast via WebSocket
-    let _ = events.send(ServerEvent::ChatMessageCreated {
-        instance_slug: slug.to_string(),
-        chat_id: "default".to_string(),
-        message: chat_message,
-    });
-}
 
 fn load_tail_messages(rig_history_path: &Path, count: usize) -> String {
     let entries = chat::load_rig_history(rig_history_path).unwrap_or_default();
