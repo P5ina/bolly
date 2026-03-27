@@ -214,8 +214,7 @@ async fn heartbeat_instance(
         "properties": {
             "thought": {
                 "type": "string",
-                "description": "1-2 sentences MAX. what you feel right now. do NOT reason about what to do here — just feel. put all content into the other fields.",
-                "maxLength": 280
+                "description": "1-2 sentences MAX. what you feel right now. do NOT reason about what to do here — just feel. put all content into the other fields."
             },
             "actions": {
                 "type": "array",
