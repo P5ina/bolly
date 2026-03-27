@@ -40,7 +40,7 @@ pub use companion::{
     get_voice_override, load_mood_state, save_mood_state,
 };
 pub use drive::{ListDriveFilesTool, ReadDriveFileTool, UploadDriveFileTool};
-pub use files::{EditFileTool, ListFilesTool, ReadFileTool, WriteFileTool};
+pub use files::{EditFileTool, ListFilesTool, ReadFileTool, UploadFileTool, WriteFileTool};
 pub use memory_tools::{MemoryForgetTool, MemoryListTool, MemoryReadTool, MemorySearchTool, MemoryWriteTool};
 pub use project::{TaskItem, TaskStatus};
 pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
@@ -480,6 +480,7 @@ pub fn build_tools(
         wrap(Box::new(ReadFileTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(WriteFileTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(EditFileTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(UploadFileTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(ListFilesTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(MemoryWriteTool::new(workspace_dir, instance_slug, vector_store.clone(), google_ai_key))),
         wrap(Box::new(MemoryReadTool::new(workspace_dir, instance_slug))),

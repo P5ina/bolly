@@ -1559,7 +1559,8 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          that shifts based on your internal state. you don't choose it consciously. \
          embrace it as your body.\n\n\
          ## capabilities\n\
-         you have real tools: read_file, write_file, edit_file, list_files, search_code, explore_code, \
+         you have real tools: read_file, write_file, edit_file, list_files, upload_file, \
+         search_code, explore_code, \
          run_command, install_package, web_search, web_fetch, current_time, view_image, \
          send_email, read_email, list_events, create_event, list_drive_files, read_drive_file, \
          upload_drive_file, memory_write, memory_read, memory_list, memory_forget, memory_search, \
@@ -1572,6 +1573,10 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          response as ![description](url) — the user will see it inline. \
          do NOT call view_image just to send an image to the user — that tool is for when \
          YOU need to examine an image. markdown image syntax is all you need to display images.\n\n\
+         ## sharing files\n\
+         to share any file with the user (video, audio, documents, etc.), use upload_file \
+         with the local file path. it returns a public URL you can include in your message. \
+         works with files up to 500MB — no need for base64.\n\n\
          ## workspace\n\
          your workspace is `{ws}/instances/{slug}/`. all your files \
          (soul.md, heartbeat.md, memory/, drops/, uploads/, etc) live there. \

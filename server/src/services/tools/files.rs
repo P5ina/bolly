@@ -378,6 +378,82 @@ impl Tool for ListFilesTool {
 }
 
 // ---------------------------------------------------------------------------
-// send_file
+// upload_file — save a local file as an upload, return public URL
 // ---------------------------------------------------------------------------
 
+pub struct UploadFileTool {
+    workspace_dir: PathBuf,
+    instance_slug: String,
+    public_url: String,
+    auth_token: String,
+}
+
+impl UploadFileTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
+            public_url: std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default(),
+            auth_token: std::env::var("BOLLY_AUTH_TOKEN").unwrap_or_default(),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct UploadFileArgs {
+    /// Absolute path to the file on the local filesystem (e.g. "/tmp/video.mp4").
+    pub file_path: String,
+    /// Optional friendly name for the file. Defaults to the original filename.
+    pub name: Option<String>,
+}
+
+impl Tool for UploadFileTool {
+    const NAME: &'static str = "upload_file";
+    type Error = ToolExecError;
+    type Args = UploadFileArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "upload_file".into(),
+            description: "Upload a local file and get a public URL. Works with any file size up to 500MB. Use this to share files with the user.".into(),
+            parameters: openai_schema::<UploadFileArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let path = Path::new(&args.file_path);
+        if !path.exists() {
+            return Err(ToolExecError(format!("{}: file not found", args.file_path)));
+        }
+        if !path.is_file() {
+            return Err(ToolExecError(format!("{}: not a file", args.file_path)));
+        }
+
+        let bytes = fs::read(path)
+            .map_err(|e| ToolExecError(format!("failed to read {}: {e}", args.file_path)))?;
+
+        let name = args.name.unwrap_or_else(|| {
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file")
+                .to_string()
+        });
+
+        let meta = crate::services::uploads::save_upload(
+            &self.workspace_dir, &self.instance_slug, &name, &bytes,
+        ).map_err(|e| ToolExecError(format!("upload failed: {e}")))?;
+
+        if self.public_url.is_empty() {
+            return Ok(format!("uploaded as {} ({} bytes) but no public URL configured", meta.id, bytes.len()));
+        }
+
+        let url = format!(
+            "{}/public/files/{}/{}?token={}",
+            self.public_url, self.instance_slug, meta.id, self.auth_token,
+        );
+
+        let size_mb = bytes.len() as f64 / 1024.0 / 1024.0;
+        Ok(format!("{url}\n\nuploaded: {name} ({size_mb:.1} MB)"))
+    }
+}
