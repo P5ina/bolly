@@ -784,7 +784,13 @@ async fn run_reflection(
     let soul = fs::read_to_string(instance_dir.join("soul.md")).unwrap_or_default();
     let mood = load_mood_state(instance_dir);
 
-    // Gather recent conversations (last N days worth)
+    // Gather recent conversations (last N days) from two sources:
+    // 1. Live rig_history (current chat)
+    // 2. Archived conversations (from cleared chats)
+    let cutoff_ts = Utc::now().timestamp() - REFLECTION_INTERVAL_DAYS * 86400;
+    let cutoff_ms = cutoff_ts as u128 * 1000;
+
+    // Source 1: live rig_history
     let rig_path = workspace_dir
         .join("instances")
         .join(slug)
@@ -792,16 +798,11 @@ async fn run_reflection(
         .join("default")
         .join("rig_history.json");
     let all_entries = chat::load_rig_history(&rig_path).unwrap_or_default();
-    let cutoff_ms = (Utc::now().timestamp() - REFLECTION_INTERVAL_DAYS * 86400) as u128 * 1000;
-    let recent_entries: Vec<_> = all_entries
+    let live_summary: String = all_entries
         .iter()
         .filter(|e| e.ts.as_deref().and_then(|s| s.parse::<u128>().ok()).unwrap_or(0) >= cutoff_ms)
-        .collect();
-    let conversation_summary = recent_entries
-        .iter()
         .filter_map(|e| {
-            let msg = &e.message;
-            match msg {
+            match &e.message {
                 crate::services::llm::Message::User { content } => {
                     let text = content.iter().filter_map(|b| {
                         if let crate::services::llm::ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
@@ -821,6 +822,17 @@ async fn run_reflection(
         })
         .collect::<Vec<_>>()
         .join("\n");
+
+    // Source 2: archived conversations (from cleared chats)
+    let archived_summary = chat::load_archived_conversations(workspace_dir, slug, cutoff_ts);
+
+    // Merge both sources
+    let conversation_summary = match (archived_summary.is_empty(), live_summary.is_empty()) {
+        (true, true) => String::new(),
+        (true, false) => live_summary,
+        (false, true) => format!("(from cleared chats)\n{archived_summary}"),
+        (false, false) => format!("(from cleared chats)\n{archived_summary}\n\n(current chat)\n{live_summary}"),
+    };
 
     // Recent drops
     let recent_drops = load_recent_drops_context(workspace_dir, slug);

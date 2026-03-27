@@ -713,6 +713,9 @@ pub fn clear_context(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
 
+    // Archive conversation before clearing — preserves context for reflection cycle
+    archive_conversation(workspace_dir, &instance_slug, &chat_id);
+
     // Rebuild memory catalog snapshot — the static catalog in system prompt
     // must be fresh after context is cleared.
     memory::rebuild_catalog_snapshot(workspace_dir, &instance_slug);
@@ -737,6 +740,106 @@ pub fn clear_context(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
     if msgs.exists() {
         let _ = fs::remove_file(&msgs);
     }
+}
+
+/// Archive conversation text before clearing — preserves context for reflection cycle.
+/// Appends condensed messages to `conversation_archive.jsonl` (one JSON line per clear event).
+fn archive_conversation(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
+    let rig_path = rig_history_path(workspace_dir, instance_slug, chat_id);
+    let entries = load_rig_history(&rig_path).unwrap_or_default();
+    if entries.is_empty() {
+        return;
+    }
+
+    // Extract text-only messages, truncated
+    let messages: Vec<serde_json::Value> = entries
+        .iter()
+        .filter_map(|e| {
+            let (role, content) = match &e.message {
+                llm::Message::User { content } => {
+                    let text: String = content.iter().filter_map(|b| {
+                        if let llm::ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
+                    }).collect::<Vec<_>>().join(" ");
+                    if text.is_empty() { return None; }
+                    ("user", text)
+                }
+                llm::Message::Assistant { content, .. } => {
+                    let text: String = content.iter().filter_map(|b| {
+                        if let llm::ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
+                    }).collect::<Vec<_>>().join(" ");
+                    if text.is_empty() { return None; }
+                    // Truncate assistant messages to save space
+                    let truncated: String = text.chars().take(500).collect();
+                    ("assistant", truncated)
+                }
+            };
+            Some(serde_json::json!({"role": role, "text": content}))
+        })
+        .collect();
+
+    if messages.is_empty() {
+        return;
+    }
+
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let archive_entry = serde_json::json!({
+        "ts": ts,
+        "chat_id": chat_id,
+        "messages": messages,
+    });
+
+    let archive_path = workspace_dir
+        .join("instances")
+        .join(instance_slug)
+        .join("conversation_archive.jsonl");
+
+    // Append one JSON line
+    use std::io::Write;
+    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&archive_path) {
+        let _ = writeln!(file, "{}", archive_entry);
+        log::info!("archived {} messages for {instance_slug}/{chat_id} before clear", messages.len());
+    }
+}
+
+/// Load archived conversations within a time window (for reflection cycle).
+pub fn load_archived_conversations(workspace_dir: &Path, instance_slug: &str, since_ts: i64) -> String {
+    let archive_path = workspace_dir
+        .join("instances")
+        .join(instance_slug)
+        .join("conversation_archive.jsonl");
+
+    let content = match fs::read_to_string(&archive_path) {
+        Ok(c) => c,
+        Err(_) => return String::new(),
+    };
+
+    let mut result = Vec::new();
+    for line in content.lines() {
+        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
+            let ts = entry["ts"].as_i64().unwrap_or(0);
+            if ts < since_ts {
+                continue;
+            }
+            if let Some(messages) = entry["messages"].as_array() {
+                for msg in messages {
+                    let role = msg["role"].as_str().unwrap_or("?");
+                    let text = msg["text"].as_str().unwrap_or("");
+                    if role == "user" {
+                        result.push(format!("user: {text}"));
+                    } else {
+                        let truncated: String = text.chars().take(300).collect();
+                        result.push(format!("you: {truncated}"));
+                    }
+                }
+            }
+        }
+    }
+
+    result.join("\n")
 }
 
 /// List all chats for an instance, returning summaries.
