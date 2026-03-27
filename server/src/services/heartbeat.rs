@@ -353,7 +353,7 @@ async fn heartbeat_instance(
         let image_url = triage["image_url"].as_str().map(|s| s.trim()).filter(|s| !s.is_empty());
         if title.is_empty() || content.is_empty() {
             log::warn!("[heartbeat] {slug} chose drop but fields missing — title: '{}', content len: {}", title, content.len());
-            action_log.push("drop: skipped (empty title or content)".to_string());
+            action_log.push("drop_skipped: empty title or content".to_string());
         } else {
             match drops::create_drop_with_image(workspace_dir, slug, kind, title, content, &mood.companion_mood, image_url) {
                 Ok(drop) => {
