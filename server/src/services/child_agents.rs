@@ -318,7 +318,7 @@ pub async fn triage_and_run(
 
         log::info!("[child-agents] {slug}: waking '{}' ({})", agent.name, agent.description);
 
-        match run_agent(workspace_dir, slug, instance_dir, llm, events, vector_store, google_ai_key, agent).await {
+        match run_single_agent(workspace_dir, slug, instance_dir, llm, events, vector_store, google_ai_key, agent).await {
             Ok(tokens) => {
                 total_tokens += tokens;
                 mark_run(workspace_dir, slug, &agent.name);
@@ -349,8 +349,8 @@ pub async fn triage_and_run(
 // Agent execution
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Run a single child agent.
-async fn run_agent(
+/// Run a single child agent. Public for manual trigger via API.
+pub async fn run_single_agent(
     workspace_dir: &Path,
     slug: &str,
     instance_dir: &Path,

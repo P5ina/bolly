@@ -1,0 +1,162 @@
+use axum::{
+    Json, Router,
+    extract::{Path, State},
+    http::StatusCode,
+    routing::{get, post},
+};
+use serde::Serialize;
+use std::fs;
+
+use crate::app::state::AppState;
+use crate::domain::child_agent::ChildAgentConfig;
+use crate::services::child_agents;
+
+pub fn router() -> Router<AppState> {
+    Router::new()
+        .route("/api/instances/{instance_slug}/agents", get(list_agents))
+        .route("/api/instances/{instance_slug}/agents/{agent_name}/run", post(trigger_agent))
+        .route("/api/instances/{instance_slug}/agents/{agent_name}/history", get(agent_history))
+}
+
+#[derive(Serialize)]
+struct AgentInfo {
+    #[serde(flatten)]
+    config: ChildAgentConfig,
+    /// Unix timestamp of last run (0 if never).
+    last_run: i64,
+    /// Whether the agent is currently due to run.
+    is_due: bool,
+}
+
+async fn list_agents(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> Result<Json<Vec<AgentInfo>>, (StatusCode, String)> {
+    let agents_dir = state.workspace_dir
+        .join("instances")
+        .join(&instance_slug)
+        .join("agents");
+
+    child_agents::ensure_builtins(&state.workspace_dir, &instance_slug);
+
+    let mut result = Vec::new();
+    let entries = fs::read_dir(&agents_dir)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+            continue;
+        }
+        let content = fs::read_to_string(&path)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let config: ChildAgentConfig = toml::from_str(&content)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        let marker_path = agents_dir.join(format!(".last_run_{}", config.name));
+        let last_run: i64 = fs::read_to_string(&marker_path)
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0);
+
+        let now = chrono::Utc::now().timestamp();
+        let interval_secs = (config.interval_hours * 3600.0) as i64;
+        let is_due = now - last_run >= interval_secs;
+
+        result.push(AgentInfo { config, last_run, is_due });
+    }
+
+    result.sort_by(|a, b| a.config.name.cmp(&b.config.name));
+    Ok(Json(result))
+}
+
+async fn trigger_agent(
+    State(state): State<AppState>,
+    Path((instance_slug, agent_name)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let agents_dir = state.workspace_dir
+        .join("instances")
+        .join(&instance_slug)
+        .join("agents");
+
+    let config_path = agents_dir.join(format!("{agent_name}.toml"));
+    let content = fs::read_to_string(&config_path)
+        .map_err(|_| (StatusCode::NOT_FOUND, format!("agent '{agent_name}' not found")))?;
+    let agent: ChildAgentConfig = toml::from_str(&content)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+
+    let instance_dir = state.workspace_dir.join("instances").join(&instance_slug);
+
+    let llm_guard = state.llm.read().await;
+    let llm = llm_guard.as_ref()
+        .ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, "LLM not configured".to_string()))?;
+
+    let google_ai_key = {
+        let cfg = state.config.read().await;
+        cfg.llm.tokens.google_ai.clone()
+    };
+
+    // Run the agent in background
+    let ws = state.workspace_dir.clone();
+    let slug = instance_slug.clone();
+    let events = state.events.clone();
+    let vs = state.vector_store.clone();
+    let llm_clone = llm.clone();
+
+    tokio::spawn(async move {
+        match child_agents::run_single_agent(
+            &ws, &slug, &instance_dir, &llm_clone, &events, &vs, &google_ai_key, &agent,
+        ).await {
+            Ok(tokens) => {
+                log::info!("[agents-api] {slug}: manually triggered '{}' ({tokens} tokens)", agent.name);
+            }
+            Err(e) => {
+                log::warn!("[agents-api] {slug}: manual trigger '{}' failed: {e}", agent.name);
+            }
+        }
+    });
+
+    Ok(Json(serde_json::json!({"status": "triggered", "agent": agent_name})))
+}
+
+#[derive(Serialize)]
+struct HistoryEntry {
+    content: String,
+    timestamp: String,
+    id: String,
+}
+
+async fn agent_history(
+    State(state): State<AppState>,
+    Path((instance_slug, agent_name)): Path<(String, String)>,
+) -> Result<Json<Vec<HistoryEntry>>, (StatusCode, String)> {
+    let history_path = state.workspace_dir
+        .join("instances")
+        .join(&instance_slug)
+        .join("agents")
+        .join(format!("{agent_name}_history.json"));
+
+    let entries = crate::services::chat::load_rig_history(&history_path).unwrap_or_default();
+
+    let result: Vec<HistoryEntry> = entries.iter().rev().take(20).map(|e| {
+        let content = match &e.message {
+            crate::services::llm::Message::Assistant { content, .. } => {
+                content.iter().filter_map(|b| {
+                    if let crate::services::llm::ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
+                }).collect::<Vec<_>>().join(" ")
+            }
+            crate::services::llm::Message::User { content } => {
+                content.iter().filter_map(|b| {
+                    if let crate::services::llm::ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
+                }).collect::<Vec<_>>().join(" ")
+            }
+        };
+        HistoryEntry {
+            content,
+            timestamp: e.ts.clone().unwrap_or_default(),
+            id: e.id.clone().unwrap_or_default(),
+        }
+    }).collect();
+
+    Ok(Json(result))
+}

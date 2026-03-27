@@ -16,6 +16,8 @@ import type {
 	Stats,
 	UploadMeta,
 	Usage,
+	ChildAgent,
+	AgentHistoryEntry,
 } from "./types.js";
 
 const BASE = "";
@@ -364,6 +366,20 @@ export function setCompanionName(slug: string, name: string): Promise<void> {
 
 export function fetchThoughts(slug: string): Promise<Thought[]> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/thoughts`);
+}
+
+export function fetchAgents(slug: string): Promise<ChildAgent[]> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/agents`);
+}
+
+export function triggerAgent(slug: string, agentName: string): Promise<{ status: string }> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/agents/${encodeURIComponent(agentName)}/run`, {
+		method: "POST",
+	});
+}
+
+export function fetchAgentHistory(slug: string, agentName: string): Promise<AgentHistoryEntry[]> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/agents/${encodeURIComponent(agentName)}/history`);
 }
 
 export function fetchStats(slug: string): Promise<Stats> {

@@ -105,6 +105,25 @@ export interface Thought {
 	created_at: string;
 }
 
+export interface ChildAgent {
+	name: string;
+	description: string;
+	prompt: string;
+	interval_hours: number;
+	model: string;
+	triage: boolean;
+	tools: boolean;
+	enabled: boolean;
+	last_run: number;
+	is_due: boolean;
+}
+
+export interface AgentHistoryEntry {
+	content: string;
+	timestamp: string;
+	id: string;
+}
+
 export interface SkillSource {
 	repo: string;
 	version: string;
