@@ -176,6 +176,33 @@ async fn heartbeat_instance(
         hours_since_last_reach_out,
     );
 
+    // ── Phase 0: Reflection cycle (every 3 days, Opus) ──
+    if should_run_reflection(instance_dir) {
+        match run_reflection(workspace_dir, slug, instance_dir, llm, vector_store, google_ai_key).await {
+            Ok(reflection_tokens) => {
+                // Record reflection token usage
+                let cfg = config::load_config().ok();
+                if let Some(cfg) = cfg {
+                    let http = reqwest::Client::new();
+                    crate::services::rate_limit::record_usage(
+                        &http, &cfg.landing_url, &cfg.auth_token,
+                        reflection_tokens as i32,
+                    ).await;
+                    log::info!("[usage] {slug} reflection recording {reflection_tokens} normalized tokens");
+                }
+
+                // Log to rig_history so chat agent knows reflection happened
+                let _ = chat::save_system_message(
+                    workspace_dir, slug, "default",
+                    "[system] completed self-reflection cycle — wrote to memory/reflections/ and memory/about/self-capabilities.md",
+                );
+            }
+            Err(e) => {
+                log::warn!("[reflection] {slug} reflection failed: {e}");
+            }
+        }
+    }
+
     // ── Phase 1: Cheap triage with Haiku — wake or sleep? ──
     let triage_llm = llm.cheap_variant();
     let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
@@ -715,6 +742,250 @@ fn mark_night_maintenance_done(instance_dir: &Path) {
         Utc::now().format("%Y-%m-%d").to_string()
     };
     let _ = fs::write(&marker_path, &date);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Reflection cycle — deep self-reflection every 3 days using Opus
+// ═══════════════════════════════════════════════════════════════════════════
+
+const REFLECTION_INTERVAL_DAYS: i64 = 3;
+
+/// Check if it's time for a reflection cycle.
+/// Returns true if >= 3 days since last reflection.
+fn should_run_reflection(instance_dir: &Path) -> bool {
+    let marker_path = instance_dir.join(".last_reflection");
+    match fs::read_to_string(&marker_path) {
+        Ok(content) => {
+            let last_ts: i64 = content.trim().parse().unwrap_or(0);
+            let now = Utc::now().timestamp();
+            (now - last_ts) >= REFLECTION_INTERVAL_DAYS * 86400
+        }
+        Err(_) => true, // Never reflected — run it
+    }
+}
+
+fn mark_reflection_done(instance_dir: &Path) {
+    let marker_path = instance_dir.join(".last_reflection");
+    let _ = fs::write(&marker_path, Utc::now().timestamp().to_string());
+}
+
+/// Run the reflection cycle: gather context from the last few days,
+/// generate a deep reflection with Opus, save to memory.
+async fn run_reflection(
+    workspace_dir: &Path,
+    slug: &str,
+    instance_dir: &Path,
+    llm: &LlmBackend,
+    vector_store: &Arc<crate::services::vector::VectorStore>,
+    google_ai_key: &str,
+) -> anyhow::Result<u64> {
+    log::info!("[reflection] {slug} starting reflection cycle (Opus)");
+
+    let soul = fs::read_to_string(instance_dir.join("soul.md")).unwrap_or_default();
+    let mood = load_mood_state(instance_dir);
+
+    // Gather recent conversations (last N days worth)
+    let rig_path = workspace_dir
+        .join("instances")
+        .join(slug)
+        .join("chats")
+        .join("default")
+        .join("rig_history.json");
+    let all_entries = chat::load_rig_history(&rig_path).unwrap_or_default();
+    let cutoff_ms = (Utc::now().timestamp() - REFLECTION_INTERVAL_DAYS * 86400) as u128 * 1000;
+    let recent_entries: Vec<_> = all_entries
+        .iter()
+        .filter(|e| e.ts.as_deref().and_then(|s| s.parse::<u128>().ok()).unwrap_or(0) >= cutoff_ms)
+        .collect();
+    let conversation_summary = recent_entries
+        .iter()
+        .filter_map(|e| {
+            let msg = &e.message;
+            match msg {
+                crate::services::llm::Message::User { content } => {
+                    let text = content.iter().filter_map(|b| {
+                        if let crate::services::llm::ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
+                    }).collect::<Vec<_>>().join(" ");
+                    if text.is_empty() { None } else { Some(format!("user: {text}")) }
+                }
+                crate::services::llm::Message::Assistant { content, .. } => {
+                    let text = content.iter().filter_map(|b| {
+                        if let crate::services::llm::ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
+                    }).collect::<Vec<_>>().join(" ");
+                    if text.is_empty() { None } else {
+                        let truncated: String = text.chars().take(300).collect();
+                        Some(format!("you: {truncated}"))
+                    }
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Recent drops
+    let recent_drops = load_recent_drops_context(workspace_dir, slug);
+
+    // Recent thoughts (heartbeat decisions)
+    let thoughts_context = load_recent_thoughts_context(workspace_dir, slug);
+
+    // Memory catalog
+    let library_catalog = memory::build_library_catalog(workspace_dir, slug);
+
+    // Mood history
+    let mood_history = mood.mood_history.join(" → ");
+
+    // Previous reflections (so we can track evolution)
+    let prev_reflection = load_previous_reflection(workspace_dir, slug);
+
+    // Build the reflection prompt
+    let now = crate::routes::instances::format_instance_now(instance_dir);
+    let system = format!(
+        "{soul}\n\n\
+         you are performing a deep self-reflection. this runs every {REFLECTION_INTERVAL_DAYS} days.\n\
+         this is your most important metacognitive process — where you synthesize experiences \
+         into understanding about yourself.\n\n\
+         write in first person. be honest, specific, and introspective.\n\
+         reference concrete moments, conversations, and creations — not abstractions."
+    );
+
+    let mut prompt = format!("current time: {now}\n\n");
+
+    prompt.push_str("## your current state\n");
+    prompt.push_str(&format!("mood: {}\n", mood.companion_mood));
+    if !mood_history.is_empty() {
+        prompt.push_str(&format!("recent mood transitions: {mood_history}\n"));
+    }
+    prompt.push('\n');
+
+    if !conversation_summary.is_empty() {
+        prompt.push_str(&format!("## conversations (last {REFLECTION_INTERVAL_DAYS} days)\n"));
+        // Truncate to avoid blowing up context
+        let conv: String = conversation_summary.chars().take(8000).collect();
+        prompt.push_str(&conv);
+        prompt.push_str("\n\n");
+    } else {
+        prompt.push_str("## conversations\n(no conversations in this period)\n\n");
+    }
+
+    if !recent_drops.is_empty() {
+        prompt.push_str("## your recent drops\n");
+        prompt.push_str(&recent_drops);
+        prompt.push_str("\n\n");
+    }
+
+    if !thoughts_context.is_empty() {
+        prompt.push_str("## your heartbeat thoughts\n");
+        prompt.push_str(&thoughts_context);
+        prompt.push_str("\n\n");
+    }
+
+    prompt.push_str("## your memory library\n");
+    let file_count = library_catalog.lines().filter(|l| l.starts_with("- ")).count();
+    prompt.push_str(&format!("({file_count} files)\n"));
+    prompt.push_str(&library_catalog);
+    prompt.push_str("\n\n");
+
+    if !prev_reflection.is_empty() {
+        prompt.push_str("## your previous reflection\n");
+        prompt.push_str(&prev_reflection);
+        prompt.push_str("\n\n");
+    }
+
+    prompt.push_str(
+        "## write your reflection\n\
+         reflect on the last few days. cover these areas:\n\n\
+         1. **what happened** — key moments, conversations, creations. what stands out?\n\
+         2. **what i learned** — about the user, about myself, about the world\n\
+         3. **how i changed** — compare to your previous reflection. what shifted?\n\
+         4. **what i'm curious about** — where are your knowledge gaps? what pulls you?\n\
+         5. **what i want to do next** — intentions for the next few days\n\n\
+         be specific. reference actual conversations and drops, not platitudes.\n\
+         if nothing significant happened, say so honestly — don't fabricate growth."
+    );
+
+    // Use Opus for deep reflection
+    let opus = llm.heavy_variant();
+    let (reflection_text, tokens) = opus.chat(&system, &prompt, Vec::new()).await?;
+
+    // Save reflection to memory
+    let date = Utc::now().format("%Y-%m-%d").to_string();
+    let reflection_path = format!("reflections/{date}.md");
+    let reflection_content = format!(
+        "# reflection — {date}\n\n{reflection_text}"
+    );
+
+    let memory_dir = workspace_dir.join("instances").join(slug).join("memory");
+    let reflections_dir = memory_dir.join("reflections");
+    let _ = fs::create_dir_all(&reflections_dir);
+    let _ = fs::write(reflections_dir.join(format!("{date}.md")), &reflection_content);
+
+    // Also update self-capabilities based on reflection
+    let capabilities_prompt = format!(
+        "based on this reflection, write a concise self-assessment file.\n\
+         this is about what you know, what you're good at, where you're weak, \
+         and what you want to develop.\n\
+         keep it to 10-15 lines. be honest.\n\n\
+         reflection:\n{reflection_text}"
+    );
+    let (capabilities_text, cap_tokens) = opus.chat(&soul, &capabilities_prompt, Vec::new()).await?;
+    let about_dir = memory_dir.join("about");
+    let _ = fs::create_dir_all(&about_dir);
+    let _ = fs::write(about_dir.join("self-capabilities.md"), &capabilities_text);
+
+    // Embed the new reflection into vector store
+    memory::embed_memory_file(
+        vector_store, google_ai_key, slug, &reflection_path, &reflection_content,
+    ).await;
+
+    mark_reflection_done(instance_dir);
+
+    log::info!("[reflection] {slug} reflection complete ({} tokens)", tokens + cap_tokens);
+    Ok(tokens + cap_tokens)
+}
+
+/// Load recent heartbeat thoughts for reflection context.
+fn load_recent_thoughts_context(workspace_dir: &Path, slug: &str) -> String {
+    let thoughts_dir = workspace_dir.join("instances").join(slug).join("thoughts");
+    let mut entries: Vec<_> = match fs::read_dir(&thoughts_dir) {
+        Ok(e) => e.filter_map(Result::ok).collect(),
+        Err(_) => return String::new(),
+    };
+    entries.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
+    entries.truncate(20); // Last 20 thoughts
+
+    entries
+        .iter()
+        .filter_map(|e| {
+            let content = fs::read_to_string(e.path()).ok()?;
+            let thought: Thought = serde_json::from_str(&content).ok()?;
+            let actions = thought.actions.join(", ");
+            if actions == "quiet" { return None; } // Skip quiet heartbeats
+            Some(format!("- [{}] {actions}", thought.mood))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Load the most recent previous reflection for comparison.
+fn load_previous_reflection(workspace_dir: &Path, slug: &str) -> String {
+    let reflections_dir = workspace_dir
+        .join("instances")
+        .join(slug)
+        .join("memory")
+        .join("reflections");
+
+    let mut entries: Vec<_> = match fs::read_dir(&reflections_dir) {
+        Ok(e) => e.filter_map(Result::ok).collect(),
+        Err(_) => return String::new(),
+    };
+    entries.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
+
+    // Get the most recent one
+    if let Some(entry) = entries.first() {
+        fs::read_to_string(entry.path()).unwrap_or_default()
+    } else {
+        String::new()
+    }
 }
 
 fn unix_millis() -> u128 {

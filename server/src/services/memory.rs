@@ -660,7 +660,7 @@ do NOT save images unless they are clearly meaningful (personal photos, importan
 }
 
 /// Embed a memory file into the vector store (background-safe, logs errors).
-async fn embed_memory_file(
+pub async fn embed_memory_file(
     vector_store: &super::vector::VectorStore,
     google_ai_key: &str,
     instance_slug: &str,

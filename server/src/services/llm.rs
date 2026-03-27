@@ -5,7 +5,7 @@ use std::time::Duration;
 use futures::StreamExt;
 use tokio::sync::broadcast;
 
-use crate::config::{Config, CHEAP_MODEL, DEFAULT_FAST_MODEL};
+use crate::config::{Config, CHEAP_MODEL, DEFAULT_FAST_MODEL, DEFAULT_MODEL};
 use crate::domain::chat::{ChatMessage, ChatRole, MessageKind};
 use crate::domain::events::ServerEvent;
 use crate::services::tool::{ToolDefinition, ToolDyn};
@@ -501,6 +501,15 @@ impl LlmBackend {
             http: self.http.clone(),
             api_key: self.api_key.clone(),
             model: CHEAP_MODEL.to_string(),
+        }
+    }
+
+    /// Create a variant using the heavy model (Opus) for deep reflection.
+    pub fn heavy_variant(&self) -> Self {
+        Self {
+            http: self.http.clone(),
+            api_key: self.api_key.clone(),
+            model: DEFAULT_MODEL.to_string(),
         }
     }
 
