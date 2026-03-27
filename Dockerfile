@@ -21,8 +21,9 @@ RUN apt-get update -qq && \
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null && \
     echo "deb [arch=${DARCH} signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && \
     apt-get update -qq && apt-get install -y gh && \
-    # Chromium — install via Playwright (apt chromium is a snap stub on 24.04)
-    npx playwright install --with-deps chromium > /dev/null 2>&1 && \
+    # Google Chrome (for chrome-devtools MCP server)
+    curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_$(dpkg --print-architecture).deb -o /tmp/chrome.deb && \
+    apt-get install -y /tmp/chrome.deb && rm /tmp/chrome.deb && \
     # Qdrant (vector search sidecar)
     QDRANT_ARCH=$(dpkg --print-architecture | sed 's/amd64/x86_64/' | sed 's/arm64/aarch64/') && \
     curl -fsSL "https://github.com/qdrant/qdrant/releases/latest/download/qdrant-${QDRANT_ARCH}-unknown-linux-gnu.tar.gz" -o /tmp/qdrant.tar.gz && \
