@@ -12,3 +12,4 @@ pub mod daily_stats;
 pub mod thought;
 pub mod skill;
 pub mod upload;
+pub mod child_agent;

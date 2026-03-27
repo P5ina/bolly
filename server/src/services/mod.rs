@@ -7,6 +7,7 @@ pub mod keyword_search;
 pub mod google;
 pub mod rate_limit;
 pub mod drops;
+pub mod child_agents;
 pub mod heartbeat;
 pub mod llm;
 pub mod mcp;
