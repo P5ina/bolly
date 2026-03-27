@@ -71,10 +71,13 @@
 
 	function cleanRaw(raw: string): string {
 		if (!raw) return "";
-		// Extract thought field from structured JSON triage output
+		// Extract thought/reason from structured JSON triage output
 		try {
 			const j = JSON.parse(raw);
-			if (j && typeof j.thought === "string" && j.thought.trim()) return j.thought.trim();
+			if (j) {
+				const text = j.thought ?? j.reason;
+				if (typeof text === "string" && text.trim()) return text.trim();
+			}
 			return "";
 		} catch {}
 		return raw.trim();
