@@ -122,6 +122,10 @@
 			</button>
 		</div>
 
+		<p class="agents-hint">
+			built-in agents run on their own schedule — manual trigger is for custom agents that don't need a timer
+		</p>
+
 		{#if agents.length === 0}
 			<div class="agents-center">
 				<p class="empty-text">no agents yet</p>
@@ -271,6 +275,16 @@
 	.agents-count {
 		color: oklch(0.78 0.12 75 / 55%);
 		margin-right: 0.25rem;
+	}
+
+	.agents-hint {
+		font-family: var(--font-mono);
+		font-size: 0.62rem;
+		color: oklch(1 0 0 / 18%);
+		max-width: 600px;
+		margin: -0.5rem auto 1rem;
+		letter-spacing: 0.02em;
+		line-height: 1.5;
 	}
 
 	.agents-add {
