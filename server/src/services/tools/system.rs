@@ -1114,6 +1114,7 @@ impl Tool for UpdateConfigTool {
                 name: name.clone(),
                 url: Some(url),
                 command: None,
+                args: Default::default(),
                 headers: Default::default(),
             });
             changes.push(format!("added MCP server '{name}'"));

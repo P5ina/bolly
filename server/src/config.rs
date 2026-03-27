@@ -176,9 +176,12 @@ pub struct McpServerConfig {
     pub name: String,
     /// URL for HTTP/SSE transport (e.g. "https://mcp.excalidraw.com/mcp").
     pub url: Option<String>,
-    /// Command for stdio transport (e.g. "node /path/to/server.js --stdio").
+    /// Command for stdio transport (e.g. "npx" or "node").
     pub command: Option<String>,
-    /// HTTP headers to send with requests (e.g. {"Authorization": "Bearer ..."}).
+    /// Arguments for the stdio command.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// HTTP headers to send with requests / env vars for stdio servers.
     #[serde(default)]
     pub headers: std::collections::HashMap<String, String>,
 }

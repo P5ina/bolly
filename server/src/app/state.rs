@@ -45,8 +45,9 @@ pub struct AppState {
     pub keyword_store: Arc<KeywordStore>,
 }
 
-/// Inject MCP servers from environment variables (FAL_KEY, etc.)
+/// Inject MCP servers from environment variables and built-in defaults.
 fn inject_env_mcp_servers(config: &mut Config) {
+    // fal-ai: inject if FAL_KEY is set
     if let Ok(fal_key) = std::env::var("FAL_KEY") {
         if !fal_key.is_empty() {
             let auth_value = format!("Bearer {fal_key}");
@@ -57,12 +58,31 @@ fn inject_env_mcp_servers(config: &mut Config) {
                     name: "fal-ai".to_string(),
                     url: Some("https://mcp.fal.ai/mcp".to_string()),
                     command: None,
+                    args: Default::default(),
                     headers: [("Authorization".to_string(), auth_value)]
                         .into_iter().collect(),
                 });
                 log::info!("MCP: auto-added fal-ai (FAL_KEY present)");
             }
         }
+    }
+
+    // chrome-devtools: always inject (headless browser for the agent)
+    if !config.mcp_servers.iter().any(|s| s.name == "chrome-devtools") {
+        config.mcp_servers.push(crate::config::McpServerConfig {
+            name: "chrome-devtools".to_string(),
+            url: None,
+            command: Some("npx".to_string()),
+            args: vec![
+                "-y".to_string(),
+                "chrome-devtools-mcp@latest".to_string(),
+                "--headless".to_string(),
+                "--viewport".to_string(),
+                "1920x1080".to_string(),
+            ],
+            headers: Default::default(),
+        });
+        log::info!("MCP: auto-added chrome-devtools (headless browser)");
     }
 }
 

@@ -51,7 +51,7 @@ pub use system::{
 };
 pub use image::ViewImageTool;
 pub use media::{WatchVideoTool, ListenMusicTool};
-pub use web::BrowseTool;
+// BrowseTool replaced by chrome-devtools MCP server
 
 // ---------------------------------------------------------------------------
 // Cached tool definitions snapshot (populated by build_tools, read by stats)
@@ -449,7 +449,7 @@ pub fn build_tools(
             tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>,
         >,
     >,
-    plan: &str,
+    _plan: &str,
     google: Option<crate::services::google::GoogleClient>,
     email_accounts: Vec<crate::config::EmailConfig>,
     sent_files: SentFiles,
@@ -473,7 +473,7 @@ pub fn build_tools(
         ))
     };
 
-    let browser_enabled = matches!(plan, "companion" | "unlimited");
+    // browser_enabled removed — browsing now via chrome-devtools MCP (all plans)
 
     // ── Core ──
     let mut tools: Vec<Box<dyn ToolDyn>> = vec![
@@ -531,9 +531,7 @@ pub fn build_tools(
             openrouter_key, workspace_dir, instance_slug, &public_url, auth_token,
         ))));
     }
-    if browser_enabled {
-        tools.push(wrap(Box::new(BrowseTool::new(workspace_dir, instance_slug))));
-    }
+    // Browser: replaced by chrome-devtools MCP server (auto-injected in state.rs)
 
     // ── Code ──
     tools.push(wrap(Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone()))));
