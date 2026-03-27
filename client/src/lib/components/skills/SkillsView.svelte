@@ -313,6 +313,8 @@
 	.skills-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+		grid-auto-rows: min-content;
+		align-items: start;
 		gap: 0.75rem;
 	}
 
