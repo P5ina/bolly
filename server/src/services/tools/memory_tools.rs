@@ -165,17 +165,22 @@ impl Tool for MemoryWriteTool {
 
         let final_content = match args.mode.as_str() {
             "append" => {
-                let mut existing = fs::read_to_string(&full_path).unwrap_or_default();
-                if !existing.ends_with('\n') && !existing.is_empty() {
-                    existing.push('\n');
+                let existing = fs::read_to_string(&full_path).unwrap_or_default();
+                let (_, body) = crate::services::memory::parse_frontmatter(&existing);
+                let mut new_body = body.to_string();
+                if !new_body.ends_with('\n') && !new_body.is_empty() {
+                    new_body.push('\n');
                 }
-                existing.push_str(&args.content);
-                fs::write(&full_path, &existing).map_err(|e| ToolExecError(e.to_string()))?;
-                existing
+                new_body.push_str(&args.content);
+                let stamped = crate::services::memory::stamp_content(&new_body, Some(&existing));
+                fs::write(&full_path, &stamped).map_err(|e| ToolExecError(e.to_string()))?;
+                stamped
             }
             _ => {
-                fs::write(&full_path, &args.content).map_err(|e| ToolExecError(e.to_string()))?;
-                args.content.clone()
+                let existing = fs::read_to_string(&full_path).ok();
+                let stamped = crate::services::memory::stamp_content(&args.content, existing.as_deref());
+                fs::write(&full_path, &stamped).map_err(|e| ToolExecError(e.to_string()))?;
+                stamped
             }
         };
 

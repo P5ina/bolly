@@ -6,6 +6,72 @@ use crate::domain::memory::MemoryEntry;
 use crate::services::llm::LlmBackend;
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Frontmatter — timestamps for temporal awareness
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Parsed frontmatter from a memory file.
+pub struct Frontmatter {
+    pub created: Option<String>,
+    pub updated: Option<String>,
+}
+
+/// Parse YAML frontmatter from memory file content.
+/// Returns (frontmatter, body) where body is the content without frontmatter.
+pub fn parse_frontmatter(content: &str) -> (Frontmatter, &str) {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return (Frontmatter { created: None, updated: None }, content);
+    }
+
+    // Find closing ---
+    if let Some(end) = trimmed[3..].find("\n---") {
+        let yaml = &trimmed[3..3 + end];
+        let body_start = 3 + end + 4; // skip closing "---"
+        let body = trimmed[body_start..].trim_start_matches('\n');
+
+        let mut created = None;
+        let mut updated = None;
+        for line in yaml.lines() {
+            let line = line.trim();
+            if let Some(val) = line.strip_prefix("created:") {
+                created = Some(val.trim().to_string());
+            } else if let Some(val) = line.strip_prefix("updated:") {
+                updated = Some(val.trim().to_string());
+            }
+        }
+
+        (Frontmatter { created, updated }, body)
+    } else {
+        (Frontmatter { created: None, updated: None }, content)
+    }
+}
+
+/// Add or update frontmatter timestamps on memory content.
+/// For new files: adds created + updated. For existing: updates the updated field.
+pub fn stamp_content(content: &str, existing_content: Option<&str>) -> String {
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+
+    if let Some(existing) = existing_content {
+        // Updating existing file — preserve created, update updated
+        let (fm, _) = parse_frontmatter(existing);
+        let created = fm.created.unwrap_or_else(|| today.clone());
+        format!("---\ncreated: {created}\nupdated: {today}\n---\n{content}")
+    } else {
+        // New file
+        format!("---\ncreated: {today}\nupdated: {today}\n---\n{content}")
+    }
+}
+
+/// Format a YYYY-MM-DD date as short display (Mar 28).
+fn format_date_short(date: &str) -> String {
+    if let Ok(d) = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d") {
+        d.format("%b %d").to_string()
+    } else {
+        date.to_string()
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Frozen catalog — cached in RAM, survives memory writes within a session.
 // Only refreshed on context clear, compaction, or server restart.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -101,7 +167,11 @@ fn scan_dir_recursive(base: &Path, current: &Path, entries: &mut Vec<MemoryEntry
                 });
             } else {
                 let content = std::fs::read_to_string(&path).unwrap_or_default();
-                let summary = content
+                let (fm, body) = parse_frontmatter(&content);
+                let date_prefix = fm.updated.or(fm.created)
+                    .map(|d| format!("({}) ", format_date_short(&d)))
+                    .unwrap_or_default();
+                let summary_text = body
                     .lines()
                     .find(|l| !l.trim().is_empty())
                     .unwrap_or("")
@@ -109,6 +179,7 @@ fn scan_dir_recursive(base: &Path, current: &Path, entries: &mut Vec<MemoryEntry
                     .chars()
                     .take(120)
                     .collect::<String>();
+                let summary = format!("{date_prefix}{summary_text}");
                 let size = content.len();
                 entries.push(MemoryEntry {
                     path: rel,
@@ -565,9 +636,11 @@ do NOT save images unless they are clearly meaningful (personal photos, importan
                 if let Some(parent) = full_path.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                std::fs::write(&full_path, &op.content)?;
+                let existing = std::fs::read_to_string(&full_path).ok();
+                let stamped = stamp_content(&op.content, existing.as_deref());
+                std::fs::write(&full_path, &stamped)?;
                 log::info!("memory: wrote {clean_path} for {instance_slug}");
-                embed_memory_file(vector_store, google_ai_key, instance_slug, &clean_path, &op.content).await;
+                embed_memory_file(vector_store, google_ai_key, instance_slug, &clean_path, &stamped).await;
             }
             "append" => {
                 if op.content.trim().is_empty() {
@@ -577,14 +650,17 @@ do NOT save images unless they are clearly meaningful (personal photos, importan
                 if let Some(parent) = full_path.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                let mut existing = std::fs::read_to_string(&full_path).unwrap_or_default();
-                if !existing.ends_with('\n') && !existing.is_empty() {
-                    existing.push('\n');
+                let existing = std::fs::read_to_string(&full_path).unwrap_or_default();
+                let (_, body) = parse_frontmatter(&existing);
+                let mut new_body = body.to_string();
+                if !new_body.ends_with('\n') && !new_body.is_empty() {
+                    new_body.push('\n');
                 }
-                existing.push_str(&op.content);
-                std::fs::write(&full_path, &existing)?;
+                new_body.push_str(&op.content);
+                let stamped = stamp_content(&new_body, Some(&existing));
+                std::fs::write(&full_path, &stamped)?;
                 log::info!("memory: appended to {clean_path} for {instance_slug}");
-                embed_memory_file(vector_store, google_ai_key, instance_slug, &clean_path, &existing).await;
+                embed_memory_file(vector_store, google_ai_key, instance_slug, &clean_path, &stamped).await;
             }
             "delete" => {
                 if full_path.exists() {
