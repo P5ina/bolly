@@ -2,7 +2,8 @@
 //!
 //! Each agent has a TOML config in `instances/{slug}/agents/{name}.toml`,
 //! its own conversation history, and a last-run marker.
-//! The heartbeat calls `run_due_agents()` once per tick.
+//!
+//! Flow: heartbeat builds context → triage (Haiku) picks which due agents to wake → run them.
 
 use std::fs;
 use std::path::Path;
@@ -29,10 +30,37 @@ use crate::services::tools::{
 // Built-in agent definitions
 // ═══════════════════════════════════════════════════════════════════════════
 
+fn builtin_companion() -> ChildAgentConfig {
+    ChildAgentConfig {
+        name: "companion".to_string(),
+        description: "Autonomous companion — reach out, create drops, update mood, manage memory".to_string(),
+        prompt: "\
+you're waking up between conversations. this is YOUR private time to think.
+
+everything you write in your response is your INNER MONOLOGUE — the user will NOT see it.
+
+you have tools — use them naturally:
+- reach_out — SEND A MESSAGE to the user (the ONLY way to contact them)
+- memory_write / memory_read / memory_list / memory_forget — manage your memory library
+- create_drop — create a creative artifact (poem, idea, observation). max 3/day, make each count.
+- read_email — check the user's inbox
+- web_search / web_fetch — look things up
+
+if you want the user to see a message, you MUST call reach_out. text in your response is private.
+
+be genuine. don't force it. if there's nothing to say, say nothing.".to_string(),
+        interval_hours: 1.0,
+        model: "default".to_string(),
+        triage: true,
+        tools: true,
+        enabled: true,
+    }
+}
+
 fn builtin_reflection() -> ChildAgentConfig {
     ChildAgentConfig {
         name: "reflection".to_string(),
-        description: "Deep self-reflection every 3 days — synthesizes recent experiences into self-knowledge".to_string(),
+        description: "Deep self-reflection every 3 days — synthesizes experiences into self-knowledge".to_string(),
         prompt: "\
 you are performing a deep self-reflection. this runs every 3 days.
 this is your most important metacognitive process — where you synthesize experiences into understanding about yourself.
@@ -52,7 +80,7 @@ be specific. reference actual conversations and drops, not platitudes.
 if nothing significant happened, say so honestly.".to_string(),
         interval_hours: 72.0,
         model: "heavy".to_string(),
-        triage: false,
+        triage: true,
         tools: true,
         enabled: true,
     }
@@ -68,14 +96,14 @@ merge duplicates, delete outdated entries, reorganize messy folders, trim verbos
 do 3-5 maintenance ops, then stop. don't overdo it.".to_string(),
         interval_hours: 24.0,
         model: "default".to_string(),
-        triage: false,
+        triage: true,
         tools: true,
         enabled: true,
     }
 }
 
 fn builtins() -> Vec<ChildAgentConfig> {
-    vec![builtin_reflection(), builtin_night_maintenance()]
+    vec![builtin_companion(), builtin_reflection(), builtin_night_maintenance()]
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -149,11 +177,101 @@ fn mark_run(workspace_dir: &Path, slug: &str, agent_name: &str) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Agent execution
+// Triage — Haiku decides which due agents to wake
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Run all due child agents for an instance. Returns total tokens used.
-pub async fn run_due_agents(
+/// Result of triage: which agents to wake, reason, and triage tokens used.
+pub struct TriageResult {
+    pub agents_to_wake: Vec<String>,
+    pub _reason: String,
+    pub raw: String,
+    pub tokens: u64,
+}
+
+/// Triage due agents: ask Haiku which should wake given the current context.
+/// Returns the list of agent names to wake.
+pub async fn triage(
+    llm: &LlmBackend,
+    soul: &str,
+    context: &str,
+    due_agents: &[&ChildAgentConfig],
+) -> anyhow::Result<TriageResult> {
+    if due_agents.is_empty() {
+        return Ok(TriageResult {
+            agents_to_wake: vec![],
+            _reason: "no agents due".to_string(),
+            raw: "{}".to_string(),
+            tokens: 0,
+        });
+    }
+
+    let triage_llm = llm.cheap_variant();
+
+    // Build agent list for triage
+    let agents_desc: String = due_agents.iter()
+        .map(|a| format!("- **{}**: {}", a.name, a.description))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let agent_names: Vec<&str> = due_agents.iter().map(|a| a.name.as_str()).collect();
+
+    let system = format!(
+        "{soul}\n\n\
+         you are the triage layer of a heartbeat system (runs every hour).\n\
+         your ONLY job: decide which child agents should wake up right now.\n\n\
+         available agents (all are due to run based on their schedule):\n\
+         {agents_desc}\n\n\
+         consider the context below and decide which agents should wake.\n\
+         - if nothing is happening and the user was just here, wake nobody\n\
+         - if it's been a while, the companion should probably wake\n\
+         - reflection only when enough time has passed and there's substance to reflect on\n\
+         - maintenance when the memory library needs tidying\n\
+         - prefer waking over sleeping — the agent's inner life should be active"
+    );
+
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "wake": {
+                "type": "array",
+                "items": { "type": "string", "enum": agent_names },
+                "description": "list of agent names to wake (empty = all sleep)"
+            },
+            "reason": {
+                "type": "string",
+                "description": "1-2 sentences: why these agents and not others"
+            }
+        },
+        "required": ["wake", "reason"],
+        "additionalProperties": false
+    });
+
+    let (response, tokens) = triage_llm.chat_json(&system, context, schema).await?;
+
+    let parsed: serde_json::Value = serde_json::from_str(response.trim())
+        .unwrap_or_else(|_| serde_json::json!({"wake": [], "reason": "parse error"}));
+
+    let agents_to_wake: Vec<String> = parsed["wake"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    let reason = parsed["reason"].as_str().unwrap_or("").to_string();
+
+    Ok(TriageResult {
+        agents_to_wake,
+        _reason: reason,
+        raw: response.trim().to_string(),
+        tokens,
+    })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Main entry point: triage + run
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Triage and run due child agents. Returns (triage_raw, action_log, total_tokens).
+pub async fn triage_and_run(
     workspace_dir: &Path,
     slug: &str,
     instance_dir: &Path,
@@ -161,38 +279,75 @@ pub async fn run_due_agents(
     events: &broadcast::Sender<ServerEvent>,
     vector_store: &Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
-) -> u64 {
+    context: &str,
+    soul: &str,
+) -> (String, Vec<String>, u64) {
     let agents = load_agents(workspace_dir, slug);
-    let mut total_tokens = 0u64;
+    let due_agents: Vec<&ChildAgentConfig> = agents.iter()
+        .filter(|a| a.enabled && is_due(workspace_dir, slug, a))
+        .collect();
 
-    for agent in &agents {
-        if !agent.enabled || !is_due(workspace_dir, slug, agent) {
-            continue;
+    if due_agents.is_empty() {
+        return ("{}".to_string(), vec!["quiet".to_string()], 0);
+    }
+
+    // Triage: which agents should wake?
+    let triage_result = match triage(llm, soul, context, &due_agents).await {
+        Ok(r) => r,
+        Err(e) => {
+            log::warn!("[child-agents] {slug}: triage failed: {e}");
+            return (format!("{{\"error\": \"{e}\"}}"), vec!["triage_failed".to_string()], 0);
         }
+    };
 
-        log::info!("[child-agents] {slug}: running '{}' ({})", agent.name, agent.description);
+    let mut total_tokens = triage_result.tokens;
+    let raw = triage_result.raw.clone();
+    let mut action_log = Vec::new();
+
+    if triage_result.agents_to_wake.is_empty() {
+        action_log.push("quiet".to_string());
+        return (raw, action_log, total_tokens);
+    }
+
+    // Run selected agents
+    for agent_name in &triage_result.agents_to_wake {
+        let agent = match agents.iter().find(|a| &a.name == agent_name) {
+            Some(a) => a,
+            None => continue,
+        };
+
+        log::info!("[child-agents] {slug}: waking '{}' ({})", agent.name, agent.description);
 
         match run_agent(workspace_dir, slug, instance_dir, llm, events, vector_store, google_ai_key, agent).await {
             Ok(tokens) => {
                 total_tokens += tokens;
                 mark_run(workspace_dir, slug, &agent.name);
 
-                // Log to rig_history so main agent knows
                 let _ = chat::save_system_message(
                     workspace_dir, slug, "default",
                     &format!("[system] child agent '{}' ran: {}", agent.name, agent.description),
                 );
 
+                action_log.push(format!("wake:{}", agent.name));
                 log::info!("[child-agents] {slug}: '{}' complete ({tokens} tokens)", agent.name);
             }
             Err(e) => {
                 log::warn!("[child-agents] {slug}: '{}' failed: {e}", agent.name);
+                action_log.push(format!("wake_failed:{}", agent.name));
             }
         }
     }
 
-    total_tokens
+    if action_log.is_empty() {
+        action_log.push("quiet".to_string());
+    }
+
+    (raw, action_log, total_tokens)
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Agent execution
+// ═══════════════════════════════════════════════════════════════════════════
 
 /// Run a single child agent.
 async fn run_agent(
@@ -315,7 +470,7 @@ async fn run_agent(
     Ok(tokens)
 }
 
-/// Build the tool set for child agents — same as heartbeat tools.
+/// Build the tool set for child agents.
 fn build_agent_tools(
     workspace_dir: &Path,
     slug: &str,
@@ -356,12 +511,10 @@ fn build_agent_tools(
         Box::new(RunCommandTool::new(workspace_dir, slug, "default", events.clone(), github_token)),
     ];
 
-    // Email
     let has_email = google.is_some() || !email_accounts.is_empty();
     if has_email {
         raw_tools.push(Box::new(tools::ReadEmailTool::new(google.clone(), slug, email_accounts)));
     }
-    // Calendar
     if let Some(g) = google {
         raw_tools.push(Box::new(tools::ListEventsTool::new(g, slug)));
     }

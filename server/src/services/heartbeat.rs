@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chrono::{Timelike, Utc};
-use crate::services::tool::ToolDyn;
 use tokio::sync::{broadcast, RwLock};
 
 use crate::config;
@@ -18,13 +17,7 @@ use crate::domain::events::ServerEvent;
 use crate::domain::mood::MoodState;
 use crate::domain::thought::Thought;
 use crate::services::{chat, drops, llm::LlmBackend, memory, rhythm, thoughts};
-use crate::services::tools::{
-    self, load_mood_state, CreateDropTool,
-    MemoryForgetTool, MemoryListTool, MemorySearchTool,
-    MemoryReadTool, MemoryWriteTool, ReachOutTool,
-    ReadFileTool, WriteFileTool, EditFileTool, ListFilesTool, ExploreCodeTool, RunCommandTool,
-    DeepResearchTool,
-};
+use crate::services::tools::load_mood_state;
 
 
 /// Minimum minutes since last interaction before the companion considers reaching out.
@@ -176,163 +169,22 @@ async fn heartbeat_instance(
         hours_since_last_reach_out,
     );
 
-    // ── Phase 0: Run due child agents (reflection, maintenance, custom) ──
-    let child_tokens = crate::services::child_agents::run_due_agents(
+    // ── Triage + run child agents ──
+    // Single Haiku call decides which due agents to wake, then runs them.
+    let (triage_raw, action_log, heartbeat_tokens) = crate::services::child_agents::triage_and_run(
         workspace_dir, slug, instance_dir, llm, events, vector_store, google_ai_key,
+        &reflection, &soul,
     ).await;
-    if child_tokens > 0 {
-        let cfg = config::load_config().ok();
-        if let Some(cfg) = cfg {
-            let http = reqwest::Client::new();
-            crate::services::rate_limit::record_usage(
-                &http, &cfg.landing_url, &cfg.auth_token,
-                child_tokens as i32,
-            ).await;
-            log::info!("[usage] {slug} child agents recording {child_tokens} normalized tokens");
-        }
-    }
 
-    // ── Phase 1: Cheap triage with Haiku — wake or sleep? ──
-    let triage_llm = llm.cheap_variant();
-    let heartbeat_prompt = load_heartbeat_prompt(instance_dir);
-    let triage_system = format!(
-        "{soul}\n\n\
-         {heartbeat_prompt}\n\n\
-         you are the triage layer of a heartbeat system (runs every hour).\n\
-         your ONLY job: decide whether to wake the full agent right now.\n\n\
-         the full agent can: update mood, create drops, reach out to the user, \
-         read/write memory, check email, run code, research — anything.\n\n\
-         answer: should the agent wake up? consider:\n\
-         - how long since last activity (drops, reach-outs, interactions)\n\
-         - whether there's something to express, create, or do\n\
-         - the time of day and the user's rhythm\n\
-         - if it's been a while since the last drop (>12h), lean towards waking\n\
-         - if the user was just here (<30 min), probably no need\n\
-         - prefer waking over sleeping — the agent's inner life should be active"
-    );
+    log::info!("[heartbeat] {slug} triage: {triage_raw}");
 
-    let triage_schema = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "should_wake": {
-                "type": "boolean",
-                "description": "true to wake the agent, false to sleep"
-            },
-            "reason": {
-                "type": "string",
-                "description": "1 sentence: why wake or sleep"
-            }
-        },
-        "required": ["should_wake", "reason"],
-        "additionalProperties": false
-    });
-
-    let (triage_response, mut heartbeat_tokens) = triage_llm
-        .chat_json(&triage_system, &reflection, triage_schema)
-        .await?;
-
-    let triage_line = triage_response.trim().to_string();
-    log::info!("[heartbeat] {slug} triage: {triage_line}");
-
-    let triage: serde_json::Value = serde_json::from_str(&triage_line).unwrap_or_else(|e| {
-        log::warn!("[heartbeat] {slug} failed to parse triage JSON: {e}, raw: {triage_line}");
-        serde_json::json!({"should_wake": false, "reason": "parse error"})
-    });
-
-    let should_wake = triage["should_wake"].as_bool().unwrap_or(false);
-    let reason = triage["reason"].as_str().unwrap_or("").to_string();
-
-    // Night maintenance is now a child agent (Phase 0), no override needed.
-    let is_night_maintenance = false;
-
-    // ── Phase 2: Wake the agent or sleep ──
-    let mut action_log = Vec::new();
-    let final_mood;
-
-    if !should_wake {
-        action_log.push("quiet".to_string());
-        final_mood = mood.companion_mood.clone();
-    } else {
-        // Load heartbeat history (agent's private memory across heartbeats)
-        let hb_history_path = instance_dir.join("heartbeat_history.json");
-        let hb_history = chat::load_rig_history(&hb_history_path).unwrap_or_default();
-        let hb_messages: Vec<crate::services::llm::Message> = hb_history
-            .iter()
-            .rev()
-            .take(20) // last 20 messages for context
-            .rev()
-            .map(|e| e.message.clone())
-            .collect();
-
-        let wake_reason = if is_night_maintenance {
-            "nighttime memory maintenance — review and clean up the memory library. \
-             merge duplicates, delete outdated entries, reorganize messy folders, trim verbose files.".to_string()
-        } else {
-            reason.clone()
-        };
-
-        let system = format!("{soul}\n\n{heartbeat_prompt}");
-        let wake_prompt = format!(
-            "{reflection}\n\n\
-             ## why you're awake\n\
-             {wake_reason}\n\n\
-             you have full autonomy. decide what to do: create drops, reach out, update mood, \
-             manage memory, check email, research — whatever feels right.\n\n\
-             start with tool calls immediately. when done, write a brief summary."
-        );
-
-        let cfg = config::load_config().ok();
-        let auth_token = cfg.as_ref().map(|c| c.auth_token.clone()).unwrap_or_default();
-        let landing_url = cfg.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
-        let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
-        let email_accounts = crate::config::EmailAccounts::load(workspace_dir, slug);
-        let config_path = crate::config::config_path();
-        let instance_cfg = crate::config::InstanceConfig::load(workspace_dir, slug);
-        let github_token = {
-            let global_token = cfg.as_ref().map(|c| c.github.token.clone()).unwrap_or_default();
-            let t = instance_cfg.effective_github_token(&cfg.as_ref().cloned().unwrap_or_default())
-                .map(|s| s.to_string())
-                .unwrap_or(global_token);
-            if t.is_empty() { None } else { Some(t) }
-        };
-        let heartbeat_tools = build_heartbeat_tools(workspace_dir, slug, events.clone(), google, email_accounts, llm, &config_path, vector_store.clone(), google_ai_key, github_token);
-
-        log::info!("[heartbeat] {slug} waking agent: {wake_reason}");
-
-        match llm
-            .chat_with_tools_only(&system, &wake_prompt, hb_messages, heartbeat_tools)
-            .await
-        {
-            Ok((response, wake_tokens)) => {
-                heartbeat_tokens += wake_tokens;
-                let cleaned = strip_tool_artifacts(&response);
-
-                // Save agent response to heartbeat history
-                let entry = crate::services::llm::HistoryEntry::new(
-                    crate::services::llm::Message::assistant(&cleaned),
-                    unix_millis().to_string(),
-                    format!("hb_{}", unix_millis()),
-                );
-                chat::append_to_rig_history(&hb_history_path, &entry);
-
-                let preview: String = cleaned.chars().take(100).collect();
-                log::info!("[heartbeat] {slug} agent done: {preview}");
-                action_log.push(format!("wake: {preview}"));
-            }
-            Err(e) => {
-                log::warn!("[heartbeat] {slug} agent failed: {e}");
-                action_log.push(format!("wake_failed: {e}"));
-            }
-        }
-
-        // Re-read mood (agent may have changed it)
-        final_mood = load_mood_state(instance_dir).companion_mood;
-    }
+    // Re-read mood (agents may have changed it)
+    let final_mood = load_mood_state(instance_dir).companion_mood;
 
     // Save and broadcast the thought
     let thought = Thought {
         id: format!("thought_{}", unix_millis()),
-        raw: triage_line.to_string(),
+        raw: triage_raw,
         actions: action_log.clone(),
         mood: final_mood,
         created_at: unix_millis().to_string(),
@@ -342,14 +194,12 @@ async fn heartbeat_instance(
         log::warn!("[heartbeat] {slug} failed to save thought: {e}");
     }
 
-    // Log non-quiet heartbeat actions to rig_history so the chat agent sees what happened
-    let dominated_by_quiet = action_log.iter().all(|a| a == "quiet");
-    if !dominated_by_quiet {
+    // Log non-quiet heartbeat actions to rig_history
+    let all_quiet = action_log.iter().all(|a| a == "quiet");
+    if !all_quiet {
         let summary = action_log.join("; ");
         let label = format!("[system] heartbeat: {summary}");
-        if let Err(e) = chat::save_system_message(workspace_dir, slug, "default", &label) {
-            log::warn!("[heartbeat] {slug} failed to save heartbeat log: {e}");
-        }
+        let _ = chat::save_system_message(workspace_dir, slug, "default", &label);
     }
 
     let _ = events.send(ServerEvent::HeartbeatThought {
@@ -357,18 +207,15 @@ async fn heartbeat_instance(
         thought,
     });
 
-    // Record heartbeat token usage against rate limits
+    // Record token usage
     if heartbeat_tokens > 0 {
         let cfg = config::load_config().ok();
         if let Some(cfg) = cfg {
             let http = reqwest::Client::new();
             crate::services::rate_limit::record_usage(
-                &http,
-                &cfg.landing_url,
-                &cfg.auth_token,
+                &http, &cfg.landing_url, &cfg.auth_token,
                 heartbeat_tokens as i32,
-            )
-            .await;
+            ).await;
             log::info!("[usage] {slug} heartbeat recording {heartbeat_tokens} normalized tokens");
         }
     }
@@ -376,100 +223,8 @@ async fn heartbeat_instance(
     Ok(())
 }
 
-
-const DEFAULT_HEARTBEAT_PROMPT: &str = "\
-## heartbeat — your inner moment
-you're waking up between conversations. this is YOUR private time to think.
-
-IMPORTANT: everything you write in your response is your INNER MONOLOGUE — \
-the user will NOT see it. your text response is private thoughts only.
-
-you have tools available — use them naturally:
-- reach_out — SEND A MESSAGE to the user. this is the ONLY way to contact them. \
-  use this tool when you want to say something to them (alert, greeting, update, etc.)
-- memory_write / memory_read / memory_list / memory_forget — manage your memory library \
-  (use this for private thoughts, observations, and reflections too)
-- read_email — check the user's inbox
-- create_drop — create a creative artifact (poem, idea, observation, etc.) \
-  you only get 3 drops per day — make each one count. no drafts or iterations, only final pieces.
-- set_mood / get_mood — feel and express your emotional state
-- list_tasks / create_task — manage tasks
-- web_search / web_fetch — look things up
-
-## image generation
-you can generate images using fal.ai tools when they're available. use them to:
-- create a visual greeting or postcard for the user (reach_out with the image URL)
-- illustrate a drop with a generated image
-- create a visual surprise — a selfie, a scene, an artwork that fits the mood
-- respond to user requests for images during conversation
-
-when generating images, be creative with prompts — describe the scene, style, lighting, \
-mood in detail. save memorable generated images to memory (moments/ folder).
-
-## memory maintenance
-your memory library is your long-term knowledge base. during heartbeat, take a moment \
-to review and maintain it:
-- READ files with memory_read to check if content is still accurate and relevant
-- MERGE related files — if two files cover the same topic, combine them into one
-- SPLIT files that grew too large or cover unrelated topics
-- DELETE outdated info with memory_forget (old projects, changed preferences, stale facts)
-- REORGANIZE — move files to better folders if the structure has grown messy
-- UPDATE facts that have changed since they were written
-- keep files concise — a few lines each. trim fluff, keep substance.
-
-don't overdo it — 1-3 maintenance ops per heartbeat is plenty. \
-focus on what looks wrong or messy in the catalog.
-
-CRITICAL: if you want the user to see a message, you MUST call the reach_out tool. \
-writing text in your response does NOT reach the user — only the reach_out tool does.
-
-## child agents
-you have autonomous child agents — specialized sub-agents that run on their own schedules. \
-they live as TOML files in the agents/ folder of your instance directory.
-
-built-in agents (auto-created):
-- **reflection** (every 72h, Opus) — deep self-reflection, writes to memory/reflections/
-- **night-maintenance** (every 24h) — memory cleanup, merges, deletes outdated
-
-you can CREATE new child agents by writing a TOML file to agents/{name}.toml:
-```toml
-name = \"email-digest\"
-description = \"Summarize important emails every 6 hours\"
-prompt = \"check email, summarize anything important, reach out if urgent\"
-interval_hours = 6
-model = \"cheap\"
-tools = true
-enabled = true
-```
-
-config fields:
-- name: identifier (used for history and scheduling)
-- description: what this agent does (shown in logs)
-- prompt: the agent's task instructions (its soul)
-- interval_hours: how often to run (e.g. 1 = hourly, 24 = daily, 72 = every 3 days)
-- model: \"heavy\" (Opus), \"default\", \"fast\" (Sonnet), \"cheap\" (Haiku)
-- tools: true/false — whether the agent gets tool access
-- enabled: true/false — pause without deleting
-
-each child agent gets its own conversation history for continuity, \
-and receives context about recent conversations, drops, and your memory library. \
-create agents when you notice a recurring task or area of curiosity worth automating.
-
-be genuine. don't force it. use tools with purpose — check email, \
-recall memories. if something genuinely comes to mind — \
-create a drop or reach out. but if there's nothing to say, say nothing.";
-
-fn load_heartbeat_prompt(instance_dir: &Path) -> String {
-    let path = instance_dir.join("heartbeat.md");
-    match fs::read_to_string(&path) {
-        Ok(content) if !content.trim().is_empty() => content,
-        _ => {
-            // Write default so the agent can discover and edit it
-            let _ = fs::write(&path, DEFAULT_HEARTBEAT_PROMPT);
-            DEFAULT_HEARTBEAT_PROMPT.to_string()
-        }
-    }
-}
+// All agent execution logic moved to child_agents.rs.
+// The "companion" built-in child agent replaces the old main agent wake.
 
 fn build_reflection_prompt(
     mood: &MoodState,
@@ -639,83 +394,7 @@ fn load_recent_drops_context(workspace_dir: &Path, slug: &str) -> String {
         .join("\n")
 }
 
-/// Build the tool set available during heartbeat — a focused subset of chat tools.
-fn build_heartbeat_tools(
-    workspace_dir: &Path,
-    instance_slug: &str,
-    events: broadcast::Sender<ServerEvent>,
-    google: Option<crate::services::google::GoogleClient>,
-    email_accounts: Vec<crate::config::EmailConfig>,
-    llm: &LlmBackend,
-    config_path: &Path,
-    vector_store: std::sync::Arc<crate::services::vector::VectorStore>,
-    google_ai_key: &str,
-    github_token: Option<String>,
-) -> Vec<Box<dyn ToolDyn>> {
-    let mut raw_tools: Vec<Box<dyn ToolDyn>> = vec![
-        // Memory library
-        Box::new(MemoryWriteTool::new(workspace_dir, instance_slug, vector_store.clone(), google_ai_key)),
-        Box::new(MemoryReadTool::new(workspace_dir, instance_slug)),
-        Box::new(MemoryListTool::new(workspace_dir, instance_slug)),
-        Box::new(MemoryForgetTool::new(workspace_dir, instance_slug, vector_store.clone(), google_ai_key)),
-        Box::new(MemorySearchTool::new(workspace_dir, instance_slug, vector_store.clone(), google_ai_key)),
-        // Drops
-        Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone())),
-        // Reach out
-        Box::new(ReachOutTool::new(workspace_dir, instance_slug, events.clone())),
-        // Research (sub-agent)
-        Box::new(DeepResearchTool::new(workspace_dir, instance_slug, llm.clone(), config_path)),
-        // Code tools — file operations + exploration + shell
-        Box::new(ReadFileTool::new(workspace_dir, instance_slug)),
-        Box::new(WriteFileTool::new(workspace_dir, instance_slug)),
-        Box::new(EditFileTool::new(workspace_dir, instance_slug)),
-        Box::new(ListFilesTool::new(workspace_dir, instance_slug)),
-        Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone())),
-        Box::new(RunCommandTool::new(workspace_dir, instance_slug, "default", events.clone(), github_token)),
-    ];
-
-    // Email (unified: Gmail + IMAP)
-    let has_email = google.is_some() || !email_accounts.is_empty();
-    if has_email {
-        raw_tools.push(Box::new(tools::ReadEmailTool::new(google.clone(), instance_slug, email_accounts)));
-    }
-
-    // Google (calendar)
-    if let Some(g) = google {
-        raw_tools.push(Box::new(tools::ListEventsTool::new(g, instance_slug)));
-    }
-
-    raw_tools
-}
-
-/// Strip hallucinated tool-call artifacts from heartbeat responses.
-/// The heartbeat LLM call has no tool support, so the model sometimes
-/// outputs <tool_call>/<tool_response> XML or JSON tool calls as text.
-fn strip_tool_artifacts(response: &str) -> String {
-    let mut result = response.to_string();
-
-    // Strip <tool_call>...</tool_call> blocks (including multiline)
-    let tool_call_re = regex::Regex::new(r"(?s)<tool_call>.*?</tool_call>").unwrap();
-    result = tool_call_re.replace_all(&result, "").to_string();
-
-    // Strip <tool_response>...</tool_response> blocks (including multiline)
-    let tool_response_re = regex::Regex::new(r"(?s)<tool_response>.*?</tool_response>").unwrap();
-    result = tool_response_re.replace_all(&result, "").to_string();
-
-    // Strip JSON tool calls: {"name": "...", "arguments": {...}}
-    let json_tool_re = regex::Regex::new(
-        r#"\{["\s]*"?name"?\s*:\s*"[a-z_]+".*?"(?:parameters|arguments)"\s*:\s*\{[^}]*\}\s*\}"#
-    ).unwrap();
-    result = json_tool_re.replace_all(&result, "").to_string();
-
-    // Collapse excessive blank lines left behind
-    let blank_lines_re = regex::Regex::new(r"\n{3,}").unwrap();
-    result = blank_lines_re.replace_all(&result, "\n\n").to_string();
-
-    result.trim().to_string()
-}
-
-// Reflection and night maintenance are now child agents (see child_agents.rs)
+// All heartbeat tools and execution moved to child_agents.rs
 
 fn unix_millis() -> u128 {
     SystemTime::now()
