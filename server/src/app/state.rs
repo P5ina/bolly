@@ -79,6 +79,8 @@ fn inject_env_mcp_servers(config: &mut Config) {
                 "--headless".to_string(),
                 "--viewport".to_string(),
                 "1920x1080".to_string(),
+                "--chromeArg=--no-sandbox".to_string(),
+                "--chromeArg=--disable-dev-shm-usage".to_string(),
             ],
             headers: Default::default(),
         });

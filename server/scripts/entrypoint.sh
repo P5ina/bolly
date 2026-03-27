@@ -19,25 +19,6 @@ else
     echo "[entrypoint] WARNING: update failed (exit $UPDATE_EXIT), starting with existing binary"
 fi
 
-# --- Ensure Chromium is available ---
-# Playwright installs chromium to ~/.cache/ms-playwright/
-CHROMIUM_BIN=$(find /root/.cache/ms-playwright -name "chrome" -o -name "chromium" 2>/dev/null | head -1)
-# Fallback: system chromium (if not a snap stub)
-if [ -z "$CHROMIUM_BIN" ]; then
-    CHROMIUM_BIN=$(command -v chromium-browser 2>/dev/null || command -v chromium 2>/dev/null || echo "")
-    # Test if it's a snap stub
-    if [ -n "$CHROMIUM_BIN" ] && "$CHROMIUM_BIN" --version 2>&1 | grep -qi "snap"; then
-        CHROMIUM_BIN=""
-    fi
-fi
-if [ -z "$CHROMIUM_BIN" ]; then
-    echo "[entrypoint] installing Chromium via Playwright..."
-    npx playwright install --with-deps chromium 2>/dev/null || true
-    CHROMIUM_BIN=$(find /root/.cache/ms-playwright -name "chrome" -o -name "chromium" 2>/dev/null | head -1)
-fi
-export CHROMIUM_PATH="${CHROMIUM_BIN:-}"
-echo "[entrypoint] chromium: ${CHROMIUM_PATH:-NOT FOUND}"
-
 # --- Start Qdrant sidecar (vector search) ---
 mkdir -p "$PERSIST_DIR/qdrant"
 if command -v qdrant >/dev/null 2>&1; then
