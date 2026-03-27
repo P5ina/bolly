@@ -217,28 +217,37 @@ pub async fn run_single_turn(
 
     // Child agents
     let agents_dir = workspace_dir.join("instances").join(&instance_slug).join("agents");
-    let agent_count = std::fs::read_dir(&agents_dir)
-        .map(|e| e.filter_map(Result::ok).filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("toml")).count())
-        .unwrap_or(0);
-    if agent_count > 0 {
-        let agent_names: Vec<String> = std::fs::read_dir(&agents_dir)
-            .into_iter()
-            .flatten()
-            .filter_map(Result::ok)
-            .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("toml"))
-            .filter_map(|e| e.path().file_stem().map(|s| s.to_string_lossy().to_string()))
-            .collect();
-        system_prompt.push_str(&format!(
-            "\n\n## child agents\n\
-             you have {agent_count} child agents ({}). \
-             they run autonomously on their own schedules during heartbeat. \
-             configs are TOML files in: {}\n\
-             to create a new child agent, write a TOML file to agents/{{name}}.toml with: \
-             name, description, prompt, interval_hours, model (heavy/default/fast/cheap), tools (true/false), enabled (true/false).",
-            agent_names.join(", "),
-            agents_dir.display(),
-        ));
-    }
+    let agent_names: Vec<String> = std::fs::read_dir(&agents_dir)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("toml"))
+        .filter_map(|e| e.path().file_stem().map(|s| s.to_string_lossy().to_string()))
+        .collect();
+    let agents_list = if agent_names.is_empty() {
+        "none yet (built-ins: reflection, night-maintenance — created on first heartbeat)".to_string()
+    } else {
+        agent_names.join(", ")
+    };
+    system_prompt.push_str(&format!(
+        "\n\n## child agents\n\
+         you have autonomous child agents that run on their own schedules during heartbeat.\n\
+         active agents: {agents_list}\n\
+         configs are TOML files in: {}\n\n\
+         to create a new child agent, use write_file to create agents/{{name}}.toml:\n\
+         ```toml\n\
+         name = \"agent-name\"\n\
+         description = \"what this agent does\"\n\
+         prompt = \"task instructions for the agent\"\n\
+         interval_hours = 6\n\
+         model = \"cheap\"  # heavy (Opus) / default / fast (Sonnet) / cheap (Haiku)\n\
+         tools = true\n\
+         enabled = true\n\
+         ```\n\
+         built-in agents: reflection (72h, Opus — self-reflection), night-maintenance (24h — memory cleanup).\n\
+         each agent gets its own history, context from recent conversations/drops/memory, and runs independently.",
+        agents_dir.display(),
+    ));
 
     // File access — local paths and public URLs
     let instance_dir = workspace_dir.join("instances").join(&instance_slug);
