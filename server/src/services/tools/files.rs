@@ -408,14 +408,14 @@ pub struct UploadFileArgs {
 }
 
 impl Tool for UploadFileTool {
-    const NAME: &'static str = "upload_file";
+    const NAME: &'static str = "share_file";
     type Error = ToolExecError;
     type Args = UploadFileArgs;
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: "upload_file".into(),
+            name: "share_file".into(),
             description: "Upload a local file and get a public URL. Works with any file size up to 500MB. Use this to share files with the user.".into(),
             parameters: openai_schema::<UploadFileArgs>(),
         }
