@@ -42,6 +42,17 @@ pub fn start(
     vector_store: Arc<crate::services::vector::VectorStore>,
     google_ai_key: String,
 ) {
+    // Ensure built-in child agents exist for all instances immediately (don't wait for first tick)
+    let instances_dir = workspace_dir.join("instances");
+    if let Ok(entries) = fs::read_dir(&instances_dir) {
+        for entry in entries.filter_map(Result::ok) {
+            if entry.path().is_dir() && entry.path().join("soul.md").exists() {
+                let slug = entry.file_name().to_string_lossy().to_string();
+                crate::services::child_agents::ensure_builtins(workspace_dir, &slug);
+            }
+        }
+    }
+
     let workspace = workspace_dir.to_path_buf();
     tokio::spawn(async move {
         // Wait until the next full UTC hour before the first heartbeat

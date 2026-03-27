@@ -30,11 +30,10 @@ RUN apt-get update -qq && \
     tar -xzf /tmp/qdrant.tar.gz -C /usr/local/bin && \
     rm /tmp/qdrant.tar.gz && \
     # Cleanup
-    rm -rf /var/lib/apt/lists/* /root/.cache/ms-playwright/.links /tmp/*
+    rm -rf /var/lib/apt/lists/* /tmp/*
 
-# Copy scripts only — no binary, no client build
+# Copy scripts (entrypoint, etc.)
 COPY server/scripts/ /opt/bolly/scripts/
-RUN cd /opt/bolly/scripts && npm install --omit=dev 2>/dev/null || true
 
 ENV BOLLY_HOME=/data
 ENV RUST_LOG=info,rig=warn

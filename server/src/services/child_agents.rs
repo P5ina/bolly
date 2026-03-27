@@ -115,7 +115,7 @@ fn agents_dir(workspace_dir: &Path, slug: &str) -> std::path::PathBuf {
 }
 
 /// Ensure built-in agents exist as TOML files.
-fn ensure_builtins(workspace_dir: &Path, slug: &str) {
+pub fn ensure_builtins(workspace_dir: &Path, slug: &str) {
     let dir = agents_dir(workspace_dir, slug);
     let _ = fs::create_dir_all(&dir);
 

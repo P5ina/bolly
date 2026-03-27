@@ -28,7 +28,6 @@ pub mod system;
 pub mod image;
 pub mod import_data;
 pub mod media;
-pub mod web;
 
 // Re-export public items so external code uses `tools::FooTool` paths
 pub use calendar::{CreateEventTool, ListEventsTool};
@@ -51,7 +50,6 @@ pub use system::{
 };
 pub use image::ViewImageTool;
 pub use media::{WatchVideoTool, ListenMusicTool};
-// BrowseTool replaced by chrome-devtools MCP server
 
 // ---------------------------------------------------------------------------
 // Cached tool definitions snapshot (populated by build_tools, read by stats)
@@ -260,15 +258,6 @@ pub fn tool_summary(name: &str, args: &str) -> String {
             v["filename"].as_str().unwrap_or("?")
         ),
         // send_file removed
-        "browse" => {
-            let url = v["actions"]
-                .as_array()
-                .and_then(|a| a.iter().find(|a| a["action"] == "navigate"))
-                .and_then(|a| a["url"].as_str())
-                .unwrap_or("...");
-            let n = v["actions"].as_array().map(|a| a.len()).unwrap_or(0);
-            format!("browsing {url} ({n} actions)")
-        }
         _ => format!("calling {name}"),
     }
 }
@@ -473,8 +462,6 @@ pub fn build_tools(
         ))
     };
 
-    // browser_enabled removed — browsing now via chrome-devtools MCP (all plans)
-
     // ── Core ──
     let mut tools: Vec<Box<dyn ToolDyn>> = vec![
         wrap(Box::new(ReadFileTool::new(workspace_dir, instance_slug))),
@@ -531,8 +518,6 @@ pub fn build_tools(
             openrouter_key, workspace_dir, instance_slug, &public_url, auth_token,
         ))));
     }
-    // Browser: replaced by chrome-devtools MCP server (auto-injected in state.rs)
-
     // ── Code ──
     tools.push(wrap(Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone()))));
     tools.push(wrap(Box::new(DeepResearchTool::new(workspace_dir, instance_slug, llm.clone(), config_path))));
