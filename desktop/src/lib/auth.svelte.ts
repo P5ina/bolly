@@ -84,11 +84,11 @@ export async function fetchTenants() {
   state.error = null;
 
   try {
-    const url = `${API_BASE}/api/tenants`;
-    console.log("[auth] fetching tenants", url);
-    const res = await tauriFetch(url, {
-      headers: { Authorization: `Bearer ${state.session}` },
-    });
+    const token = state.session!;
+    const url = `${API_BASE}/api/tenants?session=${encodeURIComponent(token)}`;
+    console.log("[auth] fetching tenants", "token:", token.slice(0, 6) + "...");
+
+    const res = await tauriFetch(url);
     console.log("[auth] response", res.status, res.statusText);
 
     if (res.status === 401) {

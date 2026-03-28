@@ -17,7 +17,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
-	// Try cookie first, then Authorization: Bearer header (for desktop app)
+	// Try cookie → Bearer header → ?session= query param (desktop app)
 	let sessionId = getSessionId(event.cookies);
 	if (!sessionId) {
 		const auth = event.request.headers.get('authorization');
@@ -25,12 +25,17 @@ export const handle: Handle = async ({ event, resolve }) => {
 			sessionId = auth.slice(7);
 		}
 	}
+	if (!sessionId) {
+		sessionId = event.url.searchParams.get('session') ?? undefined;
+	}
 
 	if (sessionId) {
 		const result = await validateSession(sessionId);
 		if (result) {
 			event.locals.user = result.user;
 			event.locals.sessionId = result.sessionId;
+		} else {
+			console.log(`[auth] invalid session via ${authSource}, token: ${sessionId.slice(0, 6)}...${sessionId.slice(-4)}, len: ${sessionId.length}`);
 		}
 	}
 
