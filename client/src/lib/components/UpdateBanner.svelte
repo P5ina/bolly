@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from "svelte";
 	import { checkUpdate, applyUpdate, getUpdateChannel, setUpdateChannel, type UpdateCheck } from "$lib/api/client.js";
 	import { play } from "$lib/sounds.js";
 
@@ -8,10 +9,19 @@
 	let frozenCommit = '';
 	let channel = $state("stable");
 
+	// Check on mount
 	$effect(() => {
 		checkUpdate().then(u => updateInfo = u).catch(() => {});
 		getUpdateChannel().then(r => channel = r.channel).catch(() => {});
 	});
+
+	// Poll every 5 minutes in background
+	const pollInterval = setInterval(() => {
+		if (!updating) {
+			checkUpdate().then(u => updateInfo = u).catch(() => {});
+		}
+	}, 5 * 60 * 1000);
+	onDestroy(() => clearInterval(pollInterval));
 
 	let hasUpdate = $derived(updateInfo?.update_available ?? false);
 
