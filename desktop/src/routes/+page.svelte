@@ -65,7 +65,7 @@
       onended={endSplash}
     ></video>
     <div class="splash-brand">
-      <div class="splash-logo">b</div>
+      <img src="/icon.png" alt="" class="splash-logo" />
       <span class="splash-name">bolly</span>
     </div>
   </div>
@@ -76,7 +76,7 @@
 
     <header class="header">
       <div class="brand">
-        <div class="logo">b</div>
+        <img src="/icon.png" alt="" class="logo" />
         <span class="brand-name">bolly</span>
       </div>
       {#if auth.session}
@@ -177,17 +177,7 @@
   .splash-logo {
     width: 40px;
     height: 40px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: 1.1rem;
-    color: var(--warm);
-    background: oklch(1 0 0 / 6%);
-    border: 1px solid oklch(1 0 0 / 12%);
-    backdrop-filter: blur(20px);
+    object-fit: contain;
   }
 
   .splash-name {
@@ -253,16 +243,7 @@
   .logo {
     width: 28px;
     height: 28px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: 0.8rem;
-    color: var(--warm);
-    background: oklch(1 0 0 / 5%);
-    border: 1px solid oklch(1 0 0 / 10%);
+    object-fit: contain;
   }
 
   .brand-name {
