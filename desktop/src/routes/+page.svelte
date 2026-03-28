@@ -51,8 +51,10 @@
   }
 </script>
 
+<!-- Audio lives outside splash so it's not destroyed on transition -->
+<audio src="/splash.mp3" autoplay></audio>
+
 {#if splash}
-  <!-- Splash screen -->
   <div class="splash" class:splash-fade={splashFading}>
     <video
       class="splash-video"
@@ -62,7 +64,6 @@
       playsinline
       onended={endSplash}
     ></video>
-    <audio src="/splash.mp3" autoplay></audio>
     <div class="splash-brand">
       <div class="splash-logo">b</div>
       <span class="splash-name">bolly</span>
