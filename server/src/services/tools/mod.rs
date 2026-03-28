@@ -559,7 +559,7 @@ pub fn build_tools(
 
     // ── Computer use (multi-machine routing) ──
     tools.push(wrap(Box::new(ListMachinesTool::new(machine_registry.clone()))));
-    tools.push(wrap(Box::new(ComputerUseTool::new(machine_registry.clone()))));
+    tools.push(wrap(Box::new(ComputerUseTool::new(machine_registry.clone(), workspace_dir, instance_slug))));
     tools.push(wrap(Box::new(RemoteBashTool::new(machine_registry.clone()))));
     tools.push(wrap(Box::new(RemoteFilesTool::new(machine_registry))));
 
