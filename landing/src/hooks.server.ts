@@ -26,7 +26,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 	if (!sessionId) {
-		sessionId = event.url.searchParams.get('session') ?? undefined;
+		try {
+			sessionId = event.url.searchParams.get('session') ?? undefined;
+		} catch {
+			// searchParams unavailable during prerendering
+		}
 	}
 
 	if (sessionId) {
@@ -34,8 +38,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 		if (result) {
 			event.locals.user = result.user;
 			event.locals.sessionId = result.sessionId;
-		} else {
-			console.log(`[auth] invalid session via ${authSource}, token: ${sessionId.slice(0, 6)}...${sessionId.slice(-4)}, len: ${sessionId.length}`);
 		}
 	}
 
