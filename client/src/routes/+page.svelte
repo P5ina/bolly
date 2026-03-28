@@ -198,7 +198,7 @@
 	.home-ui-hidden > * { pointer-events: none !important; }
 
 	.hero {
-		text-align: center; padding-top: 14vh;
+		text-align: center; padding-top: clamp(3rem, 14vh, 10rem);
 		animation: enter-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
 	@keyframes enter-up {
@@ -221,7 +221,7 @@
 
 	.bottom {
 		display: flex; flex-direction: column; align-items: center; gap: 1.25rem;
-		padding-bottom: calc(5vh + env(safe-area-inset-bottom, 0px));
+		padding-bottom: calc(clamp(2rem, 5vh, 4rem) + env(safe-area-inset-bottom, 0px));
 		animation: enter-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; animation-delay: 400ms;
 	}
 
@@ -366,7 +366,7 @@
 	@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 
 	.version {
-		position: fixed; bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+		position: fixed; bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
 		left: 0; right: 0; text-align: center;
 		font-family: var(--font-body); font-size: 0.68rem; letter-spacing: 0.05em;
 		color: oklch(0.88 0.02 75 / 40%); cursor: pointer; z-index: 100;

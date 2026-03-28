@@ -140,7 +140,12 @@
 	// At z=5 with FOV 50, visible width ≈ 2 * 5 * tan(25°) ≈ 4.66
 	// So worldX=1.8 → 50% + 1.8/4.66*50% ≈ 69.3%
 	const WORLD_TO_PCT = 50 / 4.66; // ~10.73% per world unit
-	const BASE_SIZE = 450; // px for scale=1.0 (cropped square video)
+
+	// Scale orbs to viewport — 450px at 900px+ height, shrinks for smaller windows
+	function baseSize(): number {
+		const h = container?.clientHeight ?? 900;
+		return Math.min(450, h * 0.5);
+	}
 
 	const HOME_SCALE = 0.5;
 	const FINAL_SCALE = 1.2;
@@ -191,11 +196,11 @@
 
 			let tx = 50 + homeX * WORLD_TO_PCT;
 			let ty = 50;
-			let ts = HOME_SCALE * BASE_SIZE;
+			let ts = HOME_SCALE * baseSize();
 			let to = 1;
 
 			if (m === "home") {
-				ts = (isHovered ? 0.58 : HOME_SCALE) * BASE_SIZE;
+				ts = (isHovered ? 0.58 : HOME_SCALE) * baseSize();
 			} else if (m === "onboarding") {
 				if (isSelected) {
 					tx = 50; ty = 50;
@@ -213,9 +218,9 @@
 					const hx = 50 + homeX * WORLD_TO_PCT;
 					tx = hx + (50 - hx) * e;
 					ty = 50;
-					ts = (HOME_SCALE + e * (FINAL_SCALE - HOME_SCALE)) * BASE_SIZE;
+					ts = (HOME_SCALE + e * (FINAL_SCALE - HOME_SCALE)) * baseSize();
 				} else {
-					ts = HOME_SCALE * (1 - e) * BASE_SIZE;
+					ts = HOME_SCALE * (1 - e) * baseSize();
 					to = 1 - e;
 				}
 			} else if (m === "intro") {
@@ -224,16 +229,16 @@
 					if (p < 0.25) {
 						const e = easeOutCubic(p / 0.25);
 						tx = 50; ty = 50;
-						ts = (FINAL_SCALE + e * 0.15) * BASE_SIZE;
+						ts = (FINAL_SCALE + e * 0.15) * baseSize();
 					} else if (p < 0.58) {
 						const e = easeInOutQuart((p - 0.25) / 0.33);
 						tx = 50 + FINAL_X * WORLD_TO_PCT * e;
 						ty = 50 + FINAL_Y * WORLD_TO_PCT * e;
-						ts = (FINAL_SCALE * 1.15 + (FINAL_SCALE - FINAL_SCALE * 1.15) * e) * BASE_SIZE;
+						ts = (FINAL_SCALE * 1.15 + (FINAL_SCALE - FINAL_SCALE * 1.15) * e) * baseSize();
 					} else {
 						tx = 50 + FINAL_X * WORLD_TO_PCT;
 						ty = 50 + FINAL_Y * WORLD_TO_PCT;
-						ts = FINAL_SCALE * BASE_SIZE;
+						ts = FINAL_SCALE * baseSize();
 					}
 				} else {
 					ts = 0; to = 0;
@@ -244,15 +249,15 @@
 					if (store.presenting) {
 						tx = 50;
 						ty = 35;
-						ts = FINAL_SCALE * BASE_SIZE * 0.8;
+						ts = FINAL_SCALE * baseSize() * 0.8;
 					} else if (isMobile) {
 						tx = 50;
 						ty = 50;
-						ts = FINAL_SCALE * BASE_SIZE;
+						ts = FINAL_SCALE * baseSize();
 					} else {
 						tx = 50 + FINAL_X * WORLD_TO_PCT;
 						ty = 50 + FINAL_Y * WORLD_TO_PCT;
-						ts = FINAL_SCALE * BASE_SIZE;
+						ts = FINAL_SCALE * baseSize();
 					}
 				} else {
 					ts = 0; to = 0;
