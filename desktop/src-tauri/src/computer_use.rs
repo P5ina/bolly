@@ -27,6 +27,12 @@ pub fn computer_screenshot() -> Result<ScreenshotResult, String> {
     let screens = screenshots::Screen::all().map_err(|e| e.to_string())?;
     let screen = screens.into_iter().next().ok_or("no screen found")?;
 
+    // Display scale factor (2.0 on Retina, 1.0 on standard displays)
+    let display_scale = screen.display_info.scale_factor as f64;
+    // Logical screen dimensions (what enigo uses for mouse coordinates)
+    let logical_w = screen.display_info.width as f64;
+    let _logical_h = screen.display_info.height as f64;
+
     let capture = screen.capture().map_err(|e| e.to_string())?;
     let real_w = capture.width();
     let real_h = capture.height();
@@ -43,10 +49,14 @@ pub fn computer_screenshot() -> Result<ScreenshotResult, String> {
         let new_w = (real_w as f64 * ratio).round() as u32;
         let new_h = (real_h as f64 * ratio).round() as u32;
         let resized = img.resize_exact(new_w, new_h, image::imageops::FilterType::Triangle);
-        let scale = real_w as f64 / new_w as f64;
+        // Scale from screenshot coords → logical screen coords (not physical pixels!)
+        // Screenshot is scaled down from physical pixels, but enigo uses logical coords.
+        // So: screenshot_coord * scale = logical_coord
+        let scale = logical_w / new_w as f64;
         (resized, scale)
     } else {
-        (img, 1.0)
+        // No resize needed — scale from physical pixels to logical
+        (img, 1.0 / display_scale)
     };
 
     let out_w = scaled_img.width();
