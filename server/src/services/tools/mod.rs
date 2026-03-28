@@ -371,7 +371,10 @@ impl ToolDyn for ObservableTool {
             let result = match fut.await {
                 Ok(s) => {
                     let redacted = redact_secrets(&s);
-                    if redacted.len() > MAX_TOOL_RESULT {
+                    // Skip truncation for content blocks containing images (screenshots)
+                    let has_image = redacted.contains("\"type\":\"image\"")
+                        || redacted.contains("\"type\": \"image\"");
+                    if !has_image && redacted.len() > MAX_TOOL_RESULT {
                         let truncated: String = redacted.chars().take(MAX_TOOL_RESULT).collect();
                         Ok(format!(
                             "{truncated}\n\n...(tool output truncated at {MAX_TOOL_RESULT} chars, total: {})",
