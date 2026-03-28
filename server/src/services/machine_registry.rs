@@ -23,7 +23,6 @@ pub struct PendingAction {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ActionResult {
     /// "screenshot" or "action"
-    #[serde(rename = "type")]
     pub result_type: String,
     /// Base64 PNG (only for screenshots)
     pub image: Option<String>,
