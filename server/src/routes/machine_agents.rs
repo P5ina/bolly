@@ -53,13 +53,18 @@ async fn handle_agent(mut socket: WebSocket, state: AppState) {
 
     log::info!("[machine-ws] agent '{machine_id}' connected");
 
+    let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(15));
+    ping_interval.tick().await; // skip first immediate tick
+
     loop {
         tokio::select! {
             // Forward toolcalls to the agent
             toolcall_msg = agent_rx.recv() => {
                 match toolcall_msg {
                     Some(msg) => {
+                        log::info!("[machine-ws] sending toolcall to '{machine_id}'");
                         if socket.send(Message::Text(msg.into())).await.is_err() {
+                            log::warn!("[machine-ws] failed to send to '{machine_id}', disconnecting");
                             break;
                         }
                     }
@@ -73,6 +78,7 @@ async fn handle_agent(mut socket: WebSocket, state: AppState) {
                         if let Ok(msg) = serde_json::from_str::<AgentMessage>(&text) {
                             match msg {
                                 AgentMessage::ActionResult { request_id, result } => {
+                                    log::info!("[machine-ws] result from '{machine_id}' for {}", &request_id[..8.min(request_id.len())]);
                                     state.machine_registry.complete(&request_id, result).await;
                                 }
                                 AgentMessage::Heartbeat { machine_id: mid } => {
@@ -82,6 +88,8 @@ async fn handle_agent(mut socket: WebSocket, state: AppState) {
                                     // Already registered, ignore duplicate
                                 }
                             }
+                        } else {
+                            log::warn!("[machine-ws] unparseable message from '{machine_id}': {}", &text[..100.min(text.len())]);
                         }
                     }
                     Some(Ok(Message::Ping(payload))) => {
@@ -89,9 +97,23 @@ async fn handle_agent(mut socket: WebSocket, state: AppState) {
                             break;
                         }
                     }
+                    Some(Ok(Message::Pong(_))) => {
+                        // Pong received — connection alive
+                        state.machine_registry.heartbeat(&machine_id).await;
+                    }
                     Some(Ok(Message::Close(_))) | None => break,
                     Some(Ok(_)) => {}
-                    Some(Err(_)) => break,
+                    Some(Err(e)) => {
+                        log::warn!("[machine-ws] error from '{machine_id}': {e}");
+                        break;
+                    }
+                }
+            }
+            // Periodic ping to detect dead connections
+            _ = ping_interval.tick() => {
+                if socket.send(Message::Ping(vec![].into())).await.is_err() {
+                    log::warn!("[machine-ws] ping failed for '{machine_id}', disconnecting");
+                    break;
                 }
             }
         }

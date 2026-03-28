@@ -112,16 +112,30 @@ impl MachineRegistry {
 
         // Send the toolcall to the agent
         let msg = serde_json::to_string(&call).map_err(|e| e.to_string())?;
-        sender.send(msg).map_err(|_| format!("machine '{machine_id}' disconnected"))?;
+        if sender.send(msg).is_err() {
+            self.pending.lock().await.remove(&request_id);
+            self.agents.lock().await.remove(machine_id);
+            return Err(format!("machine '{machine_id}' disconnected (send failed)"));
+        }
 
-        // Wait for response with timeout (60s for screenshots, actions should be fast)
+        log::info!("[machines] sent toolcall {} to '{machine_id}', waiting...", &request_id[..8]);
+
+        // Wait for response with timeout
         let result = tokio::time::timeout(
-            std::time::Duration::from_secs(60),
+            std::time::Duration::from_secs(120),
             rx,
         )
         .await
-        .map_err(|_| "computer use action timed out (60s)".to_string())?
+        .map_err(|_| {
+            // Clean up pending on timeout
+            let pending = self.pending.clone();
+            let rid = request_id.clone();
+            tokio::spawn(async move { pending.lock().await.remove(&rid); });
+            format!("computer use action timed out (120s) on '{machine_id}'")
+        })?
         .map_err(|_| "agent disconnected before responding".to_string())?;
+
+        log::info!("[machines] result received for {}", &request_id[..8]);
 
         Ok(result)
     }
