@@ -31,7 +31,20 @@
     setTimeout(() => { splash = false; }, 600);
   }
 
+  let showPaste = $state(false);
+  let pasteValue = $state("");
+
   function signIn() { openUrl(AUTH_URL); }
+
+  function submitCode() {
+    const v = pasteValue.trim();
+    if (v) setSession(v);
+  }
+
+  function handleCodeKey(e: KeyboardEvent) {
+    if (e.key === "Enter") { e.preventDefault(); submitCode(); }
+    if (e.key === "Escape") { showPaste = false; pasteValue = ""; }
+  }
 
   function connect(tenant: Tenant) {
     invoke("navigate", { url: connectUrl(tenant) });
@@ -96,6 +109,25 @@
           <button class="sign-in-btn" onclick={signIn}>
             Sign in with bollyai.dev
           </button>
+          {#if !showPaste}
+            <button class="paste-toggle" onclick={() => showPaste = true}>
+              or paste a code
+            </button>
+          {:else}
+            <div class="paste-field">
+              <!-- svelte-ignore a11y_autofocus -->
+              <input
+                class="paste-input"
+                bind:value={pasteValue}
+                onkeydown={handleCodeKey}
+                placeholder="Paste session code..."
+                autofocus
+              />
+              {#if pasteValue.trim()}
+                <button class="paste-go" onclick={submitCode}>Connect</button>
+              {/if}
+            </div>
+          {/if}
         </div>
       {:else if auth.error && !splash}
         <div class="center-message">
@@ -324,6 +356,67 @@
     background: oklch(0.78 0.12 75 / 16%);
     border-color: oklch(0.78 0.12 75 / 30%);
     box-shadow: 0 0 40px oklch(0.78 0.12 75 / 8%);
+  }
+
+  .paste-toggle {
+    display: block;
+    margin: 14px auto 0;
+    background: none;
+    border: none;
+    color: oklch(0.50 0.03 240);
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+
+  .paste-toggle:hover {
+    color: var(--foreground);
+  }
+
+  .paste-field {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    animation: dash-in 0.3s ease both;
+  }
+
+  .paste-input {
+    flex: 1;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: oklch(1 0 0 / 3%);
+    color: var(--foreground);
+    font-family: monospace;
+    font-size: 0.75rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .paste-input:focus {
+    border-color: oklch(1 0 0 / 16%);
+  }
+
+  .paste-input::placeholder {
+    color: oklch(0.50 0.03 240);
+  }
+
+  .paste-go {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid oklch(0.78 0.12 75 / 18%);
+    background: oklch(0.78 0.12 75 / 10%);
+    color: var(--warm);
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .paste-go:hover {
+    background: oklch(0.78 0.12 75 / 16%);
   }
 
   /* ─── Instances ────────────────────────────────────────────── */
