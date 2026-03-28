@@ -371,10 +371,7 @@ impl ToolDyn for ObservableTool {
             let result = match fut.await {
                 Ok(s) => {
                     let redacted = redact_secrets(&s);
-                    // Skip truncation for content blocks containing images (screenshots)
-                    let has_image = redacted.contains("\"type\":\"image\"")
-                        || redacted.contains("\"type\": \"image\"");
-                    if !has_image && redacted.len() > MAX_TOOL_RESULT {
+                    if redacted.len() > MAX_TOOL_RESULT {
                         let truncated: String = redacted.chars().take(MAX_TOOL_RESULT).collect();
                         Ok(format!(
                             "{truncated}\n\n...(tool output truncated at {MAX_TOOL_RESULT} chars, total: {})",
@@ -562,7 +559,14 @@ pub fn build_tools(
 
     // ── Computer use (multi-machine routing) ──
     tools.push(wrap(Box::new(ListMachinesTool::new(machine_registry.clone()))));
-    tools.push(wrap(Box::new(ComputerUseTool::new(machine_registry.clone(), workspace_dir, instance_slug))));
+    {
+        let public_url = std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default();
+        let cfg = crate::config::load_config().ok();
+        let auth_token = cfg.as_ref().map(|c| c.auth_token.as_str()).unwrap_or("");
+        tools.push(wrap(Box::new(ComputerUseTool::new(
+            machine_registry.clone(), workspace_dir, instance_slug, &public_url, auth_token,
+        ))));
+    }
     tools.push(wrap(Box::new(RemoteBashTool::new(machine_registry.clone()))));
     tools.push(wrap(Box::new(RemoteFilesTool::new(machine_registry))));
 

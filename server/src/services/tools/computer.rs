@@ -68,14 +68,24 @@ pub struct ComputerUseTool {
     registry: MachineRegistry,
     workspace_dir: std::path::PathBuf,
     instance_slug: String,
+    public_url: String,
+    auth_token: String,
 }
 
 impl ComputerUseTool {
-    pub fn new(registry: MachineRegistry, workspace_dir: &std::path::Path, instance_slug: &str) -> Self {
+    pub fn new(
+        registry: MachineRegistry,
+        workspace_dir: &std::path::Path,
+        instance_slug: &str,
+        public_url: &str,
+        auth_token: &str,
+    ) -> Self {
         Self {
             registry,
             workspace_dir: workspace_dir.to_path_buf(),
             instance_slug: instance_slug.to_string(),
+            public_url: public_url.to_string(),
+            auth_token: auth_token.to_string(),
         }
     }
 }
@@ -158,53 +168,51 @@ impl Tool for ComputerUseTool {
                 let w = result.width.unwrap_or(0);
                 let h = result.height.unwrap_or(0);
 
-                // Save screenshot as upload so user can see it in chat
-                let upload_url = match base64::engine::general_purpose::STANDARD.decode(&image_b64) {
-                    Ok(img_bytes) => {
-                        match crate::services::uploads::save_upload(
+                // Save screenshot as upload file
+                let saved = base64::engine::general_purpose::STANDARD
+                    .decode(&image_b64)
+                    .ok()
+                    .and_then(|bytes| {
+                        crate::services::uploads::save_upload(
                             &self.workspace_dir,
                             &self.instance_slug,
                             "screenshot.jpg",
-                            &img_bytes,
-                        ) {
-                            Ok(meta) => {
-                                let url = format!(
-                                    "/api/instances/{}/uploads/{}/file",
-                                    self.instance_slug, meta.id
-                                );
-                                Some(url)
-                            }
-                            Err(e) => {
-                                log::warn!("[computer_use] failed to save screenshot: {e}");
-                                None
-                            }
-                        }
-                    }
-                    Err(_) => None,
-                };
+                            &bytes,
+                        )
+                        .ok()
+                    });
 
-                // Return image block for LLM + text with URL for user
-                let text = if let Some(url) = upload_url {
-                    format!("Screenshot captured ({}x{}). You can show it to the user with: ![screenshot]({})", w, h, url)
+                if let Some(meta) = saved {
+                    // URL-based image — no base64 in context, no truncation, no context bloat
+                    let full_url = format!(
+                        "{}/public/files/{}/{}?token={}",
+                        self.public_url, self.instance_slug, meta.id, self.auth_token
+                    );
+                    let chat_url = format!(
+                        "/api/instances/{}/uploads/{}/file",
+                        self.instance_slug, meta.id
+                    );
+
+                    let blocks = serde_json::json!([
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "url",
+                                "url": full_url,
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": format!(
+                                "Screenshot captured ({}x{}). Show to user: ![screenshot]({})",
+                                w, h, chat_url
+                            ),
+                        }
+                    ]);
+                    Ok(blocks.to_string())
                 } else {
-                    format!("Screenshot captured ({}x{})", w, h)
-                };
-
-                let blocks = serde_json::json!([
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/jpeg",
-                            "data": image_b64,
-                        }
-                    },
-                    {
-                        "type": "text",
-                        "text": text,
-                    }
-                ]);
-                Ok(blocks.to_string())
+                    Err(ToolExecError("failed to save screenshot".into()))
+                }
             }
             "action" => {
                 if result.success.unwrap_or(false) {
