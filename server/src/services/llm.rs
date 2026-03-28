@@ -101,14 +101,19 @@ impl ContentBlock {
             content
         };
 
-        // If content is a JSON array of content blocks, use directly
+        // If content is a JSON array of Anthropic content blocks (each with a "type" field), use directly.
+        // This allows tools to return image+text results (e.g. screenshots).
         if inner.starts_with('[') {
             if let Ok(blocks) = serde_json::from_str::<serde_json::Value>(&inner) {
-                if blocks.is_array() {
-                    return ContentBlock::ToolResult {
-                        tool_use_id,
-                        content: blocks,
-                    };
+                if let Some(arr) = blocks.as_array() {
+                    let is_content_blocks = !arr.is_empty()
+                        && arr.iter().all(|b| b.get("type").and_then(|t| t.as_str()).is_some());
+                    if is_content_blocks {
+                        return ContentBlock::ToolResult {
+                            tool_use_id,
+                            content: blocks,
+                        };
+                    }
                 }
             }
         }
