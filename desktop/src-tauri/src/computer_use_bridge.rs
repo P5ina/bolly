@@ -33,10 +33,10 @@ pub async fn connect_computer_use(
 
             match run_agent(&app, &instance_url, &auth_token).await {
                 Ok(_) => {
-                    eprintln!("[agent] connection closed, reconnecting in 5s...");
+                    eprintln!("[agent] connection closed, reconnecting in 3s...");
                 }
                 Err(e) => {
-                    eprintln!("[agent] error: {e}, reconnecting in 5s...");
+                    eprintln!("[agent] error: {e}, reconnecting in 3s...");
                 }
             }
 
@@ -47,7 +47,7 @@ pub async fn connect_computer_use(
                     break;
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         }
         eprintln!("[agent] bridge stopped");
     });
@@ -117,8 +117,12 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
     // Scale cache from last screenshot
     let mut cached_scale: f64 = 1.0;
 
+    let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(20));
+    ping_interval.tick().await; // skip first immediate tick
+    let mut last_pong = std::time::Instant::now();
+
     // Main loop: receive toolcalls, execute, send results
-    while let Some(msg) = read.next().await {
+    loop {
         // Check if bridge is still active
         {
             let active = BRIDGE_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
@@ -127,19 +131,44 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
             }
         }
 
-        let text = match msg {
-            Ok(Message::Text(t)) => t.to_string(),
-            Ok(Message::Ping(d)) => {
-                let _ = write.send(Message::Pong(d)).await;
+        let text;
+
+        tokio::select! {
+            msg = read.next() => {
+                match msg {
+                    Some(Ok(Message::Text(t))) => {
+                        text = t.to_string();
+                    }
+                    Some(Ok(Message::Ping(d))) => {
+                        let _ = write.send(Message::Pong(d)).await;
+                        continue;
+                    }
+                    Some(Ok(Message::Pong(_))) => {
+                        last_pong = std::time::Instant::now();
+                        continue;
+                    }
+                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Ok(_)) => continue,
+                    Some(Err(e)) => {
+                        eprintln!("[agent] ws error: {e}");
+                        break;
+                    }
+                }
+            }
+            _ = ping_interval.tick() => {
+                // Send ping
+                if write.send(Message::Ping(vec![].into())).await.is_err() {
+                    eprintln!("[agent] ping send failed, reconnecting...");
+                    break;
+                }
+                // Check if we got a pong recently (within 45s)
+                if last_pong.elapsed() > std::time::Duration::from_secs(45) {
+                    eprintln!("[agent] no pong in 45s, reconnecting...");
+                    break;
+                }
                 continue;
             }
-            Ok(Message::Close(_)) => break,
-            Ok(_) => continue,
-            Err(e) => {
-                eprintln!("[agent] ws error: {e}");
-                break;
-            }
-        };
+        }
 
         let call: serde_json::Value = match serde_json::from_str(&text) {
             Ok(v) => v,
