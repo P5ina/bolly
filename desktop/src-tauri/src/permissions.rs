@@ -36,20 +36,24 @@ pub fn open_permission_settings(permission: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Test screen recording by attempting a tiny capture.
 fn check_screen_recording() -> bool {
-    screenshots::Screen::all()
-        .ok()
-        .and_then(|screens| screens.into_iter().next())
-        .and_then(|screen| screen.capture().ok())
-        .is_some()
+    #[cfg(target_os = "macos")]
+    {
+        // CGPreflightScreenCaptureAccess returns true only if actually granted
+        extern "C" {
+            fn CGPreflightScreenCaptureAccess() -> bool;
+        }
+        unsafe { CGPreflightScreenCaptureAccess() }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        true
+    }
 }
 
-/// Check accessibility permission via macOS API.
 fn check_accessibility() -> bool {
     #[cfg(target_os = "macos")]
     {
-        // AXIsProcessTrusted() returns true if accessibility is granted
         extern "C" {
             fn AXIsProcessTrusted() -> bool;
         }
@@ -57,6 +61,6 @@ fn check_accessibility() -> bool {
     }
     #[cfg(not(target_os = "macos"))]
     {
-        true // Non-macOS doesn't need this
+        true
     }
 }
