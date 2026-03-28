@@ -1,5 +1,4 @@
 use tauri::{AppHandle, Emitter, Manager};
-use tauri::webview::WebviewWindowBuilder;
 
 fn overlay_url() -> String {
     if cfg!(debug_assertions) {
@@ -9,8 +8,16 @@ fn overlay_url() -> String {
     }
 }
 
-/// Show the computer-use overlay.
+/// Show the overlay — dispatched to the main thread (required by AppKit).
 pub fn show(app: &AppHandle) {
+    let handle = app.clone();
+    let inner = app.clone();
+    let _ = handle.run_on_main_thread(move || {
+        show_inner(inner);
+    });
+}
+
+fn show_inner(app: AppHandle) {
     if app.get_webview_window("overlay").is_some() {
         return;
     }
@@ -24,35 +31,35 @@ pub fn show(app: &AppHandle) {
         }
     };
 
-    // Use std::panic::catch_unwind to prevent overlay issues from crashing the app
-    let app_clone = app.clone();
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-        let win = WebviewWindowBuilder::new(&app_clone, "overlay", tauri::WebviewUrl::External(parsed))
-            .title("")
-            .decorations(false)
-            .transparent(true)
-            .shadow(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .focused(false)
-            .resizable(false)
-            .inner_size(800.0, 200.0)
-            .build()?;
+    let win = match tauri::webview::WebviewWindowBuilder::new(
+        &app,
+        "overlay",
+        tauri::WebviewUrl::External(parsed),
+    )
+    .title("")
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(false)
+    .resizable(false)
+    .inner_size(800.0, 200.0)
+    .build()
+    {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("[overlay] build error: {e}");
+            return;
+        }
+    };
 
-        win.set_ignore_cursor_events(true)?;
+    let _ = win.set_ignore_cursor_events(true);
 
-        // macOS: make truly transparent + cover screen
-        #[cfg(target_os = "macos")]
-        apply_macos_overlay(&win);
+    #[cfg(target_os = "macos")]
+    apply_macos_overlay(&win);
 
-        Ok::<(), tauri::Error>(())
-    }));
-
-    match result {
-        Ok(Ok(())) => eprintln!("[overlay] shown"),
-        Ok(Err(e)) => eprintln!("[overlay] build error: {e}"),
-        Err(_) => eprintln!("[overlay] panicked during creation — skipping"),
-    }
+    eprintln!("[overlay] shown");
 }
 
 #[cfg(target_os = "macos")]
@@ -75,11 +82,16 @@ fn apply_macos_overlay(win: &tauri::WebviewWindow) {
     }
 }
 
-/// Hide the overlay.
+/// Hide the overlay — dispatched to the main thread.
 pub fn hide(app: &AppHandle) {
-    if let Some(win) = app.get_webview_window("overlay") {
-        let _ = win.close();
-    }
+    let caller = app.clone();
+    let inner = app.clone();
+    let _ = caller.run_on_main_thread(move || {
+        if let Some(win) = inner.get_webview_window("overlay") {
+            let _ = win.close();
+            eprintln!("[overlay] hidden");
+        }
+    });
 }
 
 /// Notify the overlay of a computer-use action.

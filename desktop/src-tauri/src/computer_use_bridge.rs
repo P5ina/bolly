@@ -159,7 +159,7 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
 
         eprintln!("[agent] toolcall: {action} (req={request_id})");
 
-        // Emit overlay action (overlay show is skipped — needs main thread dispatch)
+        overlay::show(app);
         overlay::emit_action(app, &action);
 
         let result = execute_action(&call, &action, &mut cached_scale);
@@ -205,6 +205,7 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
     }
 
     overlay::emit_idle(app);
+    overlay::hide(app);
 
     Ok(())
 }
