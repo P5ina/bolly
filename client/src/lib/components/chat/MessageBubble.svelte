@@ -511,6 +511,13 @@
 	}
 
 
+	.prose :global(img) {
+		max-width: 100%;
+		border-radius: 8px;
+		margin: 0.4em 0;
+		border: 1px solid oklch(0.5 0.06 200 / 12%);
+	}
+
 	/* --- Timestamp --- */
 	.msg-time {
 		display: block;
