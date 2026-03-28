@@ -1,5 +1,6 @@
 mod computer_use;
 mod computer_use_bridge;
+mod permissions;
 
 use tauri::{Emitter, Manager};
 use tauri::menu::{AboutMetadataBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
@@ -15,11 +16,15 @@ fn navigate(app: tauri::AppHandle, url: String) -> Result<(), String> {
 }
 
 fn navigate_home(app: &tauri::AppHandle) -> Result<(), String> {
+    navigate_to(app, "tauri://localhost/")
+}
+
+fn navigate_to(app: &tauri::AppHandle, url: &str) -> Result<(), String> {
     let ww = app
         .get_webview_window("main")
         .ok_or("main webview not found")?;
-    let home: url::Url = "tauri://localhost/".parse().map_err(|e: url::ParseError| e.to_string())?;
-    ww.navigate(home).map_err(|e| e.to_string())
+    let parsed: url::Url = url.parse().map_err(|e: url::ParseError| e.to_string())?;
+    ww.navigate(parsed).map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -40,6 +45,8 @@ pub fn run() {
             computer_use::computer_key,
             computer_use_bridge::connect_computer_use,
             computer_use_bridge::disconnect_computer_use,
+            permissions::check_permissions,
+            permissions::open_permission_settings,
         ])
         .setup(|app| {
             let about = AboutMetadataBuilder::new()
@@ -63,9 +70,12 @@ pub fn run() {
             let back = MenuItemBuilder::with_id("back", "Back to Dashboard")
                 .accelerator("CmdOrCtrl+Shift+D")
                 .build(app)?;
+            let settings = MenuItemBuilder::with_id("settings", "Settings...")
+                .accelerator("CmdOrCtrl+,")
+                .build(app)?;
 
             let view_menu = SubmenuBuilder::new(app, "View")
-                .items(&[&back])
+                .items(&[&back, &settings])
                 .build()?;
 
             let edit_menu = SubmenuBuilder::new(app, "Edit")
@@ -87,6 +97,8 @@ pub fn run() {
             app.on_menu_event(move |_app, event| {
                 if event.id() == "back" {
                     let _ = navigate_home(&handle);
+                } else if event.id() == "settings" {
+                    let _ = navigate_to(&handle, "tauri://localhost/settings");
                 }
             });
 
