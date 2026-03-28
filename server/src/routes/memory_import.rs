@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{DefaultBodyLimit, Multipart, Path, State},
     routing::post,
     Json, Router,
 };
@@ -11,6 +11,7 @@ use crate::services::memory_import;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/instances/{instance_slug}/memory/import", post(start_import))
+        .layer(DefaultBodyLimit::max(500 * 1024 * 1024)) // 500 MB
 }
 
 #[derive(Serialize)]
