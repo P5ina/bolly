@@ -1,4 +1,5 @@
 import { load, type Store } from "@tauri-apps/plugin-store";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 
 const API_BASE = "https://bollyai.dev";
 const STORE_KEY = "session";
@@ -83,9 +84,12 @@ export async function fetchTenants() {
   state.error = null;
 
   try {
-    const res = await fetch(`${API_BASE}/api/tenants`, {
+    const url = `${API_BASE}/api/tenants`;
+    console.log("[auth] fetching tenants", url);
+    const res = await tauriFetch(url, {
       headers: { Authorization: `Bearer ${state.session}` },
     });
+    console.log("[auth] response", res.status, res.statusText);
 
     if (res.status === 401) {
       await logout();
@@ -94,11 +98,16 @@ export async function fetchTenants() {
     }
 
     if (!res.ok) {
-      throw new Error(`API error ${res.status}`);
+      const body = await res.text();
+      console.error("[auth] error body", body);
+      throw new Error(`API error ${res.status}: ${body.slice(0, 200)}`);
     }
 
-    state.tenants = await res.json();
+    const data = await res.json();
+    console.log("[auth] tenants", data.length, data);
+    state.tenants = data;
   } catch (err) {
+    console.error("[auth] fetch failed", err);
     state.error = err instanceof Error ? err.message : "Failed to fetch instances";
   } finally {
     state.loading = false;

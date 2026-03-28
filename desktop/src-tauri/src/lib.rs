@@ -25,6 +25,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_http::init())
         .invoke_handler(tauri::generate_handler![navigate])
         .setup(|app| {
             let about = AboutMetadataBuilder::new()

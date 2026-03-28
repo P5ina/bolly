@@ -132,7 +132,7 @@
       {:else if auth.error && !splash}
         <div class="center-message">
           <p class="error-text">{auth.error}</p>
-          <button class="retry-btn" onclick={signIn}>Try again</button>
+          <button class="retry-btn" onclick={() => { import('$lib/auth.svelte').then(m => m.fetchTenants()); }}>Retry</button>
         </div>
       {:else if auth.tenants.length === 0 && !auth.loading && !splash}
         <div class="center-message">
