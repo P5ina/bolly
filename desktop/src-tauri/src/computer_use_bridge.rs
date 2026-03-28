@@ -194,6 +194,13 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
                 "result_type": "action",
                 "success": true,
             }),
+            Ok(AgentResult::Output(text)) => serde_json::json!({
+                "type": "action_result",
+                "request_id": request_id,
+                "result_type": "output",
+                "success": true,
+                "error": text, // reuse error field for output text
+            }),
             Err(e) => serde_json::json!({
                 "type": "action_result",
                 "request_id": request_id,
@@ -226,6 +233,8 @@ enum AgentResult {
         scale: f64,
     },
     Action,
+    /// Text output (bash stdout, file content, directory listing).
+    Output(String),
 }
 
 fn execute_action(
@@ -284,8 +293,107 @@ fn execute_action(
             computer_use::computer_scroll(x, y, *cached_scale, dx, dy)?;
             Ok(AgentResult::Action)
         }
+        // ── Bash ──
+        "bash" => {
+            let command = call["command"].as_str().unwrap_or("").to_string();
+            let cwd = call["cwd"].as_str().map(|s| s.to_string());
+            execute_bash(&command, cwd.as_deref())
+        }
+        // ── File operations ──
+        "file_read" => {
+            let path = expand_path(call["path"].as_str().unwrap_or(""));
+            match std::fs::read_to_string(&path) {
+                Ok(content) => Ok(AgentResult::Output(content)),
+                Err(e) => Err(format!("read {path}: {e}")),
+            }
+        }
+        "file_write" => {
+            let path = expand_path(call["path"].as_str().unwrap_or(""));
+            let content = call["content"].as_str().unwrap_or("");
+            if let Some(parent) = std::path::Path::new(&path).parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            match std::fs::write(&path, content) {
+                Ok(_) => Ok(AgentResult::Output(format!("written {} bytes to {path}", content.len()))),
+                Err(e) => Err(format!("write {path}: {e}")),
+            }
+        }
+        "file_list" => {
+            let path = expand_path(call["path"].as_str().unwrap_or("."));
+            match std::fs::read_dir(&path) {
+                Ok(entries) => {
+                    let mut lines = Vec::new();
+                    for entry in entries.flatten() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        let meta = entry.metadata().ok();
+                        let is_dir = meta.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+                        let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+                        if is_dir {
+                            lines.push(format!("{name}/"));
+                        } else {
+                            lines.push(format!("{name}  ({size} bytes)"));
+                        }
+                    }
+                    lines.sort();
+                    Ok(AgentResult::Output(lines.join("\n")))
+                }
+                Err(e) => Err(format!("list {path}: {e}")),
+            }
+        }
         _ => Err(format!("unknown action: {action}")),
     }
+}
+
+fn execute_bash(command: &str, cwd: Option<&str>) -> Result<AgentResult, String> {
+    use std::process::Command;
+
+    let mut cmd = if cfg!(target_os = "windows") {
+        let mut c = Command::new("cmd");
+        c.arg("/C").arg(command);
+        c
+    } else {
+        let mut c = Command::new("sh");
+        c.arg("-c").arg(command);
+        c
+    };
+
+    if let Some(dir) = cwd {
+        cmd.current_dir(expand_path(dir));
+    }
+
+    match cmd.output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let mut result = String::new();
+            if !stdout.is_empty() {
+                result.push_str(&stdout);
+            }
+            if !stderr.is_empty() {
+                if !result.is_empty() { result.push('\n'); }
+                result.push_str("[stderr] ");
+                result.push_str(&stderr);
+            }
+            if result.is_empty() {
+                result = format!("(exit code: {})", output.status.code().unwrap_or(-1));
+            }
+            if output.status.success() {
+                Ok(AgentResult::Output(result))
+            } else {
+                Err(result)
+            }
+        }
+        Err(e) => Err(format!("failed to run command: {e}")),
+    }
+}
+
+fn expand_path(path: &str) -> String {
+    if path.starts_with('~') {
+        if let Some(home) = dirs::home_dir() {
+            return path.replacen('~', &home.to_string_lossy(), 1);
+        }
+    }
+    path.to_string()
 }
 
 fn parse_coordinate(call: &serde_json::Value) -> (i32, i32) {

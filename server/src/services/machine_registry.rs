@@ -35,20 +35,14 @@ pub struct ActionResult {
 }
 
 /// Message sent to a connected agent over WebSocket.
+/// Generic toolcall message — action + arbitrary params.
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentToolCall {
     pub request_id: String,
     pub action: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub coordinate: Option<[i32; 2]>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scroll_direction: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scroll_amount: Option<i32>,
+    /// Action-specific parameters (flattened into the JSON).
+    #[serde(flatten)]
+    pub params: serde_json::Value,
 }
 
 /// Channel to send toolcalls to a connected agent.

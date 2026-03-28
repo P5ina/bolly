@@ -51,7 +51,7 @@ pub use system::{
 };
 pub use image::ViewImageTool;
 pub use media::{WatchVideoTool, ListenMusicTool};
-pub use computer::{ListMachinesTool, ComputerUseTool};
+pub use computer::{ListMachinesTool, ComputerUseTool, RemoteBashTool, RemoteFilesTool};
 
 // ---------------------------------------------------------------------------
 // Cached tool definitions snapshot (populated by build_tools, read by stats)
@@ -559,7 +559,9 @@ pub fn build_tools(
 
     // ── Computer use (multi-machine routing) ──
     tools.push(wrap(Box::new(ListMachinesTool::new(machine_registry.clone()))));
-    tools.push(wrap(Box::new(ComputerUseTool::new(machine_registry))));
+    tools.push(wrap(Box::new(ComputerUseTool::new(machine_registry.clone()))));
+    tools.push(wrap(Box::new(RemoteBashTool::new(machine_registry.clone()))));
+    tools.push(wrap(Box::new(RemoteFilesTool::new(machine_registry))));
 
     // MCP tools
     for mcp_tool in mcp_tools {
