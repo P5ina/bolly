@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Fraunces";
+  src: url("https://fonts.gstatic.com/s/fraunces/v31/6NUh8FyLNQOQZAnv9bYEvDiIdE9Ea92uemAk_WBq8U_9v0c2Wa0K7iN7hzFUPJH58nk.woff2")
+    format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("https://fonts.gstatic.com/s/bricolagegrotesque/v7/3y9U6as8bTXq_nANBjzKo3IeZx8z6up5BeSl5jBNz_19PpbpMXuECpwUxJBOm_OJWiQ.woff2")
+    format("woff2");
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+:root {
+  --warm: oklch(0.78 0.12 75);
+  --warm-muted: oklch(0.78 0.12 75 / 18%);
+  --background: oklch(0.04 0.015 260);
+  --foreground: oklch(0.90 0.02 75);
+  --muted: oklch(0.60 0.03 240);
+  --border: oklch(1 0 0 / 8%);
+  --border-top: oklch(1 0 0 / 16%);
+  --card: oklch(1 0 0 / 4%);
+  --glass-bg: oklch(1 0 0 / 5%);
+  --glass-border: oklch(1 0 0 / 10%);
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Bricolage Grotesque", system-ui, sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}

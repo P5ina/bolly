@@ -1,156 +1,443 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
+  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { auth, init, setSession, logout, connectUrl, type Tenant } from "$lib/auth.svelte";
 
-  let name = $state("");
-  let greetMsg = $state("");
+  const AUTH_URL = "https://bollyai.dev/desktop-auth";
 
-  async function greet(event: Event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
+  onMount(() => {
+    init();
+
+    // Listen for deep link events from Tauri
+    const unlisten = listen<string>("deep-link", (event) => {
+      try {
+        const url = new URL(event.payload);
+        if (url.protocol === "bolly:" && url.hostname === "callback") {
+          const session = url.searchParams.get("session");
+          if (session) setSession(session);
+        }
+      } catch {
+        // Invalid URL
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  });
+
+  function signIn() {
+    openUrl(AUTH_URL);
+  }
+
+  function connect(tenant: Tenant) {
+    // Navigate the Tauri webview to the instance URL — replaces the local SvelteKit app
+    invoke("navigate", { url: connectUrl(tenant) });
+  }
+
+  function statusColor(status: string): string {
+    switch (status) {
+      case "running":
+        return "oklch(0.72 0.17 142)";
+      case "provisioning":
+        return "oklch(0.78 0.12 75)";
+      case "error":
+        return "oklch(0.65 0.20 25)";
+      default:
+        return "oklch(0.50 0.03 240)";
+    }
+  }
+
+  function planLabel(plan: string): string {
+    return plan.charAt(0).toUpperCase() + plan.slice(1);
   }
 </script>
 
-<main class="container">
-  <h1>Welcome to Tauri + Svelte</h1>
+<div class="dashboard">
+    <div class="dashboard-glow"></div>
 
-  <div class="row">
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
-    </a>
-    <a href="https://tauri.app" target="_blank">
-      <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank">
-      <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-    </a>
+    <header class="header">
+      <div class="brand">
+        <div class="logo">b</div>
+        <span class="brand-name">bolly</span>
+      </div>
+      {#if auth.session}
+        <button class="sign-out-btn" onclick={logout}>Sign out</button>
+      {/if}
+    </header>
+
+    <main class="content">
+      {#if auth.loading}
+        <div class="center-message">
+          <div class="spinner"></div>
+        </div>
+      {:else if !auth.session}
+        <!-- Sign in -->
+        <div class="sign-in-card">
+          <h2 class="sign-in-title">connect to your companion</h2>
+          <p class="sign-in-desc">Sign in with your bollyai.dev account to see your instances.</p>
+          <button class="sign-in-btn" onclick={signIn}>
+            Sign in with bollyai.dev
+          </button>
+        </div>
+      {:else if auth.error}
+        <div class="center-message">
+          <p class="error-text">{auth.error}</p>
+          <button class="retry-btn" onclick={signIn}>Try again</button>
+        </div>
+      {:else if auth.tenants.length === 0}
+        <div class="center-message">
+          <p class="empty-text">No instances yet.</p>
+          <p class="empty-sub">Create one at <button class="link-btn" onclick={() => openUrl("https://bollyai.dev/dashboard")}>bollyai.dev</button></p>
+        </div>
+      {:else}
+        <!-- Instance list -->
+        <div class="instances">
+          <h2 class="section-title">your instances</h2>
+          <div class="instance-grid">
+            {#each auth.tenants as tenant (tenant.id)}
+              <button
+                class="instance-card"
+                disabled={tenant.status !== "running"}
+                onclick={() => connect(tenant)}
+              >
+                <div class="instance-header">
+                  <span class="instance-slug">{tenant.slug}</span>
+                  <span class="instance-plan">{planLabel(tenant.plan)}</span>
+                </div>
+                <div class="instance-footer">
+                  <span class="instance-status" style:color={statusColor(tenant.status)}>
+                    <span class="status-dot" style:background={statusColor(tenant.status)}></span>
+                    {tenant.status}
+                  </span>
+                  {#if tenant.status === "error" && tenant.errorMessage}
+                    <span class="instance-error">{tenant.errorMessage}</span>
+                  {/if}
+                </div>
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    </main>
   </div>
-  <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
-
-  <form class="row" onsubmit={greet}>
-    <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
-    <button type="submit">Greet</button>
-  </form>
-  <p>{greetMsg}</p>
-</main>
 
 <style>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.svelte-kit:hover {
-  filter: drop-shadow(0 0 2em #ff3e00);
-}
-
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
+  /* ─── Dashboard ────────────────────────────────────────────── */
+  .dashboard {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    position: relative;
+    overflow: hidden;
   }
 
-  a:hover {
-    color: #24c8db;
+  .dashboard-glow {
+    position: absolute;
+    top: 35%;
+    left: 50%;
+    width: 600px;
+    height: 600px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle, oklch(0.55 0.08 240 / 3%) 0%, transparent 60%);
+    pointer-events: none;
   }
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    position: relative;
+    z-index: 1;
+    -webkit-app-region: drag;
   }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
 
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 0.8rem;
+    color: var(--warm);
+    background: oklch(1 0 0 / 5%);
+    border: 1px solid oklch(1 0 0 / 10%);
+  }
+
+  .brand-name {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.1rem;
+    color: var(--foreground);
+  }
+
+  .sign-out-btn {
+    -webkit-app-region: no-drag;
+    padding: 5px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .sign-out-btn:hover {
+    background: oklch(1 0 0 / 5%);
+    color: var(--foreground);
+    border-color: oklch(1 0 0 / 14%);
+  }
+
+  .content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ─── Sign in ──────────────────────────────────────────────── */
+  .sign-in-card {
+    text-align: center;
+    max-width: 360px;
+  }
+
+  .sign-in-title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.5rem;
+    font-weight: 400;
+    color: var(--foreground);
+    margin: 0 0 12px;
+  }
+
+  .sign-in-desc {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin: 0 0 28px;
+    line-height: 1.5;
+  }
+
+  .sign-in-btn {
+    padding: 10px 28px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    font-family: var(--font-body);
+    color: var(--warm);
+    background: oklch(0.78 0.12 75 / 10%);
+    border: 1px solid oklch(0.78 0.12 75 / 18%);
+    border-top-color: oklch(0.78 0.12 75 / 28%);
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .sign-in-btn:hover {
+    background: oklch(0.78 0.12 75 / 16%);
+    border-color: oklch(0.78 0.12 75 / 30%);
+    box-shadow: 0 0 40px oklch(0.78 0.12 75 / 8%);
+  }
+
+  /* ─── Instances ────────────────────────────────────────────── */
+  .instances {
+    width: 100%;
+    max-width: 560px;
+  }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.1rem;
+    font-weight: 400;
+    color: var(--foreground);
+    margin: 0 0 20px;
+    text-align: center;
+  }
+
+  .instance-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .instance-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 20px;
+    border-radius: 12px;
+    background: var(--card);
+    border: 1px solid var(--glass-border);
+    border-top-color: var(--border-top);
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    font-family: var(--font-body);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .instance-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 12%;
+    right: 12%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, oklch(1 0 0 / 14%), transparent);
+    pointer-events: none;
+  }
+
+  .instance-card:not(:disabled):hover {
+    background: oklch(1 0 0 / 6%);
+    border-color: oklch(1 0 0 / 14%);
+    box-shadow: 0 4px 20px oklch(0 0 0 / 30%);
+  }
+
+  .instance-card:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .instance-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .instance-slug {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--foreground);
+  }
+
+  .instance-plan {
+    font-size: 0.68rem;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .instance-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .instance-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    text-transform: capitalize;
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .instance-error {
+    font-size: 0.68rem;
+    color: oklch(0.65 0.15 25 / 70%);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ─── Utility ──────────────────────────────────────────────── */
+  .center-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    text-align: center;
+  }
+
+  .error-text {
+    font-size: 0.85rem;
+    color: oklch(0.65 0.15 25 / 80%);
+    margin: 0;
+  }
+
+  .empty-text {
+    font-size: 0.95rem;
+    color: var(--muted);
+    margin: 0;
+  }
+
+  .empty-sub {
+    font-size: 0.82rem;
+    color: oklch(0.50 0.03 240);
+    margin: 0;
+  }
+
+  .link-btn {
+    background: none;
+    border: none;
+    color: var(--warm);
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    text-decoration-color: oklch(0.78 0.12 75 / 30%);
+    text-underline-offset: 2px;
+  }
+
+  .link-btn:hover {
+    text-decoration-color: var(--warm);
+  }
+
+  .retry-btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--foreground);
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .retry-btn:hover {
+    background: oklch(1 0 0 / 5%);
+    border-color: oklch(1 0 0 / 14%);
+  }
+
+  .spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid oklch(1 0 0 / 10%);
+    border-top-color: var(--warm);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 </style>

@@ -2,7 +2,14 @@ import type { Handle } from '@sveltejs/kit';
 import { getSessionId, validateSession } from '$lib/server/auth/index.js';
 
 export const handle: Handle = async ({ event, resolve }) => {
-	const sessionId = getSessionId(event.cookies);
+	// Try cookie first, then Authorization: Bearer header (for desktop app)
+	let sessionId = getSessionId(event.cookies);
+	if (!sessionId) {
+		const auth = event.request.headers.get('authorization');
+		if (auth?.startsWith('Bearer ')) {
+			sessionId = auth.slice(7);
+		}
+	}
 
 	if (sessionId) {
 		const result = await validateSession(sessionId);

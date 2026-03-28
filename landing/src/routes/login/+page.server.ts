@@ -5,12 +5,14 @@ import { users } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { verifyPassword, createSession, setSessionCookie } from '$lib/server/auth/index.js';
 
-export const load: PageServerLoad = async ({ locals }) => {
-	if (locals.user) redirect(302, '/dashboard');
+export const load: PageServerLoad = async ({ locals, url }) => {
+	const redirectTo = url.searchParams.get('redirect');
+	if (locals.user) redirect(302, redirectTo || '/dashboard');
+	return { redirect: redirectTo };
 };
 
 export const actions: Actions = {
-	default: async ({ request, cookies }) => {
+	default: async ({ request, cookies, url }) => {
 		const data = await request.formData();
 		const email = data.get('email')?.toString()?.toLowerCase().trim();
 		const password = data.get('password')?.toString();
@@ -36,6 +38,7 @@ export const actions: Actions = {
 			redirect(302, '/verify-email');
 		}
 
-		redirect(302, '/dashboard');
+		const redirectTo = url.searchParams.get('redirect');
+		redirect(302, redirectTo || '/dashboard');
 	},
 };
