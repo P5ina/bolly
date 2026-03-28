@@ -1,14 +1,14 @@
 use std::sync::Mutex;
-use tokio_tungstenite::tungstenite::Message;
 use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::tungstenite::Message;
 
 use crate::computer_use;
 
-/// Whether the bridge is active (used to signal shutdown).
+/// Whether the bridge is active.
 static BRIDGE_ACTIVE: Mutex<bool> = Mutex::new(false);
 
-/// Start listening for computer_use_request events from the instance WebSocket.
-/// Called from the frontend before navigating to the instance.
+/// Start the machine agent — connects to the server's machine WebSocket,
+/// registers this machine, then listens for toolcalls and executes them.
 #[tauri::command]
 pub async fn connect_computer_use(instance_url: String, auth_token: String) -> Result<(), String> {
     {
@@ -16,11 +16,35 @@ pub async fn connect_computer_use(instance_url: String, auth_token: String) -> R
         *active = true;
     }
 
-    // Spawn background WebSocket listener
     tokio::spawn(async move {
-        if let Err(e) = run_bridge(instance_url, auth_token).await {
-            eprintln!("[computer-use] bridge error: {e}");
+        loop {
+            // Check if still active
+            {
+                let active = BRIDGE_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
+                if !*active {
+                    break;
+                }
+            }
+
+            match run_agent(&instance_url, &auth_token).await {
+                Ok(_) => {
+                    eprintln!("[agent] connection closed, reconnecting in 5s...");
+                }
+                Err(e) => {
+                    eprintln!("[agent] error: {e}, reconnecting in 5s...");
+                }
+            }
+
+            // Check if still active before reconnecting
+            {
+                let active = BRIDGE_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
+                if !*active {
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
+        eprintln!("[agent] bridge stopped");
     });
 
     Ok(())
@@ -33,39 +57,73 @@ pub fn disconnect_computer_use() -> Result<(), String> {
     Ok(())
 }
 
-async fn run_bridge(instance_url: String, auth_token: String) -> Result<(), String> {
-    let ws_proto = if instance_url.starts_with("https") { "wss" } else { "ws" };
+async fn run_agent(instance_url: &str, auth_token: &str) -> Result<(), String> {
+    let ws_proto = if instance_url.starts_with("https") {
+        "wss"
+    } else {
+        "ws"
+    };
     let host = instance_url
         .trim_start_matches("https://")
         .trim_start_matches("http://");
     let ws_url = format!(
-        "{ws_proto}://{host}/api/ws?token={}",
-        urlencoding::encode(&auth_token)
+        "{ws_proto}://{host}/api/agents/ws/machine?token={}",
+        urlencoding::encode(auth_token)
     );
 
-    eprintln!("[computer-use] connecting to {}", ws_url);
+    eprintln!("[agent] connecting to {ws_url}");
 
     let (ws, _) = tokio_tungstenite::connect_async(&ws_url)
         .await
-        .map_err(|e| format!("ws connect failed: {e}"))?;
-
-    eprintln!("[computer-use] connected");
+        .map_err(|e| format!("ws connect: {e}"))?;
 
     let (mut write, mut read) = ws.split();
-    let http = reqwest::Client::new();
 
+    // Register this machine
+    let machine_id = hostname();
+    let os = std::env::consts::OS.to_string();
+
+    // Get screen dimensions
+    let screen = screenshots::Screen::all()
+        .ok()
+        .and_then(|s| s.into_iter().next());
+    let (sw, sh) = screen
+        .map(|s| {
+            let info = s.display_info;
+            (info.width, info.height)
+        })
+        .unwrap_or((1920, 1080));
+
+    let register = serde_json::json!({
+        "type": "register",
+        "machine_id": machine_id,
+        "os": os,
+        "hostname": machine_id,
+        "screen_width": sw,
+        "screen_height": sh,
+    });
+    write
+        .send(Message::Text(register.to_string().into()))
+        .await
+        .map_err(|e| format!("send register: {e}"))?;
+
+    eprintln!("[agent] registered as '{machine_id}' ({os}, {sw}x{sh})");
+
+    // Scale cache from last screenshot
+    let mut cached_scale: f64 = 1.0;
+
+    // Main loop: receive toolcalls, execute, send results
     while let Some(msg) = read.next().await {
         // Check if bridge is still active
         {
-            let active = BRIDGE_ACTIVE.lock().map_err(|e| e.to_string())?;
+            let active = BRIDGE_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
             if !*active {
-                eprintln!("[computer-use] bridge disconnected, stopping");
                 break;
             }
         }
 
-        let msg = match msg {
-            Ok(Message::Text(t)) => t,
+        let text = match msg {
+            Ok(Message::Text(t)) => t.to_string(),
             Ok(Message::Ping(d)) => {
                 let _ = write.send(Message::Pong(d)).await;
                 continue;
@@ -73,66 +131,75 @@ async fn run_bridge(instance_url: String, auth_token: String) -> Result<(), Stri
             Ok(Message::Close(_)) => break,
             Ok(_) => continue,
             Err(e) => {
-                eprintln!("[computer-use] ws error: {e}");
+                eprintln!("[agent] ws error: {e}");
                 break;
             }
         };
 
-        // Parse server event
-        let event: serde_json::Value = match serde_json::from_str(&msg) {
+        let call: serde_json::Value = match serde_json::from_str(&text) {
             Ok(v) => v,
             Err(_) => continue,
         };
 
-        if event.get("type").and_then(|v| v.as_str()) != Some("computer_use_request") {
-            continue;
-        }
+        // Skip non-toolcall messages (e.g. "registered" ack)
+        let request_id = match call.get("request_id").and_then(|v| v.as_str()) {
+            Some(id) => id.to_string(),
+            None => continue,
+        };
+        let action = call
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
 
-        let request_id = event["request_id"].as_str().unwrap_or("").to_string();
-        let action = event["action"].as_str().unwrap_or("").to_string();
-        let instance_slug = event["instance_slug"].as_str().unwrap_or("").to_string();
+        eprintln!("[agent] toolcall: {action} (req={request_id})");
 
-        eprintln!("[computer-use] action={action} request_id={request_id}");
+        let result = execute_action(&call, &action, &mut cached_scale);
 
-        let result = execute_action(&event, &action);
-
-        // POST result back to server
-        let result_url = format!(
-            "{}/api/instances/{}/computer-use/{}",
-            instance_url, instance_slug, request_id
-        );
-
-        let result_json = match &result {
-            Ok(ComputerUseResult::Screenshot { image, width, height, scale }) => {
-                serde_json::json!({
-                    "type": "screenshot",
-                    "image": image,
-                    "width": width,
-                    "height": height,
-                    "scale": scale,
-                })
-            }
-            Ok(ComputerUseResult::Action) => {
-                serde_json::json!({ "type": "action", "success": true })
-            }
-            Err(e) => {
-                serde_json::json!({ "type": "action", "success": false, "error": e })
-            }
+        let response = match &result {
+            Ok(AgentResult::Screenshot {
+                image,
+                width,
+                height,
+                scale,
+            }) => serde_json::json!({
+                "type": "action_result",
+                "request_id": request_id,
+                "result_type": "screenshot",
+                "image": image,
+                "width": width,
+                "height": height,
+                "scale": scale,
+                "success": true,
+            }),
+            Ok(AgentResult::Action) => serde_json::json!({
+                "type": "action_result",
+                "request_id": request_id,
+                "result_type": "action",
+                "success": true,
+            }),
+            Err(e) => serde_json::json!({
+                "type": "action_result",
+                "request_id": request_id,
+                "result_type": "action",
+                "success": false,
+                "error": e,
+            }),
         };
 
-        let _ = http
-            .post(&result_url)
-            .header("Authorization", format!("Bearer {}", auth_token))
-            .json(&result_json)
-            .send()
-            .await;
+        if write
+            .send(Message::Text(response.to_string().into()))
+            .await
+            .is_err()
+        {
+            break;
+        }
     }
 
-    eprintln!("[computer-use] bridge stopped");
     Ok(())
 }
 
-enum ComputerUseResult {
+enum AgentResult {
     Screenshot {
         image: String,
         width: u32,
@@ -142,15 +209,16 @@ enum ComputerUseResult {
     Action,
 }
 
-fn execute_action(event: &serde_json::Value, action: &str) -> Result<ComputerUseResult, String> {
-    // Cache scale from last screenshot
-    static SCALE: Mutex<f64> = Mutex::new(1.0);
-
+fn execute_action(
+    call: &serde_json::Value,
+    action: &str,
+    cached_scale: &mut f64,
+) -> Result<AgentResult, String> {
     match action {
         "screenshot" => {
             let result = computer_use::computer_screenshot()?;
-            *SCALE.lock().map_err(|e| e.to_string())? = result.scale;
-            Ok(ComputerUseResult::Screenshot {
+            *cached_scale = result.scale;
+            Ok(AgentResult::Screenshot {
                 image: result.image,
                 width: result.width,
                 height: result.height,
@@ -158,55 +226,58 @@ fn execute_action(event: &serde_json::Value, action: &str) -> Result<ComputerUse
             })
         }
         "left_click" | "right_click" | "middle_click" => {
-            let (x, y) = parse_coordinate(event);
-            let scale = *SCALE.lock().map_err(|e| e.to_string())?;
+            let (x, y) = parse_coordinate(call);
             let button = action.trim_end_matches("_click").to_string();
-            computer_use::computer_click(x, y, scale, button)?;
-            Ok(ComputerUseResult::Action)
+            computer_use::computer_click(x, y, *cached_scale, button)?;
+            Ok(AgentResult::Action)
         }
         "double_click" => {
-            let (x, y) = parse_coordinate(event);
-            let scale = *SCALE.lock().map_err(|e| e.to_string())?;
-            computer_use::computer_double_click(x, y, scale)?;
-            Ok(ComputerUseResult::Action)
+            let (x, y) = parse_coordinate(call);
+            computer_use::computer_double_click(x, y, *cached_scale)?;
+            Ok(AgentResult::Action)
         }
         "mouse_move" => {
-            let (x, y) = parse_coordinate(event);
-            let scale = *SCALE.lock().map_err(|e| e.to_string())?;
-            computer_use::computer_mouse_move(x, y, scale)?;
-            Ok(ComputerUseResult::Action)
+            let (x, y) = parse_coordinate(call);
+            computer_use::computer_mouse_move(x, y, *cached_scale)?;
+            Ok(AgentResult::Action)
         }
         "type" => {
-            let text = event["text"].as_str().unwrap_or("").to_string();
+            let text = call["text"].as_str().unwrap_or("").to_string();
             computer_use::computer_type(text)?;
-            Ok(ComputerUseResult::Action)
+            Ok(AgentResult::Action)
         }
         "key" => {
-            let key = event["key"].as_str().unwrap_or("").to_string();
+            let key = call["key"].as_str().unwrap_or("").to_string();
             computer_use::computer_key(key)?;
-            Ok(ComputerUseResult::Action)
+            Ok(AgentResult::Action)
         }
         "scroll" => {
-            let (x, y) = parse_coordinate(event);
-            let scale = *SCALE.lock().map_err(|e| e.to_string())?;
-            let (dx, dy) = parse_scroll_delta(event);
-            computer_use::computer_scroll(x, y, scale, dx, dy)?;
-            Ok(ComputerUseResult::Action)
+            let (x, y) = parse_coordinate(call);
+            let direction = call["scroll_direction"].as_str().unwrap_or("down");
+            let amount = call["scroll_amount"].as_i64().unwrap_or(3) as i32;
+            let (dx, dy) = match direction {
+                "up" => (0, amount),
+                "down" => (0, -amount),
+                "left" => (-amount, 0),
+                "right" => (amount, 0),
+                _ => (0, -amount),
+            };
+            computer_use::computer_scroll(x, y, *cached_scale, dx, dy)?;
+            Ok(AgentResult::Action)
         }
         _ => Err(format!("unknown action: {action}")),
     }
 }
 
-fn parse_coordinate(event: &serde_json::Value) -> (i32, i32) {
-    let coord = &event["coordinate"];
+fn parse_coordinate(call: &serde_json::Value) -> (i32, i32) {
+    let coord = &call["coordinate"];
     let x = coord.get(0).and_then(|v| v.as_i64()).unwrap_or(0) as i32;
     let y = coord.get(1).and_then(|v| v.as_i64()).unwrap_or(0) as i32;
     (x, y)
 }
 
-fn parse_scroll_delta(event: &serde_json::Value) -> (i32, i32) {
-    let delta = &event["scroll_delta"];
-    let dx = delta.get(0).and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-    let dy = delta.get(1).and_then(|v| v.as_i64()).unwrap_or(-3) as i32;
-    (dx, dy)
+fn hostname() -> String {
+    gethostname::gethostname()
+        .to_string_lossy()
+        .to_string()
 }

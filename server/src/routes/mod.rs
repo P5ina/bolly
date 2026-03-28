@@ -18,3 +18,4 @@ pub mod usage;
 pub mod update;
 pub mod tts;
 pub mod ws;
+pub mod machine_agents;

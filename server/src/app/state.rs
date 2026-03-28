@@ -12,6 +12,7 @@ use crate::{
     services::mcp::McpRegistry,
     services::keyword_search::KeywordStore,
     services::vector::VectorStore,
+    services::machine_registry::MachineRegistry,
 };
 
 /// A pending secret request waiting for user input.
@@ -43,6 +44,8 @@ pub struct AppState {
     pub vector_store: Arc<VectorStore>,
     /// BM25 keyword search over memory files.
     pub keyword_store: Arc<KeywordStore>,
+    /// Registry of connected Tauri agent machines (for computer use).
+    pub machine_registry: MachineRegistry,
 }
 
 /// Inject MCP servers from environment variables and built-in defaults.
@@ -143,6 +146,7 @@ impl AppState {
             landing_auth_token,
             vector_store: Arc::new(vector_store),
             keyword_store: Arc::new(KeywordStore::new()),
+            machine_registry: MachineRegistry::new(),
         }
     }
 

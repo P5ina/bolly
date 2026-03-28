@@ -134,6 +134,7 @@ pub async fn run_single_turn(
     vector_store: std::sync::Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
     keyword_store: std::sync::Arc<crate::services::keyword_search::KeywordStore>,
+    machine_registry: crate::services::machine_registry::MachineRegistry,
 ) -> io::Result<SingleTurnResult> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
@@ -597,6 +598,7 @@ pub async fn run_single_turn(
         vector_store.clone(),
         google_ai_key,
         activated_anthropic_skills.clone(),
+        machine_registry,
     );
     tools::cache_tool_defs(&all_tools).await;
 

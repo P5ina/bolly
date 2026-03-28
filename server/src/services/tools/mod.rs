@@ -28,6 +28,7 @@ pub mod system;
 pub mod image;
 pub mod import_data;
 pub mod media;
+pub mod computer;
 
 // Re-export public items so external code uses `tools::FooTool` paths
 pub use calendar::{CreateEventTool, ListEventsTool};
@@ -50,6 +51,7 @@ pub use system::{
 };
 pub use image::ViewImageTool;
 pub use media::{WatchVideoTool, ListenMusicTool};
+pub use computer::{ListMachinesTool, ComputerUseTool};
 
 // ---------------------------------------------------------------------------
 // Cached tool definitions snapshot (populated by build_tools, read by stats)
@@ -449,6 +451,7 @@ pub fn build_tools(
     vector_store: Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
     activated_anthropic_skills: Arc<tokio::sync::RwLock<std::collections::HashSet<String>>>,
+    machine_registry: crate::services::machine_registry::MachineRegistry,
 ) -> (Vec<Box<dyn ToolDyn>>, SentFiles) {
     let snap = mcp_snapshot;
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
@@ -553,6 +556,10 @@ pub fn build_tools(
         tools.push(wrap(Box::new(UploadDriveFileTool::new(g, instance_slug))));
     }
 
+
+    // ── Computer use (multi-machine routing) ──
+    tools.push(wrap(Box::new(ListMachinesTool::new(machine_registry.clone()))));
+    tools.push(wrap(Box::new(ComputerUseTool::new(machine_registry))));
 
     // MCP tools
     for mcp_tool in mcp_tools {
