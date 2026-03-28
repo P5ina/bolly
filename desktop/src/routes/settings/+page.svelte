@@ -34,14 +34,7 @@
 
 <div class="settings">
   <header class="header">
-    <a href="/" class="back">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <path d="M10 12L6 8L10 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      Back
-    </a>
     <h1 class="title">Settings</h1>
-    <div></div>
   </header>
 
   <main class="content">
@@ -119,25 +112,9 @@
   .header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     padding: 16px 24px;
     -webkit-app-region: drag;
-  }
-
-  .back {
-    -webkit-app-region: no-drag;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    color: var(--muted);
-    font-family: var(--font-body);
-    font-size: 0.75rem;
-    text-decoration: none;
-    transition: color 0.2s;
-  }
-
-  .back:hover {
-    color: var(--foreground);
   }
 
   .title {
