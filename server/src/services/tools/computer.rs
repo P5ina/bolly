@@ -127,7 +127,15 @@ impl Tool for ComputerUseTool {
                 Always take a screenshot first to see the current state. \
                 Coordinates are in the screenshot's pixel space. \
                 Available actions: screenshot, left_click, right_click, middle_click, double_click, \
-                mouse_move, type, key, scroll."
+                mouse_move, type, key, scroll, switch_desktop. \
+                \n\nmacOS tips: \
+                - Switch desktop/Space: use action 'switch_desktop' with scroll_direction 'left' or 'right'. \
+                - Mission Control: key 'ctrl+up'. \
+                - App Exposé: key 'ctrl+down'. \
+                - Spotlight: key 'cmd+space'. \
+                - Close window: key 'cmd+w'. \
+                - Quit app: key 'cmd+q'. \
+                - Switch app: key 'cmd+tab'."
                 .into(),
             parameters: openai_schema::<ComputerUseArgs>(),
         }

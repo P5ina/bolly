@@ -293,6 +293,19 @@ fn execute_action(
             computer_use::computer_scroll(x, y, *cached_scale, dx, dy)?;
             Ok(AgentResult::Action)
         }
+        // ── Switch desktop (macOS Spaces) ──
+        "switch_desktop" => {
+            let direction = call["scroll_direction"].as_str().unwrap_or("right");
+            let key = match direction {
+                "left" => "ctrl+left",
+                "right" => "ctrl+right",
+                _ => "ctrl+right",
+            };
+            computer_use::computer_key(key.to_string())?;
+            // Wait for animation to complete
+            std::thread::sleep(std::time::Duration::from_millis(700));
+            Ok(AgentResult::Action)
+        }
         // ── Bash ──
         "bash" => {
             let command = call["command"].as_str().unwrap_or("").to_string();
