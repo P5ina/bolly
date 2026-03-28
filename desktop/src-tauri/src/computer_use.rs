@@ -2,8 +2,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use enigo::{
     Axis, Button, Coordinate, Direction, Enigo, Keyboard, Mouse, Settings,
 };
-use image::codecs::png::PngEncoder;
-use image::{DynamicImage, ImageEncoder};
+use image::DynamicImage;
 use serde::Serialize;
 use std::io::Cursor;
 use std::thread;
@@ -16,13 +15,9 @@ const MAX_SCREENSHOT_EDGE: u32 = 1568;
 
 #[derive(Serialize)]
 pub struct ScreenshotResult {
-    /// Base64-encoded PNG image, resized to fit MAX_SCREENSHOT_EDGE.
     pub image: String,
-    /// Width of the returned (scaled) image.
     pub width: u32,
-    /// Height of the returned (scaled) image.
     pub height: u32,
-    /// Multiply Claude's coordinates by this to get real screen coordinates.
     pub scale: f64,
 }
 
@@ -34,12 +29,11 @@ pub fn computer_screenshot() -> Result<ScreenshotResult, String> {
     let capture = screen.capture().map_err(|e| e.to_string())?;
     let real_w = capture.width();
     let real_h = capture.height();
+    let raw = capture.into_raw();
 
-    // Convert to image::DynamicImage
-    let img = DynamicImage::ImageRgba8(
-        image::RgbaImage::from_raw(real_w, real_h, capture.into_raw())
-            .ok_or("failed to create image buffer")?,
-    );
+    let rgba = image::RgbaImage::from_raw(real_w, real_h, raw)
+        .ok_or("failed to create image buffer")?;
+    let img = DynamicImage::ImageRgba8(rgba);
 
     // Scale so the longest edge ≤ MAX_SCREENSHOT_EDGE
     let longest = real_w.max(real_h);
@@ -47,7 +41,7 @@ pub fn computer_screenshot() -> Result<ScreenshotResult, String> {
         let ratio = MAX_SCREENSHOT_EDGE as f64 / longest as f64;
         let new_w = (real_w as f64 * ratio).round() as u32;
         let new_h = (real_h as f64 * ratio).round() as u32;
-        let resized = img.resize_exact(new_w, new_h, image::imageops::FilterType::Lanczos3);
+        let resized = img.resize_exact(new_w, new_h, image::imageops::FilterType::Triangle);
         let scale = real_w as f64 / new_w as f64;
         (resized, scale)
     } else {
@@ -59,13 +53,8 @@ pub fn computer_screenshot() -> Result<ScreenshotResult, String> {
 
     // Encode as PNG → base64
     let mut buf = Cursor::new(Vec::new());
-    PngEncoder::new(&mut buf)
-        .write_image(
-            scaled_img.as_bytes(),
-            out_w,
-            out_h,
-            scaled_img.color().into(),
-        )
+    scaled_img
+        .write_to(&mut buf, image::ImageFormat::Png)
         .map_err(|e| e.to_string())?;
 
     let b64 = STANDARD.encode(buf.into_inner());
@@ -80,7 +69,6 @@ pub fn computer_screenshot() -> Result<ScreenshotResult, String> {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/// Scale coordinates from Claude's space back to real screen coordinates.
 fn scale_coords(x: i32, y: i32, scale: f64) -> (i32, i32) {
     ((x as f64 * scale).round() as i32, (y as f64 * scale).round() as i32)
 }
@@ -95,9 +83,7 @@ fn new_enigo() -> Result<Enigo, String> {
 pub fn computer_click(x: i32, y: i32, scale: f64, button: String) -> Result<(), String> {
     let (rx, ry) = scale_coords(x, y, scale);
     let mut enigo = new_enigo()?;
-    enigo
-        .move_mouse(rx, ry, Coordinate::Abs)
-        .map_err(|e| e.to_string())?;
+    enigo.move_mouse(rx, ry, Coordinate::Abs).map_err(|e| e.to_string())?;
     thread::sleep(Duration::from_millis(50));
 
     let btn = match button.as_str() {
@@ -112,46 +98,32 @@ pub fn computer_click(x: i32, y: i32, scale: f64, button: String) -> Result<(), 
 pub fn computer_double_click(x: i32, y: i32, scale: f64) -> Result<(), String> {
     let (rx, ry) = scale_coords(x, y, scale);
     let mut enigo = new_enigo()?;
-    enigo
-        .move_mouse(rx, ry, Coordinate::Abs)
-        .map_err(|e| e.to_string())?;
+    enigo.move_mouse(rx, ry, Coordinate::Abs).map_err(|e| e.to_string())?;
     thread::sleep(Duration::from_millis(50));
-    enigo
-        .button(Button::Left, Direction::Click)
-        .map_err(|e| e.to_string())?;
+    enigo.button(Button::Left, Direction::Click).map_err(|e| e.to_string())?;
     thread::sleep(Duration::from_millis(80));
-    enigo
-        .button(Button::Left, Direction::Click)
-        .map_err(|e| e.to_string())
+    enigo.button(Button::Left, Direction::Click).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn computer_mouse_move(x: i32, y: i32, scale: f64) -> Result<(), String> {
     let (rx, ry) = scale_coords(x, y, scale);
     let mut enigo = new_enigo()?;
-    enigo
-        .move_mouse(rx, ry, Coordinate::Abs)
-        .map_err(|e| e.to_string())
+    enigo.move_mouse(rx, ry, Coordinate::Abs).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn computer_scroll(x: i32, y: i32, scale: f64, delta_x: i32, delta_y: i32) -> Result<(), String> {
     let (rx, ry) = scale_coords(x, y, scale);
     let mut enigo = new_enigo()?;
-    enigo
-        .move_mouse(rx, ry, Coordinate::Abs)
-        .map_err(|e| e.to_string())?;
+    enigo.move_mouse(rx, ry, Coordinate::Abs).map_err(|e| e.to_string())?;
     thread::sleep(Duration::from_millis(50));
 
     if delta_y != 0 {
-        enigo
-            .scroll(delta_y, Axis::Vertical)
-            .map_err(|e| e.to_string())?;
+        enigo.scroll(delta_y, Axis::Vertical).map_err(|e| e.to_string())?;
     }
     if delta_x != 0 {
-        enigo
-            .scroll(delta_x, Axis::Horizontal)
-            .map_err(|e| e.to_string())?;
+        enigo.scroll(delta_x, Axis::Horizontal).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -170,7 +142,6 @@ pub fn computer_key(key: String) -> Result<(), String> {
 
     let mut enigo = new_enigo()?;
 
-    // Parse key combo like "ctrl+a", "shift+cmd+z", "Return", "space"
     let parts: Vec<&str> = key.split('+').map(|s| s.trim()).collect();
     let mut modifiers: Vec<Key> = Vec::new();
     let mut main_key: Option<Key> = None;
@@ -186,25 +157,16 @@ pub fn computer_key(key: String) -> Result<(), String> {
         }
     }
 
-    // Press modifiers
     for m in &modifiers {
-        enigo
-            .key(*m, Direction::Press)
-            .map_err(|e| e.to_string())?;
+        enigo.key(*m, Direction::Press).map_err(|e| e.to_string())?;
     }
 
-    // Press and release main key
     if let Some(k) = main_key {
-        enigo
-            .key(k, Direction::Click)
-            .map_err(|e| e.to_string())?;
+        enigo.key(k, Direction::Click).map_err(|e| e.to_string())?;
     }
 
-    // Release modifiers (reverse order)
     for m in modifiers.iter().rev() {
-        enigo
-            .key(*m, Direction::Release)
-            .map_err(|e| e.to_string())?;
+        enigo.key(*m, Direction::Release).map_err(|e| e.to_string())?;
     }
 
     Ok(())
@@ -214,13 +176,10 @@ fn parse_key(name: &str) -> enigo::Key {
     use enigo::Key;
 
     match name.to_lowercase().as_str() {
-        // Modifiers
         "ctrl" | "control" => Key::Control,
         "alt" | "option" => Key::Alt,
         "shift" => Key::Shift,
         "cmd" | "command" | "meta" | "super" => Key::Meta,
-
-        // Navigation
         "return" | "enter" => Key::Return,
         "tab" => Key::Tab,
         "escape" | "esc" => Key::Escape,
@@ -231,14 +190,10 @@ fn parse_key(name: &str) -> enigo::Key {
         "end" => Key::End,
         "pageup" | "page_up" => Key::PageUp,
         "pagedown" | "page_down" => Key::PageDown,
-
-        // Arrows
         "up" | "arrowup" => Key::UpArrow,
         "down" | "arrowdown" => Key::DownArrow,
         "left" | "arrowleft" => Key::LeftArrow,
         "right" | "arrowright" => Key::RightArrow,
-
-        // Function keys
         "f1" => Key::F1,
         "f2" => Key::F2,
         "f3" => Key::F3,
@@ -251,13 +206,11 @@ fn parse_key(name: &str) -> enigo::Key {
         "f10" => Key::F10,
         "f11" => Key::F11,
         "f12" => Key::F12,
-
-        // Single character
         other => {
             if other.len() == 1 {
                 Key::Unicode(other.chars().next().unwrap())
             } else {
-                Key::Unicode(' ') // fallback
+                Key::Unicode(' ')
             }
         }
     }
