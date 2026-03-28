@@ -26,4 +26,13 @@ tauri-plugin-deep-link = "2.4.7"
 tauri-plugin-store = "2.4.2"
 url = "2.5.8"
 tauri-plugin-http = "2.5.7"
+enigo = "0.3"
+screenshots = "0.8.10"
+base64 = "0.22.1"
+image = "0.25.10"
+tokio = { version = "1.50.0", features = ["full"] }
+tokio-tungstenite = { version = "0.29.0", features = ["native-tls"] }
+reqwest = { version = "0.13.2", default-features = false, features = ["json", "native-tls"] }
+futures-util = "0.3.32"
+urlencoding = "2.1.3"
 

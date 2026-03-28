@@ -329,4 +329,14 @@ export type ServerEvent =
 			instance_slug: string;
 			memories: { path: string; preview: string; score: number }[];
 	  }
+	| {
+			type: "computer_use_request";
+			instance_slug: string;
+			request_id: string;
+			action: string;
+			coordinate?: [number, number];
+			text?: string;
+			key?: string;
+			scroll_delta?: [number, number];
+	  }
 ;

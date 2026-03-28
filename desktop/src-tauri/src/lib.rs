@@ -1,3 +1,6 @@
+mod computer_use;
+mod computer_use_bridge;
+
 use tauri::{Emitter, Manager};
 use tauri::menu::{AboutMetadataBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -26,7 +29,18 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_http::init())
-        .invoke_handler(tauri::generate_handler![navigate])
+        .invoke_handler(tauri::generate_handler![
+            navigate,
+            computer_use::computer_screenshot,
+            computer_use::computer_click,
+            computer_use::computer_double_click,
+            computer_use::computer_mouse_move,
+            computer_use::computer_scroll,
+            computer_use::computer_type,
+            computer_use::computer_key,
+            computer_use_bridge::connect_computer_use,
+            computer_use_bridge::disconnect_computer_use,
+        ])
         .setup(|app| {
             let about = AboutMetadataBuilder::new()
                 .name(Some("Bolly"))

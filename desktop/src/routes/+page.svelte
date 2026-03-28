@@ -46,7 +46,13 @@
     if (e.key === "Escape") { showPaste = false; pasteValue = ""; }
   }
 
-  function connect(tenant: Tenant) {
+  async function connect(tenant: Tenant) {
+    // Start computer-use bridge before navigating (JS context is lost after navigate)
+    const instanceUrl = `https://${tenant.slug}.bollyai.dev`;
+    await invoke("connect_computer_use", {
+      instanceUrl,
+      authToken: tenant.authToken ?? "",
+    });
     invoke("navigate", { url: connectUrl(tenant) });
   }
 
