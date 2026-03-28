@@ -9,7 +9,7 @@ fn overlay_url() -> String {
     }
 }
 
-/// Show the computer-use overlay (fullscreen, transparent, click-through, always on top).
+/// Show the computer-use overlay.
 pub fn show(app: &AppHandle) {
     if app.get_webview_window("overlay").is_some() {
         return;
@@ -19,59 +19,59 @@ pub fn show(app: &AppHandle) {
     let parsed: url::Url = match url.parse() {
         Ok(u) => u,
         Err(e) => {
-            eprintln!("[overlay] failed to parse URL: {e}");
+            eprintln!("[overlay] bad URL: {e}");
             return;
         }
     };
 
-    match WebviewWindowBuilder::new(app, "overlay", tauri::WebviewUrl::External(parsed))
-        .title("")
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .focused(false)
-        .resizable(false)
-        .build()
-    {
-        Ok(win) => {
-            // Click-through: all mouse events pass to windows below
-            let _ = win.set_ignore_cursor_events(true);
+    // Use std::panic::catch_unwind to prevent overlay issues from crashing the app
+    let app_clone = app.clone();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        let win = WebviewWindowBuilder::new(&app_clone, "overlay", tauri::WebviewUrl::External(parsed))
+            .title("")
+            .decorations(false)
+            .transparent(true)
+            .shadow(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .focused(false)
+            .resizable(false)
+            .inner_size(800.0, 200.0)
+            .build()?;
 
-            // macOS: set window to cover entire screen and make truly transparent
-            #[cfg(target_os = "macos")]
-            {
-                use objc2_app_kit::NSWindow;
+        win.set_ignore_cursor_events(true)?;
 
-                if let Ok(ns_win) = win.ns_window() {
-                    unsafe {
-                        let ns_window: &NSWindow = &*(ns_win as *const NSWindow);
+        // macOS: make truly transparent + cover screen
+        #[cfg(target_os = "macos")]
+        apply_macos_overlay(&win);
 
-                        // Set window level above everything (screen saver level = 1000, +1)
-                        ns_window.setLevel(1001);
+        Ok::<(), tauri::Error>(())
+    }));
 
-                        // Make background truly transparent
-                        ns_window.setOpaque(false);
-                        ns_window.setBackgroundColor(Some(
-                            &objc2_app_kit::NSColor::clearColor()
-                        ));
+    match result {
+        Ok(Ok(())) => eprintln!("[overlay] shown"),
+        Ok(Err(e)) => eprintln!("[overlay] build error: {e}"),
+        Err(_) => eprintln!("[overlay] panicked during creation — skipping"),
+    }
+}
 
-                        // Cover the entire screen
-                        if let Some(screen) = ns_window.screen() {
-                            let frame = screen.frame();
-                            ns_window.setFrame_display(frame, true);
-                        }
+#[cfg(target_os = "macos")]
+fn apply_macos_overlay(win: &tauri::WebviewWindow) {
+    use objc2_app_kit::NSWindow;
 
-                        // Ignore mouse events at the window level
-                        ns_window.setIgnoresMouseEvents(true);
-                    }
-                }
+    match win.ns_window() {
+        Ok(ns_win) => unsafe {
+            let ns_window: &NSWindow = &*(ns_win as *const NSWindow);
+            ns_window.setLevel(1001);
+            ns_window.setOpaque(false);
+            ns_window.setBackgroundColor(Some(&objc2_app_kit::NSColor::clearColor()));
+            ns_window.setIgnoresMouseEvents(true);
+
+            if let Some(screen) = ns_window.screen() {
+                ns_window.setFrame_display(screen.frame(), true);
             }
-        }
-        Err(e) => {
-            eprintln!("[overlay] failed to create window: {e}");
-        }
+        },
+        Err(e) => eprintln!("[overlay] ns_window error: {e}"),
     }
 }
 
