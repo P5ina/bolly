@@ -7,10 +7,12 @@
 
   const AUTH_URL = "https://bollyai.dev/desktop-auth";
 
+  let splash = $state(true);
+  let splashFading = $state(false);
+
   onMount(() => {
     init();
 
-    // Listen for deep link events from Tauri
     const unlisten = listen<string>("deep-link", (event) => {
       try {
         const url = new URL(event.payload);
@@ -18,35 +20,29 @@
           const session = url.searchParams.get("session");
           if (session) setSession(session);
         }
-      } catch {
-        // Invalid URL
-      }
+      } catch {}
     });
 
-    return () => {
-      unlisten.then((fn) => fn());
-    };
+    return () => { unlisten.then((fn) => fn()); };
   });
 
-  function signIn() {
-    openUrl(AUTH_URL);
+  function endSplash() {
+    splashFading = true;
+    setTimeout(() => { splash = false; }, 600);
   }
 
+  function signIn() { openUrl(AUTH_URL); }
+
   function connect(tenant: Tenant) {
-    // Navigate the Tauri webview to the instance URL — replaces the local SvelteKit app
     invoke("navigate", { url: connectUrl(tenant) });
   }
 
   function statusColor(status: string): string {
     switch (status) {
-      case "running":
-        return "oklch(0.72 0.17 142)";
-      case "provisioning":
-        return "oklch(0.78 0.12 75)";
-      case "error":
-        return "oklch(0.65 0.20 25)";
-      default:
-        return "oklch(0.50 0.03 240)";
+      case "running": return "oklch(0.72 0.17 142)";
+      case "provisioning": return "oklch(0.78 0.12 75)";
+      case "error": return "oklch(0.65 0.20 25)";
+      default: return "oklch(0.50 0.03 240)";
     }
   }
 
@@ -55,7 +51,26 @@
   }
 </script>
 
-<div class="dashboard">
+{#if splash}
+  <!-- Splash screen -->
+  <div class="splash" class:splash-fade={splashFading}>
+    <video
+      class="splash-video"
+      src="/splash.mp4"
+      autoplay
+      muted
+      playsinline
+      onended={endSplash}
+    ></video>
+    <audio src="/splash.mp3" autoplay></audio>
+    <div class="splash-brand">
+      <div class="splash-logo">b</div>
+      <span class="splash-name">bolly</span>
+    </div>
+  </div>
+{/if}
+
+<div class="dashboard" class:dashboard-enter={!splash}>
     <div class="dashboard-glow"></div>
 
     <header class="header">
@@ -69,12 +84,11 @@
     </header>
 
     <main class="content">
-      {#if auth.loading}
+      {#if auth.loading && !splash}
         <div class="center-message">
           <div class="spinner"></div>
         </div>
-      {:else if !auth.session}
-        <!-- Sign in -->
+      {:else if !auth.session && !splash}
         <div class="sign-in-card">
           <h2 class="sign-in-title">connect to your companion</h2>
           <p class="sign-in-desc">Sign in with your bollyai.dev account to see your instances.</p>
@@ -82,18 +96,17 @@
             Sign in with bollyai.dev
           </button>
         </div>
-      {:else if auth.error}
+      {:else if auth.error && !splash}
         <div class="center-message">
           <p class="error-text">{auth.error}</p>
           <button class="retry-btn" onclick={signIn}>Try again</button>
         </div>
-      {:else if auth.tenants.length === 0}
+      {:else if auth.tenants.length === 0 && !auth.loading && !splash}
         <div class="center-message">
           <p class="empty-text">No instances yet.</p>
           <p class="empty-sub">Create one at <button class="link-btn" onclick={() => openUrl("https://bollyai.dev/dashboard")}>bollyai.dev</button></p>
         </div>
-      {:else}
-        <!-- Instance list -->
+      {:else if auth.tenants.length > 0 && !splash}
         <div class="instances">
           <h2 class="section-title">your instances</h2>
           <div class="instance-grid">
@@ -125,6 +138,70 @@
   </div>
 
 <style>
+  /* ─── Splash ───────────────────────────────────────────────── */
+  .splash {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: var(--background);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.6s ease;
+  }
+
+  .splash-fade {
+    opacity: 0;
+  }
+
+  .splash-video {
+    position: absolute;
+    width: 420px;
+    height: 420px;
+    object-fit: contain;
+    pointer-events: none;
+    opacity: 0.7;
+  }
+
+  .splash-brand {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    animation: splash-brand-in 1.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: 0.3s;
+  }
+
+  .splash-logo {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.1rem;
+    color: var(--warm);
+    background: oklch(1 0 0 / 6%);
+    border: 1px solid oklch(1 0 0 / 12%);
+    backdrop-filter: blur(20px);
+  }
+
+  .splash-name {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.8rem;
+    color: var(--foreground);
+    letter-spacing: -0.02em;
+  }
+
+  @keyframes splash-brand-in {
+    0% { opacity: 0; transform: translateY(10px) scale(0.95); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
   /* ─── Dashboard ────────────────────────────────────────────── */
   .dashboard {
     display: flex;
@@ -132,6 +209,16 @@
     height: 100vh;
     position: relative;
     overflow: hidden;
+    opacity: 0;
+  }
+
+  .dashboard-enter {
+    animation: dash-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes dash-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   .dashboard-glow {
@@ -218,6 +305,7 @@
   .sign-in-card {
     text-align: center;
     max-width: 360px;
+    animation: dash-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .sign-in-title {
@@ -260,6 +348,7 @@
   .instances {
     width: 100%;
     max-width: 560px;
+    animation: dash-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .section-title {
@@ -436,8 +525,6 @@
   }
 
   @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
+    to { transform: rotate(360deg); }
   }
 </style>
