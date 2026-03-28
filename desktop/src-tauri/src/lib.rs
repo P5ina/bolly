@@ -1,5 +1,5 @@
 use tauri::{Emitter, Manager};
-use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::menu::{AboutMetadataBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri_plugin_deep_link::DeepLinkExt;
 
 #[tauri::command]
@@ -27,11 +27,45 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .invoke_handler(tauri::generate_handler![navigate])
         .setup(|app| {
-            // Menu with "Back to Dashboard" item
+            let about = AboutMetadataBuilder::new()
+                .name(Some("Bolly"))
+                .version(Some(env!("CARGO_PKG_VERSION")))
+                .website(Some("https://bollyai.dev"))
+                .website_label(Some("bollyai.dev"))
+                .comments(Some("Your AI companion"))
+                .build();
+
+            let app_menu = SubmenuBuilder::new(app, "Bolly")
+                .about(Some(about))
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+
             let back = MenuItemBuilder::with_id("back", "Back to Dashboard")
                 .accelerator("CmdOrCtrl+Shift+D")
                 .build(app)?;
-            let menu = MenuBuilder::new(app).items(&[&back]).build()?;
+
+            let view_menu = SubmenuBuilder::new(app, "View")
+                .items(&[&back])
+                .build()?;
+
+            let edit_menu = SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+
+            let menu = MenuBuilder::new(app)
+                .items(&[&app_menu, &edit_menu, &view_menu])
+                .build()?;
             app.set_menu(menu)?;
 
             let handle = app.handle().clone();
