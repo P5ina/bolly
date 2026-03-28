@@ -1,5 +1,6 @@
 mod computer_use;
 mod computer_use_bridge;
+mod overlay;
 mod permissions;
 
 use tauri::{Emitter, Manager};

@@ -3,6 +3,7 @@ use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::computer_use;
+use crate::overlay;
 
 /// Whether the bridge is active.
 static BRIDGE_ACTIVE: Mutex<bool> = Mutex::new(false);
@@ -10,7 +11,11 @@ static BRIDGE_ACTIVE: Mutex<bool> = Mutex::new(false);
 /// Start the machine agent — connects to the server's machine WebSocket,
 /// registers this machine, then listens for toolcalls and executes them.
 #[tauri::command]
-pub async fn connect_computer_use(instance_url: String, auth_token: String) -> Result<(), String> {
+pub async fn connect_computer_use(
+    app: tauri::AppHandle,
+    instance_url: String,
+    auth_token: String,
+) -> Result<(), String> {
     {
         let mut active = BRIDGE_ACTIVE.lock().map_err(|e| e.to_string())?;
         *active = true;
@@ -26,7 +31,7 @@ pub async fn connect_computer_use(instance_url: String, auth_token: String) -> R
                 }
             }
 
-            match run_agent(&instance_url, &auth_token).await {
+            match run_agent(&app, &instance_url, &auth_token).await {
                 Ok(_) => {
                     eprintln!("[agent] connection closed, reconnecting in 5s...");
                 }
@@ -57,7 +62,7 @@ pub fn disconnect_computer_use() -> Result<(), String> {
     Ok(())
 }
 
-async fn run_agent(instance_url: &str, auth_token: &str) -> Result<(), String> {
+async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str) -> Result<(), String> {
     let ws_proto = if instance_url.starts_with("https") {
         "wss"
     } else {
@@ -154,6 +159,10 @@ async fn run_agent(instance_url: &str, auth_token: &str) -> Result<(), String> {
 
         eprintln!("[agent] toolcall: {action} (req={request_id})");
 
+        // Show overlay and emit action
+        overlay::show(app);
+        overlay::emit_action(app, &action);
+
         let result = execute_action(&call, &action, &mut cached_scale);
 
         let response = match &result {
@@ -195,6 +204,10 @@ async fn run_agent(instance_url: &str, auth_token: &str) -> Result<(), String> {
             break;
         }
     }
+
+    // Hide overlay when connection ends
+    overlay::emit_idle(app);
+    overlay::hide(app);
 
     Ok(())
 }
