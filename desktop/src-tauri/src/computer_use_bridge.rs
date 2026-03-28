@@ -114,8 +114,8 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
 
     eprintln!("[agent] registered as '{machine_id}' ({os}, {sw}x{sh})");
 
-    // Scale cache from last screenshot
-    let mut cached_scale: f64 = 1.0;
+    // Scale cache from last screenshot (shared with spawn_blocking tasks)
+    let cached_scale = std::sync::Arc::new(std::sync::Mutex::new(1.0f64));
 
     let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(20));
     ping_interval.tick().await; // skip first immediate tick
@@ -191,13 +191,22 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
         // Hide overlay before screenshot so it doesn't appear in the capture
         if action == "screenshot" {
             overlay::hide(app);
-            // Give the main thread time to close the overlay window
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
 
-        let result = execute_action(&call, &action, &mut cached_scale);
+        // Run action in spawn_blocking to avoid blocking the tokio WebSocket loop
+        // (bash commands, file I/O, and screenshots all do blocking I/O)
+        let call_clone = call.clone();
+        let action_clone = action.clone();
+        let scale = cached_scale.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let mut s = scale.lock().unwrap();
+            execute_action(&call_clone, &action_clone, &mut *s)
+        })
+        .await
+        .unwrap_or_else(|e| Err(format!("task panic: {e}")));
 
-        // Show overlay after any action (including screenshot) to indicate activity
+        // Show overlay after any action
         overlay::show(app);
         overlay::emit_action(app, &action);
 
