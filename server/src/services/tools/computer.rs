@@ -160,12 +160,12 @@ impl Tool for ComputerUseTool {
 
                 // Save screenshot as upload so user can see it in chat
                 let upload_url = match base64::engine::general_purpose::STANDARD.decode(&image_b64) {
-                    Ok(png_bytes) => {
+                    Ok(img_bytes) => {
                         match crate::services::uploads::save_upload(
                             &self.workspace_dir,
                             &self.instance_slug,
-                            "screenshot.png",
-                            &png_bytes,
+                            "screenshot.jpg",
+                            &img_bytes,
                         ) {
                             Ok(meta) => {
                                 let url = format!(
@@ -195,7 +195,7 @@ impl Tool for ComputerUseTool {
                         "type": "image",
                         "source": {
                             "type": "base64",
-                            "media_type": "image/png",
+                            "media_type": "image/jpeg",
                             "data": image_b64,
                         }
                     },

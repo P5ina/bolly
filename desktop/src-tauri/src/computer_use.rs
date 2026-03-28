@@ -9,7 +9,8 @@ use std::thread;
 use std::time::Duration;
 
 /// Max pixels on the longest edge for screenshots sent to Claude.
-const MAX_SCREENSHOT_EDGE: u32 = 1568;
+/// Anthropic recommends 1568 but we use 1280 to keep file size under 1MB.
+const MAX_SCREENSHOT_EDGE: u32 = 1280;
 
 // ─── Screenshot ──────────────────────────────────────────────────────────────
 
@@ -51,10 +52,16 @@ pub fn computer_screenshot() -> Result<ScreenshotResult, String> {
     let out_w = scaled_img.width();
     let out_h = scaled_img.height();
 
-    // Encode as PNG → base64
+    // Encode as JPEG (much smaller than PNG — ~200KB vs 4MB)
+    let rgb_img = scaled_img.to_rgb8();
     let mut buf = Cursor::new(Vec::new());
-    scaled_img
-        .write_to(&mut buf, image::ImageFormat::Png)
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 75)
+        .encode(
+            rgb_img.as_raw(),
+            out_w,
+            out_h,
+            image::ExtendedColorType::Rgb8,
+        )
         .map_err(|e| e.to_string())?;
 
     let b64 = STANDARD.encode(buf.into_inner());
