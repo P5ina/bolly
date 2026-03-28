@@ -16,15 +16,48 @@ fn navigate(app: tauri::AppHandle, url: String) -> Result<(), String> {
 }
 
 fn navigate_home(app: &tauri::AppHandle) -> Result<(), String> {
-    navigate_to(app, "tauri://localhost/")
-}
-
-fn navigate_to(app: &tauri::AppHandle, url: &str) -> Result<(), String> {
     let ww = app
         .get_webview_window("main")
         .ok_or("main webview not found")?;
+    // Use the dev URL in dev mode, tauri:// in production
+    let url = if cfg!(debug_assertions) {
+        "http://localhost:1420/"
+    } else {
+        "tauri://localhost/"
+    };
     let parsed: url::Url = url.parse().map_err(|e: url::ParseError| e.to_string())?;
     ww.navigate(parsed).map_err(|e| e.to_string())
+}
+
+fn settings_url() -> String {
+    if cfg!(debug_assertions) {
+        "http://localhost:1420/settings/".to_string()
+    } else {
+        "tauri://localhost/settings/".to_string()
+    }
+}
+
+fn open_settings_window(app: &tauri::AppHandle) -> Result<(), String> {
+    use tauri::webview::WebviewWindowBuilder;
+
+    // If settings window already exists, just focus it
+    if let Some(win) = app.get_webview_window("settings") {
+        win.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    let url = settings_url();
+    WebviewWindowBuilder::new(app, "settings", tauri::WebviewUrl::External(
+        url.parse().map_err(|e: url::ParseError| e.to_string())?,
+    ))
+    .title("Bolly Settings")
+    .inner_size(420.0, 480.0)
+    .resizable(false)
+    .center()
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -57,25 +90,20 @@ pub fn run() {
                 .comments(Some("Your AI companion"))
                 .build();
 
+            let settings = MenuItemBuilder::with_id("settings", "Settings...")
+                .accelerator("CmdOrCtrl+,")
+                .build(app)?;
+
             let app_menu = SubmenuBuilder::new(app, "Bolly")
                 .about(Some(about))
+                .separator()
+                .items(&[&settings])
                 .separator()
                 .hide()
                 .hide_others()
                 .show_all()
                 .separator()
                 .quit()
-                .build()?;
-
-            let back = MenuItemBuilder::with_id("back", "Back to Dashboard")
-                .accelerator("CmdOrCtrl+Shift+D")
-                .build(app)?;
-            let settings = MenuItemBuilder::with_id("settings", "Settings...")
-                .accelerator("CmdOrCtrl+,")
-                .build(app)?;
-
-            let view_menu = SubmenuBuilder::new(app, "View")
-                .items(&[&back, &settings])
                 .build()?;
 
             let edit_menu = SubmenuBuilder::new(app, "Edit")
@@ -88,6 +116,14 @@ pub fn run() {
                 .select_all()
                 .build()?;
 
+            let back = MenuItemBuilder::with_id("back", "Back to Dashboard")
+                .accelerator("CmdOrCtrl+Shift+D")
+                .build(app)?;
+
+            let view_menu = SubmenuBuilder::new(app, "View")
+                .items(&[&back])
+                .build()?;
+
             let menu = MenuBuilder::new(app)
                 .items(&[&app_menu, &edit_menu, &view_menu])
                 .build()?;
@@ -98,7 +134,7 @@ pub fn run() {
                 if event.id() == "back" {
                     let _ = navigate_home(&handle);
                 } else if event.id() == "settings" {
-                    let _ = navigate_to(&handle, "tauri://localhost/settings");
+                    let _ = open_settings_window(&handle);
                 }
             });
 
