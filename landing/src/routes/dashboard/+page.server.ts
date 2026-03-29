@@ -8,7 +8,7 @@ import { db } from '$lib/server/db/index.js';
 import { tenants } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import * as fly from '$lib/server/fly/index.js';
-import { ORIGIN, ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY } from '$env/static/private';
+import { ORIGIN } from '$env/static/private';
 
 type SubscriptionInfo = {
 	id: string;
@@ -312,30 +312,20 @@ export const actions: Actions = {
 			})
 			.where(eq(tenants.id, tenantId));
 
-		// Restore platform keys on Fly machine
+		// Clear BYOK env on Fly machine
 		if (tenant.flyAppId && tenant.flyMachineId) {
 			try {
 				await fly.updateMachineEnv(tenant.flyAppId, tenant.flyMachineId, {
 					BOLLY_BYOK: '',
 					BOLLY_LLM_PROVIDER: '',
 					BOLLY_LLM_MODEL: '',
-					ANTHROPIC_API_KEY,
-					OPENAI_API_KEY,
-					OPENROUTER_API_KEY,
+					ANTHROPIC_API_KEY: '',
+					OPENAI_API_KEY: '',
+					OPENROUTER_API_KEY: '',
 				});
 			} catch (err) {
-				console.error('Failed to restore Fly env after BYOK removal:', err);
+				console.error('Failed to clear Fly env after BYOK removal:', err);
 				return fail(500, { error: 'Removed key but failed to update companion. Try again.' });
-			}
-		}
-
-		// Swap Stripe subscription back to normal price
-		if (tenant.stripeSubscriptionId) {
-			try {
-				const normalPriceId = priceIdForPlan(tenant.plan as PlanId, false);
-				await swapSubscriptionPrice(tenant.stripeSubscriptionId, normalPriceId);
-			} catch (err) {
-				console.error('Failed to swap subscription back to normal price:', err);
 			}
 		}
 	},

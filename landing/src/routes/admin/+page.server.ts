@@ -172,7 +172,6 @@ export const actions: Actions = {
 				// GET in updateMachineImage returns stale config.
 				await fly.updateMachineImageAndEnv(t.flyAppId, t.flyMachineId, image, {
 					...fly.sharedKeys(),
-					...(t.byokProvider ? {} : fly.platformApiKeys()),
 				});
 				updated++;
 			} catch (e) {
@@ -473,7 +472,6 @@ export const actions: Actions = {
 		try {
 			const envPatch: Record<string, string> = {
 				...fly.sharedKeys(),
-				...(tenant.byokProvider ? {} : fly.platformApiKeys()),
 			};
 			const image = fly.imageForChannel((tenant.imageChannel as fly.ImageChannel) ?? 'stable');
 			await fly.updateMachineImageAndEnv(tenant.flyAppId, tenant.flyMachineId, image, envPatch);

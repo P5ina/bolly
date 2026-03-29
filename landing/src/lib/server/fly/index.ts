@@ -1,4 +1,4 @@
-import { ANTHROPIC_API_KEY, BOLLY_RELEASE_TOKEN, BRAVE_SEARCH_API_KEY, ELEVENLABS_API_KEY, FAL_KEY, FLY_API_TOKEN, GOOGLE_AI_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OPENAI_API_KEY, OPENROUTER_API_KEY, ORIGIN } from '$env/static/private';
+import { BOLLY_RELEASE_TOKEN, FLY_API_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ORIGIN } from '$env/static/private';
 
 const FLY_API = 'https://api.machines.dev/v1';
 const FLY_REGISTRY_APP = 'bolly';
@@ -6,20 +6,7 @@ const FLY_ORG = 'personal';
 const FLY_REGION = 'iad';
 const BOLLY_IMAGE = 'registry.fly.io/bolly:latest';
 
-/** Platform API keys that get pushed to non-BYOK machines. */
-export function platformApiKeys(): Record<string, string> {
-	return {
-		ANTHROPIC_API_KEY,
-		OPENAI_API_KEY,
-		OPENROUTER_API_KEY,
-		BRAVE_SEARCH_API_KEY,
-		ELEVENLABS_API_KEY,
-		GOOGLE_AI_API_KEY,
-		FAL_KEY,
-	};
-}
-
-/** Shared keys pushed to ALL machines (BYOK and non-BYOK). */
+/** Shared keys pushed to ALL machines. */
 export function sharedKeys(): Record<string, string> {
 	return {
 		BOLLY_RELEASE_TOKEN,
@@ -29,13 +16,12 @@ export function sharedKeys(): Record<string, string> {
 	};
 }
 
-/** Build env for a machine. Includes shared + platform keys (unless BYOK). */
+/** Build env for a machine. All instances are BYOK — no shared LLM keys. */
 export function machineEnv(opts: {
 	authToken: string;
 	instanceId: string;
 	publicUrl: string;
 	channel?: string;
-	byok?: boolean;
 }): Record<string, string> {
 	return {
 		BOLLY_HOME: '/data',
@@ -46,7 +32,6 @@ export function machineEnv(opts: {
 		BOLLY_PUBLIC_URL: opts.publicUrl,
 		DATABASE_URL: '',
 		...sharedKeys(),
-		...(opts.byok ? {} : platformApiKeys()),
 	};
 }
 
