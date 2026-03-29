@@ -166,8 +166,20 @@ jobs:
         working-directory: desktop
         run: pnpm install
 
+      - name: Check Apple signing
+        id: apple-signing
+        shell: bash
+        run: |
+          if [ -n "$APPLE_CERT" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE }}
+
       - name: Build and upload to release (signed)
-        if: matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE != ''
+        if: matrix.platform == 'macos-latest' && steps.apple-signing.outputs.enabled == 'true'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -187,7 +199,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Build and upload to release (unsigned)
-        if: matrix.platform != 'macos-latest' || secrets.APPLE_CERTIFICATE == ''
+        if: matrix.platform != 'macos-latest' || steps.apple-signing.outputs.enabled != 'true'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
