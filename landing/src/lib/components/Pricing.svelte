@@ -1,18 +1,22 @@
 <script lang="ts">
 	import Reveal from './Reveal.svelte';
 
-	const BYOK_ENABLED = false;
-	let byok = $state(false);
-
 	const plans = [
 		{
 			name: 'companion',
-			desc: 'For everyday life',
-			price: 29,
-			byokPrice: 10,
-			features: ['50M tokens / month', '20 GB storage', 'Web browsing', 'Email integration'],
+			desc: 'Everything you need',
+			price: 10,
+			features: [
+				'Bring your own API key',
+				'No rate limits',
+				'20 GB storage',
+				'Persistent memory',
+				'Web browsing',
+				'Email & calendar',
+				'Computer use',
+			],
 			featured: true,
-			badge: 'beta',
+			badge: 'byok',
 			icon: '/assets/plan-companion.png',
 		},
 	];
@@ -28,38 +32,13 @@
 		</Reveal>
 		<Reveal delay={200}>
 			<p class="text-[0.9375rem] text-text-dim max-w-[480px] mb-10">
-				Every plan includes full privacy, persistent memory, and a companion that never sleeps.
-				{#if BYOK_ENABLED && byok}
-					Bring your own API key — pay only for hosting.
-				{:else}
-					AI included — no API key needed.
-				{/if}
+				Bring your own Anthropic API key — pay only for hosting. No rate limits, full control.
 			</p>
 		</Reveal>
 
-		{#if BYOK_ENABLED}
-		<Reveal delay={250}>
-			<div class="byok-toggle-row">
-				<button
-					class="byok-toggle"
-					class:byok-active={byok}
-					onclick={() => byok = !byok}
-				>
-					<span class="byok-track">
-						<span class="byok-thumb"></span>
-					</span>
-					<span class="byok-label">I have my own API key</span>
-				</button>
-				{#if BYOK_ENABLED && byok}
-					<span class="byok-hint">hosting-only pricing · no rate limits</span>
-				{/if}
-			</div>
-		</Reveal>
-		{/if}
-
 		<Reveal delay={200}>
 			<div class="pricing-grid">
-				{#each plans as plan, i}
+				{#each plans as plan}
 					<div class="price-card" class:featured={plan.featured}>
 						{#if plan.badge}
 							<div class="price-badge">{plan.badge}</div>
@@ -72,17 +51,11 @@
 
 							<div class="price-amount">
 								<span class="text-xl text-text-dim font-light">$</span>
-								{#key byok}
-									<span class="font-display italic text-5xl text-text leading-none -tracking-wider price-num">
-										{byok ? plan.byokPrice : plan.price}
-									</span>
-								{/key}
+								<span class="font-display italic text-5xl text-text leading-none -tracking-wider">
+									{plan.price}
+								</span>
 							</div>
-							<div class="text-[0.8125rem] text-text-ghost mb-1">per month</div>
-							{#if BYOK_ENABLED && byok}
-								<div class="price-was">was ${plan.price}/mo</div>
-							{/if}
-							<div class={BYOK_ENABLED && byok ? 'mb-4' : 'mb-8'}></div>
+							<div class="text-[0.8125rem] text-text-ghost mb-8">per month</div>
 
 							<ul class="list-none mb-8 space-y-1.5 flex-1">
 								{#each plan.features as feature}
@@ -91,19 +64,9 @@
 										{feature}
 									</li>
 								{/each}
-								{#if BYOK_ENABLED && byok}
-									<li class="text-[0.8125rem] flex items-center gap-2 byok-feature">
-										<span class="w-1 h-1 rounded-full shrink-0" style="background: oklch(0.70 0.14 145);"></span>
-										No rate limits
-									</li>
-								{/if}
 							</ul>
 
-							<a
-								href="/signup"
-								class="price-btn"
-								class:price-btn-featured={plan.featured}
-							>
+							<a href="/signup" class="price-btn" class:price-btn-featured={plan.featured}>
 								Get started
 							</a>
 						</div>
@@ -141,107 +104,15 @@
 		margin-bottom: 1rem;
 	}
 
-	/* ── BYOK toggle ── */
-	.byok-toggle-row {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 2.5rem;
-	}
-
-	.byok-toggle {
-		display: flex;
-		align-items: center;
-		gap: 0.625rem;
-		cursor: pointer;
-		padding: 0.5rem 1rem 0.5rem 0.5rem;
-		border-radius: 2rem;
-		border: 1px solid var(--glass-border);
-		background: var(--glass-bg);
-		backdrop-filter: var(--glass-blur);
-		transition: all 0.3s ease;
-	}
-
-	.byok-toggle:hover {
-		border-color: oklch(1 0 0 / 14%);
-	}
-
-	.byok-toggle.byok-active {
-		border-color: oklch(0.70 0.14 145 / 30%);
-		background: oklch(0.70 0.14 145 / 5%);
-	}
-
-	.byok-track {
-		position: relative;
-		width: 2rem;
-		height: 1.125rem;
-		border-radius: 1rem;
-		background: oklch(1 0 0 / 8%);
-		transition: background 0.3s ease;
-		flex-shrink: 0;
-	}
-
-	.byok-active .byok-track {
-		background: oklch(0.70 0.14 145 / 30%);
-	}
-
-	.byok-thumb {
-		position: absolute;
-		top: 2px;
-		left: 2px;
-		width: 0.875rem;
-		height: 0.875rem;
-		border-radius: 50%;
-		background: oklch(0.55 0.02 280);
-		transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-	}
-
-	.byok-active .byok-thumb {
-		left: calc(100% - 2px - 0.875rem);
-		background: oklch(0.75 0.12 145);
-	}
-
-	.byok-label {
-		font-size: 0.9rem;
-		color: var(--color-text-dim);
-		letter-spacing: 0.01em;
-	}
-
-	.byok-active .byok-label {
-		color: oklch(0.80 0.10 145);
-	}
-
-	.byok-hint {
-		font-size: 0.8rem;
-		color: oklch(0.65 0.08 145 / 60%);
-		letter-spacing: 0.02em;
-		animation: hint-in 0.3s ease both;
-	}
-
-	@keyframes hint-in {
-		from { opacity: 0; transform: translateX(-4px); }
-		to { opacity: 1; transform: translateX(0); }
-	}
-
-	/* ── Grid ── */
 	.pricing-grid {
 		display: grid;
 		grid-template-columns: 1fr;
 		gap: 1.5rem;
 		max-width: 400px;
 		margin: 0 auto;
-		padding-top: 0.75rem; /* room for badge */
+		padding-top: 0.75rem;
 	}
 
-	@media (min-width: 768px) {
-		.pricing-grid {
-			grid-template-columns: 1fr;
-			max-width: 380px;
-			align-items: stretch;
-		}
-	}
-
-	/* ── Glass price cards ── */
 	.price-card {
 		border-radius: 1rem;
 		background: var(--glass-bg);
@@ -255,7 +126,6 @@
 		height: 100%;
 	}
 
-	/* specular top line — on inner to avoid clipping badge */
 	.price-card-inner::before {
 		content: '';
 		position: absolute;
@@ -268,7 +138,6 @@
 		z-index: 2;
 	}
 
-	/* inner refraction */
 	.price-card-inner::after {
 		content: '';
 		position: absolute;
@@ -348,28 +217,6 @@
 		margin-bottom: 0.25rem;
 	}
 
-	.price-num {
-		animation: price-swap 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-	}
-
-	@keyframes price-swap {
-		from { opacity: 0; transform: translateY(6px); }
-		to { opacity: 1; transform: translateY(0); }
-	}
-
-	.price-was {
-		font-size: 0.8rem;
-		color: oklch(0.55 0.02 280 / 40%);
-		text-decoration: line-through;
-		animation: hint-in 0.3s ease both;
-	}
-
-	.byok-feature {
-		color: oklch(0.75 0.10 145);
-		animation: hint-in 0.3s ease both;
-	}
-
-	/* ── Glass buttons ── */
 	.price-btn {
 		display: block;
 		width: 100%;
