@@ -80,30 +80,39 @@ async fn check_update(State(state): State<AppState>) -> Json<UpdateCheck> {
     })
 }
 
-async fn apply_update(State(_state): State<AppState>) -> Json<serde_json::Value> {
-    // Run update script
-    let update_script = std::path::Path::new("/opt/bolly/scripts/update-bolly.sh");
-    let script = if update_script.exists() {
-        update_script.to_path_buf()
-    } else {
-        // Bare-metal install
-        std::path::PathBuf::from("/opt/bolly/bin/update")
-    };
+async fn apply_update(State(state): State<AppState>) -> Json<serde_json::Value> {
+    // Find update script — check multiple locations
+    let bolly_home = std::env::var("BOLLY_HOME").unwrap_or_else(|_| {
+        state.workspace_dir.to_string_lossy().to_string()
+    });
+    let candidates = [
+        format!("{bolly_home}/bin/update"),           // self-hosted install (new)
+        "/opt/bolly/scripts/update-bolly.sh".into(),  // Docker/Fly
+        "/opt/bolly/bin/update".into(),               // legacy bare-metal
+    ];
 
-    if !script.exists() {
-        return Json(serde_json::json!({ "ok": false, "error": "update script not found" }));
-    }
+    let script = candidates.iter()
+        .map(std::path::PathBuf::from)
+        .find(|p| p.exists());
+
+    let script = match script {
+        Some(s) => s,
+        None => {
+            return Json(serde_json::json!({
+                "ok": false,
+                "error": format!("update script not found (checked: {})", candidates.join(", "))
+            }));
+        }
+    };
 
     log::info!("[update] applying update via {}", script.display());
 
-    // Run update in background, then exit process so entrypoint/systemd restarts with new binary
+    let bolly_home_clone = bolly_home.clone();
     tokio::spawn(async move {
-        // Give time for response to be sent
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
         // Read version before update to detect actual changes
-        let persist = std::env::var("BOLLY_HOME").unwrap_or_else(|_| "/data".to_string());
-        let version_file = std::path::Path::new(&persist).join("bin/.version");
+        let version_file = std::path::Path::new(&bolly_home_clone).join("bin/.version");
         let version_before = std::fs::read_to_string(&version_file).unwrap_or_default().trim().to_string();
 
         let result = tokio::process::Command::new("sh")
@@ -189,15 +198,10 @@ async fn fetch_release_info(channel: &str) -> Option<ReleaseInfo> {
     };
 
     let client = reqwest::Client::new();
-    let mut req = client
+    let resp = client
         .get(&url)
-        .header("User-Agent", "bolly-update");
-    if let Ok(token) = std::env::var("BOLLY_RELEASE_TOKEN") {
-        if !token.is_empty() {
-            req = req.header("Authorization", format!("token {token}"));
-        }
-    }
-    let resp = req.send().await.ok()?;
+        .header("User-Agent", "bolly-update")
+        .send().await.ok()?;
 
     let data: serde_json::Value = resp.json().await.ok()?;
     Some(ReleaseInfo {
@@ -220,14 +224,7 @@ async fn get_changelog(State(state): State<AppState>) -> Json<Vec<Changelog>> {
     // Fetch recent releases from GitHub
     let url = format!("https://api.github.com/repos/{repo}/releases?per_page=10");
     let client = reqwest::Client::new();
-    let mut req = client.get(&url).header("User-Agent", "bolly-update");
-    if let Ok(token) = std::env::var("BOLLY_RELEASE_TOKEN") {
-        if !token.is_empty() {
-            req = req.header("Authorization", format!("token {token}"));
-        }
-    }
-
-    let resp = match req.send().await {
+    let resp = match client.get(&url).header("User-Agent", "bolly-update").send().await {
         Ok(r) => r,
         Err(_) => return Json(vec![]),
     };
