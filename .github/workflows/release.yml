@@ -166,7 +166,8 @@ jobs:
         working-directory: desktop
         run: pnpm install
 
-      - name: Build and upload to release
+      - name: Build and upload to release (signed)
+        if: matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE != ''
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -176,6 +177,20 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Bolly ${{ github.ref_name }}'
+          releaseBody: ''
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+      - name: Build and upload to release (unsigned)
+        if: matrix.platform != 'macos-latest' || secrets.APPLE_CERTIFICATE == ''
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: desktop
           tagName: ${{ github.ref_name }}
