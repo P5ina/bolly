@@ -2,7 +2,7 @@
 name = "bolly-desktop"
 version = "0.1.0"
 description = "Bolly — AI companion desktop app"
-authors = ["Triangle Interactive"]
+authors = ["Triangle Interactive LLC"]
 license = "MIT"
 repository = "https://github.com/triangle-int/bolly"
 edition = "2021"
