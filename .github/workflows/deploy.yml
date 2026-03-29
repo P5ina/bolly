@@ -83,10 +83,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           chmod +x bolly-x86_64-unknown-linux-gnu
-          gh release delete nightly --yes 2>/dev/null || true
-          git tag -f nightly
-          git push origin nightly --force
+          gh release delete nightly --cleanup-tag --yes 2>/dev/null || true
           gh release create nightly \
+            --target "${{ github.sha }}" \
             --title "Nightly $(date -u +%Y-%m-%d)" \
             --notes "Auto-built from main ($(git rev-parse --short HEAD))" \
             --prerelease \
