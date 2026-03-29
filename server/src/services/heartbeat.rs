@@ -218,17 +218,8 @@ async fn heartbeat_instance(
         thought,
     });
 
-    // Record token usage
     if heartbeat_tokens > 0 {
-        let cfg = config::load_config().ok();
-        if let Some(cfg) = cfg {
-            let http = reqwest::Client::new();
-            crate::services::rate_limit::record_usage(
-                &http, &cfg.landing_url, &cfg.auth_token,
-                heartbeat_tokens as i32,
-            ).await;
-            log::info!("[usage] {slug} heartbeat recording {heartbeat_tokens} normalized tokens");
-        }
+        log::info!("[usage] {slug} heartbeat used {heartbeat_tokens} tokens");
     }
 
     Ok(())

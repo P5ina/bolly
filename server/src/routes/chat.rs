@@ -14,7 +14,7 @@ use crate::{
         chat::{ChatMessage, ChatRequest, ChatResponse, ChatRole, ChatSummary},
         events::ServerEvent,
     },
-    services::{chat, rate_limit},
+    services::chat,
 };
 
 pub fn router() -> Router<AppState> {
@@ -45,16 +45,6 @@ async fn post_chat(
 
     if instance_slug.is_empty() || content.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "slug and content required".into()));
-    }
-
-    // Rate limit check (via landing API)
-    if !state.landing_url.is_empty() {
-        if let Err(reason) = rate_limit::check(&state.http_client, &state.landing_url, &state.landing_auth_token).await {
-            return Err((
-                StatusCode::TOO_MANY_REQUESTS,
-                serde_json::json!({ "error": "rate limit exceeded", "detail": reason }).to_string(),
-            ));
-        }
     }
 
     // Save user message immediately
@@ -330,8 +320,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                     } else {
                         turn.estimated_tokens
                     };
-                    log::info!("[usage] {instance_slug} recording {recorded} normalized tokens (raw={}, heavy={used_heavy})", turn.estimated_tokens);
-                    rate_limit::record_usage(&state.http_client, &state.landing_url, &state.landing_auth_token, recorded).await;
+                    log::info!("[usage] {instance_slug} used {recorded} tokens (raw={}, heavy={used_heavy})", turn.estimated_tokens);
                 }
 
                 // Check if a new user message arrived while agent was processing

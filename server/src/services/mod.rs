@@ -5,7 +5,7 @@ pub mod daily_stats;
 pub mod embedding;
 pub mod keyword_search;
 pub mod google;
-pub mod rate_limit;
+// rate_limit removed — all instances are BYOK with no rate limits
 pub mod drops;
 pub mod child_agents;
 pub mod heartbeat;
