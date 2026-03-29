@@ -38,6 +38,50 @@
 
 		<Reveal delay={200}>
 			<div class="pricing-grid">
+				<!-- Self-hosted -->
+				<div class="price-card">
+					<div class="price-card-inner">
+						<div class="font-display italic text-xl text-text mb-1">self-hosted</div>
+						<div class="text-xs text-text-ghost mb-6">Run on your own machine</div>
+
+						<div class="price-amount">
+							<span class="font-display italic text-5xl text-text leading-none -tracking-wider">free</span>
+						</div>
+						<div class="text-[0.8125rem] text-text-ghost mb-8">forever</div>
+
+						<ul class="list-none mb-8 space-y-1.5 flex-1">
+							<li class="text-[0.8125rem] text-text-dim flex items-center gap-2">
+								<span class="w-1 h-1 rounded-full shrink-0" style="background: oklch(0.55 0.08 240 / 30%);"></span>
+								Bring your own API key
+							</li>
+							<li class="text-[0.8125rem] text-text-dim flex items-center gap-2">
+								<span class="w-1 h-1 rounded-full shrink-0" style="background: oklch(0.55 0.08 240 / 30%);"></span>
+								Unlimited everything
+							</li>
+							<li class="text-[0.8125rem] text-text-dim flex items-center gap-2">
+								<span class="w-1 h-1 rounded-full shrink-0" style="background: oklch(0.55 0.08 240 / 30%);"></span>
+								macOS &amp; Linux
+							</li>
+							<li class="text-[0.8125rem] text-text-dim flex items-center gap-2">
+								<span class="w-1 h-1 rounded-full shrink-0" style="background: oklch(0.55 0.08 240 / 30%);"></span>
+								Desktop app included
+							</li>
+							<li class="text-[0.8125rem] text-text-dim flex items-center gap-2">
+								<span class="w-1 h-1 rounded-full shrink-0" style="background: oklch(0.55 0.08 240 / 30%);"></span>
+								MIT license
+							</li>
+						</ul>
+
+						<div class="install-cmd">
+							<code>curl -fsSL bollyai.dev/install.sh | bash</code>
+						</div>
+						<a href="/docs" class="price-btn">
+							Install guide
+						</a>
+					</div>
+				</div>
+
+				<!-- Cloud -->
 				{#each plans as plan}
 					<div class="price-card" class:featured={plan.featured}>
 						{#if plan.badge}
@@ -110,11 +154,18 @@
 
 	.pricing-grid {
 		display: grid;
-		grid-template-columns: 1fr;
+		grid-template-columns: repeat(2, 1fr);
 		gap: 1.5rem;
-		max-width: 400px;
+		max-width: 800px;
 		margin: 0 auto;
 		padding-top: 0.75rem;
+	}
+
+	@media (max-width: 640px) {
+		.pricing-grid {
+			grid-template-columns: 1fr;
+			max-width: 400px;
+		}
 	}
 
 	.price-card {
@@ -267,6 +318,22 @@
 
 	.price-btn-featured::before {
 		background: linear-gradient(180deg, oklch(0.78 0.12 75 / 6%) 0%, transparent 100%);
+	}
+
+	.install-cmd {
+		padding: 0.625rem 1rem;
+		border-radius: 0.5rem;
+		background: oklch(0 0 0 / 40%);
+		border: 1px solid oklch(1 0 0 / 6%);
+		margin-bottom: 0.75rem;
+		overflow-x: auto;
+	}
+
+	.install-cmd code {
+		font-family: var(--font-mono, ui-monospace, monospace);
+		font-size: 0.75rem;
+		color: oklch(0.78 0.12 75 / 70%);
+		white-space: nowrap;
 	}
 
 	.oss-note {
