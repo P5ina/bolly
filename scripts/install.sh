@@ -1,217 +1,284 @@
 #!/bin/bash
-# Bolly installer — sets up everything on a fresh Linux machine.
-# Usage: curl -fsSL https://raw.githubusercontent.com/triangle-int/bolly/main/scripts/install.sh | bash
+# ╔══════════════════════════════════════════════╗
+# ║          bolly — AI companion installer       ║
+# ║        https://github.com/triangle-int/bolly  ║
+# ╚══════════════════════════════════════════════╝
+#
+# Usage:
+#   curl -fsSL https://bollyai.dev/install.sh | bash
+#
+# Options (env vars):
+#   BOLLY_CHANNEL=nightly    Install nightly instead of stable
+#   BOLLY_DIR=/custom/path   Install to custom directory (default: ~/.bolly)
+#
 set -e
 
-REPO="triangle-int/bolly"
-RELEASE_TOKEN="${BOLLY_RELEASE_TOKEN:-}"
-AUTH_HEADER=""
-if [ -n "$RELEASE_TOKEN" ]; then
-    AUTH_HEADER="Authorization: token $RELEASE_TOKEN"
-fi
-INSTALL_DIR="/opt/bolly"
-DATA_DIR="/data"
-BIN="$INSTALL_DIR/bin/bolly"
-USER="bolly"
-SERVICE="bolly"
-
-# Colors
-RED='\033[0;31m'
+# ─── Colors ───────────────────────────────────────────────────────────────────
+BOLD='\033[1m'
+DIM='\033[2m'
 GREEN='\033[0;32m'
-DIM='\033[0;90m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+RED='\033[0;31m'
 NC='\033[0m'
 
-log()  { echo -e "${GREEN}[bolly]${NC} $1"; }
-dim()  { echo -e "${DIM}$1${NC}"; }
-fail() { echo -e "${RED}[error]${NC} $1"; exit 1; }
+log()  { echo -e "  ${GREEN}✓${NC} $1"; }
+info() { echo -e "  ${DIM}$1${NC}"; }
+warn() { echo -e "  ${YELLOW}!${NC} $1"; }
+fail() { echo -e "  ${RED}✗${NC} $1"; exit 1; }
+step() { echo -e "\n${CYAN}${BOLD}$1${NC}"; }
 
-# --- Check root ---
-if [ "$(id -u)" -ne 0 ]; then
-    fail "run as root: sudo bash install.sh"
-fi
+# ─── Banner ───────────────────────────────────────────────────────────────────
+echo ""
+echo -e "${BOLD}  ┌─────────────────────────────┐${NC}"
+echo -e "${BOLD}  │${NC}     ${CYAN}bolly${NC} installer          ${BOLD}│${NC}"
+echo -e "${BOLD}  │${NC}     ${DIM}your AI companion${NC}        ${BOLD}│${NC}"
+echo -e "${BOLD}  └─────────────────────────────┘${NC}"
 
-# --- Detect arch ---
-ARCH=$(uname -m)
-case "$ARCH" in
-    x86_64)  TARGET="x86_64-unknown-linux-gnu" ;;
-    aarch64) TARGET="aarch64-unknown-linux-gnu" ;;
-    *) fail "unsupported architecture: $ARCH" ;;
+# ─── Detect platform ─────────────────────────────────────────────────────────
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+
+case "$OS" in
+    Linux)   PLATFORM="linux" ;;
+    Darwin)  PLATFORM="macos" ;;
+    *)       fail "unsupported OS: $OS (bolly supports Linux and macOS)" ;;
 esac
 
-# --- Detect channel ---
+case "$ARCH" in
+    x86_64|amd64)   ARCH="x86_64" ;;
+    aarch64|arm64)   ARCH="aarch64" ;;
+    *)               fail "unsupported architecture: $ARCH" ;;
+esac
+
+case "$PLATFORM-$ARCH" in
+    linux-x86_64)    TARGET="x86_64-unknown-linux-gnu" ;;
+    linux-aarch64)   TARGET="aarch64-unknown-linux-gnu" ;;
+    macos-aarch64)   TARGET="aarch64-apple-darwin" ;;
+    macos-x86_64)    TARGET="x86_64-apple-darwin" ;;
+    *)               fail "unsupported platform: $PLATFORM-$ARCH" ;;
+esac
+
+# ─── Config ───────────────────────────────────────────────────────────────────
+REPO="triangle-int/bolly"
 CHANNEL="${BOLLY_CHANNEL:-stable}"
+BOLLY_DIR="${BOLLY_DIR:-$HOME/.bolly}"
+BIN_DIR="$BOLLY_DIR/bin"
+DATA_DIR="$BOLLY_DIR/data"
+BIN="$BIN_DIR/bolly"
+
+step "detecting environment"
+log "platform: ${BOLD}$PLATFORM $ARCH${NC}"
+log "channel: ${BOLD}$CHANNEL${NC}"
+log "install dir: ${BOLD}$BOLLY_DIR${NC}"
+
+# ─── Download binary ─────────────────────────────────────────────────────────
+step "downloading bolly"
+
 if [ "$CHANNEL" = "nightly" ]; then
     API_URL="https://api.github.com/repos/$REPO/releases/tags/nightly"
 else
     API_URL="https://api.github.com/repos/$REPO/releases/latest"
 fi
 
-log "installing bolly ($CHANNEL) for $TARGET"
-
-# --- System dependencies ---
-log "installing system packages..."
-apt-get update -qq
-apt-get install -y --no-install-recommends \
-    ca-certificates curl sudo procps git jq ffmpeg \
-    python3 python3-pip python3-venv \
-    fontconfig fonts-liberation fonts-dejavu-core \
-    > /dev/null 2>&1
-
-# --- Node.js ---
-if ! command -v node &>/dev/null; then
-    log "installing Node.js..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null 2>&1
-    apt-get install -y nodejs > /dev/null 2>&1
-    npm install -g pnpm > /dev/null 2>&1
-fi
-
-# --- yt-dlp ---
-if ! command -v yt-dlp &>/dev/null; then
-    log "installing yt-dlp..."
-    curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
-    chmod +x /usr/local/bin/yt-dlp
-fi
-
-# --- cloudflared ---
-if ! command -v cloudflared &>/dev/null; then
-    log "installing cloudflared..."
-    DARCH=$(dpkg --print-architecture 2>/dev/null || echo amd64)
-    curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${DARCH}.deb" -o /tmp/cloudflared.deb
-    dpkg -i /tmp/cloudflared.deb > /dev/null 2>&1
-    rm /tmp/cloudflared.deb
-fi
-
-# --- gh CLI ---
-if ! command -v gh &>/dev/null; then
-    log "installing GitHub CLI..."
-    DARCH=$(dpkg --print-architecture 2>/dev/null || echo amd64)
-    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
-    echo "deb [arch=${DARCH} signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
-    apt-get update -qq && apt-get install -y gh > /dev/null 2>&1
-fi
-
-# --- Chromium ---
-if ! command -v chromium-browser &>/dev/null && ! command -v chromium &>/dev/null; then
-    log "installing Chromium..."
-    apt-get install -y chromium-browser > /dev/null 2>&1 || \
-    apt-get install -y chromium > /dev/null 2>&1 || true
-fi
-
-# --- Create dirs ---
-mkdir -p "$INSTALL_DIR/bin" "$INSTALL_DIR/scripts" "$DATA_DIR"
-
-# --- Download binary ---
-log "downloading bolly binary..."
-RELEASE_JSON=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$API_URL")
-TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+RELEASE_JSON=$(curl -fsSL "$API_URL" 2>/dev/null) || fail "could not fetch release info"
+TAG=$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*: "//;s/".*//')
 
 if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
-    fail "could not find release"
+    fail "could not find a $CHANNEL release"
 fi
 
 ASSET_NAME="bolly-$TARGET"
-ASSET_API_URL=""
-if [ -n "$RELEASE_TOKEN" ]; then
-    ASSET_API_URL=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url" 2>/dev/null)
-fi
-if [ -n "$ASSET_API_URL" ] && [ "$ASSET_API_URL" != "null" ] && [ -n "$RELEASE_TOKEN" ]; then
-    curl -fsSL -L -H "$AUTH_HEADER" -H "Accept: application/octet-stream" "$ASSET_API_URL" -o "$BIN"
-else
-    curl -fsSL -L ${AUTH_HEADER:+-H "$AUTH_HEADER"} "https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME" -o "$BIN"
-fi
+DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME"
+
+mkdir -p "$BIN_DIR" "$DATA_DIR"
+
+info "downloading $TAG for $TARGET..."
+curl -fsSL -L "$DOWNLOAD_URL" -o "$BIN" || fail "download failed — check https://github.com/$REPO/releases"
 chmod +x "$BIN"
-echo "$TAG" > "$INSTALL_DIR/bin/.version"
-log "downloaded $TAG"
+echo "$TAG" > "$BIN_DIR/.version"
 
-# --- Create user ---
-if ! id "$USER" &>/dev/null; then
-    useradd -r -s /bin/bash -d "$DATA_DIR" "$USER"
+log "downloaded ${BOLD}$TAG${NC}"
+
+# ─── Config file ──────────────────────────────────────────────────────────────
+if [ ! -f "$DATA_DIR/config.toml" ]; then
+    step "creating config"
+    cat > "$DATA_DIR/config.toml" <<'CONF'
+host = "0.0.0.0"
+port = 8080
+auth_token = ""
+
+[llm]
+provider = "anthropic"
+model = "claude-sonnet-4-6"
+
+[llm.tokens]
+ANTHROPIC = ""       # Required — get key at https://console.anthropic.com
+GOOGLE_AI = ""       # Optional — embeddings + media analysis
+ELEVENLABS = ""      # Optional — text-to-speech
+CONF
+    log "created $DATA_DIR/config.toml"
+    warn "edit config.toml and add your Anthropic API key before starting"
+else
+    log "config already exists, skipping"
 fi
-chown -R "$USER:$USER" "$DATA_DIR"
 
-# --- Systemd service ---
-log "creating systemd service..."
-cat > /etc/systemd/system/$SERVICE.service <<EOF
+# ─── Update script ────────────────────────────────────────────────────────────
+cat > "$BIN_DIR/update" <<UPDATESCRIPT
+#!/bin/bash
+set -e
+REPO="$REPO"
+BIN="$BIN"
+CHANNEL="\${BOLLY_CHANNEL:-$CHANNEL}"
+TARGET="$TARGET"
+if [ "\$CHANNEL" = "nightly" ]; then
+    API_URL="https://api.github.com/repos/\$REPO/releases/tags/nightly"
+else
+    API_URL="https://api.github.com/repos/\$REPO/releases/latest"
+fi
+RELEASE_JSON=\$(curl -fsSL "\$API_URL")
+TAG=\$(echo "\$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*: "//;s/".*//')
+CURRENT=\$(cat "$BIN_DIR/.version" 2>/dev/null || echo "none")
+if [ "\$TAG" = "\$CURRENT" ]; then
+    echo "already at \$TAG"
+    exit 0
+fi
+echo "updating to \$TAG..."
+curl -fsSL -L "https://github.com/\$REPO/releases/download/\$TAG/bolly-\$TARGET" -o "\$BIN.tmp"
+chmod +x "\$BIN.tmp"
+mv "\$BIN.tmp" "\$BIN"
+echo "\$TAG" > "$BIN_DIR/.version"
+echo "updated to \$TAG — restart bolly to apply"
+UPDATESCRIPT
+chmod +x "$BIN_DIR/update"
+
+# ─── Platform-specific service ────────────────────────────────────────────────
+step "setting up service"
+
+if [ "$PLATFORM" = "linux" ]; then
+    # ── systemd ──
+    if command -v systemctl &>/dev/null && [ "$(id -u)" -eq 0 ]; then
+        SERVICE_FILE="/etc/systemd/system/bolly.service"
+        cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=Bolly AI Companion
 After=network.target
 
 [Service]
 Type=simple
-User=$USER
+User=$(whoami)
 WorkingDirectory=$DATA_DIR
 Environment=BOLLY_HOME=$DATA_DIR
-Environment=RUST_LOG=info,rig=warn
-Environment=CHROMIUM_PATH=/usr/bin/chromium-browser
-Environment=BOLLY_CHANNEL=$CHANNEL
-Environment=BOLLY_RELEASE_TOKEN=$RELEASE_TOKEN
+Environment=RUST_LOG=info
 ExecStart=$BIN
 Restart=always
-RestartSec=5
+RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
 EOF
+        systemctl daemon-reload
+        systemctl enable bolly >/dev/null 2>&1
+        log "systemd service created"
+        info "start:   sudo systemctl start bolly"
+        info "logs:    sudo journalctl -u bolly -f"
+    elif command -v systemctl &>/dev/null; then
+        # User-level systemd (no root)
+        SYSTEMD_DIR="$HOME/.config/systemd/user"
+        mkdir -p "$SYSTEMD_DIR"
+        cat > "$SYSTEMD_DIR/bolly.service" <<EOF
+[Unit]
+Description=Bolly AI Companion
+After=network.target
 
-systemctl daemon-reload
-systemctl enable $SERVICE
+[Service]
+Type=simple
+WorkingDirectory=$DATA_DIR
+Environment=BOLLY_HOME=$DATA_DIR
+Environment=RUST_LOG=info
+ExecStart=$BIN
+Restart=always
+RestartSec=3
 
-# --- Update script ---
-cat > "$INSTALL_DIR/bin/update" <<'UPDATESCRIPT'
-#!/bin/bash
-set -e
-REPO="triangle-int/bolly"
-BIN="/opt/bolly/bin/bolly"
-CHANNEL="${BOLLY_CHANNEL:-stable}"
-RELEASE_TOKEN="${BOLLY_RELEASE_TOKEN:-}"
-AUTH_HEADER=""
-if [ -n "$RELEASE_TOKEN" ]; then
-    AUTH_HEADER="Authorization: token $RELEASE_TOKEN"
-fi
-ARCH=$(uname -m)
-case "$ARCH" in
-    x86_64)  TARGET="x86_64-unknown-linux-gnu" ;;
-    aarch64) TARGET="aarch64-unknown-linux-gnu" ;;
-esac
-if [ "$CHANNEL" = "nightly" ]; then
-    API_URL="https://api.github.com/repos/$REPO/releases/tags/nightly"
-else
-    API_URL="https://api.github.com/repos/$REPO/releases/latest"
-fi
-RELEASE_JSON=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$API_URL")
-TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
-CURRENT=$(cat /opt/bolly/bin/.version 2>/dev/null || echo "none")
-if [ "$TAG" = "$CURRENT" ]; then
-    echo "already at $TAG"
-    exit 0
-fi
-echo "updating to $TAG..."
-ASSET_NAME="bolly-$TARGET"
-ASSET_API_URL=""
-if [ -n "$RELEASE_TOKEN" ]; then
-    ASSET_API_URL=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url" 2>/dev/null)
-fi
-if [ -n "$ASSET_API_URL" ] && [ "$ASSET_API_URL" != "null" ] && [ -n "$RELEASE_TOKEN" ]; then
-    curl -fsSL -L -H "$AUTH_HEADER" -H "Accept: application/octet-stream" "$ASSET_API_URL" -o "$BIN.tmp"
-else
-    curl -fsSL -L ${AUTH_HEADER:+-H "$AUTH_HEADER"} "https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME" -o "$BIN.tmp"
-fi
-chmod +x "$BIN.tmp"
-mv "$BIN.tmp" "$BIN"
-echo "$TAG" > /opt/bolly/bin/.version
-systemctl restart bolly
-echo "updated to $TAG and restarted"
-UPDATESCRIPT
-chmod +x "$INSTALL_DIR/bin/update"
+[Install]
+WantedBy=default.target
+EOF
+        systemctl --user daemon-reload
+        systemctl --user enable bolly >/dev/null 2>&1
+        log "user systemd service created"
+        info "start:   systemctl --user start bolly"
+        info "logs:    journalctl --user -u bolly -f"
+    else
+        log "no systemd found — run manually: $BIN"
+    fi
 
-# --- Done ---
-log "installation complete!"
+elif [ "$PLATFORM" = "macos" ]; then
+    # ── launchd ──
+    PLIST_DIR="$HOME/Library/LaunchAgents"
+    PLIST="$PLIST_DIR/dev.bollyai.bolly.plist"
+    mkdir -p "$PLIST_DIR"
+    cat > "$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.bollyai.bolly</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$BIN</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>$DATA_DIR</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>BOLLY_HOME</key>
+        <string>$DATA_DIR</string>
+        <key>RUST_LOG</key>
+        <string>info</string>
+    </dict>
+    <key>KeepAlive</key>
+    <true/>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>$BOLLY_DIR/bolly.log</string>
+    <key>StandardErrorPath</key>
+    <string>$BOLLY_DIR/bolly.log</string>
+</dict>
+</plist>
+EOF
+    log "launchd service created"
+    info "start:   launchctl load $PLIST"
+    info "stop:    launchctl unload $PLIST"
+    info "logs:    tail -f $BOLLY_DIR/bolly.log"
+fi
+
+# ─── Add to PATH ──────────────────────────────────────────────────────────────
+SHELL_NAME=$(basename "$SHELL" 2>/dev/null || echo "bash")
+RC_FILE="$HOME/.${SHELL_NAME}rc"
+
+if ! echo "$PATH" | grep -q "$BIN_DIR"; then
+    EXPORT_LINE="export PATH=\"$BIN_DIR:\$PATH\""
+    if [ -f "$RC_FILE" ] && ! grep -q "$BIN_DIR" "$RC_FILE"; then
+        echo "" >> "$RC_FILE"
+        echo "# bolly" >> "$RC_FILE"
+        echo "$EXPORT_LINE" >> "$RC_FILE"
+        log "added to PATH in $RC_FILE"
+    fi
+fi
+
+# ─── Done ─────────────────────────────────────────────────────────────────────
 echo ""
-dim "  binary:  $BIN"
-dim "  data:    $DATA_DIR"
-dim "  service: systemctl start $SERVICE"
-dim "  update:  /opt/bolly/bin/update"
-dim "  config:  $DATA_DIR/config.toml"
+echo -e "${BOLD}  ┌─────────────────────────────┐${NC}"
+echo -e "${BOLD}  │${NC}  ${GREEN}installation complete!${NC}      ${BOLD}│${NC}"
+echo -e "${BOLD}  └─────────────────────────────┘${NC}"
 echo ""
-log "start with: systemctl start $SERVICE"
-log "update with: /opt/bolly/bin/update"
+info "  binary:  $BIN"
+info "  data:    $DATA_DIR"
+info "  config:  $DATA_DIR/config.toml"
+info "  update:  $BIN_DIR/update"
+echo ""
+echo -e "  ${YELLOW}→${NC} Edit ${BOLD}$DATA_DIR/config.toml${NC} and add your Anthropic API key"
+echo -e "  ${YELLOW}→${NC} Then start bolly and visit ${CYAN}http://localhost:8080${NC}"
+echo ""
