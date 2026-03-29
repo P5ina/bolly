@@ -389,54 +389,9 @@ fn strip_context_blocks(msg: &Message) -> Message {
     }
 }
 
-pub fn merge_with_timestamps(
-    old: &[HistoryEntry],
-    new_messages: &[Message],
-    ts_fn: impl Fn() -> String,
-    id_fn: impl Fn() -> String,
-) -> Vec<HistoryEntry> {
-    // If the LLM returned fewer messages (compaction happened), don't match old entries —
-    // the structure changed and positions no longer correspond.
-    let can_match = new_messages.len() >= old.len();
-
-    new_messages.iter().enumerate().map(|(i, msg)| {
-        if can_match && i < old.len() {
-            // Check if the new message has MORE content blocks than the old one
-            // (e.g., tool_use was added during the agent loop). If so, use the new version.
-            let old_block_count = match &old[i].message {
-                Message::Assistant { content } => content.len(),
-                Message::User { content } => content.len(),
-            };
-            let new_block_count = match msg {
-                Message::Assistant { content } => content.len(),
-                Message::User { content } => content.len(),
-            };
-            if new_block_count > old_block_count {
-                // Message was updated (e.g., tool_use added) — use the new version
-                // but preserve the old timestamp and ID. Strip injected context.
-                HistoryEntry {
-                    message: strip_context_blocks(msg),
-                    ts: old[i].ts.clone(),
-                    id: old[i].id.clone(),
-                    mcp_app_html: old[i].mcp_app_html.clone(),
-                    mcp_app_input: old[i].mcp_app_input.clone(),
-                    model: old[i].model.clone(),
-                }
-            } else {
-                old[i].clone()
-            }
-        } else {
-            HistoryEntry {
-                message: strip_context_blocks(msg),
-                ts: Some(ts_fn()),
-                id: Some(id_fn()),
-                mcp_app_html: None,
-                mcp_app_input: None,
-                model: None,
-            }
-        }
-    }).collect()
-}
+// merge_with_timestamps removed — history is now append-only.
+// Each new message is appended to rig_history.json with a fresh ts/id.
+// No index-based matching, no overwriting of existing entries.
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type")]
@@ -942,15 +897,20 @@ async fn streaming_agent_loop(
             let content = execute_tool(tools, &tu.name, &tu.input).await;
             results.push(ContentBlock::tool_result(tu.id.clone(), content));
         }
-        messages.push(Message::User { content: results });
+        let tool_result_msg = Message::User { content: results };
+        messages.push(tool_result_msg.clone());
 
-        // Persist rig_history after each tool cycle so restarts don't lose context.
+        // Append new messages to rig_history (append-only, no merge).
         let rig_path = super::chat::rig_history_path(workspace_dir, instance_slug, chat_id);
-        let old_entries = super::chat::load_rig_history(&rig_path).unwrap_or_default();
-        let ts_fn = || super::tools::unix_millis().to_string();
-        let id_fn = || format!("tool_{}", super::tools::unix_millis());
-        let entries = merge_with_timestamps(&old_entries, messages, ts_fn, id_fn);
-        super::chat::save_rig_history(&rig_path, &entries);
+        let ts = super::tools::unix_millis().to_string();
+        // The assistant message (with tool_use) was pushed to messages a few lines above
+        let assistant_msg = &messages[messages.len() - 2]; // assistant before tool_result
+        super::chat::append_to_rig_history(&rig_path, &HistoryEntry::new(
+            strip_context_blocks(assistant_msg), ts.clone(), format!("tool_{}", super::tools::unix_millis()),
+        ));
+        super::chat::append_to_rig_history(&rig_path, &HistoryEntry::new(
+            strip_context_blocks(&tool_result_msg), ts, format!("tool_{}", super::tools::unix_millis()),
+        ));
 
         // Snapshot after each tool cycle — all clients converge to ground truth
         if let Ok(resp) = super::chat::load_messages(workspace_dir, instance_slug, chat_id) {
@@ -998,22 +958,24 @@ async fn streaming_agent_loop(
         }
     }
 
-    // Stamp model name on last assistant entry (done here, not post-hoc)
-    // (model name is stamped via HistoryEntry.model during merge_with_timestamps)
+    // Stamp model name on last assistant entry
 
-    // Final save of rig_history — single source of truth
+    // Final save: append the last assistant message to rig_history.
+    // Tool-cycle messages were already appended during the loop.
+    // Only the final response (no more tool_use) needs to be saved here.
     let rig_path = super::chat::rig_history_path(workspace_dir, instance_slug, chat_id);
-    let old_entries = super::chat::load_rig_history(&rig_path).unwrap_or_default();
-    let ts_fn = || super::tools::unix_millis().to_string();
-    let id_fn = || format!("msg_{}", super::tools::unix_millis());
-    let mut entries = merge_with_timestamps(&old_entries, messages, ts_fn, id_fn);
-
-    // Stamp model on last assistant entry
-    if let Some(last) = entries.iter_mut().rev().find(|e| matches!(e.message, Message::Assistant { .. })) {
-        last.model = Some(backend.model.clone());
+    if let Some(last_msg) = messages.last() {
+        if matches!(last_msg, Message::Assistant { .. }) {
+            let ts = super::tools::unix_millis().to_string();
+            let mut entry = HistoryEntry::new(
+                strip_context_blocks(last_msg),
+                ts,
+                format!("msg_{}", super::tools::unix_millis()),
+            );
+            entry.model = Some(backend.model.clone());
+            super::chat::append_to_rig_history(&rig_path, &entry);
+        }
     }
-
-    super::chat::save_rig_history(&rig_path, &entries);
 
     // Final snapshot so client converges to ground truth
     if let Ok(resp) = super::chat::load_messages(workspace_dir, instance_slug, chat_id) {
