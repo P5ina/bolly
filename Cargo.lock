@@ -875,7 +875,7 @@ dependencies = [
 
 [[package]]
 name = "bolly-desktop"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "base64 0.22.1",
  "dirs",
@@ -8021,7 +8021,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "anyhow",
  "arrow-array",
