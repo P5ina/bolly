@@ -1,12 +1,15 @@
-//! Qdrant vector store wrapper — manages collections, upserts, and similarity search.
+//! LanceDB vector store — embedded vector search for semantic memory.
 
 use std::path::Path;
+use std::sync::Arc;
 
-use qdrant_client::qdrant::{
-    Condition, CreateCollectionBuilder, DeletePointsBuilder, Distance, Filter, PointStruct,
-    SearchPointsBuilder, UpsertPointsBuilder, VectorParamsBuilder,
+use arrow_array::{
+    types::Float32Type, Array, FixedSizeListArray, Float32Array, Int32Array, Int64Array,
+    RecordBatch, StringArray,
 };
-use qdrant_client::Qdrant;
+use arrow_schema::{DataType, Field, Schema};
+use futures::TryStreamExt;
+use lancedb::query::{ExecutableQuery, QueryBase};
 use uuid::Uuid;
 
 use super::embedding;
@@ -18,7 +21,7 @@ const NS: Uuid = Uuid::from_bytes([
 ]);
 
 pub struct VectorStore {
-    client: Qdrant,
+    db: lancedb::Connection,
 }
 
 #[derive(Debug, Clone)]
@@ -30,85 +33,189 @@ pub struct VectorSearchResult {
     pub upload_id: Option<String>,
 }
 
-/// Extract a string field from Qdrant payload.
-fn payload_str(payload: &std::collections::HashMap<String, qdrant_client::qdrant::Value>, key: &str) -> String {
-    payload
-        .get(key)
-        .and_then(|v| match &v.kind {
-            Some(qdrant_client::qdrant::value::Kind::StringValue(s)) => Some(s.clone()),
-            _ => None,
+/// Arrow schema for memory vectors.
+fn table_schema() -> Arc<Schema> {
+    let dim = embedding::output_dim() as i32;
+    Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Utf8, false),
+        Field::new("source_type", DataType::Utf8, false),
+        Field::new("path", DataType::Utf8, false),
+        Field::new("chunk_index", DataType::Int32, false),
+        Field::new("content_preview", DataType::Utf8, false),
+        Field::new("timestamp", DataType::Int64, false),
+        Field::new("upload_id", DataType::Utf8, true),
+        Field::new(
+            "vector",
+            DataType::FixedSizeList(
+                Arc::new(Field::new("item", DataType::Float32, true)),
+                dim,
+            ),
+            false,
+        ),
+    ]))
+}
+
+fn table_name(slug: &str) -> String {
+    format!("memories_{slug}")
+}
+
+fn point_id(source_type: &str, path: &str, chunk_index: u32) -> String {
+    Uuid::new_v5(&NS, format!("{source_type}:{path}:{chunk_index}").as_bytes()).to_string()
+}
+
+/// Read a string column value from a RecordBatch.
+fn col_str(batch: &RecordBatch, col: &str, row: usize) -> String {
+    batch
+        .column_by_name(col)
+        .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+        .map(|a| {
+            if a.is_valid(row) {
+                a.value(row).to_string()
+            } else {
+                String::new()
+            }
         })
         .unwrap_or_default()
 }
 
-impl VectorStore {
-    /// Connect to Qdrant at the given gRPC URL. Panics if connection fails.
-    pub async fn connect(url: &str) -> Self {
-        let client = Qdrant::from_url(url)
-            .build()
-            .unwrap_or_else(|e| panic!("failed to build Qdrant client for {url}: {e}"));
+fn col_str_opt(batch: &RecordBatch, col: &str, row: usize) -> Option<String> {
+    batch
+        .column_by_name(col)
+        .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+        .and_then(|a| {
+            if a.is_valid(row) {
+                let s = a.value(row);
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s.to_string())
+                }
+            } else {
+                None
+            }
+        })
+}
 
-        client
-            .health_check()
-            .await
-            .unwrap_or_else(|e| panic!("Qdrant health check failed at {url}: {e}"));
-
-        log::info!("[vector] connected to Qdrant at {url}");
-        Self { client }
-    }
-
-    /// Collection name for an instance.
-    fn collection(instance_slug: &str) -> String {
-        format!("memories_{instance_slug}")
-    }
-
-    /// Deterministic point ID from (source_type, path, chunk_index).
-    fn point_id(source_type: &str, path: &str, chunk_index: u32) -> String {
-        let input = format!("{source_type}:{path}:{chunk_index}");
-        Uuid::new_v5(&NS, input.as_bytes()).to_string()
-    }
-
-    /// Drop and recreate the collection (reset all vectors).
-    pub async fn reset_collection(&self, instance_slug: &str) -> Result<(), String> {
-        let name = Self::collection(instance_slug);
-        let exists = self
-            .client
-            .collection_exists(&name)
-            .await
-            .map_err(|e| format!("qdrant collection_exists: {e}"))?;
-
-        if exists {
-            self.client
-                .delete_collection(&name)
-                .await
-                .map_err(|e| format!("qdrant delete_collection: {e}"))?;
-            log::info!("[vector] deleted collection {name}");
+fn extract_results(batches: &[RecordBatch], has_distance: bool) -> Vec<VectorSearchResult> {
+    let mut out = Vec::new();
+    for batch in batches {
+        for row in 0..batch.num_rows() {
+            let score = if has_distance {
+                let dist = batch
+                    .column_by_name("_distance")
+                    .and_then(|c| c.as_any().downcast_ref::<Float32Array>())
+                    .map(|a| a.value(row))
+                    .unwrap_or(1.0);
+                1.0 - dist // cosine distance -> similarity
+            } else {
+                0.0
+            };
+            out.push(VectorSearchResult {
+                path: col_str(batch, "path", row),
+                source_type: col_str(batch, "source_type", row),
+                content_preview: col_str(batch, "content_preview", row),
+                score,
+                upload_id: col_str_opt(batch, "upload_id", row),
+            });
         }
+    }
+    out
+}
 
+/// Build a RecordBatch for inserting into a memory table.
+fn make_batch(
+    ids: Vec<String>,
+    source_types: Vec<String>,
+    paths: Vec<String>,
+    chunk_indices: Vec<i32>,
+    previews: Vec<String>,
+    timestamps: Vec<i64>,
+    upload_ids: Vec<Option<String>>,
+    vectors: Vec<Vec<f32>>,
+) -> Result<RecordBatch, String> {
+    let dim = embedding::output_dim() as i32;
+    let vecs: Vec<Option<Vec<Option<f32>>>> = vectors
+        .into_iter()
+        .map(|v| Some(v.into_iter().map(Some).collect()))
+        .collect();
+    let uid_refs: Vec<Option<&str>> = upload_ids.iter().map(|o| o.as_deref()).collect();
+
+    RecordBatch::try_new(
+        table_schema(),
+        vec![
+            Arc::new(StringArray::from_iter_values(&ids)),
+            Arc::new(StringArray::from_iter_values(&source_types)),
+            Arc::new(StringArray::from_iter_values(&paths)),
+            Arc::new(Int32Array::from(chunk_indices)),
+            Arc::new(StringArray::from_iter_values(&previews)),
+            Arc::new(Int64Array::from(timestamps)),
+            Arc::new(StringArray::from(uid_refs)),
+            Arc::new(FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
+                vecs, dim,
+            )),
+        ],
+    )
+    .map_err(|e| format!("arrow batch: {e}"))
+}
+
+impl VectorStore {
+    /// Open (or create) a LanceDB database in the workspace directory.
+    pub async fn connect(data_dir: &Path) -> Self {
+        let db_path = data_dir.join("lancedb");
+        std::fs::create_dir_all(&db_path).ok();
+        let path_str = db_path.to_str().unwrap();
+        let db = lancedb::connect(path_str)
+            .execute()
+            .await
+            .unwrap_or_else(|e| panic!("failed to open LanceDB at {path_str}: {e}"));
+        log::info!("[vector] opened LanceDB at {path_str}");
+        Self { db }
+    }
+
+    async fn open_table(&self, name: &str) -> Result<lancedb::Table, String> {
+        self.db
+            .open_table(name)
+            .execute()
+            .await
+            .map_err(|e| format!("lancedb open_table: {e}"))
+    }
+
+    /// Drop and recreate the table (reset all vectors).
+    pub async fn reset_collection(&self, instance_slug: &str) -> Result<(), String> {
+        let name = table_name(instance_slug);
+        let tables = self
+            .db
+            .table_names()
+            .execute()
+            .await
+            .map_err(|e| format!("lancedb: {e}"))?;
+        if tables.contains(&name) {
+            self.db
+                .drop_table(&name, &Vec::<String>::new())
+                .await
+                .map_err(|e| format!("lancedb drop: {e}"))?;
+            log::info!("[vector] dropped table {name}");
+        }
         self.ensure_collection(instance_slug).await
     }
 
-    /// Ensure the collection exists, create if not.
+    /// Ensure the table exists, create if not.
     pub async fn ensure_collection(&self, instance_slug: &str) -> Result<(), String> {
-        let name = Self::collection(instance_slug);
-        let exists = self
-            .client
-            .collection_exists(&name)
+        let name = table_name(instance_slug);
+        let tables = self
+            .db
+            .table_names()
+            .execute()
             .await
-            .map_err(|e| format!("qdrant collection_exists: {e}"))?;
-
-        if !exists {
-            self.client
-                .create_collection(
-                    CreateCollectionBuilder::new(&name).vectors_config(
-                        VectorParamsBuilder::new(embedding::output_dim() as u64, Distance::Cosine),
-                    ),
-                )
+            .map_err(|e| format!("lancedb: {e}"))?;
+        if !tables.contains(&name) {
+            self.db
+                .create_empty_table(&name, table_schema())
+                .execute()
                 .await
-                .map_err(|e| format!("qdrant create_collection: {e}"))?;
-            log::info!("[vector] created collection {name}");
+                .map_err(|e| format!("lancedb create: {e}"))?;
+            log::info!("[vector] created table {name}");
         }
-
         Ok(())
     }
 
@@ -119,39 +226,47 @@ impl VectorStore {
         path: &str,
         chunks: Vec<(String, Vec<f32>)>,
     ) -> Result<(), String> {
-        let collection = Self::collection(instance_slug);
+        let table = self.open_table(&table_name(instance_slug)).await?;
 
-        // First delete any existing points for this path (in case chunk count changed)
-        self.delete_by_filter(&collection, "path", path).await?;
+        // Delete existing chunks for this path
+        let escaped = path.replace('\'', "''");
+        table
+            .delete(&format!("path = '{escaped}'"))
+            .await
+            .ok();
 
-        let points: Vec<PointStruct> = chunks
-            .into_iter()
-            .enumerate()
-            .map(|(i, (text, vector))| {
-                let preview: String = text.chars().take(500).collect();
-                PointStruct::new(
-                    Self::point_id("text_memory", path, i as u32),
-                    vector,
-                    [
-                        ("source_type", "text_memory".into()),
-                        ("path", path.into()),
-                        ("chunk_index", (i as i64).into()),
-                        ("content_preview", preview.into()),
-                        ("timestamp", chrono::Utc::now().timestamp_millis().into()),
-                    ],
-                )
-            })
-            .collect();
-
-        if points.is_empty() {
+        if chunks.is_empty() {
             return Ok(());
         }
 
-        self.client
-            .upsert_points(UpsertPointsBuilder::new(&collection, points))
-            .await
-            .map_err(|e| format!("qdrant upsert: {e}"))?;
+        let n = chunks.len();
+        let ts = chrono::Utc::now().timestamp_millis();
+        let mut ids = Vec::with_capacity(n);
+        let mut src = Vec::with_capacity(n);
+        let mut pths = Vec::with_capacity(n);
+        let mut cidx = Vec::with_capacity(n);
+        let mut prev = Vec::with_capacity(n);
+        let mut tss = Vec::with_capacity(n);
+        let mut uids: Vec<Option<String>> = Vec::with_capacity(n);
+        let mut vecs = Vec::with_capacity(n);
 
+        for (i, (text, vector)) in chunks.into_iter().enumerate() {
+            ids.push(point_id("text_memory", path, i as u32));
+            src.push("text_memory".to_string());
+            pths.push(path.to_string());
+            cidx.push(i as i32);
+            prev.push(text.chars().take(500).collect());
+            tss.push(ts);
+            uids.push(None);
+            vecs.push(vector);
+        }
+
+        let batch = make_batch(ids, src, pths, cidx, prev, tss, uids, vecs)?;
+        table
+            .add(vec![batch])
+            .execute()
+            .await
+            .map_err(|e| format!("lancedb add: {e}"))?;
         Ok(())
     }
 
@@ -161,41 +276,46 @@ impl VectorStore {
         instance_slug: &str,
         upload_id: &str,
         source_type: &str,
-        mime_type: &str,
-        original_name: &str,
+        _mime_type: &str,
+        _original_name: &str,
         content_preview: &str,
         vector: Vec<f32>,
     ) -> Result<(), String> {
-        let collection = Self::collection(instance_slug);
-        let preview: String = content_preview.chars().take(500).collect();
+        let table = self.open_table(&table_name(instance_slug)).await?;
 
-        let point = PointStruct::new(
-            Self::point_id(source_type, upload_id, 0),
-            vector,
-            [
-                ("source_type", source_type.into()),
-                ("path", upload_id.into()),
-                ("upload_id", upload_id.into()),
-                ("mime_type", mime_type.into()),
-                ("original_name", original_name.into()),
-                ("content_preview", preview.into()),
-                ("chunk_index", 0i64.into()),
-                ("timestamp", chrono::Utc::now().timestamp_millis().into()),
-            ],
-        );
-
-        self.client
-            .upsert_points(UpsertPointsBuilder::new(&collection, vec![point]))
+        let escaped = upload_id.replace('\'', "''");
+        table
+            .delete(&format!("path = '{escaped}'"))
             .await
-            .map_err(|e| format!("qdrant upsert media: {e}"))?;
+            .ok(); // might not exist yet
 
+        let batch = make_batch(
+            vec![point_id(source_type, upload_id, 0)],
+            vec![source_type.to_string()],
+            vec![upload_id.to_string()],
+            vec![0],
+            vec![content_preview.chars().take(500).collect()],
+            vec![chrono::Utc::now().timestamp_millis()],
+            vec![Some(upload_id.to_string())],
+            vec![vector],
+        )?;
+        table
+            .add(vec![batch])
+            .execute()
+            .await
+            .map_err(|e| format!("lancedb add: {e}"))?;
         Ok(())
     }
 
     /// Delete all points matching a path value.
     pub async fn delete_by_path(&self, instance_slug: &str, path: &str) -> Result<(), String> {
-        let collection = Self::collection(instance_slug);
-        self.delete_by_filter(&collection, "path", path).await
+        let table = self.open_table(&table_name(instance_slug)).await?;
+        let escaped = path.replace('\'', "''");
+        table
+            .delete(&format!("path = '{escaped}'"))
+            .await
+            .map(|_| ())
+            .map_err(|e| format!("lancedb delete: {e}"))
     }
 
     /// Search for similar vectors.
@@ -205,33 +325,26 @@ impl VectorStore {
         query_vector: Vec<f32>,
         limit: usize,
     ) -> Result<Vec<VectorSearchResult>, String> {
-        let collection = Self::collection(instance_slug);
+        let table = self.open_table(&table_name(instance_slug)).await?;
 
-        let results = self
-            .client
-            .search_points(
-                SearchPointsBuilder::new(&collection, query_vector, limit as u64)
-                    .with_payload(true),
-            )
+        let count = table.count_rows(None).await.unwrap_or(0);
+        if count == 0 {
+            return Ok(vec![]);
+        }
+
+        let batches = table
+            .vector_search(query_vector)
+            .map_err(|e| format!("lancedb search: {e}"))?
+            .distance_type(lancedb::DistanceType::Cosine)
+            .limit(limit)
+            .execute()
             .await
-            .map_err(|e| format!("qdrant search: {e}"))?;
+            .map_err(|e| format!("lancedb execute: {e}"))?
+            .try_collect::<Vec<RecordBatch>>()
+            .await
+            .map_err(|e| format!("lancedb collect: {e}"))?;
 
-        let out = results
-            .result
-            .into_iter()
-            .map(|point| {
-                let p = &point.payload;
-                VectorSearchResult {
-                    path: payload_str(p, "path"),
-                    source_type: payload_str(p, "source_type"),
-                    content_preview: payload_str(p, "content_preview"),
-                    score: point.score,
-                    upload_id: p.get("upload_id").and_then(|v| v.as_str().map(|s| s.to_string())),
-                }
-            })
-            .collect();
-
-        Ok(out)
+        Ok(extract_results(&batches, true))
     }
 
     /// List all points with metadata (for debugging).
@@ -240,40 +353,22 @@ impl VectorStore {
         instance_slug: &str,
         limit: usize,
     ) -> Result<Vec<VectorSearchResult>, String> {
-        let collection = Self::collection(instance_slug);
+        let table = self.open_table(&table_name(instance_slug)).await?;
 
-        // Use a zero vector to get all points sorted by... nothing useful,
-        // but it's the simplest way to scroll without pagination.
-        let results = self
-            .client
-            .search_points(
-                SearchPointsBuilder::new(
-                    &collection,
-                    vec![0.0; super::embedding::output_dim() as usize],
-                    limit as u64,
-                )
-                .with_payload(true),
-            )
+        let batches = table
+            .query()
+            .limit(limit)
+            .execute()
             .await
-            .map_err(|e| format!("qdrant list: {e}"))?;
+            .map_err(|e| format!("lancedb query: {e}"))?
+            .try_collect::<Vec<RecordBatch>>()
+            .await
+            .map_err(|e| format!("lancedb collect: {e}"))?;
 
-        Ok(results
-            .result
-            .into_iter()
-            .map(|point| {
-                let p = &point.payload;
-                VectorSearchResult {
-                    path: payload_str(p, "path"),
-                    source_type: payload_str(p, "source_type"),
-                    content_preview: payload_str(p, "content_preview"),
-                    score: point.score,
-                    upload_id: p.get("upload_id").and_then(|v| v.as_str().map(|s| s.to_string())),
-                }
-            })
-            .collect())
+        Ok(extract_results(&batches, false))
     }
 
-    /// Backfill all memories (text + media) into Qdrant.
+    /// Backfill all memories (text + media) into LanceDB.
     pub async fn backfill_text_memories(
         &self,
         workspace_dir: &Path,
@@ -294,17 +389,26 @@ impl VectorStore {
                 .join("memory")
                 .join(&entry.path);
 
-            let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-            let is_image = matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "webp" | "gif" | "svg");
-            let is_media = is_image || matches!(ext.as_str(), "pdf" | "mp4" | "mov" | "mp3" | "wav");
+            let ext = file_path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let is_image = matches!(
+                ext.as_str(),
+                "jpg" | "jpeg" | "png" | "webp" | "gif" | "svg"
+            );
+            let is_media =
+                is_image || matches!(ext.as_str(), "pdf" | "mp4" | "mov" | "mp3" | "wav");
 
             if is_media {
-                // Media file — embed with text+image (for images) or media (for others)
                 let bytes = match std::fs::read(&file_path) {
                     Ok(b) => b,
                     Err(_) => continue,
                 };
-                if bytes.len() > 20 * 1024 * 1024 { continue; }
+                if bytes.len() > 20 * 1024 * 1024 {
+                    continue;
+                }
 
                 let mime_type = match ext.as_str() {
                     "jpg" | "jpeg" => "image/jpeg",
@@ -320,10 +424,15 @@ impl VectorStore {
                     _ => "application/octet-stream",
                 };
 
-                let source_type = if is_image { "media_image" }
-                    else if mime_type.starts_with("video/") { "media_video" }
-                    else if mime_type.starts_with("audio/") { "media_audio" }
-                    else { "media_document" };
+                let source_type = if is_image {
+                    "media_image"
+                } else if mime_type.starts_with("video/") {
+                    "media_video"
+                } else if mime_type.starts_with("audio/") {
+                    "media_audio"
+                } else {
+                    "media_document"
+                };
 
                 let desc = &entry.path;
                 let embed_result = if is_image {
@@ -334,19 +443,31 @@ impl VectorStore {
 
                 match embed_result {
                     Ok(vec) => {
-                        if let Err(e) = self.upsert_media(
-                            instance_slug, &entry.path, source_type,
-                            mime_type, &entry.path, desc, vec,
-                        ).await {
-                            log::warn!("[vector] backfill media upsert failed for {}: {e}", entry.path);
+                        if let Err(e) = self
+                            .upsert_media(
+                                instance_slug,
+                                &entry.path,
+                                source_type,
+                                mime_type,
+                                &entry.path,
+                                desc,
+                                vec,
+                            )
+                            .await
+                        {
+                            log::warn!(
+                                "[vector] backfill media upsert failed for {}: {e}",
+                                entry.path
+                            );
                         }
                         count += 1;
                     }
-                    Err(e) => log::warn!("[vector] backfill media embed error for {}: {e}", entry.path),
+                    Err(e) => {
+                        log::warn!("[vector] backfill media embed error for {}: {e}", entry.path)
+                    }
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             } else {
-                // Text file — chunk and embed
                 let content = match std::fs::read_to_string(&file_path) {
                     Ok(c) => c,
                     Err(_) => continue,
@@ -381,24 +502,6 @@ impl VectorStore {
         }
 
         Ok(count)
-    }
-
-    // --- Internal ---
-
-    async fn delete_by_filter(
-        &self,
-        collection: &str,
-        field: &str,
-        value: &str,
-    ) -> Result<(), String> {
-        let filter = Filter::must([Condition::matches(field.to_string(), value.to_string())]);
-
-        self.client
-            .delete_points(DeletePointsBuilder::new(collection).points(filter))
-            .await
-            .map_err(|e| format!("qdrant delete: {e}"))?;
-
-        Ok(())
     }
 }
 

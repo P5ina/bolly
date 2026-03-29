@@ -27,8 +27,6 @@ pub struct Config {
     pub mcp_servers: Vec<McpServerConfig>,
     #[serde(default)]
     pub github: GithubConfig,
-    #[serde(default = "default_qdrant_url")]
-    pub qdrant_url: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -242,10 +240,6 @@ fn default_port() -> u16 {
     8080
 }
 
-fn default_qdrant_url() -> String {
-    "http://localhost:6334".into()
-}
-
 fn default_registry_url() -> String {
     "https://raw.githubusercontent.com/triangle-int/bolly-skills/main/registry.json".into()
 }
@@ -263,7 +257,6 @@ impl Default for Config {
             plan: String::new(),
             mcp_servers: Vec::new(),
             github: GithubConfig::default(),
-            qdrant_url: default_qdrant_url(),
         }
     }
 }
@@ -415,12 +408,6 @@ pub fn load_config() -> anyhow::Result<Config> {
             config.llm.tokens.google_ai = key;
         }
     }
-    if let Ok(url) = env::var("QDRANT_URL") {
-        if !url.is_empty() {
-            config.qdrant_url = url;
-        }
-    }
-
     // GitHub token override
     if let Ok(token) = env::var("GITHUB_TOKEN") {
         if !token.is_empty() {

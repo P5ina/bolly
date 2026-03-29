@@ -24,11 +24,6 @@ RUN apt-get update -qq && \
     # Google Chrome (for chrome-devtools MCP server)
     curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_$(dpkg --print-architecture).deb -o /tmp/chrome.deb && \
     apt-get install -y /tmp/chrome.deb && rm /tmp/chrome.deb && \
-    # Qdrant (vector search sidecar)
-    QDRANT_ARCH=$(dpkg --print-architecture | sed 's/amd64/x86_64/' | sed 's/arm64/aarch64/') && \
-    curl -fsSL "https://github.com/qdrant/qdrant/releases/latest/download/qdrant-${QDRANT_ARCH}-unknown-linux-gnu.tar.gz" -o /tmp/qdrant.tar.gz && \
-    tar -xzf /tmp/qdrant.tar.gz -C /usr/local/bin && \
-    rm /tmp/qdrant.tar.gz && \
     # Cleanup
     rm -rf /var/lib/apt/lists/* /tmp/*
 

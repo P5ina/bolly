@@ -74,12 +74,12 @@ async fn main() {
             google_ai_key.clone(),
         );
 
-        // Backfill existing memories into Qdrant (background, non-blocking)
+        // Backfill existing memories into LanceDB (background, non-blocking)
         let vs = state.vector_store.clone();
         let ws = state.workspace_dir.clone();
         let gai = google_ai_key;
         tokio::spawn(async move {
-            let marker = ws.join(".vectors_backfilled");
+            let marker = ws.join(".vectors_backfilled_lancedb");
             if marker.exists() {
                 return;
             }
