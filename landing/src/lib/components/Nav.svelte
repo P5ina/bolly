@@ -30,6 +30,7 @@
 			<li><a href="/#how" class="nav-link">How it works</a></li>
 			<li><a href="/#pricing" class="nav-link">Pricing</a></li>
 			<li><a href="/skills" class="nav-link">Skills</a></li>
+			<li><a href="/docs" class="nav-link">Docs</a></li>
 			<li><a href="https://github.com/triangle-int/bolly" target="_blank" rel="noopener" class="nav-link">GitHub</a></li>
 			<li><a href="/login" class="nav-link">Log in</a></li>
 			<li><a href="/signup" class="nav-cta">Get started</a></li>
@@ -54,6 +55,7 @@
 		<a href="/#how" onclick={closeMobile} class="mobile-link">How it works</a>
 		<a href="/#pricing" onclick={closeMobile} class="mobile-link">Pricing</a>
 		<a href="/skills" class="mobile-link">Skills</a>
+		<a href="/docs" class="mobile-link">Docs</a>
 		<a href="https://github.com/triangle-int/bolly" target="_blank" rel="noopener" class="mobile-link">GitHub</a>
 		<div class="mobile-divider"></div>
 		<a href="/login" class="mobile-link">Log in</a>
