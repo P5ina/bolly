@@ -2,6 +2,10 @@
 name = "server"
 version = "0.19.1"
 edition = "2024"
+description = "Bolly — AI companion server"
+authors = ["Triangle Interactive"]
+license = "MIT"
+repository = "https://github.com/triangle-int/bolly"
 
 [dependencies]
 axum = { version = "0.8", features = ["ws", "multipart"] }

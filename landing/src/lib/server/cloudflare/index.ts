@@ -1,6 +1,4 @@
-import { CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID } from '$env/static/private';
-
-const BOLLY_DOMAIN = 'bollyai.dev';
+import { CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID, BOLLY_DOMAIN } from '$env/static/private';
 
 const CF_API = 'https://api.cloudflare.com/client/v4';
 

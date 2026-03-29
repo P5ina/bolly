@@ -1,5 +1,5 @@
 import { Resend } from 'resend';
-import { ORIGIN, RESEND_API_KEY } from '$env/static/private';
+import { ORIGIN, RESEND_API_KEY, BOLLY_DOMAIN } from '$env/static/private';
 
 let _resend: Resend;
 
@@ -10,7 +10,7 @@ function resend(): Resend {
 	return _resend;
 }
 
-const FROM = 'Bolly <noreply@mail.bollyai.dev>';
+const FROM = `Bolly <noreply@mail.${BOLLY_DOMAIN}>`;
 
 export async function sendVerificationEmail(to: string, token: string) {
 	const verifyUrl = `${ORIGIN}/verify-email?token=${token}`;
