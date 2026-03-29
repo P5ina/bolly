@@ -5,6 +5,8 @@
 		applySoulTemplate,
 		fetchSoul,
 		setCompanionName,
+		fetchConfigStatus,
+		updateLlmConfig,
 	} from "$lib/api/client.js";
 	import type { SoulTemplate } from "$lib/api/types.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
@@ -36,8 +38,11 @@
 	let revealed = $state(false);
 	let firstMessage = $state("");
 	let companionNameInput = $state("");
+	let apiKeyInput = $state("");
+	let apiKeyError = $state("");
 	let messageInput: HTMLTextAreaElement | undefined = $state();
 	let nameInputEl: HTMLInputElement | undefined = $state();
+	let apiKeyInputEl: HTMLInputElement | undefined = $state();
 	let chosenLanguage = $state(
 		typeof localStorage !== "undefined" ? (localStorage.getItem("bolly:language") ?? "english") : "english",
 	);
@@ -137,7 +142,7 @@
 		} catch {}
 
 		if (hasSoul) {
-			await askFirstMessage();
+			await checkKeyThenAsk();
 		} else {
 			try { soulTemplates = await fetchSoulTemplates(); } catch { soulTemplates = []; }
 			if (soulTemplates.length > 0) {
@@ -161,7 +166,47 @@
 			await typewrite("a blank canvas. you can shape me later.");
 		}
 		await pause(400);
-		await askFirstMessage();
+		await checkKeyThenAsk();
+	}
+
+	async function checkKeyThenAsk() {
+		// Check if LLM is already configured (self-hosted users may have it in config.toml)
+		try {
+			const status = await fetchConfigStatus();
+			if (status.llm_configured) {
+				await askFirstMessage();
+				return;
+			}
+		} catch {}
+
+		// No key configured — ask for one
+		await typewrite("one more thing — i need an anthropic api key to think.");
+		stage = "waiting-key";
+		await pause(100);
+		apiKeyInputEl?.focus();
+	}
+
+	async function submitApiKey() {
+		const key = apiKeyInput.trim();
+		if (!key) return;
+		apiKeyError = "";
+		stage = "testing";
+
+		try {
+			await updateLlmConfig({ api_key: key });
+			stage = "intro";
+			await pause(200);
+			await typewrite("connected.");
+			await pause(400);
+			await askFirstMessage();
+		} catch (e) {
+			apiKeyError = e instanceof Error ? e.message : "invalid key";
+			stage = "waiting-key";
+		}
+	}
+
+	function handleKeyKeydown(e: KeyboardEvent) {
+		if (e.key === "Enter") { e.preventDefault(); submitApiKey(); }
 	}
 
 	async function askFirstMessage() {
@@ -257,6 +302,39 @@
 							</button>
 						{/each}
 					</div>
+				</div>
+			{/if}
+
+			{#if stage === "waiting-key"}
+				<div class="ob-enter">
+					<div class="ob-field">
+						<!-- svelte-ignore a11y_autofocus -->
+						<input
+							bind:this={apiKeyInputEl}
+							bind:value={apiKeyInput}
+							onkeydown={handleKeyKeydown}
+							placeholder="sk-ant-..."
+							class="ob-input ob-input-mono"
+							type="password"
+							autofocus
+						/>
+						{#if apiKeyInput.trim()}
+							<button onclick={submitApiKey} class="ob-go" aria-label="Submit">→</button>
+						{/if}
+					</div>
+					{#if apiKeyError}
+						<p class="ob-error">{apiKeyError}</p>
+					{/if}
+					<a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" class="ob-hint">
+						get your key at console.anthropic.com
+					</a>
+				</div>
+			{/if}
+
+			{#if stage === "testing"}
+				<div class="ob-enter ob-center">
+					<div class="ob-spinner"></div>
+					<span class="ob-spinner-label">connecting</span>
 				</div>
 			{/if}
 
@@ -486,6 +564,17 @@
 		text-align: center;
 	}
 	.ob-skip:hover { color: oklch(1 0 0 / 40%); }
+
+	.ob-hint {
+		display: block;
+		margin-top: 0.5rem;
+		font-size: 0.68rem;
+		color: oklch(0.65 0.08 240 / 40%);
+		text-decoration: none;
+		text-align: center;
+		transition: color 0.2s ease;
+	}
+	.ob-hint:hover { color: oklch(0.65 0.08 240 / 70%); }
 
 	/* ── Spinner ── */
 	.ob-spinner {
