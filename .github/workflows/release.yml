@@ -11,8 +11,36 @@ permissions:
   packages: write
 
 jobs:
-  # ── Server binaries (all platforms) ──
+  # ── Create empty draft release first (fast) ──
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect changelog
+        run: |
+          prev_tag=$(git tag --sort=-v:refname | sed -n '2p')
+          if [ -z "$prev_tag" ]; then
+            git log --oneline > /tmp/commits.txt
+          else
+            git log --oneline "${prev_tag}..HEAD" > /tmp/commits.txt
+          fi
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          body=$(cat /tmp/commits.txt | sed 's/^/- /')
+          gh release create "${{ github.ref_name }}" \
+            --title "Bolly ${{ github.ref_name }}" \
+            --notes "$body" \
+            --draft
+
+  # ── Server binaries (parallel with desktop) ──
   server:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -80,54 +108,16 @@ jobs:
         env:
           GIT_HASH: ${{ github.sha }}
 
-      - name: Prepare artifact
+      - name: Upload to release
         shell: bash
-        run: |
-          cp target/${{ matrix.target }}/release/server${{ matrix.ext }} ${{ matrix.artifact }}
-          chmod +x ${{ matrix.artifact }} 2>/dev/null || true
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: server-${{ matrix.target }}
-          path: ${{ matrix.artifact }}
-          retention-days: 1
-
-  # ── Create GitHub Release with all server binaries ──
-  create-release:
-    needs: server
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: server-*
-          merge-multiple: true
-
-      - name: Collect changelog
-        run: |
-          prev_tag=$(git tag --sort=-v:refname | sed -n '2p')
-          if [ -z "$prev_tag" ]; then
-            git log --oneline > /tmp/commits.txt
-          else
-            git log --oneline "${prev_tag}..HEAD" > /tmp/commits.txt
-          fi
-
-      - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          chmod +x bolly-* 2>/dev/null || true
-          body=$(cat /tmp/commits.txt | sed 's/^/- /')
-          gh release create "${{ github.ref_name }}" \
-            --title "Bolly ${{ github.ref_name }}" \
-            --notes "$body" \
-            --draft \
-            bolly-*
+          cp target/${{ matrix.target }}/release/server${{ matrix.ext }} ${{ matrix.artifact }}
+          chmod +x ${{ matrix.artifact }} 2>/dev/null || true
+          gh release upload "${{ github.ref_name }}" ${{ matrix.artifact }} --clobber
 
-  # ── Desktop apps (macOS, Windows, Linux) ──
+  # ── Desktop apps (parallel with server) ──
   desktop:
     needs: create-release
     strategy:
@@ -228,7 +218,7 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
-  # ── Docker image ──
+  # ── Docker image (parallel with everything) ──
   docker:
     runs-on: ubuntu-latest
     steps:
