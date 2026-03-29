@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/docs",
+      "destination": "https://triangleinteractivellc.mintlify.dev/docs"
+    },
+    {
+      "source": "/docs/:match*",
+      "destination": "https://triangleinteractivellc.mintlify.dev/docs/:match*"
+    }
+  ]
+}
