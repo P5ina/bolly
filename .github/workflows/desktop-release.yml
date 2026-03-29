@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'desktop-v*'
+      - 'v*'
 
 jobs:
   build:
@@ -75,8 +75,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: desktop
-          tagName: desktop-v__VERSION__
-          releaseName: 'Bolly Desktop v__VERSION__'
+          tagName: v__VERSION__
+          releaseName: 'Bolly v__VERSION__'
           releaseBody: |
             Download the appropriate installer for your platform:
             - **macOS Apple Silicon**: `.dmg` (aarch64)
