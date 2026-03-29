@@ -1,16 +1,68 @@
 # Bolly
 
-> A self-hosted AI companion platform — persistent memory, mood, creative output, and full system access. Runs as a single binary or managed SaaS.
+> An open-source AI companion — persistent memory, computer use, creative autonomy. Bring your own API key.
 
 ![Rust](https://img.shields.io/badge/rust-2024-orange?logo=rust)
 ![SvelteKit](https://img.shields.io/badge/sveltekit-5-red?logo=svelte)
-![License](https://img.shields.io/badge/license-proprietary-red)
+![Tauri](https://img.shields.io/badge/tauri-2-blue?logo=tauri)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+---
+
+## Quick Start
+
+### One-line install (Linux & macOS)
+
+```bash
+curl -fsSL https://bollyai.dev/install.sh | bash
+```
+
+This downloads the latest binary, creates a config file, and sets up a background service (systemd on Linux, launchd on macOS).
+
+Then edit `~/.bolly/data/config.toml` and add your Anthropic API key:
+
+```toml
+[llm.tokens]
+ANTHROPIC = "sk-ant-..."
+```
+
+Start and visit `http://localhost:8080`:
+
+```bash
+# Linux
+sudo systemctl start bolly
+
+# macOS
+launchctl load ~/Library/LaunchAgents/dev.bollyai.bolly.plist
+```
+
+### Docker
+
+```bash
+docker run -d \
+  --name bolly \
+  -p 8080:8080 \
+  -v bolly-data:/data \
+  -e BOLLY_HOME=/data \
+  --restart always \
+  ghcr.io/triangle-int/bolly:latest
+```
+
+### Desktop App
+
+Download from [Releases](https://github.com/triangle-int/bolly/releases) — available for macOS (Apple Silicon + Intel), Windows, and Linux.
+
+The desktop app can connect to:
+- **Cloud** — managed instances at bollyai.dev
+- **Self-hosted** — your own server (enter URL + auth token)
+
+Includes computer use support — bolly can see your screen, click, type, and run commands.
 
 ---
 
 ## What is Bolly?
 
-A companion that lives on your server, remembers everything, and acts on its own — writes to you first, generates ideas while you sleep, sends emails, browses the web, and manages projects. It has its own personality, mood, and creative energy.
+A companion that lives on your server, remembers everything, and acts on its own — writes to you first, generates ideas while you sleep, sends emails, browses the web, and manages projects. Fully BYOK — bring your own Anthropic API key, no rate limits.
 
 ---
 
@@ -18,24 +70,22 @@ A companion that lives on your server, remembers everything, and acts on its own
 
 ```
 server/     Rust (Axum) — single binary with embedded client
-client/     SvelteKit 5 — dark theme, oklch colors
-landing/    SvelteKit — marketing site, dashboard, Stripe billing (Vercel)
+client/     SvelteKit 5 — dark theme UI
+desktop/    Tauri 2 — native desktop app with computer use
+landing/    SvelteKit — marketing site + managed hosting dashboard
 ```
-
-### Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Server | Rust, Axum, Tokio (single binary via rust-embed) |
-| LLM | Anthropic (Claude), OpenAI, OpenRouter — smart model routing |
+| LLM | Anthropic Claude (BYOK) |
 | Frontend | SvelteKit 5, Tailwind CSS |
-| Memory | File-based library (BM25 search, LLM-driven extraction) |
-| Email | lettre (SMTP), async-imap (IMAP), Gmail (OAuth) |
+| Desktop | Tauri 2, computer use (screenshot, click, type, bash, files) |
+| Memory | File-based library + vector search (Google AI embeddings) |
+| Email | SMTP/IMAP + Gmail OAuth |
 | Calendar | Google Calendar API |
 | Storage | Google Drive API |
-| Browser | Headless Chromium (companion+ plans) |
-| Deploy | GitHub Releases (binary), Fly.io (managed), Docker |
-| Landing | SvelteKit, Drizzle ORM, PostgreSQL, Stripe |
+| Deploy | Binary, Docker, systemd, launchd |
 
 ### Data layout
 
@@ -48,24 +98,17 @@ Everything is a file. No black boxes.
     └── {slug}/
         ├── soul.md              personality definition
         ├── heartbeat.md         customizable heartbeat behavior
-        ├── autonomy.md          autonomous action rules
         ├── mood.json            emotional state
-        ├── instance.toml        per-instance config (github, etc.)
         ├── memory/              file-based memory library
         │   ├── about/           facts about the user
         │   ├── preferences/     user preferences
         │   └── moments/         shared experiences
-        ├── drops/               autonomous creative artifacts (JSON)
-        ├── stats/               daily usage stats (JSON)
+        ├── drops/               autonomous creative artifacts
         ├── uploads/             user-uploaded files
-        ├── skills/
-        │   └── {skill_id}/
-        │       ├── SKILL.md     skill definition
-        │       └── references/  bundled docs
+        ├── skills/              installed skills
         └── chats/
             └── {chat_id}/
-                ├── rig_history.json   unified message history
-                └── meta.json
+                └── rig_history.json   conversation history
 ```
 
 ---
@@ -73,126 +116,105 @@ Everything is a file. No black boxes.
 ## Features
 
 ### Memory
-- File-based memory library with BM25 search
+- File-based memory library with BM25 + vector search
 - LLM-driven memory extraction after each conversation
 - Organized by topic: `about/`, `preferences/`, `moments/`, `projects/`
-- Memory tools: `memory_write`, `memory_read`, `memory_search`, `memory_list`, `memory_forget`
+
+### Computer Use
+- Take screenshots, click, type, scroll on connected desktops
+- Run bash commands and manage files remotely
+- Multi-machine support — control multiple computers
+- Visual overlay when AI is controlling the screen
 
 ### Mood & Personality
-- `soul.md` — defines voice, personality, style (editable by the companion)
-- Mood system — shifts based on conversation (calm, focused, playful, loving, warm, reflective, curious, excited, melancholy)
-- Sentiment tracking on every message
+- `soul.md` — defines voice, personality, style
+- Mood system — shifts based on conversation
+- Editable by the companion itself
 
 ### Creative Output
 - **Drops** — autonomous creative artifacts during heartbeat cycles
 - Ideas, poems, observations, reflections, stories
-- Browsable gallery in the UI
 
-### Tools (46+)
+### Tools (50+)
 
 | Category | Tools |
 |----------|-------|
-| Files | `read_file`, `write_file`, `edit_file`, `list_files`, `search_code`, `explore_code` |
+| Files | `read_file`, `write_file`, `edit_file`, `list_files`, `explore_code` |
 | Shell | `run_command`, `interactive_session` |
-| Web | `web_search`, `web_fetch`, `browse` (headless Chromium), `view_image` |
-| Media | `watch_video`, `listen_music` |
-| Email | `send_email`, `read_email` (SMTP/IMAP + Gmail OAuth) |
-| Google | `list_events`, `create_event`, `list_drive_files`, `read_drive_file`, `upload_drive_file` |
-| Memory | `memory_write`, `memory_read`, `memory_search`, `memory_list`, `memory_forget` |
-| Self | `edit_soul`, `get_settings`, `update_config`, `clear_context` |
-| Creative | `create_drop`, `create_view`, `export_to_excalidraw` |
-| Project | `schedule_message`, `deep_research` |
-| GitHub | `github_clone`, `github_branch`, `github_commit_push`, `github_create_pr` (via `run_command`) |
-| Skills | `list_skills`, `activate_skill`, `read_skill_reference` |
-| Security | `request_secret` (masked input — never exposed in chat) |
-| Profile | `export_profile`, `import_profile` |
-| State | `save_checkpoint`, `read_checkpoint` |
+| Web | `web_search`, `web_fetch` (Anthropic native) |
+| Media | `watch_video`, `listen_music` (Google AI) |
+| Email | `send_email`, `read_email` |
+| Google | `list_events`, `create_event`, `list_drive_files`, `read_drive_file` |
+| Memory | `memory_write`, `memory_read`, `memory_search`, `memory_forget` |
+| Computer | `computer_use`, `remote_bash`, `remote_files`, `list_machines` |
+| Skills | `list_skills`, `activate_skill` |
+| MCP | Extensible via Model Context Protocol servers |
 
 ### Autonomy
 - **Heartbeat** — wakes every 45 minutes to reflect, update mood, create drops
 - **Scheduled messages** — can set reminders and reach out on its own
 - **Agent loop** — multi-turn tool use with auto-continuation
-- **Customizable** — `heartbeat.md` and `autonomy.md` control autonomous behavior
 
 ### Smart Model Routing
-- **Auto mode** — Haiku classifier decides per-message: fast (cheap) or heavy (powerful)
-- **Fast mode** — always use lightweight model (saves budget)
-- **Heavy mode** — always use powerful model (10x budget cost)
-- Switchable via settings UI or chat input toggle (A/F/H button)
-
-### Integrations
-- **Google** — Gmail, Calendar, Drive (OAuth)
-- **GitHub** — clone, branch, commit, PR (token-based)
-- **Email** — SMTP/IMAP accounts
-- **MCP** — extensible via Model Context Protocol servers
-- **Skills** — installable from [registry](https://github.com/triangle-int/bolly-skills)
+- **Auto** — classifier decides per-message: fast or heavy model
+- **Fast** — always lightweight (saves budget)
+- **Heavy** — always powerful
 
 ---
 
 ## Configuration
 
-Config lives at `~/.bolly/config.toml` (or `/data/config.toml` in Docker).
-
 ```toml
+# ~/.bolly/data/config.toml
+
 host = "0.0.0.0"
 port = 8080
-auth_token = ""
+auth_token = ""        # protect your API (leave empty for local)
 
 [llm]
-provider = "anthropic"    # or "openai", "openrouter"
+provider = "anthropic"
 model = "claude-sonnet-4-6"
-model_mode = "auto"       # "auto", "fast", "heavy"
 
 [llm.tokens]
-ANTHROPIC = "sk-ant-..."
-OPEN_AI = ""
-OPENROUTER = ""
-BRAVE_SEARCH = ""
+ANTHROPIC = ""         # Required — https://console.anthropic.com
+GOOGLE_AI = ""         # Optional — embeddings + media analysis
+ELEVENLABS = ""        # Optional — text-to-speech
 ```
 
 ### Environment variables
 
 | Variable | Description |
 |----------|-------------|
-| `BOLLY_HOME` | Workspace directory (default `~/.bolly`) |
+| `BOLLY_HOME` | Data directory (default `~/.bolly`) |
 | `BOLLY_AUTH_TOKEN` | Auth token override |
 | `BOLLY_PUBLIC_URL` | Public URL for the instance |
-| `BOLLY_LLM_PROVIDER` | LLM provider override |
-| `BOLLY_LLM_MODEL` | Model override |
-| `BOLLY_MODEL_MODE` | Model routing mode override |
 | `RUST_LOG` | Logging level (default `info`) |
 
 ---
 
-## Deployment
+## API Keys
 
-### Self-hosted (binary)
+Bolly is fully BYOK. You provide your own keys:
 
-```bash
-curl -sSL https://raw.githubusercontent.com/triangle-int/bolly/main/scripts/install.sh | bash
-```
+| Key | Purpose | Required |
+|-----|---------|----------|
+| **Anthropic** | Chat, reasoning, all tools | Yes |
+| **Google AI** | Vector memory search + video/audio analysis | No |
+| **ElevenLabs** | Text-to-speech voice | No |
 
-Creates a systemd service. Updates via settings UI.
+Add keys in `config.toml` or through Settings → API Keys in the UI.
 
-### Docker
-
-```bash
-docker run -d \
-  -p 8080:8080 \
-  -v bolly-data:/data \
-  -e BOLLY_HOME=/data \
-  ubuntu:24.04 /opt/bolly/scripts/entrypoint.sh
-```
-
-### Managed (bollyai.dev)
-
-Fully managed instances on Fly.io with persistent storage, automatic updates, and Stripe billing.
+MCP extensions (fal.ai, Brave Search, etc.) can be added in Settings → Extensions.
 
 ---
 
-## Auth
+## Updates
 
-Set `auth_token` in config.toml to require Bearer token auth. WebSocket and file URLs use `?token=` query parameter. Leave empty for local use.
+Bolly checks for updates automatically. Apply via Settings UI or manually:
+
+```bash
+~/.bolly/bin/update
+```
 
 ---
 
@@ -205,24 +227,39 @@ cd server && cargo run
 # Client (dev mode)
 cd client && pnpm install && pnpm dev
 
+# Desktop (Tauri)
+cd desktop && pnpm install && pnpm tauri dev
+
 # Landing
 cd landing && pnpm install && pnpm dev
 ```
 
-Use `pnpm` (not npm) for client and landing.
+Use `pnpm` (not npm) for client, landing, and desktop.
 
 ### Versioning
 
 ```bash
-./scripts/bump-version.sh 0.15.0
+./scripts/bump-version.sh 0.20.0
+git add -A && git commit -m "v0.20.0"
+git tag v0.20.0 && git push && git push origin v0.20.0
 ```
 
+One tag builds everything: server (Linux, macOS, Windows), desktop apps, Docker image.
+
 ---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
 ## License
 
-Copyright (c) 2026 Bolly. All rights reserved. See [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
 
 ---
 
-*Built by [Triangle Interactive](https://triangleint.com)*
+*Built by [Triangle Interactive LLC](https://triangleint.com)*
