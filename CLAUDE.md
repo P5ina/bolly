@@ -4,7 +4,7 @@
 
 Single source of truth: `VERSION` file in repo root.
 
-To bump version across all packages (server, client, landing):
+To bump version across all packages (server, client, landing, desktop):
 ```sh
 ./scripts/bump-version.sh 0.14.0
 ```
@@ -16,7 +16,7 @@ Or edit `VERSION` and run without args to sync:
 
 After bumping, commit all changed files, tag, and push:
 ```sh
-git add VERSION server/Cargo.toml Cargo.lock client/package.json landing/package.json
+git add -A
 git commit -m "Bump version to vX.Y.Z"
 git tag vX.Y.Z
 git push && git push origin vX.Y.Z

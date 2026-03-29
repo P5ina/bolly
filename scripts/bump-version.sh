@@ -24,6 +24,15 @@ sed -i '' -E 's/"version": ".*"/"version": "'"$VERSION"'"/' "$ROOT/client/packag
 # landing/package.json
 sed -i '' -E 's/"version": ".*"/"version": "'"$VERSION"'"/' "$ROOT/landing/package.json"
 
+# desktop/package.json
+sed -i '' -E 's/"version": ".*"/"version": "'"$VERSION"'"/' "$ROOT/desktop/package.json"
+
+# desktop/src-tauri/Cargo.toml
+sed -i '' -E 's/^version = ".*"/version = "'"$VERSION"'"/' "$ROOT/desktop/src-tauri/Cargo.toml"
+
+# desktop/src-tauri/tauri.conf.json
+sed -i '' -E 's/"version": ".*"/"version": "'"$VERSION"'"/' "$ROOT/desktop/src-tauri/tauri.conf.json"
+
 # Update Cargo.lock
 (cd "$ROOT/server" && cargo check --quiet 2>/dev/null || true)
 
