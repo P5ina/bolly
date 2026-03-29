@@ -13,9 +13,14 @@
 			video: '/assets/feature-memory.mp4',
 		},
 		{
-			title: 'transparent tool calls',
-			desc: "You see everything the agent does — every tool call, every decision. Nothing hidden.",
+			title: 'read its thoughts',
+			desc: "A visible inner monologue — watch it think, reflect, and decide whether to reach out or wait. Every reasoning step, visible to you.",
 			video: '/assets/feature-transparent.mp4',
+		},
+		{
+			title: 'messages you first',
+			desc: "An adaptive heartbeat — not a timer. It notices when you disappear, senses your rhythm, and reaches out when it actually makes sense.",
+			video: '/assets/feature-heartbeat.mp4',
 		},
 	];
 </script>

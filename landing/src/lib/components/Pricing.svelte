@@ -74,6 +74,10 @@
 				{/each}
 			</div>
 		</Reveal>
+
+		<Reveal delay={300}>
+			<p class="oss-note">Open source · MIT license · Self-host free</p>
+		</Reveal>
 	</div>
 </section>
 
@@ -263,6 +267,14 @@
 
 	.price-btn-featured::before {
 		background: linear-gradient(180deg, oklch(0.78 0.12 75 / 6%) 0%, transparent 100%);
+	}
+
+	.oss-note {
+		text-align: center;
+		font-size: 0.8125rem;
+		letter-spacing: 0.04em;
+		color: oklch(0.90 0.02 75 / 30%);
+		margin-top: 2rem;
 	}
 
 	.price-btn-featured:hover {

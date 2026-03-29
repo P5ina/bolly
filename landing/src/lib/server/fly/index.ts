@@ -1,4 +1,4 @@
-import { BOLLY_RELEASE_TOKEN, FLY_API_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ORIGIN } from '$env/static/private';
+import { FLY_API_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, ORIGIN } from '$env/static/private';
 
 const FLY_API = 'https://api.machines.dev/v1';
 const FLY_REGISTRY_APP = 'bolly';
@@ -9,7 +9,6 @@ const BOLLY_IMAGE = 'registry.fly.io/bolly:latest';
 /** Shared keys pushed to ALL machines. */
 export function sharedKeys(): Record<string, string> {
 	return {
-		BOLLY_RELEASE_TOKEN,
 		GOOGLE_CLIENT_ID,
 		GOOGLE_CLIENT_SECRET,
 		LANDING_URL: ORIGIN,

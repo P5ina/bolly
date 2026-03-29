@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
-import { STRIPE_COMPANION_BYOK_PRICE_ID, STRIPE_COMPANION_PRICE_ID, STRIPE_SECRET_KEY, STRIPE_STARTER_BYOK_PRICE_ID, STRIPE_STARTER_PRICE_ID, STRIPE_UNLIMITED_BYOK_PRICE_ID, STRIPE_UNLIMITED_PRICE_ID } from '$env/static/private';
+import { STRIPE_SECRET_KEY } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
 import { users } from '$lib/server/db/schema.js';
@@ -14,55 +15,20 @@ export function stripe(): Stripe {
 }
 
 export const PLANS = {
-	starter: {
-		name: 'Starter',
-		priceMonthly: 1200, // cents
-		storageLimit: 10240, // MB (10 GB)
-		cpus: 1,
-		memoryMb: 2048,
-		maxInstances: 1,
-		tokensPer4h: 100_000,
-		tokensPerMonth: 1_000_000,
-	},
 	companion: {
 		name: 'Companion',
-		priceMonthly: 2900,
+		priceMonthly: 1000, // cents ($10/mo BYOK)
 		storageLimit: 20480, // MB (20 GB)
 		cpus: 2,
 		memoryMb: 4096,
 		maxInstances: 3,
-		tokensPer4h: 7_000_000,
-		tokensPerMonth: 50_000_000,
-	},
-	unlimited: {
-		name: 'Real Friend',
-		priceMonthly: 5900,
-		storageLimit: 51200, // MB (50 GB)
-		cpus: 4,
-		memoryMb: 4096,
-		maxInstances: -1, // unlimited
-		tokensPer4h: 500_000,
-		tokensPerMonth: 10_000_000,
 	},
 } as const;
 
 export type PlanId = keyof typeof PLANS;
 
-export function priceIdForPlan(plan: PlanId, byok = false): string {
-	if (byok) {
-		const map: Record<PlanId, string> = {
-			starter: STRIPE_STARTER_BYOK_PRICE_ID,
-			companion: STRIPE_COMPANION_BYOK_PRICE_ID,
-			unlimited: STRIPE_UNLIMITED_BYOK_PRICE_ID,
-		};
-		return map[plan];
-	}
-	const map: Record<PlanId, string> = {
-		starter: STRIPE_STARTER_PRICE_ID,
-		companion: STRIPE_COMPANION_PRICE_ID,
-		unlimited: STRIPE_UNLIMITED_PRICE_ID,
-	};
-	return map[plan];
+export function priceIdForPlan(_plan: PlanId, _byok = false): string {
+	return env.STRIPE_COMPANION_BYOK_PRICE_ID ?? env.STRIPE_COMPANION_PRICE_ID ?? '';
 }
 
 /** Swap a subscription's price (e.g. normal → BYOK or back). */

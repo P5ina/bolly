@@ -4,6 +4,7 @@
 	import Demo from '$lib/components/Demo.svelte';
 	import Transition from '$lib/components/Transition.svelte';
 	import Features from '$lib/components/Features.svelte';
+	import ComputerUse from '$lib/components/ComputerUse.svelte';
 	import HowItWorks from '$lib/components/HowItWorks.svelte';
 	import Pricing from '$lib/components/Pricing.svelte';
 	import Cta from '$lib/components/Cta.svelte';
@@ -45,6 +46,7 @@
 	<Demo />
 	<Transition />
 	<Features />
+	<ComputerUse />
 	<HowItWorks />
 	<Pricing />
 	<Cta />
