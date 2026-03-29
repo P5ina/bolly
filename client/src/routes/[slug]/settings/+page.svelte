@@ -278,6 +278,12 @@
 	let usage = $state<Usage | null>(null);
 	$effect(() => { fetchUsage().then(u => usage = u).catch(() => {}); });
 
+	const apiKeyDefs = [
+		{ id: "api_key", name: "Anthropic", hint: "sk-ant-... (required for chat)", required: true, configKey: "anthropic" },
+		{ id: "google_ai", name: "Google AI", hint: "Memory search + video/audio analysis", required: false, configKey: "google_ai" },
+		{ id: "elevenlabs", name: "ElevenLabs", hint: "Text-to-speech voice", required: false, configKey: "elevenlabs" },
+	];
+
 	// Model mode + API keys state
 	let modelMode = $state("auto");
 	let modelModeSaving = $state(false);
@@ -699,12 +705,7 @@
 			</div>
 		</div>
 		<div class="keys-list">
-			{@const keys = [
-				{ id: "api_key", name: "Anthropic", hint: "sk-ant-... (required for chat)", required: true, configKey: "anthropic" },
-				{ id: "google_ai", name: "Google AI", hint: "Memory search + video/audio analysis", required: false, configKey: "google_ai" },
-				{ id: "elevenlabs", name: "ElevenLabs", hint: "Text-to-speech voice", required: false, configKey: "elevenlabs" },
-			]}
-			{#each keys as key (key.id)}
+			{#each apiKeyDefs as key (key.id)}
 				{@const configured = configuredKeys.includes(key.configKey)}
 				<div class="key-row">
 					<div class="key-info">
