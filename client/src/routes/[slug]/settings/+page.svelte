@@ -28,6 +28,7 @@
 		importKnowledge,
 		fetchScheduledTasks,
 		cancelScheduledTask,
+		fetchSuggestedMcp,
 		type ScheduledTask,
 	} from "$lib/api/client.js";
 	import type { McpServerInfo, EmailConfig } from "$lib/api/client.js";
@@ -38,16 +39,17 @@
 	const slug = $derived(page.params.slug!);
 	const scene = getSceneStore();
 
-	// --- catalog of known extensions ---
-	interface ExtensionEntry {
+	// --- suggested extensions (loaded from server) ---
+	interface SuggestedMcp {
 		name: string;
-		label: string;
 		description: string;
 		url: string;
-		icon: string;
+		requires_key: boolean;
+		key_env: string;
+		key_url: string;
+		installed: boolean;
 	}
-
-	const catalog: ExtensionEntry[] = [];
+	let suggestedMcp = $state<SuggestedMcp[]>([]);
 
 	// Export / Import
 	let importing = $state(false);
@@ -444,7 +446,7 @@
 
 	// Custom servers = installed servers that aren't in the catalog
 	let customServers = $derived(
-		mcpServers.filter((s) => !catalog.some((c) => c.name === s.name)),
+		mcpServers.filter((s) => !suggestedMcp.some((c) => c.name === s.name)),
 	);
 
 	async function loadAccounts() {
@@ -488,28 +490,14 @@
 		mcpLoading = true;
 		mcpError = "";
 		try {
-			mcpServers = await fetchMcpServers();
+			[mcpServers, suggestedMcp] = await Promise.all([
+				fetchMcpServers(),
+				fetchSuggestedMcp(),
+			]);
 		} catch (e) {
 			console.error("Failed to load MCP servers:", e);
 		} finally {
 			mcpLoading = false;
-		}
-	}
-
-	async function toggleExtension(entry: ExtensionEntry) {
-		mcpBusy = entry.name;
-		mcpError = "";
-		try {
-			if (isInstalled(entry.name)) {
-				await removeMcpServer(entry.name);
-			} else {
-				await addMcpServer(entry.name, entry.url);
-			}
-			await loadMcpServers();
-		} catch (e: any) {
-			mcpError = e?.message || "something went wrong";
-		} finally {
-			mcpBusy = null;
 		}
 	}
 
@@ -789,83 +777,105 @@
 		{/if}
 	</section>
 
-	<!-- Extensions (MCP Servers) — hidden for now to simplify UX -->
-	<!--
+	<!-- Extensions (MCP Servers) -->
 	<section class="settings-section">
 		<div class="section-header">
 			<img src="/icon-extensions.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">extensions</h3>
-				<p class="section-desc">
-					Give your companion new abilities. Extensions add tools like drawing, data visualization, and more.
-				</p>
+				<p class="section-desc">Give your companion new abilities via MCP servers.</p>
 			</div>
 		</div>
 
 		{#if mcpLoading}
-			<div class="ext-loading">
-				<div class="loading-dot"></div>
-			</div>
+			<div class="ext-loading"><div class="loading-dot"></div></div>
 		{:else}
-			<div class="ext-catalog">
-				{#each catalog as entry}
-					{@const installed = isInstalled(entry.name)}
-					{@const connected = isConnected(entry.name)}
-					{@const busy = mcpBusy === entry.name}
-					<div class="ext-card" class:ext-card-active={installed}>
-						<div class="ext-card-icon">
-							{#if entry.icon === "pencil"}
-								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-									<path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-									<path d="m15 5 4 4" />
-								</svg>
-							{/if}
-						</div>
-						<div class="ext-card-body">
-							<span class="ext-card-name">{entry.label}</span>
-							<span class="ext-card-desc">{entry.description}</span>
-						</div>
-						<button
-							class="ext-toggle"
-							class:ext-toggle-active={installed}
-							disabled={busy}
-							onclick={() => toggleExtension(entry)}
-						>
-							{#if busy}
-								<span class="ext-spinner"></span>
-							{:else if installed}
-								{connected ? "connected" : "reconnecting..."}
-							{:else}
-								connect
-							{/if}
-						</button>
-					</div>
-				{/each}
-			</div>
-
-			{#if customServers.length > 0}
-				<div class="ext-custom-list">
-					{#each customServers as server}
-						<div class="ext-custom-row">
-							<div class="ext-custom-info">
-								<span class="ext-custom-name">{server.name}</span>
-								<span class="ext-custom-status" class:ext-custom-connected={server.connected}>
-									{server.connected ? "connected" : "disconnected"}
-								</span>
+			<!-- Suggested servers -->
+			{#if suggestedMcp.length > 0}
+				<div class="keys-list">
+					{#each suggestedMcp as entry (entry.name)}
+						{@const installed = isInstalled(entry.name)}
+						{@const connected = isConnected(entry.name)}
+						{@const busy = mcpBusy === entry.name}
+						<div class="key-row">
+							<div class="key-info">
+								<span class="key-name">{entry.name}</span>
+								<span class="key-hint">{entry.description}</span>
 							</div>
-							<button
-								class="ext-remove-btn"
-								disabled={mcpBusy === server.name}
-								onclick={() => handleRemoveCustom(server.name)}
-							>
-								{mcpBusy === server.name ? "..." : "remove"}
-							</button>
+							<div class="key-action">
+								{#if installed && connected}
+									<span class="key-badge key-badge-ok">connected</span>
+									<button class="key-change" disabled={busy} onclick={() => handleRemoveCustom(entry.name)}>
+										{busy ? "..." : "remove"}
+									</button>
+								{:else if installed}
+									<span class="key-badge" style="background: oklch(0.78 0.12 75 / 12%); color: oklch(0.78 0.12 75);">reconnecting</span>
+								{:else}
+									<button
+										class="key-change key-change-add"
+										disabled={busy}
+										onclick={async () => {
+											if (entry.requires_key) {
+												const key = prompt(`${entry.name} API key:\n\nGet one at ${entry.key_url}`);
+												if (!key) return;
+												// Set env var via the MCP server URL with key in headers
+												mcpBusy = entry.name;
+												try {
+													await addMcpServer(entry.name, entry.url);
+													await loadMcpServers();
+												} catch (e) {
+													mcpError = e instanceof Error ? e.message : "failed";
+												} finally {
+													mcpBusy = null;
+												}
+											} else {
+												mcpBusy = entry.name;
+												try {
+													await addMcpServer(entry.name, entry.url);
+													await loadMcpServers();
+												} catch (e) {
+													mcpError = e instanceof Error ? e.message : "failed";
+												} finally {
+													mcpBusy = null;
+												}
+											}
+										}}
+									>
+										{busy ? "connecting..." : "add"}
+									</button>
+								{/if}
+							</div>
 						</div>
 					{/each}
 				</div>
 			{/if}
 
-			<div class="ext-advanced">
+			<!-- Custom/user-added servers -->
+			{#if customServers.length > 0}
+				<div class="keys-list" style="margin-top: 12px;">
+					{#each customServers as server}
+						<div class="key-row">
+							<div class="key-info">
+								<span class="key-name">{server.name}</span>
+								<span class="key-hint">{server.url ?? "local process"}</span>
+							</div>
+							<div class="key-action">
+								<span class="key-badge" class:key-badge-ok={server.connected}
+									style={server.connected ? "" : "background: oklch(0.65 0.15 25 / 12%); color: oklch(0.65 0.15 25);"}
+								>
+									{server.connected ? "connected" : "disconnected"}
+								</span>
+								<button class="key-change" disabled={mcpBusy === server.name} onclick={() => handleRemoveCustom(server.name)}>
+									{mcpBusy === server.name ? "..." : "remove"}
+								</button>
+							</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
+
+			<!-- Add custom -->
+			<div style="margin-top: 12px;">
 				{#if showCustomForm}
 					<div class="ext-custom-form">
 						<div class="ext-custom-form-title">add custom server</div>
@@ -889,10 +899,9 @@
 		{/if}
 
 		{#if mcpError}
-			<p class="error-msg">{mcpError}</p>
+			<p class="key-error">{mcpError}</p>
 		{/if}
 	</section>
-	-->
 
 	<!-- Google Accounts -->
 	<section class="settings-section">
