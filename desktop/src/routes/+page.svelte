@@ -3,12 +3,20 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { auth, init, setSession, logout, connectUrl, type Tenant } from "$lib/auth.svelte";
+  import {
+    auth, init, setSession, logout, connectUrl, connectSelfHosted,
+    selfHostedConnectUrl, type Tenant, type SelfHostedConfig,
+  } from "$lib/auth.svelte";
 
   const AUTH_URL = "https://bollyai.dev/desktop-auth";
 
   let splash = $state(true);
   let splashFading = $state(false);
+  let mode = $state<"cloud" | "selfhosted">("cloud");
+
+  // Self-hosted form
+  let shUrl = $state("");
+  let shToken = $state("");
 
   onMount(() => {
     init();
@@ -47,13 +55,29 @@
   }
 
   async function connect(tenant: Tenant) {
-    // Start computer-use bridge before navigating (JS context is lost after navigate)
     const instanceUrl = `https://${tenant.slug}.bollyai.dev`;
     await invoke("connect_computer_use", {
       instanceUrl,
       authToken: tenant.authToken ?? "",
     });
     invoke("navigate", { url: connectUrl(tenant) });
+  }
+
+  async function connectSH() {
+    if (!shUrl.trim() || !shToken.trim()) return;
+    await connectSelfHosted(shUrl.trim(), shToken.trim());
+  }
+
+  async function openSelfHosted(config: SelfHostedConfig) {
+    await invoke("connect_computer_use", {
+      instanceUrl: config.url,
+      authToken: config.token,
+    });
+    invoke("navigate", { url: selfHostedConnectUrl(config) });
+  }
+
+  function handleSHKey(e: KeyboardEvent) {
+    if (e.key === "Enter") { e.preventDefault(); connectSH(); }
   }
 
   function statusColor(status: string): string {
@@ -98,8 +122,8 @@
         <img src="/icon.png" alt="" class="logo" />
         <span class="brand-name">bolly</span>
       </div>
-      {#if auth.session}
-        <button class="sign-out-btn" onclick={logout}>Sign out</button>
+      {#if auth.session || auth.selfHosted}
+        <button class="sign-out-btn" onclick={logout}>Disconnect</button>
       {/if}
     </header>
 
@@ -108,30 +132,68 @@
         <div class="center-message">
           <div class="spinner"></div>
         </div>
-      {:else if !auth.session && !splash}
+      {:else if auth.selfHosted && !splash}
+        <!-- Self-hosted: connected -->
+        <div class="sign-in-card">
+          <h2 class="sign-in-title">self-hosted instance</h2>
+          <p class="sign-in-desc">{auth.selfHosted.url}</p>
+          <button class="sign-in-btn" onclick={() => openSelfHosted(auth.selfHosted!)}>
+            Open
+          </button>
+        </div>
+      {:else if !auth.session && !auth.selfHosted && !splash}
         <div class="sign-in-card">
           <h2 class="sign-in-title">connect to your companion</h2>
-          <p class="sign-in-desc">Sign in with your bollyai.dev account to see your instances.</p>
-          <button class="sign-in-btn" onclick={signIn}>
-            Sign in with bollyai.dev
-          </button>
-          {#if !showPaste}
-            <button class="paste-toggle" onclick={() => showPaste = true}>
-              or paste a code
+
+          <!-- Mode tabs -->
+          <div class="mode-tabs">
+            <button class="mode-tab" class:mode-tab-active={mode === "cloud"} onclick={() => mode = "cloud"}>Cloud</button>
+            <button class="mode-tab" class:mode-tab-active={mode === "selfhosted"} onclick={() => mode = "selfhosted"}>Self-hosted</button>
+          </div>
+
+          {#if mode === "cloud"}
+            <p class="sign-in-desc">Sign in with your bollyai.dev account.</p>
+            <button class="sign-in-btn" onclick={signIn}>
+              Sign in with bollyai.dev
             </button>
+            {#if !showPaste}
+              <button class="paste-toggle" onclick={() => showPaste = true}>
+                or paste a code
+              </button>
+            {:else}
+              <div class="paste-field">
+                <!-- svelte-ignore a11y_autofocus -->
+                <input
+                  class="paste-input"
+                  bind:value={pasteValue}
+                  onkeydown={handleCodeKey}
+                  placeholder="Paste session code..."
+                  autofocus
+                />
+                {#if pasteValue.trim()}
+                  <button class="paste-go" onclick={submitCode}>Connect</button>
+                {/if}
+              </div>
+            {/if}
           {:else}
-            <div class="paste-field">
-              <!-- svelte-ignore a11y_autofocus -->
+            <p class="sign-in-desc">Connect to your own bolly server.</p>
+            <div class="sh-form">
               <input
                 class="paste-input"
-                bind:value={pasteValue}
-                onkeydown={handleCodeKey}
-                placeholder="Paste session code..."
-                autofocus
+                bind:value={shUrl}
+                onkeydown={handleSHKey}
+                placeholder="Server URL (e.g. http://localhost:3000)"
               />
-              {#if pasteValue.trim()}
-                <button class="paste-go" onclick={submitCode}>Connect</button>
-              {/if}
+              <input
+                class="paste-input"
+                bind:value={shToken}
+                onkeydown={handleSHKey}
+                placeholder="Auth token (from config.toml)"
+                type="password"
+              />
+              <button class="sign-in-btn" onclick={connectSH} disabled={!shUrl.trim() || !shToken.trim()}>
+                Connect
+              </button>
             </div>
           {/if}
         </div>
@@ -358,10 +420,48 @@
     transition: all 0.3s ease;
   }
 
-  .sign-in-btn:hover {
+  .sign-in-btn:hover:not(:disabled) {
     background: oklch(0.78 0.12 75 / 16%);
     border-color: oklch(0.78 0.12 75 / 30%);
     box-shadow: 0 0 40px oklch(0.78 0.12 75 / 8%);
+  }
+
+  .sign-in-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .mode-tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 16px;
+    background: oklch(1 0 0 / 4%);
+    border-radius: 8px;
+    padding: 2px;
+  }
+
+  .mode-tab {
+    flex: 1;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .mode-tab-active {
+    background: oklch(1 0 0 / 8%);
+    color: var(--foreground);
+  }
+
+  .sh-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
 
   .paste-toggle {
