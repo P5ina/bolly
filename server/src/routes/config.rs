@@ -15,6 +15,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/config/llm", put(update_llm_key))
         .route("/api/config/mcp", get(list_mcp_servers))
         .route("/api/config/mcp", post(add_mcp_server))
+        .route("/api/config/mcp/suggested", get(suggested_mcp_servers))
         .route("/api/config/mcp/{name}", delete(remove_mcp_server))
         .route("/api/config/github", get(get_github))
         .route("/api/config/github", put(update_github))
@@ -156,6 +157,53 @@ async fn list_mcp_servers(State(state): State<AppState>) -> Json<Vec<McpServerIn
         })
         .collect();
     Json(servers)
+}
+
+/// Curated list of popular MCP servers users can add with one click.
+async fn suggested_mcp_servers(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let config = state.config.read().await;
+    let installed: Vec<String> = config.mcp_servers.iter().map(|s| s.name.clone()).collect();
+
+    let suggested = serde_json::json!([
+        {
+            "name": "fal-ai",
+            "description": "AI image & video generation (Flux, SDXL, etc.)",
+            "url": "https://mcp.fal.ai/mcp",
+            "requires_key": true,
+            "key_env": "FAL_KEY",
+            "key_url": "https://fal.ai/dashboard/keys",
+            "installed": installed.contains(&"fal-ai".to_string()),
+        },
+        {
+            "name": "brave-search",
+            "description": "Web search via Brave Search API",
+            "url": "https://mcp.bravesearch.com/sse",
+            "requires_key": true,
+            "key_env": "BRAVE_API_KEY",
+            "key_url": "https://brave.com/search/api/",
+            "installed": installed.contains(&"brave-search".to_string()),
+        },
+        {
+            "name": "github",
+            "description": "GitHub repos, issues, PRs, code search",
+            "url": "https://api.githubcopilot.com/mcp/",
+            "requires_key": true,
+            "key_env": "GITHUB_TOKEN",
+            "key_url": "https://github.com/settings/tokens",
+            "installed": installed.contains(&"github".to_string()),
+        },
+        {
+            "name": "firecrawl",
+            "description": "Web scraping and crawling",
+            "url": "https://mcp.firecrawl.dev/sse",
+            "requires_key": true,
+            "key_env": "FIRECRAWL_API_KEY",
+            "key_url": "https://firecrawl.dev",
+            "installed": installed.contains(&"firecrawl".to_string()),
+        },
+    ]);
+
+    Json(suggested)
 }
 
 #[derive(Deserialize)]

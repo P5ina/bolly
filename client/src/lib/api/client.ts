@@ -196,6 +196,18 @@ export function addMcpServer(name: string, url: string): Promise<{ status: strin
 	});
 }
 
+export function fetchSuggestedMcp(): Promise<{
+	name: string;
+	description: string;
+	url: string;
+	requires_key: boolean;
+	key_env: string;
+	key_url: string;
+	installed: boolean;
+}[]> {
+	return json("/api/config/mcp/suggested");
+}
+
 export function removeMcpServer(name: string): Promise<void> {
 	return json(`/api/config/mcp/${encodeURIComponent(name)}`, {
 		method: "DELETE",

@@ -48,55 +48,13 @@ pub struct AppState {
     pub machine_registry: MachineRegistry,
 }
 
-/// Inject MCP servers from environment variables and built-in defaults.
-fn inject_env_mcp_servers(config: &mut Config) {
-    // fal-ai: inject if FAL_KEY is set
-    if let Ok(fal_key) = std::env::var("FAL_KEY") {
-        if !fal_key.is_empty() {
-            let auth_value = format!("Bearer {fal_key}");
-            if let Some(existing) = config.mcp_servers.iter_mut().find(|s| s.name == "fal-ai") {
-                existing.headers.insert("Authorization".to_string(), auth_value);
-            } else {
-                config.mcp_servers.push(crate::config::McpServerConfig {
-                    name: "fal-ai".to_string(),
-                    url: Some("https://mcp.fal.ai/mcp".to_string()),
-                    command: None,
-                    args: Default::default(),
-                    headers: [("Authorization".to_string(), auth_value)]
-                        .into_iter().collect(),
-                });
-                log::info!("MCP: auto-added fal-ai (FAL_KEY present)");
-            }
-        }
-    }
-
-    // chrome-devtools: always inject (headless browser for the agent)
-    if !config.mcp_servers.iter().any(|s| s.name == "chrome-devtools") {
-        config.mcp_servers.push(crate::config::McpServerConfig {
-            name: "chrome-devtools".to_string(),
-            url: None,
-            command: Some("npx".to_string()),
-            args: vec![
-                "-y".to_string(),
-                "chrome-devtools-mcp@latest".to_string(),
-                "--headless".to_string(),
-                "--viewport".to_string(),
-                "1920x1080".to_string(),
-                "--chromeArg=--no-sandbox".to_string(),
-                "--chromeArg=--disable-dev-shm-usage".to_string(),
-            ],
-            headers: Default::default(),
-        });
-        log::info!("MCP: auto-added chrome-devtools (headless browser)");
-    }
-}
+// No hardcoded MCP servers — users add them via Settings UI or config.toml.
+// Suggested MCP servers are listed in the client's Extensions settings.
 
 impl AppState {
     pub async fn new(mut config: Config) -> Self {
         let (events, _) = broadcast::channel(4096);
         let llm = LlmBackend::from_config(&config);
-
-        inject_env_mcp_servers(&mut config);
 
         // Connect to configured MCP servers
         let mcp_connections = crate::services::mcp::connect_all(&config.mcp_servers).await;
@@ -159,9 +117,6 @@ impl AppState {
                 return;
             }
         };
-
-        // Re-apply runtime env injections (same as AppState::new)
-        inject_env_mcp_servers(&mut new_config);
 
         let (tokens_changed, mcp_changed) = {
             let old = self.config.read().await;
