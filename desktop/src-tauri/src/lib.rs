@@ -83,6 +83,25 @@ pub fn run() {
             permissions::open_permission_settings,
         ])
         .setup(|app| {
+            // Single instance must be registered first in setup
+            #[cfg(desktop)]
+            {
+                let handle = app.handle().clone();
+                app.handle().plugin(
+                    tauri_plugin_single_instance::init(move |_app, argv, _cwd| {
+                        // Focus existing window
+                        if let Some(win) = handle.get_webview_window("main") {
+                            win.set_focus().ok();
+                        }
+                        // Forward deep link URL
+                        for arg in &argv {
+                            if arg.starts_with("bolly://") {
+                                handle.emit("deep-link", arg.clone()).ok();
+                            }
+                        }
+                    }),
+                )?;
+            }
             let about = AboutMetadataBuilder::new()
                 .name(Some("Bolly"))
                 .version(Some(env!("CARGO_PKG_VERSION")))
