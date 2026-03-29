@@ -497,9 +497,7 @@ pub fn build_tools(
     }
 
     // ── Machine management ──
-    if std::env::var("FLY_MACHINE_ID").is_ok() {
-        tools.push(wrap(Box::new(RestartMachineTool)));
-    }
+    tools.push(wrap(Box::new(RestartMachineTool)));
 
     // ── Skills ──
     tools.push(wrap(Box::new(ListSkillsTool::new(workspace_dir, &llm.api_key))));

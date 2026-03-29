@@ -1970,7 +1970,7 @@ impl Tool for RequestSecretTool {
 }
 
 // ---------------------------------------------------------------------------
-// restart_machine — restart the Fly.io machine via internal API
+// restart_machine — universal restart (works on Fly.io, Docker, systemd, etc.)
 // ---------------------------------------------------------------------------
 
 pub struct RestartMachineTool;
@@ -1990,39 +1990,43 @@ impl Tool for RestartMachineTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "restart_machine".into(),
-            description: "Restart the Fly.io machine (full container restart). \
-                Use when the environment is broken (I/O errors, Bus errors on system commands) \
+            description: "Restart the server process. Works on any platform — \
+                Fly.io, Docker (with restart policy), systemd, etc. \
+                Use when the environment is broken, MCP servers are stuck, \
                 or after an update that needs a clean restart.".into(),
             parameters: openai_schema::<RestartMachineArgs>(),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let app = std::env::var("FLY_APP_NAME")
-            .map_err(|_| ToolExecError("not running on Fly.io (FLY_APP_NAME not set)".into()))?;
-        let machine_id = std::env::var("FLY_MACHINE_ID")
-            .map_err(|_| ToolExecError("FLY_MACHINE_ID not set".into()))?;
+        log::info!("[restart] reason: {}", args.reason);
 
-        log::info!("[restart_machine] restarting {app}/{machine_id}: {}", args.reason);
-
-        let client = reqwest::Client::new();
-        let url = format!(
-            "http://_api.internal:4280/v1/apps/{app}/machines/{machine_id}/restart"
-        );
-
-        let resp = client
-            .post(&url)
-            .send()
-            .await
-            .map_err(|e| ToolExecError(format!("restart API call failed: {e}")))?;
-
-        if resp.status().is_success() {
-            Ok("machine restart initiated — server will be back in ~10 seconds".into())
-        } else {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            Err(ToolExecError(format!("restart failed ({status}): {body}")))
+        // Try Fly.io internal API first (if running on Fly)
+        if let (Ok(app), Ok(machine_id)) = (
+            std::env::var("FLY_APP_NAME"),
+            std::env::var("FLY_MACHINE_ID"),
+        ) {
+            log::info!("[restart] Fly.io: {app}/{machine_id}");
+            let client = reqwest::Client::new();
+            let url = format!(
+                "http://_api.internal:4280/v1/apps/{app}/machines/{machine_id}/restart"
+            );
+            if let Ok(resp) = client.post(&url).send().await {
+                if resp.status().is_success() {
+                    return Ok("restart initiated via Fly.io — back in ~10 seconds".into());
+                }
+            }
         }
+
+        // Fallback: exit process, rely on supervisor to restart
+        // (Docker restart: always, systemd Restart=always, etc.)
+        log::info!("[restart] exiting process (supervisor will restart)");
+        tokio::spawn(async {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            std::process::exit(0);
+        });
+
+        Ok("server shutting down — supervisor will restart it in a few seconds".into())
     }
 }
 
