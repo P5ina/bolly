@@ -393,11 +393,54 @@ if ! echo "$PATH" | grep -q "$BIN_DIR"; then
     fi
 fi
 
-# ─── Done ─────────────────────────────────────────────────────────────────────
-echo ""
-echo -e "${BOLD}  ┌─────────────────────────────┐${NC}"
-echo -e "${BOLD}  │${NC}  ${GREEN}installation complete!${NC}     ${BOLD}│${NC}"
-echo -e "${BOLD}  └─────────────────────────────┘${NC}"
-echo ""
-echo -e "  ${YELLOW}→${NC} Run ${BOLD}bolly${NC} and visit ${CYAN}http://localhost:26559${NC}"
-echo ""
+# ─── Start bolly and open browser ─────────────────────────────────────────────
+step "launching bolly"
+
+# Make sure bolly is in PATH for this session
+export PATH="$BIN_DIR:$PATH"
+
+# Start bolly in background
+"$BIN" &>/dev/null &
+BOLLY_PID=$!
+
+# Wait for it to be ready (up to 15 seconds)
+BOLLY_URL="http://localhost:26559"
+info "waiting for bolly to start..."
+for i in $(seq 1 30); do
+    if curl -sf "$BOLLY_URL/api/health" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 0.5
+done
+
+if curl -sf "$BOLLY_URL/api/health" >/dev/null 2>&1; then
+    log "bolly is running (PID: $BOLLY_PID)"
+
+    # Open browser
+    if [ "$PLATFORM" = "macos" ]; then
+        open "$BOLLY_URL" 2>/dev/null
+    elif command -v xdg-open &>/dev/null; then
+        xdg-open "$BOLLY_URL" 2>/dev/null
+    fi
+
+    echo ""
+    echo -e "${BOLD}  ┌─────────────────────────────┐${NC}"
+    echo -e "${BOLD}  │${NC}  ${GREEN}bolly is ready!${NC}            ${BOLD}│${NC}"
+    echo -e "${BOLD}  └─────────────────────────────┘${NC}"
+    echo ""
+    echo -e "  ${CYAN}${BOLLY_URL}${NC} is open in your browser"
+    echo ""
+    info "bolly will keep running in the background"
+    info "to stop:  kill $BOLLY_PID"
+    info "to start: bolly"
+    echo ""
+else
+    warn "bolly didn't start automatically"
+    echo ""
+    echo -e "${BOLD}  ┌─────────────────────────────┐${NC}"
+    echo -e "${BOLD}  │${NC}  ${GREEN}installation complete!${NC}     ${BOLD}│${NC}"
+    echo -e "${BOLD}  └─────────────────────────────┘${NC}"
+    echo ""
+    echo -e "  ${YELLOW}→${NC} Run ${BOLD}bolly${NC} and visit ${CYAN}${BOLLY_URL}${NC}"
+    echo ""
+fi
