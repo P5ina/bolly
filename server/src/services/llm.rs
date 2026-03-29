@@ -382,9 +382,30 @@ pub fn merge_with_timestamps(
 
     new_messages.iter().enumerate().map(|(i, msg)| {
         if can_match && i < old.len() {
-            // Keep the original entry as-is (preserves clean content without
-            // [timestamp] prefixes or [context] blocks that the LLM saw).
-            old[i].clone()
+            // Check if the new message has MORE content blocks than the old one
+            // (e.g., tool_use was added during the agent loop). If so, use the new version.
+            let old_block_count = match &old[i].message {
+                Message::Assistant { content } => content.len(),
+                Message::User { content } => content.len(),
+            };
+            let new_block_count = match msg {
+                Message::Assistant { content } => content.len(),
+                Message::User { content } => content.len(),
+            };
+            if new_block_count > old_block_count {
+                // Message was updated (e.g., tool_use added) — use the new version
+                // but preserve the old timestamp and ID
+                HistoryEntry {
+                    message: msg.clone(),
+                    ts: old[i].ts.clone(),
+                    id: old[i].id.clone(),
+                    mcp_app_html: old[i].mcp_app_html.clone(),
+                    mcp_app_input: old[i].mcp_app_input.clone(),
+                    model: old[i].model.clone(),
+                }
+            } else {
+                old[i].clone()
+            }
         } else {
             HistoryEntry {
                 message: msg.clone(),
@@ -1127,6 +1148,48 @@ fn build_anthropic_request(
                 // Remove empty content arrays (can happen after stripping)
                 if content_arr.is_empty() {
                     content_arr.push(serde_json::json!({"type": "text", "text": "(continued)"}));
+                }
+            }
+        }
+    }
+
+    // Strip orphaned tool_result blocks — can happen when server-side compaction
+    // replaces tool_use with summary text but leaves the tool_result in place.
+    if let Some(arr) = msgs.as_array_mut() {
+        // Collect all tool_use IDs from assistant messages
+        let mut tool_use_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for msg in arr.iter() {
+            if msg.get("role").and_then(|r| r.as_str()) == Some("assistant") {
+                if let Some(content) = msg.get("content").and_then(|c| c.as_array()) {
+                    for block in content {
+                        if block.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
+                            if let Some(id) = block.get("id").and_then(|i| i.as_str()) {
+                                tool_use_ids.insert(id.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Remove tool_result blocks that reference non-existent tool_use IDs
+        for msg in arr.iter_mut() {
+            if msg.get("role").and_then(|r| r.as_str()) == Some("user") {
+                if let Some(content) = msg.get_mut("content").and_then(|c| c.as_array_mut()) {
+                    let before = content.len();
+                    content.retain(|block| {
+                        if block.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
+                            if let Some(id) = block.get("tool_use_id").and_then(|i| i.as_str()) {
+                                if !tool_use_ids.contains(id) {
+                                    log::warn!("[llm] stripping orphaned tool_result for {id} (tool_use lost, likely compaction)");
+                                    return false;
+                                }
+                            }
+                        }
+                        true
+                    });
+                    if content.is_empty() && before > 0 {
+                        content.push(serde_json::json!({"type": "text", "text": "(tool result removed — original tool call was compacted)"}));
+                    }
                 }
             }
         }
