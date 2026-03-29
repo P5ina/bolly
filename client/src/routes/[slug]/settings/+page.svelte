@@ -276,14 +276,34 @@
 	let usage = $state<Usage | null>(null);
 	$effect(() => { fetchUsage().then(u => usage = u).catch(() => {}); });
 
-	// Model mode state
+	// Model mode + API keys state
 	let modelMode = $state("auto");
 	let modelModeSaving = $state(false);
+	let configuredKeys = $state<string[]>([]);
+	let keySaving = $state("");
+	let keyError = $state("");
+
 	$effect(() => {
 		fetchConfigStatus().then(s => {
 			if (s.model_mode) modelMode = s.model_mode;
+			if (s.configured_keys) configuredKeys = s.configured_keys;
 		}).catch(() => {});
 	});
+
+	async function saveKey(field: string, value: string) {
+		keySaving = field;
+		keyError = "";
+		try {
+			await updateLlmConfig({ [field]: value.trim() });
+			// Refresh status
+			const s = await fetchConfigStatus();
+			if (s.configured_keys) configuredKeys = s.configured_keys;
+		} catch (e) {
+			keyError = e instanceof Error ? e.message : "failed";
+		} finally {
+			keySaving = "";
+		}
+	}
 
 	async function setModelMode(mode: string) {
 		modelModeSaving = true;
@@ -679,6 +699,59 @@
 				<span class="mode-desc">always use the powerful model — uses 10x more budget</span>
 			</button>
 		</div>
+	</section>
+
+	<!-- API Keys -->
+	<section class="settings-section">
+		<div class="section-header">
+			<div class="section-icon">🔑</div>
+			<div>
+				<h3 class="section-label">api keys</h3>
+				<p class="section-desc">Connect your own API keys. Only Anthropic is required.</p>
+			</div>
+		</div>
+		<div class="keys-list">
+			{@const keys = [
+				{ id: "api_key", name: "Anthropic", hint: "sk-ant-...", required: true, configKey: "anthropic" },
+				{ id: "google_ai", name: "Google AI", hint: "Gemini embeddings for memory search", required: false, configKey: "google_ai" },
+				{ id: "elevenlabs", name: "ElevenLabs", hint: "Text-to-speech voice", required: false, configKey: "elevenlabs" },
+				{ id: "openrouter", name: "OpenRouter", hint: "Video & music analysis", required: false, configKey: "openrouter" },
+			]}
+			{#each keys as key (key.id)}
+				{@const configured = configuredKeys.includes(key.configKey)}
+				<div class="key-row">
+					<div class="key-info">
+						<span class="key-name">{key.name}{key.required ? " *" : ""}</span>
+						<span class="key-hint">{key.hint}</span>
+					</div>
+					<div class="key-action">
+						{#if configured}
+							<span class="key-badge key-badge-ok">connected</span>
+							<button
+								class="key-change"
+								onclick={() => {
+									const val = prompt(`New ${key.name} key:`);
+									if (val) saveKey(key.id, val);
+								}}
+								disabled={keySaving === key.id}
+							>change</button>
+						{:else}
+							<button
+								class="key-change key-change-add"
+								onclick={() => {
+									const val = prompt(`${key.name} API key:`);
+									if (val) saveKey(key.id, val);
+								}}
+								disabled={keySaving === key.id}
+							>{keySaving === key.id ? "saving..." : "add key"}</button>
+						{/if}
+					</div>
+				</div>
+			{/each}
+		</div>
+		{#if keyError}
+			<p class="key-error">{keyError}</p>
+		{/if}
 	</section>
 
 	<!-- Timezone -->
@@ -1853,4 +1926,19 @@
 		font-size: 0.68rem;
 		color: oklch(0.88 0.02 75 / 35%);
 	}
+
+	/* ── API Keys ── */
+	.keys-list { display: flex; flex-direction: column; gap: 1px; background: oklch(1 0 0 / 4%); border-radius: 12px; overflow: hidden; }
+	.key-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: oklch(0.04 0.015 260); }
+	.key-info { display: flex; flex-direction: column; gap: 2px; }
+	.key-name { font-size: 0.82rem; font-weight: 500; color: oklch(0.90 0.02 75); }
+	.key-hint { font-size: 0.68rem; color: oklch(0.60 0.03 240); }
+	.key-action { display: flex; align-items: center; gap: 8px; }
+	.key-badge { font-size: 0.65rem; padding: 2px 8px; border-radius: 12px; }
+	.key-badge-ok { background: oklch(0.72 0.17 142 / 12%); color: oklch(0.72 0.17 142); }
+	.key-change { font-size: 0.68rem; color: oklch(0.60 0.03 240); background: none; border: none; cursor: pointer; font-family: var(--font-body); transition: color 0.2s; }
+	.key-change:hover { color: oklch(0.90 0.02 75); }
+	.key-change-add { color: var(--color-warm); }
+	.key-change-add:hover { color: oklch(0.88 0.14 75); }
+	.key-error { margin-top: 8px; font-size: 0.72rem; color: oklch(0.65 0.15 25 / 70%); font-style: italic; }
 </style>

@@ -12,6 +12,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/config/model-mode", put(update_model_mode))
         .route("/api/config/status", get(get_status))
+        .route("/api/config/llm", put(update_llm_key))
         .route("/api/config/mcp", get(list_mcp_servers))
         .route("/api/config/mcp", post(add_mcp_server))
         .route("/api/config/mcp/{name}", delete(remove_mcp_server))
@@ -26,11 +27,25 @@ async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
         config::ModelMode::Fast => "fast",
         config::ModelMode::Heavy => "heavy",
     };
+    // Which optional keys are configured
+    let t = &config.llm.tokens;
+    let keys: Vec<&str> = [
+        ("anthropic", !t.anthropic.is_empty()),
+        ("google_ai", !t.google_ai.is_empty()),
+        ("elevenlabs", !t.elevenlabs.is_empty()),
+        ("openrouter", !t.open_router.is_empty()),
+    ]
+    .iter()
+    .filter(|(_, configured)| *configured)
+    .map(|(name, _)| *name)
+    .collect();
+
     Json(json!({
         "llm_configured": config.llm.is_configured(),
         "model": config.llm.model_name(),
         "fast_model": config.llm.fast_model_name(),
         "model_mode": mode,
+        "configured_keys": keys,
     }))
 }
 
@@ -61,6 +76,60 @@ async fn update_model_mode(
     }
 
     Ok(Json(json!({ "status": "ok", "model_mode": request.mode.to_lowercase() })))
+}
+
+// ---------------------------------------------------------------------------
+// LLM API keys
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct UpdateLlmKeyRequest {
+    /// Which key to set: "api_key" (anthropic), "google_ai", "elevenlabs", "openrouter"
+    #[serde(default)]
+    api_key: Option<String>,
+    #[serde(default)]
+    google_ai: Option<String>,
+    #[serde(default)]
+    elevenlabs: Option<String>,
+    #[serde(default)]
+    openrouter: Option<String>,
+}
+
+async fn update_llm_key(
+    State(state): State<AppState>,
+    Json(req): Json<UpdateLlmKeyRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let mut changes = Vec::new();
+
+    {
+        let mut cfg = state.config.write().await;
+
+        if let Some(key) = &req.api_key {
+            cfg.llm.tokens.anthropic = key.trim().to_string();
+            changes.push("anthropic");
+        }
+        if let Some(key) = &req.google_ai {
+            cfg.llm.tokens.google_ai = key.trim().to_string();
+            changes.push("google_ai");
+        }
+        if let Some(key) = &req.elevenlabs {
+            cfg.llm.tokens.elevenlabs = key.trim().to_string();
+            changes.push("elevenlabs");
+        }
+        if let Some(key) = &req.openrouter {
+            cfg.llm.tokens.open_router = key.trim().to_string();
+            changes.push("openrouter");
+        }
+
+        save_config(&cfg)?;
+    }
+
+    // Rebuild LLM backend if anthropic key changed
+    if changes.contains(&"anthropic") {
+        state.reload_config().await;
+    }
+
+    Ok(Json(json!({ "status": "ok", "updated": changes })))
 }
 
 // ---------------------------------------------------------------------------

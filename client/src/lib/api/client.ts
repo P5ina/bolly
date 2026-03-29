@@ -148,7 +148,12 @@ export function sendMessage(
 	});
 }
 
-export function updateLlmConfig(req: UpdateLlmRequest): Promise<void> {
+export function updateLlmConfig(req: {
+	api_key?: string;
+	google_ai?: string;
+	elevenlabs?: string;
+	openrouter?: string;
+}): Promise<void> {
 	return json("/api/config/llm", {
 		method: "PUT",
 		headers: { "Content-Type": "application/json" },
@@ -156,7 +161,12 @@ export function updateLlmConfig(req: UpdateLlmRequest): Promise<void> {
 	});
 }
 
-export function fetchConfigStatus(): Promise<{ llm_configured: boolean; model?: string; model_mode?: string }> {
+export function fetchConfigStatus(): Promise<{
+	llm_configured: boolean;
+	model?: string;
+	model_mode?: string;
+	configured_keys?: string[];
+}> {
 	return json("/api/config/status");
 }
 
