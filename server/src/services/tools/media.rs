@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use super::{openai_schema, ToolExecError};
 
-const GEMINI_MODEL: &str = "google/gemini-2.5-flash";
+const GEMINI_MODEL: &str = "gemini-2.5-flash";
 const MAX_MEDIA_SIZE: u64 = 45 * 1024 * 1024; // 45 MB
 
 // ---------------------------------------------------------------------------
@@ -15,7 +15,7 @@ const MAX_MEDIA_SIZE: u64 = 45 * 1024 * 1024; // 45 MB
 // ---------------------------------------------------------------------------
 
 pub struct MediaContext {
-    openrouter_key: String,
+    google_ai_key: String,
     workspace_dir: PathBuf,
     instance_slug: String,
     public_url: String,
@@ -24,14 +24,14 @@ pub struct MediaContext {
 
 impl MediaContext {
     pub fn new(
-        openrouter_key: &str,
+        google_ai_key: &str,
         workspace_dir: &Path,
         instance_slug: &str,
         public_url: &str,
         auth_token: &str,
     ) -> Self {
         Self {
-            openrouter_key: openrouter_key.to_string(),
+            google_ai_key: google_ai_key.to_string(),
             workspace_dir: workspace_dir.to_path_buf(),
             instance_slug: instance_slug.to_string(),
             public_url: public_url.to_string(),
@@ -135,9 +135,9 @@ impl MediaType {
 pub struct WatchVideoTool { ctx: MediaContext }
 
 impl WatchVideoTool {
-    pub fn new(openrouter_key: &str, workspace_dir: &Path, instance_slug: &str,
+    pub fn new(google_ai_key: &str, workspace_dir: &Path, instance_slug: &str,
                public_url: &str, auth_token: &str) -> Self {
-        Self { ctx: MediaContext::new(openrouter_key, workspace_dir, instance_slug, public_url, auth_token) }
+        Self { ctx: MediaContext::new(google_ai_key, workspace_dir, instance_slug, public_url, auth_token) }
     }
 }
 
@@ -169,7 +169,7 @@ impl Tool for WatchVideoTool {
         let prompt = args.prompt.as_deref()
             .unwrap_or("Watch this video carefully and provide a detailed summary. Include key points, any text/code shown, and notable visual elements.");
         let media_ref = self.ctx.resolve_media_ref(input, MediaType::Video).await?;
-        analyze_with_gemini(&self.ctx.openrouter_key, &media_ref, prompt, MediaType::Video).await
+        analyze_with_gemini(&self.ctx.google_ai_key, &media_ref, prompt, MediaType::Video).await
     }
 }
 
@@ -180,9 +180,9 @@ impl Tool for WatchVideoTool {
 pub struct ListenMusicTool { ctx: MediaContext }
 
 impl ListenMusicTool {
-    pub fn new(openrouter_key: &str, workspace_dir: &Path, instance_slug: &str,
+    pub fn new(google_ai_key: &str, workspace_dir: &Path, instance_slug: &str,
                public_url: &str, auth_token: &str) -> Self {
-        Self { ctx: MediaContext::new(openrouter_key, workspace_dir, instance_slug, public_url, auth_token) }
+        Self { ctx: MediaContext::new(google_ai_key, workspace_dir, instance_slug, public_url, auth_token) }
     }
 }
 
@@ -215,7 +215,7 @@ impl Tool for ListenMusicTool {
         let prompt = args.prompt.as_deref()
             .unwrap_or("Listen to this audio carefully. Describe what you hear: genre, mood, instruments, lyrics (if any), and overall impression.");
         let media_ref = self.ctx.resolve_media_ref(input, MediaType::Audio).await?;
-        let result = analyze_with_gemini(&self.ctx.openrouter_key, &media_ref, prompt, MediaType::Audio).await;
+        let result = analyze_with_gemini(&self.ctx.google_ai_key, &media_ref, prompt, MediaType::Audio).await;
         // Clean up temp audio file if it was downloaded/compressed
         if media_ref != input && Path::new(&media_ref).exists() {
             let _ = std::fs::remove_file(&media_ref);
@@ -322,70 +322,163 @@ async fn compress_media(path: &Path, media_type: MediaType) -> Result<String, To
     Ok(output_path)
 }
 
-/// For audio: pass file path to read + base64 encode.
-/// For video: pass public URL.
+/// Analyze media with Gemini via Google AI API (direct, no OpenRouter).
 async fn analyze_with_gemini(
     api_key: &str,
     media_ref: &str,
     prompt: &str,
     media_type: MediaType,
 ) -> Result<String, ToolExecError> {
-    let content_block = match media_type {
-        MediaType::Video => {
-            serde_json::json!({
-                "type": "video_url",
-                "video_url": { "url": media_ref }
-            })
-        }
-        MediaType::Audio => {
-            // Audio must be base64-encoded — URLs not supported
-            let bytes = std::fs::read(media_ref)
-                .map_err(|e| ToolExecError(format!("failed to read audio file: {e}")))?;
-            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-            let ext = Path::new(media_ref)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("mp3");
-            serde_json::json!({
-                "type": "input_audio",
-                "input_audio": { "data": b64, "format": ext }
-            })
-        }
-    };
-
-    let body = serde_json::json!({
-        "model": GEMINI_MODEL,
-        "messages": [{
-            "role": "user",
-            "content": [content_block, { "type": "text", "text": prompt }]
-        }],
-        "max_tokens": 4096
-    });
-
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
         .build()
         .map_err(|e| ToolExecError(format!("HTTP client error: {e}")))?;
 
+    // Build content parts based on media type
+    let mut parts = vec![serde_json::json!({"text": prompt})];
+
+    match media_type {
+        MediaType::Video => {
+            // Video: upload via Files API first, then reference by file_uri.
+            // media_ref is a local path or public URL — read the bytes.
+            let bytes = if media_ref.starts_with("http") {
+                // Download from URL
+                let dl = client.get(media_ref).send().await
+                    .map_err(|e| ToolExecError(format!("failed to download video: {e}")))?;
+                dl.bytes().await
+                    .map_err(|e| ToolExecError(format!("failed to read video bytes: {e}")))?
+                    .to_vec()
+            } else {
+                std::fs::read(media_ref)
+                    .map_err(|e| ToolExecError(format!("failed to read video file: {e}")))?
+            };
+
+            let file_uri = upload_to_gemini_files(&client, api_key, &bytes, "video/mp4").await?;
+
+            parts.insert(0, serde_json::json!({
+                "file_data": {
+                    "mime_type": "video/mp4",
+                    "file_uri": file_uri,
+                }
+            }));
+        }
+        MediaType::Audio => {
+            // Audio < 20MB: inline as base64
+            let bytes = std::fs::read(media_ref)
+                .map_err(|e| ToolExecError(format!("failed to read audio: {e}")))?;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            let ext = Path::new(media_ref).extension().and_then(|e| e.to_str()).unwrap_or("mp3");
+            let mime = match ext {
+                "mp3" => "audio/mp3",
+                "m4a" => "audio/mp4",
+                "wav" => "audio/wav",
+                "ogg" => "audio/ogg",
+                "flac" => "audio/flac",
+                _ => "audio/mpeg",
+            };
+            parts.insert(0, serde_json::json!({
+                "inline_data": {
+                    "mime_type": mime,
+                    "data": b64,
+                }
+            }));
+        }
+    }
+
+    let body = serde_json::json!({
+        "contents": [{ "parts": parts }],
+        "generationConfig": { "maxOutputTokens": 4096 }
+    });
+
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+        GEMINI_MODEL, api_key
+    );
+
     let response = client
-        .post("https://openrouter.ai/api/v1/chat/completions")
-        .header("Authorization", format!("Bearer {api_key}"))
+        .post(&url)
         .header("Content-Type", "application/json")
         .json(&body)
         .send().await
-        .map_err(|e| ToolExecError(format!("OpenRouter request failed: {e}")))?;
+        .map_err(|e| ToolExecError(format!("Google AI request failed: {e}")))?;
 
     if !response.status().is_success() {
         let status = response.status();
         let err = response.text().await.unwrap_or_default();
-        return Err(ToolExecError(format!("OpenRouter HTTP {status}: {err}")));
+        return Err(ToolExecError(format!("Google AI HTTP {status}: {err}")));
     }
 
     let result: serde_json::Value = response.json().await
         .map_err(|e| ToolExecError(format!("failed to parse response: {e}")))?;
 
-    Ok(result["choices"][0]["message"]["content"]
+    Ok(result["candidates"][0]["content"]["parts"][0]["text"]
         .as_str()
         .unwrap_or("(no response from Gemini)")
         .to_string())
+}
+
+/// Upload a file to the Gemini Files API and return the file_uri.
+async fn upload_to_gemini_files(
+    client: &reqwest::Client,
+    api_key: &str,
+    bytes: &[u8],
+    mime_type: &str,
+) -> Result<String, ToolExecError> {
+    let size = bytes.len();
+    log::info!("[media] uploading {:.1} MB to Gemini Files API", size as f64 / 1024.0 / 1024.0);
+
+    // Step 1: initiate resumable upload
+    let init_url = format!(
+        "https://generativelanguage.googleapis.com/upload/v1beta/files?key={}",
+        api_key
+    );
+
+    let init_res = client
+        .post(&init_url)
+        .header("X-Goog-Upload-Protocol", "resumable")
+        .header("X-Goog-Upload-Command", "start")
+        .header("X-Goog-Upload-Header-Content-Length", size.to_string())
+        .header("X-Goog-Upload-Header-Content-Type", mime_type)
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({"file": {"display_name": "media_upload"}}))
+        .send().await
+        .map_err(|e| ToolExecError(format!("Gemini Files init failed: {e}")))?;
+
+    if !init_res.status().is_success() {
+        let err = init_res.text().await.unwrap_or_default();
+        return Err(ToolExecError(format!("Gemini Files init error: {err}")));
+    }
+
+    let upload_url = init_res
+        .headers()
+        .get("x-goog-upload-url")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| ToolExecError("no upload URL in response".into()))?
+        .to_string();
+
+    // Step 2: upload the bytes
+    let upload_res = client
+        .put(&upload_url)
+        .header("Content-Length", size.to_string())
+        .header("X-Goog-Upload-Offset", "0")
+        .header("X-Goog-Upload-Command", "upload, finalize")
+        .body(bytes.to_vec())
+        .send().await
+        .map_err(|e| ToolExecError(format!("Gemini Files upload failed: {e}")))?;
+
+    if !upload_res.status().is_success() {
+        let err = upload_res.text().await.unwrap_or_default();
+        return Err(ToolExecError(format!("Gemini Files upload error: {err}")));
+    }
+
+    let result: serde_json::Value = upload_res.json().await
+        .map_err(|e| ToolExecError(format!("failed to parse upload response: {e}")))?;
+
+    let file_uri = result["file"]["uri"]
+        .as_str()
+        .ok_or_else(|| ToolExecError("no file URI in upload response".into()))?
+        .to_string();
+
+    log::info!("[media] uploaded to Gemini: {file_uri}");
+    Ok(file_uri)
 }

@@ -570,10 +570,6 @@ pub async fn run_single_turn(
     let sent_files = tools::SentFiles::default();
     let mcp_snapshot = mcp_registry.snapshot_app_tools().await;
     let mcp_tools = mcp_registry.tools_as_dyn().await;
-    let openrouter_key = chat_config
-        .as_ref()
-        .map(|c| c.llm.tokens.open_router.clone())
-        .unwrap_or_default();
     // Prefer instance-level github token; fall back to global config
     let github_token = {
         let global_token = chat_config.as_ref().map(|c| c.github.token.clone()).unwrap_or_default();
@@ -593,7 +589,6 @@ pub async fn run_single_turn(
         sent_files,
         Some(mcp_snapshot.clone()),
         mcp_tools,
-        &openrouter_key,
         github_token,
         vector_store.clone(),
         google_ai_key,

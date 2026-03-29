@@ -712,10 +712,9 @@
 		</div>
 		<div class="keys-list">
 			{@const keys = [
-				{ id: "api_key", name: "Anthropic", hint: "sk-ant-...", required: true, configKey: "anthropic" },
-				{ id: "google_ai", name: "Google AI", hint: "Gemini embeddings for memory search", required: false, configKey: "google_ai" },
+				{ id: "api_key", name: "Anthropic", hint: "sk-ant-... (required for chat)", required: true, configKey: "anthropic" },
+				{ id: "google_ai", name: "Google AI", hint: "Memory search + video/audio analysis", required: false, configKey: "google_ai" },
 				{ id: "elevenlabs", name: "ElevenLabs", hint: "Text-to-speech voice", required: false, configKey: "elevenlabs" },
-				{ id: "openrouter", name: "OpenRouter", hint: "Video & music analysis", required: false, configKey: "openrouter" },
 			]}
 			{#each keys as key (key.id)}
 				{@const configured = configuredKeys.includes(key.configKey)}

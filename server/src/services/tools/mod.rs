@@ -446,7 +446,6 @@ pub fn build_tools(
     sent_files: SentFiles,
     mcp_snapshot: Option<crate::services::mcp::McpAppSnapshot>,
     mcp_tools: Vec<Box<dyn ToolDyn>>,
-    openrouter_key: &str,
     github_token: Option<String>,
     vector_store: Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
@@ -515,10 +514,10 @@ pub fn build_tools(
         let cfg = crate::config::load_config().ok();
         let auth_token = cfg.as_ref().map(|c| c.auth_token.as_str()).unwrap_or("");
         tools.push(wrap(Box::new(WatchVideoTool::new(
-            openrouter_key, workspace_dir, instance_slug, &public_url, auth_token,
+            google_ai_key, workspace_dir, instance_slug, &public_url, auth_token,
         ))));
         tools.push(wrap(Box::new(ListenMusicTool::new(
-            openrouter_key, workspace_dir, instance_slug, &public_url, auth_token,
+            google_ai_key, workspace_dir, instance_slug, &public_url, auth_token,
         ))));
     }
     // ── Code ──
