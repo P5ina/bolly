@@ -11,8 +11,6 @@ on:
       - "Dockerfile"
       - "scripts/**"
       - ".github/workflows/**"
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
       update_machines:
@@ -92,26 +90,7 @@ jobs:
             --prerelease \
             bolly-x86_64-unknown-linux-gnu
 
-      - name: Collect commits for changelog
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          prev_tag=$(git tag --sort=-v:refname | sed -n '2p')
-          if [ -z "$prev_tag" ]; then
-            git log --oneline > /tmp/commits.txt
-          else
-            git log --oneline "${prev_tag}..HEAD" > /tmp/commits.txt
-          fi
-
-      - name: Create stable release
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          body=$(cat /tmp/commits.txt | sed 's/^/- /')
-          gh release create "${{ github.ref_name }}" \
-            --title "${{ github.ref_name }}" \
-            --notes "$body" \
-            bolly-x86_64-unknown-linux-gnu
+      # Stable releases handled by release.yml (triggered on v* tags)
 
   # Build and push runtime-only Docker image (no binary — downloaded on startup)
   docker:
