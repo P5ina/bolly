@@ -370,6 +370,25 @@ fn tool_use_summary(name: &str, input: &serde_json::Value) -> String {
 
 /// Merge timestamps from old entries into a new message list from the LLM.
 /// Old entries that match by position keep their ts/id; new entries get fresh values.
+/// Strip injected context blocks from user messages before saving to history.
+/// Removes [current time: ...] and [system: auto-recalled memories ...] blocks.
+fn strip_context_blocks(msg: &Message) -> Message {
+    match msg {
+        Message::User { content } => {
+            let cleaned: Vec<ContentBlock> = content.iter().filter(|b| {
+                if let ContentBlock::Text { text } = b {
+                    !text.starts_with("[current time:")
+                        && !text.starts_with("[system: auto-recalled")
+                } else {
+                    true
+                }
+            }).cloned().collect();
+            Message::User { content: if cleaned.is_empty() { content.clone() } else { cleaned } }
+        }
+        other => other.clone(),
+    }
+}
+
 pub fn merge_with_timestamps(
     old: &[HistoryEntry],
     new_messages: &[Message],
@@ -394,9 +413,9 @@ pub fn merge_with_timestamps(
             };
             if new_block_count > old_block_count {
                 // Message was updated (e.g., tool_use added) — use the new version
-                // but preserve the old timestamp and ID
+                // but preserve the old timestamp and ID. Strip injected context.
                 HistoryEntry {
-                    message: msg.clone(),
+                    message: strip_context_blocks(msg),
                     ts: old[i].ts.clone(),
                     id: old[i].id.clone(),
                     mcp_app_html: old[i].mcp_app_html.clone(),
@@ -408,7 +427,7 @@ pub fn merge_with_timestamps(
             }
         } else {
             HistoryEntry {
-                message: msg.clone(),
+                message: strip_context_blocks(msg),
                 ts: Some(ts_fn()),
                 id: Some(id_fn()),
                 mcp_app_html: None,
