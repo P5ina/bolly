@@ -1,5 +1,5 @@
 host = "0.0.0.0"
-port = 8080
+port = 26559
 
 # Set a token to protect your API (leave empty for no auth)
 auth_token = ""

@@ -231,7 +231,7 @@ if [ ! -f "$DATA_DIR/config.toml" ]; then
     step "creating config"
     cat > "$DATA_DIR/config.toml" <<'CONF'
 host = "0.0.0.0"
-port = 8080
+port = 26559
 auth_token = ""
 
 [llm]
@@ -244,7 +244,6 @@ GOOGLE_AI = ""       # Optional — embeddings + media analysis
 ELEVENLABS = ""      # Optional — text-to-speech
 CONF
     log "created $DATA_DIR/config.toml"
-    warn "edit config.toml and add your Anthropic API key before starting"
 else
     log "config already exists, skipping"
 fi
@@ -397,14 +396,8 @@ fi
 # ─── Done ─────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}  ┌─────────────────────────────┐${NC}"
-echo -e "${BOLD}  │${NC}  ${GREEN}installation complete!${NC}      ${BOLD}│${NC}"
+echo -e "${BOLD}  │${NC}  ${GREEN}installation complete!${NC}     ${BOLD}│${NC}"
 echo -e "${BOLD}  └─────────────────────────────┘${NC}"
 echo ""
-info "  binary:  $BIN"
-info "  data:    $DATA_DIR"
-info "  config:  $DATA_DIR/config.toml"
-info "  update:  $BIN_DIR/update"
-echo ""
-echo -e "  ${YELLOW}→${NC} Edit ${BOLD}$DATA_DIR/config.toml${NC} and add your Anthropic API key"
-echo -e "  ${YELLOW}→${NC} Then start bolly and visit ${CYAN}http://localhost:8080${NC}"
+echo -e "  ${YELLOW}→${NC} Run ${BOLD}bolly${NC} and visit ${CYAN}http://localhost:26559${NC}"
 echo ""

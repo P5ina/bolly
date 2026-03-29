@@ -12,9 +12,9 @@ export default defineConfig({
 	},
 	server: {
 		proxy: {
-			"/api/ws": { target: "ws://localhost:8080", ws: true },
-			"/api": "http://localhost:8080",
-			"/manifest.webmanifest": "http://localhost:8080",
+			"/api/ws": { target: "ws://localhost:26559", ws: true },
+			"/api": "http://localhost:26559",
+			"/manifest.webmanifest": "http://localhost:26559",
 		},
 	},
 });

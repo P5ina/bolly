@@ -237,7 +237,7 @@ fn default_host() -> String {
 }
 
 fn default_port() -> u16 {
-    8080
+    26559
 }
 
 fn default_registry_url() -> String {
