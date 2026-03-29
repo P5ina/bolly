@@ -616,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "bolly-desktop"
-version = "0.1.0"
+version = "0.20.0"
 dependencies = [
  "base64 0.22.1",
  "dirs",
@@ -5897,7 +5897,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "0.19.1"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "axum 0.8.8",
