@@ -220,7 +220,7 @@ DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME"
 mkdir -p "$BIN_DIR" "$DATA_DIR"
 
 info "downloading $TAG for $TARGET..."
-curl -fsSL -L "$DOWNLOAD_URL" -o "$BIN" || fail "download failed — check https://github.com/$REPO/releases"
+curl -fL --progress-bar "$DOWNLOAD_URL" -o "$BIN" || fail "download failed — check https://github.com/$REPO/releases"
 chmod +x "$BIN"
 echo "$TAG" > "$BIN_DIR/.version"
 
