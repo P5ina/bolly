@@ -240,3 +240,13 @@ jobs:
           tags: registry.fly.io/bolly:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ── Publish release (after all builds succeed) ──
+  publish:
+    needs: [server, desktop, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --draft=false --latest
