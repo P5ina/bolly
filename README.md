@@ -26,7 +26,7 @@ Then edit `~/.bolly/data/config.toml` and add your Anthropic API key:
 ANTHROPIC = "sk-ant-..."
 ```
 
-Start and visit `http://localhost:8080`:
+Start and visit `http://localhost:26559`:
 
 ```bash
 # Linux
@@ -41,7 +41,7 @@ launchctl load ~/Library/LaunchAgents/dev.bollyai.bolly.plist
 ```bash
 docker run -d \
   --name bolly \
-  -p 8080:8080 \
+  -p 26559:26559 \
   -v bolly-data:/data \
   -e BOLLY_HOME=/data \
   --restart always \
@@ -168,7 +168,7 @@ Everything is a file. No black boxes.
 # ~/.bolly/data/config.toml
 
 host = "0.0.0.0"
-port = 8080
+port = 26559
 auth_token = ""        # protect your API (leave empty for local)
 
 [llm]
