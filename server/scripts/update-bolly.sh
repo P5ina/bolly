@@ -66,7 +66,7 @@ echo "[update] downloading bolly $VERSION ($CHANNEL) for $TARGET..."
 # For private repos, browser_download_url returns 404.
 # Use GitHub API asset endpoint with Accept: application/octet-stream instead.
 # See: https://docs.github.com/en/rest/releases/assets#get-a-release-asset
-ASSET_NAME="bolly-$TARGET"
+ASSET_NAME="bolly-server-$TARGET"
 ASSET_API_URL=""
 if [ -n "$RELEASE_TOKEN" ] && command -v jq >/dev/null 2>&1; then
     ASSET_API_URL=$(jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url" "$RELEASE_FILE" 2>/dev/null) || true

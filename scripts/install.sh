@@ -195,7 +195,7 @@ if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
     fail "could not find a $CHANNEL release"
 fi
 
-ASSET_NAME="bolly-$TARGET"
+ASSET_NAME="bolly-server-$TARGET"
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME"
 
 mkdir -p "$BIN_DIR" "$DATA_DIR"
@@ -250,7 +250,7 @@ if [ "\$TAG" = "\$CURRENT" ]; then
     exit 0
 fi
 echo "updating to \$TAG..."
-curl -fsSL -L "https://github.com/\$REPO/releases/download/\$TAG/bolly-\$TARGET" -o "\$BIN.tmp"
+curl -fsSL -L "https://github.com/\$REPO/releases/download/\$TAG/bolly-server-\$TARGET" -o "\$BIN.tmp"
 chmod +x "\$BIN.tmp"
 mv "\$BIN.tmp" "\$BIN"
 echo "\$TAG" > "$BIN_DIR/.version"

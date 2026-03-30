@@ -55,13 +55,13 @@ jobs:
 
       - name: Prepare binary
         run: |
-          cp target/release/server bolly-x86_64-unknown-linux-gnu
-          chmod +x bolly-x86_64-unknown-linux-gnu
+          cp target/release/server bolly-server-x86_64-unknown-linux-gnu
+          chmod +x bolly-server-x86_64-unknown-linux-gnu
 
       - uses: actions/upload-artifact@v7
         with:
           name: binary
-          path: bolly-x86_64-unknown-linux-gnu
+          path: bolly-server-x86_64-unknown-linux-gnu
           retention-days: 1
 
   # Publish binary to GitHub releases
@@ -82,14 +82,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          chmod +x bolly-x86_64-unknown-linux-gnu
+          chmod +x bolly-server-x86_64-unknown-linux-gnu
           gh release delete nightly --cleanup-tag --yes 2>/dev/null || true
           gh release create nightly \
             --target "${{ github.sha }}" \
             --title "Nightly $(date -u +%Y-%m-%d)" \
             --notes "Auto-built from main ($(git rev-parse --short HEAD))" \
             --prerelease \
-            bolly-x86_64-unknown-linux-gnu
+            bolly-server-x86_64-unknown-linux-gnu
 
       # Stable releases handled by release.yml (triggered on v* tags)
 

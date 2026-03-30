@@ -52,7 +52,7 @@ async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
         "host": config.host,
         "port": config.port,
         "auth_token_set": !config.auth_token.is_empty(),
-        "is_managed": std::env::var("FLY_APP_NAME").is_ok(),
+        "is_managed": !config.landing_url.is_empty() || std::env::var("FLY_APP_NAME").is_ok(),
     }))
 }
 

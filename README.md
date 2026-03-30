@@ -218,6 +218,22 @@ Bolly checks for updates automatically. Apply via Settings UI or manually:
 
 ---
 
+## Uninstall
+
+```bash
+curl -fsSL https://bollyai.dev/uninstall.sh | bash
+```
+
+This stops the service, removes the binary, service files, and `~/.bolly/` directory.
+
+To keep your data (config, memories, chats) while removing the binary and service:
+
+```bash
+KEEP_DATA=1 curl -fsSL https://bollyai.dev/uninstall.sh | bash
+```
+
+---
+
 ## Development
 
 ```bash

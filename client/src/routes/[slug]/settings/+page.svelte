@@ -172,7 +172,7 @@
 	async function loadServer() {
 		serverLoading = true;
 		try {
-			const { fetchServerConfig } = await import("$lib/api/client.js");
+			const { fetchServerConfig, fetchConfigStatus } = await import("$lib/api/client.js");
 			const res = await fetchServerConfig();
 			serverHost = res.host;
 			serverPort = res.port;
@@ -180,7 +180,7 @@
 			serverAuthSet = res.auth_token_set;
 			// Also check if managed (cloud) by fetching status
 			try {
-				const status = await (await fetch("/api/config/status")).json();
+				const status = await fetchConfigStatus();
 				isManaged = !!status.is_managed;
 			} catch { /* ignore */ }
 		} catch {

@@ -166,6 +166,7 @@ export function fetchConfigStatus(): Promise<{
 	model?: string;
 	model_mode?: string;
 	configured_keys?: string[];
+	is_managed?: boolean;
 }> {
 	return json("/api/config/status");
 }
