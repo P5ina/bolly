@@ -410,29 +410,15 @@ export const actions: Actions = {
 		for (const t of allTenants) {
 			if (!t.flyAppId || !t.flyMachineId) continue;
 
-			const isByok = !!(t.byokApiKey && t.byokProvider);
-
-			// Build canonical env — BYOK machines get NO platform API keys
-			const canonicalEnv: Record<string, string> = fly.machineEnv({
+			const canonicalEnv = fly.machineEnv({
 				authToken: t.authToken ?? '',
 				instanceId: t.id,
 				publicUrl: `https://${t.slug}.bollyai.dev`,
 				channel: (t.imageChannel as string) ?? 'stable',
-				byok: isByok,
 			});
 
-			// BYOK: set only the user's own key for their chosen provider
-			if (isByok) {
-				canonicalEnv.BOLLY_BYOK = 'true';
-				canonicalEnv.BOLLY_LLM_PROVIDER = t.byokProvider!;
-				if (t.byokProvider === 'anthropic') canonicalEnv.ANTHROPIC_API_KEY = t.byokApiKey!;
-				else if (t.byokProvider === 'openai') canonicalEnv.OPENAI_API_KEY = t.byokApiKey!;
-				else if (t.byokProvider === 'openrouter') canonicalEnv.OPENROUTER_API_KEY = t.byokApiKey!;
-				if (t.byokModel) canonicalEnv.BOLLY_LLM_MODEL = t.byokModel;
-			}
-
 			try {
-				await fly.updateMachineEnv(t.flyAppId, t.flyMachineId, canonicalEnv);
+				await fly.replaceMachineEnv(t.flyAppId, t.flyMachineId, canonicalEnv);
 				patched++;
 			} catch (e) {
 				const msg = e instanceof Error ? e.message : 'Unknown error';

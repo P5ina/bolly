@@ -169,8 +169,6 @@ export interface CreateMachineOpts {
 	region?: string;
 	cpus?: number;
 	memoryMb?: number;
-	/** If true, do NOT push platform API keys — user provides their own. */
-	byok?: boolean;
 }
 
 export async function createMachine(opts: CreateMachineOpts): Promise<{
@@ -190,7 +188,6 @@ export async function createMachine(opts: CreateMachineOpts): Promise<{
 					instanceId: opts.instanceId,
 					publicUrl: opts.publicUrl,
 					channel: opts.channel,
-					byok: opts.byok,
 				}),
 				guest: {
 					cpus: opts.cpus ?? 1,
@@ -298,6 +295,31 @@ export async function updateMachineEnv(
 		}),
 	});
 	if (!res.ok) throw new Error(`Fly updateMachineEnv failed: ${res.status} ${await res.text()}`);
+}
+
+/** Replace the entire env (does NOT merge with existing). */
+export async function replaceMachineEnv(
+	appName: string,
+	machineId: string,
+	env: Record<string, string>,
+): Promise<void> {
+	const getRes = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}`, {
+		headers: headers(),
+	});
+	if (!getRes.ok) throw new Error(`Fly getMachine failed: ${getRes.status} ${await getRes.text()}`);
+	const machine = await getRes.json();
+
+	const res = await fetch(`${FLY_API}/apps/${appName}/machines/${machineId}`, {
+		method: 'POST',
+		headers: headers(),
+		body: JSON.stringify({
+			config: {
+				...machine.config,
+				env,
+			},
+		}),
+	});
+	if (!res.ok) throw new Error(`Fly replaceMachineEnv failed: ${res.status} ${await res.text()}`);
 }
 
 export async function getMachine(appName: string, machineId: string): Promise<{ id: string; state: string; private_ip: string; config?: { env?: Record<string, string> } }> {
