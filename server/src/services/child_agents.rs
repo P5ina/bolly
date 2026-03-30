@@ -551,7 +551,7 @@ pub async fn run_single_agent(
         duration_ms: start.elapsed().as_millis() as u64,
         tokens_used: tokens,
         model: agent.model.clone(),
-        summary: response.chars().take(500).collect(),
+        summary: response.clone(),
         trace,
         status: crate::domain::agent_run::RunStatus::Completed,
     };
