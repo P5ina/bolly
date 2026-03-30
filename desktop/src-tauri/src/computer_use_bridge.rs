@@ -194,17 +194,38 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
 
-        // Run action in spawn_blocking to avoid blocking the tokio WebSocket loop
-        // (bash commands, file I/O, and screenshots all do blocking I/O)
-        let call_clone = call.clone();
-        let action_clone = action.clone();
-        let scale = cached_scale.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            let mut s = scale.lock().unwrap();
-            execute_action(&call_clone, &action_clone, &mut *s)
-        })
-        .await
-        .unwrap_or_else(|e| Err(format!("task panic: {e}")));
+        // Input actions (keyboard, mouse) must run on main thread on macOS
+        // because enigo calls HIToolbox APIs that assert main queue.
+        // Other actions (screenshot, bash, file I/O) use spawn_blocking.
+        let is_input_action = matches!(
+            action.as_str(),
+            "key" | "type" | "left_click" | "right_click" | "middle_click"
+                | "double_click" | "mouse_move" | "scroll" | "switch_desktop"
+        );
+
+        let result = if is_input_action {
+            let call_clone = call.clone();
+            let action_clone = action.clone();
+            let scale = cached_scale.clone();
+            let app_handle = app.clone();
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let _ = app_handle.run_on_main_thread(move || {
+                let mut s = scale.lock().unwrap();
+                let r = execute_action(&call_clone, &action_clone, &mut *s);
+                let _ = tx.send(r);
+            });
+            rx.await.unwrap_or_else(|e| Err(format!("main thread recv: {e}")))
+        } else {
+            let call_clone = call.clone();
+            let action_clone = action.clone();
+            let scale = cached_scale.clone();
+            tokio::task::spawn_blocking(move || {
+                let mut s = scale.lock().unwrap();
+                execute_action(&call_clone, &action_clone, &mut *s)
+            })
+            .await
+            .unwrap_or_else(|e| Err(format!("task panic: {e}")))
+        };
 
         // Show overlay after any action
         overlay::show(app);
