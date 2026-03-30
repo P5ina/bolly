@@ -374,18 +374,43 @@ if ! echo "$PATH" | grep -q "$BIN_DIR"; then
     fi
 fi
 
-# ─── Start bolly and open browser ─────────────────────────────────────────────
-step "launching bolly"
+# ─── Doctor: stop old instance, fix config, restart ──────────────────────────
+step "starting bolly"
 
-# Make sure bolly is in PATH for this session
 export PATH="$BIN_DIR:$PATH"
 
-# Start bolly in background
+# Read port from config (default 26559)
+BOLLY_PORT=26559
+if [ -f "$DATA_DIR/config.toml" ]; then
+    CFG_PORT=$(grep -E '^port\s*=' "$DATA_DIR/config.toml" | head -1 | sed 's/.*=\s*//' | tr -d ' ')
+    if [ -n "$CFG_PORT" ]; then
+        BOLLY_PORT="$CFG_PORT"
+    fi
+fi
+BOLLY_URL="http://localhost:$BOLLY_PORT"
+
+# Stop any running bolly instance
+OLD_PID=$(pgrep -f "$BIN_DIR/bolly" 2>/dev/null | head -1)
+if [ -n "$OLD_PID" ]; then
+    info "stopping old instance (PID: $OLD_PID)..."
+    kill "$OLD_PID" 2>/dev/null
+    sleep 1
+    kill -9 "$OLD_PID" 2>/dev/null || true
+    log "stopped old instance"
+fi
+
+# Unload launchd/systemd if loaded (will re-create below)
+if [ "$PLATFORM" = "macos" ]; then
+    PLIST="$HOME/Library/LaunchAgents/dev.bollyai.bolly.plist"
+    launchctl unload "$PLIST" 2>/dev/null || true
+elif command -v systemctl &>/dev/null; then
+    systemctl --user stop bolly 2>/dev/null || true
+fi
+
+# Start fresh
 "$BIN" &>/dev/null &
 BOLLY_PID=$!
 
-# Wait for it to be ready (up to 15 seconds)
-BOLLY_URL="http://localhost:26559"
 info "waiting for bolly to start..."
 for i in $(seq 1 30); do
     if curl -sf "$BOLLY_URL/api/health" >/dev/null 2>&1; then
@@ -395,7 +420,7 @@ for i in $(seq 1 30); do
 done
 
 if curl -sf "$BOLLY_URL/api/health" >/dev/null 2>&1; then
-    log "bolly is running (PID: $BOLLY_PID)"
+    log "bolly is running on port $BOLLY_PORT"
 
     # Open browser
     if [ "$PLATFORM" = "macos" ]; then
@@ -410,10 +435,6 @@ if curl -sf "$BOLLY_URL/api/health" >/dev/null 2>&1; then
     echo -e "${BOLD}  └─────────────────────────────┘${NC}"
     echo ""
     echo -e "  ${CYAN}${BOLLY_URL}${NC} is open in your browser"
-    echo ""
-    info "bolly will keep running in the background"
-    info "to stop:  kill $BOLLY_PID"
-    info "to start: bolly"
     echo ""
 else
     warn "bolly didn't start automatically"
