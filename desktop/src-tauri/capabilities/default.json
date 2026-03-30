@@ -11,6 +11,8 @@
     {
       "identifier": "http:default",
       "allow": [{ "url": "https://bollyai.dev/**" }]
-    }
+    },
+    "updater:default",
+    "process:allow-restart"
   ]
 }

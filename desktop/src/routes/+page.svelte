@@ -7,6 +7,7 @@
     auth, init, setSession, logout, connectUrl, connectSelfHosted,
     selfHostedConnectUrl, type Tenant, type SelfHostedConfig,
   } from "$lib/auth.svelte";
+  import { updater, checkForUpdates, installUpdate, dismissUpdate } from "$lib/updater.svelte";
 
   const AUTH_URL = "https://bollyai.dev/desktop-auth";
 
@@ -20,6 +21,7 @@
 
   onMount(() => {
     init();
+    checkForUpdates();
 
     const unlisten = listen<string>("deep-link", (event) => {
       try {
@@ -126,6 +128,33 @@
         <button class="sign-out-btn" onclick={logout}>Disconnect</button>
       {/if}
     </header>
+
+    {#if updater.available}
+      <div class="update-banner">
+        {#if updater.downloading}
+          <div class="update-text">
+            Updating to v{updater.version}...
+          </div>
+          <div class="update-progress-track">
+            <div class="update-progress-bar" style:width="{Math.round(updater.progress * 100)}%"></div>
+          </div>
+        {:else if updater.error}
+          <div class="update-text update-error-text">Update failed: {updater.error}</div>
+          <div class="update-actions">
+            <button class="update-btn" onclick={installUpdate}>Retry</button>
+            <button class="update-dismiss" onclick={dismissUpdate}>Dismiss</button>
+          </div>
+        {:else}
+          <div class="update-text">
+            v{updater.version} is available
+          </div>
+          <div class="update-actions">
+            <button class="update-btn" onclick={installUpdate}>Update & restart</button>
+            <button class="update-dismiss" onclick={dismissUpdate}>Later</button>
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     <main class="content">
       {#if auth.loading && !splash}
@@ -381,6 +410,88 @@
     padding: 24px;
     position: relative;
     z-index: 1;
+  }
+
+  /* ─── Update banner ─────────────────────────────────────────── */
+  .update-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 24px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    background: oklch(0.78 0.12 75 / 8%);
+    border: 1px solid oklch(0.78 0.12 75 / 14%);
+    position: relative;
+    z-index: 1;
+    animation: dash-in 0.3s ease both;
+  }
+
+  .update-text {
+    font-size: 0.78rem;
+    color: var(--warm);
+    white-space: nowrap;
+  }
+
+  .update-error-text {
+    color: oklch(0.65 0.15 25 / 80%);
+  }
+
+  .update-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .update-btn {
+    padding: 5px 14px;
+    border-radius: 7px;
+    border: 1px solid oklch(0.78 0.12 75 / 22%);
+    background: oklch(0.78 0.12 75 / 12%);
+    color: var(--warm);
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .update-btn:hover {
+    background: oklch(0.78 0.12 75 / 20%);
+    border-color: oklch(0.78 0.12 75 / 32%);
+  }
+
+  .update-dismiss {
+    padding: 5px 10px;
+    border-radius: 7px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+
+  .update-dismiss:hover {
+    color: var(--foreground);
+  }
+
+  .update-progress-track {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: oklch(1 0 0 / 6%);
+    overflow: hidden;
+  }
+
+  .update-progress-bar {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--warm);
+    transition: width 0.3s ease;
   }
 
   /* ─── Sign in ──────────────────────────────────────────────── */
