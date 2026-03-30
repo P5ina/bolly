@@ -156,6 +156,9 @@
 	let ghError = $state("");
 	let ghEditing = $state(false);
 
+	// Cloud/managed detection
+	let isManaged = $state(false);
+
 	// Server state
 	let serverHost = $state("0.0.0.0");
 	let serverPort = $state(26559);
@@ -175,6 +178,11 @@
 			serverPort = res.port;
 			serverPortInput = String(res.port);
 			serverAuthSet = res.auth_token_set;
+			// Also check if managed (cloud) by fetching status
+			try {
+				const status = await (await fetch("/api/config/status")).json();
+				isManaged = !!status.is_managed;
+			} catch { /* ignore */ }
 		} catch {
 			// not critical
 		} finally {
@@ -673,7 +681,8 @@
 
 	<div class="settings-grid">
 
-	<!-- Server -->
+	<!-- Server (self-hosted only) -->
+	{#if !isManaged}
 	<section class="settings-section">
 		<div class="section-header">
 			<div>
@@ -739,6 +748,7 @@
 			</div>
 		{/if}
 	</section>
+	{/if}
 
 	<!-- Usage -->
 	{#if usage && (usage.tokens_4h_limit > 0 || usage.tokens_week_limit > 0 || usage.tokens_month_limit > 0)}
