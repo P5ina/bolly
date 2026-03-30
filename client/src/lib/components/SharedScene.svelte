@@ -362,13 +362,13 @@
 		{/if}
 	{/each}
 
-	<!-- Memory orbit around the selected orb -->
+	<!-- Memory orbit around the selected orb (desktop) / strip above chat (mobile) -->
 	{#if store.recalledMemories.length > 0}
 		{@const selOrb = orbs.find(o => o.slug === store.selectedSlug)}
 		{#if selOrb}
 			{@const count = store.recalledMemories.length}
+			<!-- Desktop: orbit around orb -->
 			<div class="memory-orbit" style="left: {selOrb.x}%; top: {selOrb.y}%; --orb-size: {selOrb.size}px;">
-				<!-- Glow pulse at center when memories connect -->
 				<div class="memory-orbit-glow"></div>
 				{#each store.recalledMemories as mem, i}
 					{@const angle = (360 / count) * i - 90}
@@ -381,6 +381,18 @@
 						<span class="memory-node-label">
 							{mem.path.split('/').pop()?.replace('.md', '')}
 						</span>
+					</a>
+				{/each}
+			</div>
+			<!-- Mobile: horizontal strip -->
+			<div class="memory-strip">
+				{#each store.recalledMemories as mem, i}
+					<a
+						class="memory-strip-chip"
+						style="animation-delay: {i * 120}ms;"
+						href="/{store.selectedSlug}/memory?open={encodeURIComponent(mem.path)}"
+					>
+						{mem.path.split('/').pop()?.replace('.md', '')}
 					</a>
 				{/each}
 			</div>
@@ -554,6 +566,11 @@
 	}
 
 
+	/* ── Mobile memory strip ── */
+	.memory-strip {
+		display: none;
+	}
+
 	@media (max-width: 640px) {
 		.scene-root {
 			pointer-events: none;
@@ -566,14 +583,51 @@
 			opacity: 0.5;
 		}
 		.memory-orbit {
-			/* on mobile, center on screen over the blurred orb */
+			display: none;
+		}
+		.memory-strip {
+			display: flex;
 			position: fixed;
-			left: 50% !important;
-			top: 35% !important;
-			width: 260px;
-			height: 260px;
+			bottom: calc(env(safe-area-inset-bottom, 0px) + 68px);
+			left: 0;
+			right: 0;
 			z-index: 30;
-			--orb-size: 180px;
+			gap: 0.375rem;
+			padding: 0.5rem 1rem;
+			overflow-x: auto;
+			scrollbar-width: none;
+			-webkit-overflow-scrolling: touch;
+			pointer-events: auto;
+			mask-image: linear-gradient(90deg, transparent, black 0.5rem, black calc(100% - 0.5rem), transparent);
+			-webkit-mask-image: linear-gradient(90deg, transparent, black 0.5rem, black calc(100% - 0.5rem), transparent);
+		}
+		.memory-strip::-webkit-scrollbar { display: none; }
+		.memory-strip-chip {
+			flex-shrink: 0;
+			padding: 0.25rem 0.625rem;
+			border-radius: 1rem;
+			background: oklch(0.06 0.02 280 / 70%);
+			backdrop-filter: blur(12px);
+			-webkit-backdrop-filter: blur(12px);
+			border: 1px solid oklch(0.78 0.12 75 / 15%);
+			font-family: var(--font-display);
+			font-style: italic;
+			font-size: 0.6rem;
+			color: oklch(0.78 0.12 75 / 55%);
+			white-space: nowrap;
+			text-decoration: none;
+			opacity: 0;
+			animation: strip-chip-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+			transition: all 0.2s ease;
+		}
+		.memory-strip-chip:active {
+			color: oklch(0.78 0.12 75 / 90%);
+			border-color: oklch(0.78 0.12 75 / 30%);
+			background: oklch(0.78 0.12 75 / 10%);
+		}
+		@keyframes strip-chip-in {
+			from { opacity: 0; transform: translateY(8px); }
+			to { opacity: 1; transform: translateY(0); }
 		}
 	}
 
