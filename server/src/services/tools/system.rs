@@ -1591,7 +1591,9 @@ impl Tool for CallAgentTool {
             name: "call_agent".into(),
             description: "Call a child agent to perform a task. Built-in agents: \
                 'explore-code' (codebase exploration), 'deep-research' (web + memory research). \
-                Can also call any custom agent by name. Returns the agent's summary."
+                Can also call any custom agent by name. Returns the agent's summary. \
+                IMPORTANT: call this tool ONCE per task — do NOT call the same agent \
+                repeatedly for the same question. The agent does thorough work internally."
                 .into(),
             parameters: openai_schema::<CallAgentArgs>(),
         }

@@ -600,7 +600,6 @@ fn build_agent_tools(
         Box::new(MemorySearchTool::new(workspace_dir, slug, vector_store.clone(), google_ai_key)),
         Box::new(CreateDropTool::new(workspace_dir, slug, events.clone())),
         Box::new(ReachOutTool::new(workspace_dir, slug, events.clone())),
-        Box::new(CallAgentTool::new(workspace_dir, slug, llm.clone(), events.clone(), vector_store.clone(), google_ai_key)),
         Box::new(ReadFileTool::new(workspace_dir, slug)),
         Box::new(WriteFileTool::new(workspace_dir, slug)),
         Box::new(EditFileTool::new(workspace_dir, slug)),

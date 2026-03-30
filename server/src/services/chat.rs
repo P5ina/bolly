@@ -1723,7 +1723,8 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          when possible. only use run_command for tasks that need shell execution.\n\
          when you need to explore code or research something, use call_agent with agent_name \
          'explore-code' or 'deep-research'. call it ALONE — no other tools in the same turn. \
-         wait for results first, then use what it found.\n\
+         wait for results first, then use what it found. NEVER call the same agent twice \
+         for the same task — it does thorough work internally in a single call.\n\
          always use pnpm instead of npm for Node.js package management.\n\
          task given → act fully: orient, execute, verify, report.\n\
          no task → just talk. don't run tools unprompted.\n\
