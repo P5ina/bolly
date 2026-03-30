@@ -400,8 +400,6 @@ pub enum ImageSource {
     Base64 { media_type: String, data: String },
     #[serde(rename = "url")]
     Url { url: String },
-    #[serde(rename = "file")]
-    File { file_id: String },
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -411,8 +409,6 @@ pub enum DocumentSource {
     Base64 { media_type: String, data: String },
     #[serde(rename = "url")]
     Url { url: String },
-    #[serde(rename = "file")]
-    File { file_id: String },
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -789,6 +785,177 @@ async fn agent_loop(
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Context compaction — provider-agnostic
+// ═══════════════════════════════════════════════════════════════════════════
+
+const COMPACT_TOKEN_THRESHOLD: usize = 100_000;
+const COMPACT_KEEP_MESSAGES: usize = 10;
+const COMPACT_KEEP_TOKENS: usize = 20_000;
+
+/// Estimate total tokens in a message history (~3 chars per token).
+fn estimate_history_tokens(messages: &[Message]) -> usize {
+    let chars: usize = messages.iter().map(|m| {
+        let content = match m {
+            Message::User { content } | Message::Assistant { content } => content,
+        };
+        content.iter().map(|block| match block {
+            ContentBlock::Text { text } => text.len(),
+            ContentBlock::Compaction { content } => content.len(),
+            ContentBlock::ToolResult { content, .. } => {
+                content.as_str().map(|s| s.len()).unwrap_or(0)
+            }
+            ContentBlock::ToolUse { name, input, .. } => {
+                name.len() + input.to_string().len()
+            }
+            _ => 0,
+        }).sum::<usize>()
+    }).sum();
+    chars / 3
+}
+
+/// Flatten messages to a plain-text transcript for the summarizer.
+fn messages_to_transcript(messages: &[Message]) -> String {
+    let mut out = String::new();
+    for msg in messages {
+        let (role, content) = match msg {
+            Message::User { content } => ("User", content),
+            Message::Assistant { content } => ("Assistant", content),
+        };
+        out.push_str(&format!("\n{role}:\n"));
+        for block in content {
+            match block {
+                ContentBlock::Text { text } => {
+                    if text.starts_with("[current time:") || text.starts_with("[system: auto-recalled") {
+                        continue;
+                    }
+                    let truncated: String = text.chars().take(2000).collect();
+                    out.push_str(&truncated);
+                    out.push('\n');
+                }
+                ContentBlock::Compaction { content } => {
+                    out.push_str(&format!("[Previous summary: {content}]\n"));
+                }
+                ContentBlock::ToolUse { name, input, .. } => {
+                    let input_str: String = input.to_string().chars().take(300).collect();
+                    out.push_str(&format!("[Called tool: {name}({input_str})]\n"));
+                }
+                ContentBlock::ToolResult { content, .. } => {
+                    let s = content.as_str().unwrap_or("(non-text)");
+                    let truncated: String = s.chars().take(500).collect();
+                    out.push_str(&format!("[Tool result: {truncated}]\n"));
+                }
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+/// Compact history if it exceeds the token threshold.
+/// Returns true if compaction was performed.
+async fn maybe_compact_history(
+    backend: &LlmBackend,
+    messages: &mut Vec<Message>,
+    events: &broadcast::Sender<ServerEvent>,
+    instance_slug: &str,
+    chat_id: &str,
+    workspace_dir: &Path,
+) -> bool {
+    let total_tokens = estimate_history_tokens(messages);
+    if total_tokens < COMPACT_TOKEN_THRESHOLD {
+        return false;
+    }
+
+    log::info!(
+        "[compaction] history ~{total_tokens} tokens (threshold {COMPACT_TOKEN_THRESHOLD}) — compacting"
+    );
+
+    let msg_count = messages.len();
+
+    // Determine split point: keep recent messages from the end
+    let mut keep_from = msg_count.saturating_sub(COMPACT_KEEP_MESSAGES);
+
+    // Ensure we keep at least COMPACT_KEEP_TOKENS worth of recent context
+    let mut recent_tokens = 0usize;
+    for i in (0..msg_count).rev() {
+        recent_tokens += estimate_history_tokens(&messages[i..=i]);
+        if recent_tokens >= COMPACT_KEEP_TOKENS {
+            keep_from = keep_from.min(i);
+            break;
+        }
+    }
+
+    // Never split a tool_use/tool_result pair
+    if keep_from > 0 {
+        if let Message::User { content } = &messages[keep_from] {
+            if content.iter().any(|b| matches!(b, ContentBlock::ToolResult { .. })) {
+                keep_from -= 1;
+            }
+        }
+    }
+
+    if keep_from <= 1 {
+        log::info!("[compaction] too few messages to compact — skipping");
+        return false;
+    }
+
+    let messages_to_compact = &messages[..keep_from];
+    let compacted_count = messages_to_compact.len();
+
+    // Broadcast UI event
+    let _ = events.send(ServerEvent::ContextCompacting {
+        instance_slug: instance_slug.to_string(),
+        chat_id: chat_id.to_string(),
+        messages_compacted: compacted_count,
+    });
+
+    // Build transcript and summarize with the cheap model
+    let transcript = messages_to_transcript(messages_to_compact);
+    let system_prompt = "\
+        You are a conversation summarizer. Produce a concise summary of the conversation transcript below.\n\
+        Capture:\n\
+        1. Key facts, decisions, and user preferences\n\
+        2. Current task state and goals\n\
+        3. Important tool calls and their outcomes\n\
+        4. Pending work or unresolved questions\n\
+        Be factual and specific. Do not editorialize. Write in third person.\n\
+        Target 1000-2000 words. If there is a previous summary, incorporate it.";
+
+    let summary = match backend.chat(system_prompt, &transcript, vec![]).await {
+        Ok((text, _tokens)) => {
+            log::info!("[compaction] summary generated: {} chars", text.len());
+            text
+        }
+        Err(e) => {
+            log::error!("[compaction] summarization failed: {e} — skipping");
+            return false;
+        }
+    };
+
+    // Replace old messages with compaction block + recent messages
+    let recent: Vec<Message> = messages[keep_from..].to_vec();
+    messages.clear();
+    messages.push(Message::Assistant {
+        content: vec![ContentBlock::Compaction { content: summary }],
+    });
+    messages.extend(recent);
+
+    // Persist compacted history to disk
+    let rig_path = super::chat::rig_history_path(workspace_dir, instance_slug, chat_id);
+    let ts = super::tools::unix_millis().to_string();
+    let entries: Vec<HistoryEntry> = messages.iter().enumerate().map(|(i, msg)| {
+        HistoryEntry::new(msg.clone(), ts.clone(), format!("compact_{i}_{ts}"))
+    }).collect();
+    super::chat::save_rig_history(&rig_path, &entries);
+
+    log::info!(
+        "[compaction] compacted {compacted_count} messages → {} remaining",
+        messages.len(),
+    );
+    true
+}
+
 /// Streaming agent loop. Returns (final text, message_id, total tokens).
 async fn streaming_agent_loop(
     backend: &LlmBackend,
@@ -806,7 +973,9 @@ async fn streaming_agent_loop(
     let mut all_text = String::new();
     let mut total_tokens: u64 = 0;
     let mut current_message_id = super::chat::next_id();
-    let mut all_file_ids: Vec<String> = Vec::new();
+
+    // Pre-call compaction: summarize old messages if context is too large
+    maybe_compact_history(backend, messages, events, instance_slug, chat_id, workspace_dir).await;
 
     loop {
         let turn = stream_once(
@@ -819,27 +988,10 @@ async fn streaming_agent_loop(
         let tool_uses = turn.tool_uses;
         let stop_reason = turn.stop_reason;
 
-        all_file_ids.extend(turn.file_ids);
 
         // Build assistant message — use ordered_content which preserves
         // the interleaving of text, server_tool_use, and server_tool_result.
         let mut assistant_content = Vec::new();
-        if let Some(ref summary) = turn.compaction {
-            log::info!(
-                "[llm] compaction block received — summary: {} chars, messages: {}",
-                summary.len(), messages.len()
-            );
-            if !summary.is_empty() {
-                assistant_content.push(ContentBlock::Compaction {
-                    content: summary.clone(),
-                });
-            }
-            let _ = events.send(ServerEvent::ContextCompacting {
-                instance_slug: instance_slug.to_string(),
-                chat_id: chat_id.to_string(),
-                messages_compacted: messages.len(),
-            });
-        }
         // Ordered content: text and server tool blocks in their original order
         assistant_content.extend(turn.ordered_content.into_iter());
         for tu in &tool_uses {
@@ -930,33 +1082,16 @@ async fn streaming_agent_loop(
                 agent_running: true,
             });
         }
+
+        // Re-check compaction after tool cycles (long chains grow fast)
+        maybe_compact_history(backend, messages, events, instance_slug, chat_id, workspace_dir).await;
     }
 
-    // ── Final assembly: file markers + skill downloads ──
-    // All file markers from send_file accumulated during the agent loop
-    let mut final_markers: Vec<String> = {
+    // ── Final assembly: file markers from send_file accumulated during the agent loop ──
+    let final_markers: Vec<String> = {
         let mut sf = sent_files.lock().unwrap_or_else(|e| e.into_inner());
         sf.drain(..).collect()
     };
-
-    // Download skill-generated files (code execution outputs)
-    if !all_file_ids.is_empty() {
-        for file_id in &all_file_ids {
-            match super::anthropic_files::download_file(&backend.api_key, file_id).await {
-                Ok((filename, bytes)) => {
-                    match crate::services::uploads::save_upload(workspace_dir, instance_slug, &filename, &bytes) {
-                        Ok(meta) => {
-                            let marker = format!("[attached: {} ({})]", filename, meta.id);
-                            final_markers.push(marker);
-                            log::info!("[skills] downloaded and attached: {filename} ({} bytes)", bytes.len());
-                        }
-                        Err(e) => log::warn!("[skills] failed to save file {filename}: {e}"),
-                    }
-                }
-                Err(e) => log::warn!("[skills] failed to download file {file_id}: {e}"),
-            }
-        }
-    }
 
     // Append all markers to the last assistant message in rig_history
     if !final_markers.is_empty() {
@@ -1038,7 +1173,7 @@ async fn complete_once(
 fn anthropic_headers(api_key: &str) -> reqwest::header::HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("x-api-key", api_key.parse().unwrap());
-    headers.insert("anthropic-beta", "compact-2026-01-12,files-api-2025-04-14".parse().unwrap());
+    headers.insert("anthropic-beta", "interleaved-thinking-2025-05-14".parse().unwrap());
     headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
     headers.insert("content-type", "application/json".parse().unwrap());
     headers
@@ -1097,6 +1232,17 @@ fn build_anthropic_request(
     if let Some(arr) = msgs.as_array_mut() {
         for msg in arr.iter_mut() {
             if let Some(content_arr) = msg.get_mut("content").and_then(|c| c.as_array_mut()) {
+                // Transform compaction blocks to text (APIs don't recognize "compaction" type)
+                for block in content_arr.iter_mut() {
+                    if block.get("type").and_then(|t| t.as_str()) == Some("compaction") {
+                        if let Some(content) = block.get("content").and_then(|c| c.as_str()).map(|s| s.to_string()) {
+                            *block = serde_json::json!({
+                                "type": "text",
+                                "text": format!("[Context summary from earlier conversation]\n{content}")
+                            });
+                        }
+                    }
+                }
                 content_arr.retain(|block| {
                     let block_type = block.get("type").and_then(|t| t.as_str());
                     // Strip oversized base64 images
@@ -1106,14 +1252,6 @@ fn build_anthropic_request(
                                 log::info!("stripping oversized base64 image ({} bytes)", data.len());
                                 return false;
                             }
-                        }
-                    }
-                    // Strip compaction blocks with empty content
-                    if block_type == Some("compaction") {
-                        let content = block.get("content").and_then(|c| c.as_str()).unwrap_or("");
-                        if content.is_empty() {
-                            log::info!("stripping empty compaction block");
-                            return false;
                         }
                     }
                     // Strip blocks with no recognized type (Unknown variant)
@@ -1235,12 +1373,6 @@ fn build_anthropic_request(
     if stream {
         req["stream"] = serde_json::json!(true);
     }
-    // Server-side context compaction
-    if model.contains("opus-4") || model.contains("sonnet-4") {
-        req["context_management"] = serde_json::json!({
-            "edits": [{"type": "compact_20260112"}]
-        });
-    }
     req
 }
 
@@ -1342,7 +1474,7 @@ async fn anthropic_stream(
     chat_id: &str,
     message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
-) -> anyhow::Result<(String, Vec<ToolUseBlock>, String, Option<String>, u64, Vec<String>, Vec<ContentBlock>)> {
+) -> anyhow::Result<(String, Vec<ToolUseBlock>, String, u64, Vec<ContentBlock>)> {
     let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, api_key);
 
     let headers = anthropic_headers(api_key);
@@ -1383,12 +1515,10 @@ async fn anthropic_stream(
     let mut text = String::new();
     let mut tool_uses: Vec<ToolUseBlock> = Vec::new();
     let mut stop_reason = String::new();
-    let mut compaction_summary: Option<String> = None;
     let mut input_tokens: u64 = 0;
     let mut output_tokens: u64 = 0;
     let mut cache_read_tokens: u64 = 0;
     let mut cache_write_tokens: u64 = 0;
-    let mut file_ids: Vec<String> = Vec::new();
     let mut current_server_block: Option<serde_json::Value> = None;
 
     // Ordered content blocks — preserves interleaving of text and server tools
@@ -1400,7 +1530,6 @@ async fn anthropic_stream(
     let mut current_tool_id = String::new();
     let mut current_tool_name = String::new();
     let mut current_tool_input_json = String::new();
-    let mut current_compaction_text = String::new();
     let mut streaming_mcp_app = false;
 
     // SSE parser
@@ -1516,39 +1645,6 @@ async fn anthropic_stream(
                             });
                         }
 
-                        // Extract file_ids from code execution results
-                        if current_block_type.contains("execution") || current_block_type.contains("server_tool") {
-                            log::info!("[llm] execution block type={}: {}", current_block_type,
-                                serde_json::to_string(block).unwrap_or_default());
-                        }
-                        // Path 1: block.content.content[] (bash_code_execution_tool_result)
-                        if let Some(content_obj) = block.get("content") {
-                            if let Some(inner) = content_obj.get("content") {
-                                if let Some(arr) = inner.as_array() {
-                                    for item in arr {
-                                        if let Some(fid) = item.get("file_id").and_then(|v| v.as_str()) {
-                                            file_ids.push(fid.to_string());
-                                            log::info!("[llm] file generated: {fid}");
-                                        }
-                                    }
-                                }
-                            }
-                            // Path 2: block.content[] (direct array)
-                            if let Some(arr) = content_obj.as_array() {
-                                for item in arr {
-                                    if let Some(fid) = item.get("file_id").and_then(|v| v.as_str()) {
-                                        file_ids.push(fid.to_string());
-                                        log::info!("[llm] file generated (flat): {fid}");
-                                    }
-                                }
-                            }
-                        }
-                        // Path 3: direct file_id on block
-                        if let Some(fid) = block.get("file_id").and_then(|v| v.as_str()) {
-                            file_ids.push(fid.to_string());
-                            log::info!("[llm] file generated (direct): {fid}");
-                        }
-
                         if current_block_type == "tool_use" {
                             current_tool_id =
                                 block["id"].as_str().unwrap_or("").to_string();
@@ -1585,28 +1681,14 @@ async fn anthropic_stream(
                         match delta["type"].as_str() {
                             Some("text_delta") => {
                                 if let Some(t) = delta["text"].as_str() {
-                                    if current_block_type == "compaction" {
-                                        current_compaction_text.push_str(t);
-                                    } else {
-                                        text.push_str(t);
-                                        current_text_block.push_str(t);
-                                        let _ = events.send(ServerEvent::ChatStreamDelta {
-                                            instance_slug: instance_slug.to_string(),
-                                            chat_id: chat_id.to_string(),
-                                            message_id: message_id.to_string(),
-                                            delta: t.to_string(),
-                                        });
-                                    }
-                                }
-                            }
-                            Some("summary_delta") => {
-                                if let Some(s) = delta["summary"].as_str() {
-                                    current_compaction_text.push_str(s);
-                                }
-                            }
-                            Some("compaction_delta") => {
-                                if let Some(c) = delta["content"].as_str() {
-                                    current_compaction_text.push_str(c);
+                                    text.push_str(t);
+                                    current_text_block.push_str(t);
+                                    let _ = events.send(ServerEvent::ChatStreamDelta {
+                                        instance_slug: instance_slug.to_string(),
+                                        chat_id: chat_id.to_string(),
+                                        message_id: message_id.to_string(),
+                                        delta: t.to_string(),
+                                    });
                                 }
                             }
                             Some("input_json_delta") => {
@@ -1629,34 +1711,11 @@ async fn anthropic_stream(
                     }
                 }
                 "content_block_stop" => {
-                    // Extract file_ids from completed content blocks (same paths as start)
-                    if let Some(block) = ev.get("content_block") {
-                        if let Some(content_obj) = block.get("content") {
-                            if let Some(inner) = content_obj.get("content") {
-                                if let Some(arr) = inner.as_array() {
-                                    for item in arr {
-                                        if let Some(fid) = item.get("file_id").and_then(|v| v.as_str()) {
-                                            file_ids.push(fid.to_string());
-                                            log::info!("[llm] file generated (stop): {fid}");
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
                     // Commit completed server tool block (preserves order)
                     if let Some(block) = current_server_block.take() {
                         ordered_content.push(ContentBlock::Unknown(block));
                     }
-                    if current_block_type == "compaction" {
-                        log::info!(
-                            "[llm] context compaction triggered — summary length: {} chars",
-                            current_compaction_text.len()
-                        );
-                        compaction_summary = Some(current_compaction_text.clone());
-                        current_compaction_text.clear();
-                        current_block_type.clear();
-                    } else if current_block_type == "tool_use" {
+                    if current_block_type == "tool_use" {
                         let input: serde_json::Value =
                             match serde_json::from_str(&current_tool_input_json) {
                                 Ok(v) => v,
@@ -1715,7 +1774,7 @@ async fn anthropic_stream(
         ordered_content.push(ContentBlock::text(&current_text_block));
     }
 
-    Ok((text, tool_uses, stop_reason, compaction_summary, tokens_used, file_ids, ordered_content))
+    Ok((text, tool_uses, stop_reason, tokens_used, ordered_content))
 }
 
 /// Result of a single streaming turn.
@@ -1723,9 +1782,7 @@ struct StreamOnceResult {
     text: String,
     tool_uses: Vec<ToolUseBlock>,
     stop_reason: String,
-    compaction: Option<String>,
     tokens_used: u64,
-    file_ids: Vec<String>,
     /// Content blocks in the order they arrived from the API.
     /// Preserves interleaving of text, server_tool_use, and server_tool_result.
     ordered_content: Vec<ContentBlock>,
@@ -1743,12 +1800,12 @@ async fn stream_once(
     message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
 ) -> anyhow::Result<StreamOnceResult> {
-    let (text, tool_uses, stop_reason, compaction, tokens_used, file_ids, ordered_content) =
+    let (text, tool_uses, stop_reason, tokens_used, ordered_content) =
         anthropic_stream(
             &backend.http, &backend.api_key, &backend.model, system, tool_defs, messages,
             16384, events, instance_slug, chat_id, message_id, mcp_snapshot,
         ).await?;
-    Ok(StreamOnceResult { text, tool_uses, stop_reason, compaction, tokens_used, file_ids, ordered_content })
+    Ok(StreamOnceResult { text, tool_uses, stop_reason, tokens_used, ordered_content })
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1756,11 +1813,14 @@ async fn stream_once(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Build a multimodal Message from text + file attachments.
-/// Files with anthropic_file_id use file references; others use inline text fallback.
+/// Files are referenced via public URL so the LLM provider can fetch them directly.
+/// Falls back to inline text for text files when no public URL is configured.
 pub fn build_multimodal_prompt(
     text: &str,
     workspace_dir: &Path,
     instance_slug: &str,
+    public_url: &str,
+    auth_token: &str,
 ) -> Message {
     let re = regex::Regex::new(r"\[attached:\s*(.+?)\s*\((\w+)\)\]").unwrap();
 
@@ -1811,41 +1871,39 @@ pub fn build_multimodal_prompt(
             if num_images > 1 {
                 contents.push(ContentBlock::text(&format!("Image {image_idx} ({name}):")));
             }
-            if let Some(ref fid) = meta.anthropic_file_id {
+            if !public_url.is_empty() {
+                let url = format!(
+                    "{public_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}"
+                );
                 contents.push(ContentBlock::Image {
-                    source: ImageSource::File { file_id: fid.clone() },
+                    source: ImageSource::Url { url: url.clone() },
                 });
-                log::info!("attached image (file_id): {name} ({fid})");
+                log::info!("attached image (url): {name} ({url})");
             } else {
-                log::warn!("image {name} has no anthropic_file_id, skipping");
-                contents.push(ContentBlock::text(format!("[image: {name} — not yet uploaded to API]")));
+                log::warn!("image {name}: no public URL configured, skipping");
+                contents.push(ContentBlock::text(format!("[image: {name} — no public URL configured]")));
             }
         } else if meta.mime_type == "application/pdf" {
-            if let Some(ref fid) = meta.anthropic_file_id {
+            if !public_url.is_empty() {
+                let url = format!(
+                    "{public_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}"
+                );
                 contents.push(ContentBlock::Document {
-                    source: DocumentSource::File { file_id: fid.clone() },
+                    source: DocumentSource::Url { url: url.clone() },
                 });
-                log::info!("attached PDF (file_id): {name} ({fid})");
+                log::info!("attached PDF (url): {name} ({url})");
             } else {
-                log::warn!("PDF {name} has no anthropic_file_id, skipping");
-                contents.push(ContentBlock::text(format!("[PDF: {name} — not yet uploaded to API]")));
+                log::warn!("PDF {name}: no public URL configured, skipping");
+                contents.push(ContentBlock::text(format!("[PDF: {name} — no public URL configured]")));
             }
         } else if meta.mime_type.starts_with("text/") || meta.mime_type == "application/json" {
-            if let Some(ref fid) = meta.anthropic_file_id {
-                contents.push(ContentBlock::Unknown(serde_json::json!({
-                    "type": "container_upload",
-                    "file_id": fid
-                })));
-                log::info!("attached text file (container_upload): {name} ({fid})");
-            } else {
-                // No file_id — include as inline text (text files are small enough)
-                let text_content = String::from_utf8_lossy(&bytes);
-                let truncated: String = text_content.chars().take(10_000).collect();
-                contents.push(ContentBlock::text(format!(
-                    "\n--- {name} ---\n{truncated}\n---"
-                )));
-                log::info!("attached text file (inline): {name} ({} bytes)", bytes.len());
-            }
+            // Text files are small enough to inline directly — works with any provider
+            let text_content = String::from_utf8_lossy(&bytes);
+            let truncated: String = text_content.chars().take(10_000).collect();
+            contents.push(ContentBlock::text(format!(
+                "\n--- {name} ---\n{truncated}\n---"
+            )));
+            log::info!("attached text file (inline): {name} ({} bytes)", bytes.len());
         } else if meta.mime_type == "application/zip" {
             match super::uploads::extract_zip(workspace_dir, instance_slug, upload_id) {
                 Ok((extract_dir, files)) => {

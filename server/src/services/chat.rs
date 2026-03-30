@@ -13,12 +13,9 @@ use crate::{
     domain::events::ServerEvent,
     domain::instance::InstanceSummary,
     services::{
-        llm::{self, LlmBackend},
-        memory,
         daily_stats,
-        tools,
-        skills,
-        workspace,
+        llm::{self, LlmBackend},
+        memory, skills, tools, workspace,
     },
 };
 
@@ -46,11 +43,7 @@ pub fn save_user_message(
     let ts = timestamp();
     let id = next_id();
 
-    let entry = llm::HistoryEntry::new(
-        llm::Message::user(&content),
-        ts.clone(),
-        id.clone(),
-    );
+    let entry = llm::HistoryEntry::new(llm::Message::user(&content), ts.clone(), id.clone());
 
     let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
     append_to_rig_history(&rig_path, &entry);
@@ -61,7 +54,10 @@ pub fn save_user_message(
         content,
         created_at: ts,
         kind: Default::default(),
-        tool_name: None, mcp_app_html: None, mcp_app_input: None, model: None,
+        tool_name: None,
+        mcp_app_html: None,
+        mcp_app_input: None,
+        model: None,
     };
 
     // Update last_interaction timestamp
@@ -90,11 +86,7 @@ pub fn save_system_message(
     let ts = timestamp();
     let id = next_id();
 
-    let entry = llm::HistoryEntry::new(
-        llm::Message::assistant(content),
-        ts.clone(),
-        id.clone(),
-    );
+    let entry = llm::HistoryEntry::new(llm::Message::assistant(content), ts.clone(), id.clone());
 
     let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
     append_to_rig_history(&rig_path, &entry);
@@ -105,7 +97,10 @@ pub fn save_system_message(
         content: content.to_string(),
         created_at: ts,
         kind: Default::default(),
-        tool_name: None, mcp_app_html: None, mcp_app_input: None, model: None,
+        tool_name: None,
+        mcp_app_html: None,
+        mcp_app_input: None,
+        model: None,
     };
 
     Ok(msg)
@@ -127,7 +122,9 @@ pub async fn run_single_turn(
     chat_id: &str,
     llm: &LlmBackend,
     events: broadcast::Sender<ServerEvent>,
-    pending_secrets: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>>,
+    pending_secrets: std::sync::Arc<
+        tokio::sync::Mutex<std::collections::HashMap<String, crate::app::state::PendingSecret>>,
+    >,
     plan: &str,
     mcp_registry: &crate::services::mcp::McpRegistry,
     voice_mode: bool,
@@ -161,7 +158,10 @@ pub async fn run_single_turn(
         .filter(|s| !s.is_empty())
         .or_else(|| chat_config.as_ref().map(|c| c.auth_token.clone()))
         .unwrap_or_default();
-    let landing_url = chat_config.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
+    let landing_url = chat_config
+        .as_ref()
+        .map(|c| c.landing_url.clone())
+        .unwrap_or_default();
     let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
 
     // Build system prompt with STABLE content first (for Anthropic prompt caching).
@@ -217,16 +217,24 @@ pub async fn run_single_turn(
     }
 
     // Child agents
-    let agents_dir = workspace_dir.join("instances").join(&instance_slug).join("agents");
+    let agents_dir = workspace_dir
+        .join("instances")
+        .join(&instance_slug)
+        .join("agents");
     let agent_names: Vec<String> = std::fs::read_dir(&agents_dir)
         .into_iter()
         .flatten()
         .filter_map(Result::ok)
         .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("toml"))
-        .filter_map(|e| e.path().file_stem().map(|s| s.to_string_lossy().to_string()))
+        .filter_map(|e| {
+            e.path()
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+        })
         .collect();
     let agents_list = if agent_names.is_empty() {
-        "none yet (built-ins: reflection, night-maintenance — created on first heartbeat)".to_string()
+        "none yet (built-ins: reflection, night-maintenance — created on first heartbeat)"
+            .to_string()
     } else {
         agent_names.join(", ")
     };
@@ -277,7 +285,11 @@ pub async fn run_single_turn(
             account_lines.push(format!("- {} (gmail)", a.email));
         }
         for cfg in &email_accounts {
-            let label = if cfg.smtp_from.is_empty() { &cfg.smtp_user } else { &cfg.smtp_from };
+            let label = if cfg.smtp_from.is_empty() {
+                &cfg.smtp_user
+            } else {
+                &cfg.smtp_from
+            };
             account_lines.push(format!("- {} (smtp/imap)", label));
         }
         system_prompt.push_str(&format!(
@@ -297,13 +309,13 @@ pub async fn run_single_turn(
              available google tools:\n\
              - list_events / create_event: Google Calendar\n\
              - list_drive_files / read_drive_file / upload_drive_file: Google Drive\n\
-             use `account` parameter to pick which google account."
+             use `account` parameter to pick which google account.",
         );
     } else {
         system_prompt.push_str(
             "\n\n## google integration\n\
              google is NOT connected. you do NOT have calendar or drive tools.\n\
-             NEVER fabricate calendar events or file listings."
+             NEVER fabricate calendar events or file listings.",
         );
     }
 
@@ -311,13 +323,15 @@ pub async fn run_single_turn(
         system_prompt.push_str(
             "\nyou do NOT have email tools. \
              NEVER pretend to read or send email. \
-             if the user asks about email, tell them to configure it in settings."
+             if the user asks about email, tell them to configure it in settings.",
         );
     }
 
     // GitHub integration hint
     {
-        let global_gh = chat_config.as_ref().is_some_and(|c| !c.github.token.is_empty());
+        let global_gh = chat_config
+            .as_ref()
+            .is_some_and(|c| !c.github.token.is_empty());
         let gh_configured = global_gh || !instance_cfg.github.token.is_empty();
         if gh_configured {
             system_prompt.push_str(
@@ -341,7 +355,7 @@ pub async fn run_single_turn(
          your visual form shifts between shapes — cube, pyramid, sphere, and others — \
          depending on your current state. you don't choose the shape consciously, \
          but it reflects what's happening internally. \
-         the user sees you as this shape. embrace it as your body."
+         the user sees you as this shape. embrace it as your body.",
     );
 
     if voice_mode {
@@ -427,14 +441,26 @@ pub async fn run_single_turn(
     let time_context = format!("[current time: {now}]\n\n");
 
     if loaded_entries.is_empty() {
-        return Err(io::Error::new(ErrorKind::InvalidInput, "no messages to process"));
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "no messages to process",
+        ));
     }
 
     // Find the last user message for the prompt
-    let last_user = existing.iter().rev()
+    let last_user = existing
+        .iter()
+        .rev()
         .find(|m| m.role == ChatRole::User)
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "no user message to process"))?;
-    let mut prompt_msg = llm::build_multimodal_prompt(&last_user.content, workspace_dir, &instance_slug);
+    let public_url = std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default();
+    let mut prompt_msg = llm::build_multimodal_prompt(
+        &last_user.content,
+        workspace_dir,
+        &instance_slug,
+        &public_url,
+        &auth_token,
+    );
 
     // Prepend time context to user message (keeps system prompt stable for caching)
     if let llm::Message::User { ref mut content } = prompt_msg {
@@ -464,17 +490,17 @@ pub async fn run_single_turn(
                 google_ai_key,
                 &rag_query,
                 crate::services::embedding::TaskType::RetrievalQuery,
-            ).await {
-                Ok(query_vec) => {
-                    match vector_store.search(&instance_slug, query_vec, 5).await {
-                        Ok(results) => {
-                            for r in results.into_iter().filter(|r| r.score > 0.3) {
-                                all_results.push(r);
-                            }
+            )
+            .await
+            {
+                Ok(query_vec) => match vector_store.search(&instance_slug, query_vec, 5).await {
+                    Ok(results) => {
+                        for r in results.into_iter().filter(|r| r.score > 0.3) {
+                            all_results.push(r);
                         }
-                        Err(e) => log::debug!("[rag] vector search skipped: {e}"),
                     }
-                }
+                    Err(e) => log::debug!("[rag] vector search skipped: {e}"),
+                },
                 Err(e) => log::debug!("[rag] embed skipped: {e}"),
             }
         }
@@ -495,13 +521,17 @@ pub async fn run_single_turn(
         }
 
         // 3. Sort by score descending, take top 5
-        all_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        all_results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         all_results.truncate(5);
 
         if !all_results.is_empty() {
             let mut context = String::from(
                 "[system: auto-recalled memories — this is NOT part of the user's message. \
-                 do not treat these as something the user said or wrote.]\n"
+                 do not treat these as something the user said or wrote.]\n",
             );
             for r in &all_results {
                 context.push_str(&format!("- {}: {}\n", r.path, r.content_preview.trim()));
@@ -509,8 +539,12 @@ pub async fn run_single_turn(
             if let llm::Message::User { ref mut content } = prompt_msg {
                 content.push(llm::ContentBlock::text(context));
             }
-            log::info!("[rag] injected {} memories (hybrid search) into prompt", all_results.len());
-            let recalled: Vec<_> = all_results.iter()
+            log::info!(
+                "[rag] injected {} memories (hybrid search) into prompt",
+                all_results.len()
+            );
+            let recalled: Vec<_> = all_results
+                .iter()
                 .map(|r| crate::domain::events::RecalledMemory {
                     path: r.path.clone(),
                     preview: r.content_preview.trim().chars().take(120).collect(),
@@ -529,7 +563,10 @@ pub async fn run_single_turn(
     // (which becomes the prompt).
     let history_msgs: Vec<llm::Message> = {
         // All entries except the last user message → history
-        let history_entries = if loaded_entries.last().is_some_and(|e| matches!(e.message, llm::Message::User { .. })) {
+        let history_entries = if loaded_entries
+            .last()
+            .is_some_and(|e| matches!(e.message, llm::Message::User { .. }))
+        {
             &loaded_entries[..loaded_entries.len() - 1]
         } else {
             &loaded_entries[..]
@@ -566,14 +603,25 @@ pub async fn run_single_turn(
     let mcp_tools = mcp_registry.tools_as_dyn().await;
     // Prefer instance-level github token; fall back to global config
     let github_token = {
-        let global_token = chat_config.as_ref().map(|c| c.github.token.clone()).unwrap_or_default();
+        let global_token = chat_config
+            .as_ref()
+            .map(|c| c.github.token.clone())
+            .unwrap_or_default();
         let instance_token = instance_cfg.github.token.clone();
-        let t = if !instance_token.is_empty() { instance_token } else { global_token };
+        let t = if !instance_token.is_empty() {
+            instance_token
+        } else {
+            global_token
+        };
         if t.is_empty() { None } else { Some(t) }
     };
     let (all_tools, sent_files) = tools::build_tools(
-        workspace_dir, &instance_slug, &chat_id,
-        config_path, events.clone(), llm,
+        workspace_dir,
+        &instance_slug,
+        &chat_id,
+        config_path,
+        events.clone(),
+        llm,
         Some(pending_secrets),
         plan,
         google,
@@ -589,14 +637,17 @@ pub async fn run_single_turn(
     tools::cache_tool_defs(&all_tools).await;
 
     // Context size logging
-    let history_text_chars: usize = history_msgs.iter()
+    let history_text_chars: usize = history_msgs
+        .iter()
         .map(|m| extract_message_text_len(m))
         .sum();
     let _estimated_history_tokens = history_text_chars / 4;
 
     log::info!(
         "[chat] sending: system_prompt={} chars, tools={}, history_msgs={}",
-        system_stable.len(), all_tools.len(), history_msgs.len()
+        system_stable.len(),
+        all_tools.len(),
+        history_msgs.len()
     );
     // Block 1 (stable): soul + skills + tools — cached across turns
     // Block 2 (semi-stable): memory catalog — cached until memories change
@@ -604,8 +655,13 @@ pub async fn run_single_turn(
     let system_blocks: Vec<&str> = vec![&system_stable, &memory_block];
     let tool_result = llm
         .chat_with_tools_streaming(
-            &system_blocks, prompt_msg, history_msgs, all_tools,
-            events.clone(), &instance_slug, &chat_id,
+            &system_blocks,
+            prompt_msg,
+            history_msgs,
+            all_tools,
+            events.clone(),
+            &instance_slug,
+            &chat_id,
             workspace_dir,
             Some(mcp_snapshot),
             sent_files,
@@ -620,13 +676,18 @@ pub async fn run_single_turn(
             log::error!("LLM call failed: {msg}");
 
             // Rate limits / overload: return a friendly message, don't propagate error
-            if msg.contains("429") || msg.contains("rate_limit")
+            if msg.contains("429")
+                || msg.contains("rate_limit")
                 || msg.contains("Too Many Requests")
-                || msg.contains("529") || msg.contains("overloaded")
+                || msg.contains("529")
+                || msg.contains("overloaded")
             {
                 llm::ToolChatResult {
-                    text: "i'm being rate limited right now — give me a moment and try again".to_string(),
-                    rig_history: None, message_id: None, tokens_used: 0,
+                    text: "i'm being rate limited right now — give me a moment and try again"
+                        .to_string(),
+                    rig_history: None,
+                    message_id: None,
+                    tokens_used: 0,
                 }
             } else {
                 // Hard error (400, 500, etc) — propagate to stop the agent loop
@@ -648,7 +709,9 @@ pub async fn run_single_turn(
     if let Some(ref h) = tool_result.rig_history {
         let had_compaction = h.iter().any(|msg| {
             if let llm::Message::Assistant { content } = msg {
-                content.iter().any(|b| matches!(b, llm::ContentBlock::Compaction { .. }))
+                content
+                    .iter()
+                    .any(|b| matches!(b, llm::ContentBlock::Compaction { .. }))
             } else {
                 false
             }
@@ -684,7 +747,16 @@ pub async fn run_single_turn(
                 log::warn!("memory extraction failed: {e}");
             }
             embed_recent_media(&ws, &slug, &vs, &gai_key).await;
-            extract_sentiment(&ws, &slug, &cid, &user_content, &assistant_content, &fast, &events_bg).await;
+            extract_sentiment(
+                &ws,
+                &slug,
+                &cid,
+                &user_content,
+                &assistant_content,
+                &fast,
+                &events_bg,
+            )
+            .await;
         });
     }
 
@@ -695,7 +767,8 @@ pub async fn run_single_turn(
         let input_tokens = estimate_tokens(&system_stable)
             + estimate_tokens(&memory_block)
             + estimate_tokens_from_chars(history_text_chars);
-        let output_tokens: usize = assistant_messages.iter()
+        let output_tokens: usize = assistant_messages
+            .iter()
             .map(|m| estimate_tokens(&m.content))
             .sum();
         (input_tokens + output_tokens) as i32
@@ -707,7 +780,11 @@ pub async fn run_single_turn(
     })
 }
 
-pub fn load_messages(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> io::Result<ChatResponse> {
+pub fn load_messages(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    chat_id: &str,
+) -> io::Result<ChatResponse> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
     let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
@@ -723,9 +800,15 @@ pub fn load_messages(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -
 }
 
 /// Get the content of the last user message in a chat (for model routing).
-pub fn last_user_content(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> Option<String> {
+pub fn last_user_content(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    chat_id: &str,
+) -> Option<String> {
     let resp = load_messages(workspace_dir, instance_slug, chat_id).ok()?;
-    resp.messages.iter().rev()
+    resp.messages
+        .iter()
+        .rev()
         .find(|m| m.role == crate::domain::chat::ChatRole::User)
         .map(|m| m.content.clone())
 }
@@ -778,17 +861,37 @@ fn archive_conversation(workspace_dir: &Path, instance_slug: &str, chat_id: &str
         .filter_map(|e| {
             let (role, content) = match &e.message {
                 llm::Message::User { content } => {
-                    let text: String = content.iter().filter_map(|b| {
-                        if let llm::ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
-                    }).collect::<Vec<_>>().join(" ");
-                    if text.is_empty() { return None; }
+                    let text: String = content
+                        .iter()
+                        .filter_map(|b| {
+                            if let llm::ContentBlock::Text { text } = b {
+                                Some(text.as_str())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    if text.is_empty() {
+                        return None;
+                    }
                     ("user", text)
                 }
                 llm::Message::Assistant { content, .. } => {
-                    let text: String = content.iter().filter_map(|b| {
-                        if let llm::ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
-                    }).collect::<Vec<_>>().join(" ");
-                    if text.is_empty() { return None; }
+                    let text: String = content
+                        .iter()
+                        .filter_map(|b| {
+                            if let llm::ContentBlock::Text { text } = b {
+                                Some(text.as_str())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    if text.is_empty() {
+                        return None;
+                    }
                     // Truncate assistant messages to save space
                     let truncated: String = text.chars().take(500).collect();
                     ("assistant", truncated)
@@ -820,14 +923,25 @@ fn archive_conversation(workspace_dir: &Path, instance_slug: &str, chat_id: &str
 
     // Append one JSON line
     use std::io::Write;
-    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&archive_path) {
+    if let Ok(mut file) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&archive_path)
+    {
         let _ = writeln!(file, "{}", archive_entry);
-        log::info!("archived {} messages for {instance_slug}/{chat_id} before clear", messages.len());
+        log::info!(
+            "archived {} messages for {instance_slug}/{chat_id} before clear",
+            messages.len()
+        );
     }
 }
 
 /// Load archived conversations within a time window (for reflection cycle).
-pub fn load_archived_conversations(workspace_dir: &Path, instance_slug: &str, since_ts: i64) -> String {
+pub fn load_archived_conversations(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    since_ts: i64,
+) -> String {
     let archive_path = workspace_dir
         .join("instances")
         .join(instance_slug)
@@ -864,9 +978,15 @@ pub fn load_archived_conversations(workspace_dir: &Path, instance_slug: &str, si
 }
 
 /// List all chats for an instance, returning summaries.
-pub fn list_chats(workspace_dir: &Path, instance_slug: &str) -> io::Result<Vec<crate::domain::chat::ChatSummary>> {
+pub fn list_chats(
+    workspace_dir: &Path,
+    instance_slug: &str,
+) -> io::Result<Vec<crate::domain::chat::ChatSummary>> {
     let instance_slug = sanitize_slug(instance_slug);
-    let chats_dir = workspace_dir.join("instances").join(&instance_slug).join("chats");
+    let chats_dir = workspace_dir
+        .join("instances")
+        .join(&instance_slug)
+        .join("chats");
     if !chats_dir.is_dir() {
         return Ok(vec![]);
     }
@@ -900,7 +1020,11 @@ pub fn list_chats(workspace_dir: &Path, instance_slug: &str) -> io::Result<Vec<c
 
         summaries.push(crate::domain::chat::ChatSummary {
             id: chat_id,
-            title: if meta.title.is_empty() { "untitled".into() } else { meta.title },
+            title: if meta.title.is_empty() {
+                "untitled".into()
+            } else {
+                meta.title
+            },
             message_count: msgs.len(),
             last_message_at: last_at,
             created_at: meta.created_at,
@@ -913,7 +1037,11 @@ pub fn list_chats(workspace_dir: &Path, instance_slug: &str) -> io::Result<Vec<c
 }
 
 /// Get the title of a chat (empty string if no title set).
-pub fn get_chat_title(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> io::Result<String> {
+pub fn get_chat_title(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    chat_id: &str,
+) -> io::Result<String> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
     let meta_path = chat_dir(workspace_dir, &instance_slug, &chat_id).join("meta.json");
@@ -927,7 +1055,12 @@ pub fn get_chat_title(workspace_dir: &Path, instance_slug: &str, chat_id: &str) 
 }
 
 /// Update the title of a chat.
-pub fn update_chat_title(workspace_dir: &Path, instance_slug: &str, chat_id: &str, title: &str) -> io::Result<()> {
+pub fn update_chat_title(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    chat_id: &str,
+    title: &str,
+) -> io::Result<()> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
     let dir = chat_dir(workspace_dir, &instance_slug, &chat_id);
@@ -965,7 +1098,11 @@ pub fn discover_instance(
 // agent was interrupted mid-task.
 // ---------------------------------------------------------------------------
 
-fn agent_marker_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> std::path::PathBuf {
+fn agent_marker_path(
+    workspace_dir: &Path,
+    instance_slug: &str,
+    chat_id: &str,
+) -> std::path::PathBuf {
     workspace_dir
         .join("instances")
         .join(instance_slug)
@@ -994,7 +1131,10 @@ fn was_agent_interrupted(workspace_dir: &Path, instance_slug: &str, chat_id: &st
 /// On startup, find chats where an agent was interrupted and inject a restart
 /// notification so the agent can resume. Returns (slug, chat_id) pairs that
 /// need agent loops spawned.
-pub fn notify_restart(workspace_dir: &Path, events: &broadcast::Sender<ServerEvent>) -> Vec<(String, String)> {
+pub fn notify_restart(
+    workspace_dir: &Path,
+    events: &broadcast::Sender<ServerEvent>,
+) -> Vec<(String, String)> {
     let instances_dir = workspace_dir.join("instances");
     let entries = match fs::read_dir(&instances_dir) {
         Ok(e) => e,
@@ -1031,7 +1171,9 @@ pub fn notify_restart(workspace_dir: &Path, events: &broadcast::Sender<ServerEve
                 message: msg,
             });
             notified.push((slug.clone(), "default".to_string()));
-            log::info!("[restart] agent was interrupted for {slug}/default, injecting restart message");
+            log::info!(
+                "[restart] agent was interrupted for {slug}/default, injecting restart message"
+            );
         }
     }
 
@@ -1093,14 +1235,16 @@ fn is_tool_activity(msg: &ChatMessage) -> bool {
 #[allow(dead_code)]
 fn strip_leaked_tool_calls(reply: &str) -> String {
     let re = regex::Regex::new(
-        r#"\{["\s]*"?name"?\s*:\s*"[a-z_]+".*?"parameters"\s*:\s*\{[^}]*\}\s*\}"#
-    ).unwrap();
+        r#"\{["\s]*"?name"?\s*:\s*"[a-z_]+".*?"parameters"\s*:\s*\{[^}]*\}\s*\}"#,
+    )
+    .unwrap();
     let cleaned = re.replace_all(reply, "");
     // Collapse leftover blank lines
-    let collapsed = regex::Regex::new(r"\n{3,}").unwrap().replace_all(&cleaned, "\n\n");
+    let collapsed = regex::Regex::new(r"\n{3,}")
+        .unwrap()
+        .replace_all(&cleaned, "\n\n");
     collapsed.trim().to_string()
 }
-
 
 /// Call Anthropic /v1/messages/count_tokens API for accurate token count.
 async fn count_tokens_api(
@@ -1173,18 +1317,21 @@ fn extract_message_text_len(msg: &llm::Message) -> usize {
         llm::Message::User { content } => content,
         llm::Message::Assistant { content } => content,
     };
-    content.iter().map(|block| {
-        match block {
-            llm::ContentBlock::Text { text } => text.len(),
-            llm::ContentBlock::Compaction { content } => content.len(),
-            llm::ContentBlock::ToolResult { content, .. } => {
-                // content is a serde_json::Value — extract string if it's a string
-                content.as_str().map(|s| s.len()).unwrap_or(0)
+    content
+        .iter()
+        .map(|block| {
+            match block {
+                llm::ContentBlock::Text { text } => text.len(),
+                llm::ContentBlock::Compaction { content } => content.len(),
+                llm::ContentBlock::ToolResult { content, .. } => {
+                    // content is a serde_json::Value — extract string if it's a string
+                    content.as_str().map(|s| s.len()).unwrap_or(0)
+                }
+                llm::ContentBlock::ToolUse { name, .. } => name.len() + 20, // name + small overhead
+                _ => 0, // images, documents, unknown — skip for text estimate
             }
-            llm::ContentBlock::ToolUse { name, .. } => name.len() + 20, // name + small overhead
-            _ => 0, // images, documents, unknown — skip for text estimate
-        }
-    }).sum()
+        })
+        .sum()
 }
 
 /// A single section of the system prompt with its name and size.
@@ -1243,8 +1390,7 @@ pub async fn compute_context_stats_async(
             for section in &mut stats.system_prompt {
                 section.tokens = (section.tokens as f64 * ratio).round() as usize;
             }
-            stats.system_prompt_total_tokens =
-                stats.system_prompt.iter().map(|s| s.tokens).sum();
+            stats.system_prompt_total_tokens = stats.system_prompt.iter().map(|s| s.tokens).sum();
             stats.tools_tokens_estimate =
                 (stats.tools_tokens_estimate as f64 * ratio).round() as usize;
             stats.history_tokens_estimate =
@@ -1253,14 +1399,15 @@ pub async fn compute_context_stats_async(
         stats.total_input_tokens_estimate = real_total;
     } else {
         // Fallback: try count_tokens API if no cached data (first load before any chat)
-        let api_info: Option<(String, String)> = crate::config::load_config().ok().and_then(|config| {
-            let (key, model) = config.llm.anthropic_credentials()?;
-            Some((key.to_string(), model.to_string()))
-        });
+        let api_info: Option<(String, String)> =
+            crate::config::load_config().ok().and_then(|config| {
+                let (key, model) = config.llm.anthropic_credentials()?;
+                Some((key.to_string(), model.to_string()))
+            });
         if let Some((api_key, model)) = api_info {
-            if let Some(real_total) = count_tokens_api(
-                &api_key, &model, &workspace_dir, &instance_slug, &chat_id,
-            ).await {
+            if let Some(real_total) =
+                count_tokens_api(&api_key, &model, &workspace_dir, &instance_slug, &chat_id).await
+            {
                 let local_total = stats.total_input_tokens_estimate;
                 if local_total > 0 && real_total > 0 {
                     let ratio = real_total as f64 / local_total as f64;
@@ -1287,7 +1434,6 @@ fn compute_context_stats_local(
     instance_slug: &str,
     chat_id: &str,
 ) -> ContextStats {
-
     let mut sections = Vec::new();
 
     // 1. Soul / base prompt
@@ -1372,11 +1518,15 @@ fn compute_context_stats_local(
     let rig_path = rig_history_path(workspace_dir, &instance_slug, &chat_id);
     let (history_count, history_tokens_estimate) = {
         let entries = load_rig_history(&rig_path).unwrap_or_default();
-        let total_chars: usize = entries.iter().map(|e| extract_message_text_len(&e.message)).sum();
+        let total_chars: usize = entries
+            .iter()
+            .map(|e| extract_message_text_len(&e.message))
+            .sum();
         (entries.len(), estimate_tokens_from_chars(total_chars))
     };
 
-    let total_input_tokens_estimate = system_prompt_total_tokens + tools_tokens_estimate + history_tokens_estimate;
+    let total_input_tokens_estimate =
+        system_prompt_total_tokens + tools_tokens_estimate + history_tokens_estimate;
 
     ContextStats {
         tools_count: tool_names.len(),
@@ -1427,14 +1577,19 @@ pub fn load_rig_history(path: &Path) -> Option<Vec<llm::HistoryEntry>> {
     // to keep the payload small (API ignores pre-compaction messages anyway).
     let last_compaction_idx = history.iter().rposition(|entry| {
         if let llm::Message::Assistant { content } = &entry.message {
-            content.iter().any(|b| matches!(b, llm::ContentBlock::Compaction { .. }))
+            content
+                .iter()
+                .any(|b| matches!(b, llm::ContentBlock::Compaction { .. }))
         } else {
             false
         }
     });
     if let Some(idx) = last_compaction_idx {
         if idx > 0 {
-            log::info!("trimming rig_history: dropping {} messages before last compaction", idx);
+            log::info!(
+                "trimming rig_history: dropping {} messages before last compaction",
+                idx
+            );
             history = history.split_off(idx);
         }
     }
@@ -1494,7 +1649,6 @@ fn unix_millis() -> u128 {
         .as_millis()
 }
 
-
 /// Build a prompt section listing active skills and their instructions.
 fn build_skills_prompt(workspace_dir: &Path) -> String {
     let all_skills = skills::list_skills(workspace_dir);
@@ -1507,8 +1661,10 @@ fn build_skills_prompt(workspace_dir: &Path) -> String {
         return String::new();
     }
 
-    let mut out = String::from("## skills\nyou have the following skills installed. \
-        call `activate_skill` to use any skill — it will return instructions for execution.\n\n");
+    let mut out = String::from(
+        "## skills\nyou have the following skills installed. \
+        call `activate_skill` to use any skill — it will return instructions for execution.\n\n",
+    );
     for skill in &active {
         let has_refs = skill.resources.iter().any(|r| r.starts_with("references/"));
         out.push_str(&format!(
@@ -1534,31 +1690,45 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
             // Project info
             if let Some(proj) = state.get("project") {
                 if let Some(n) = proj.get("name").and_then(|v| v.as_str()) {
-                    if !n.is_empty() { ctx.push_str(&format!("project: {n}\n")); }
+                    if !n.is_empty() {
+                        ctx.push_str(&format!("project: {n}\n"));
+                    }
                 }
                 if let Some(m) = proj.get("mission").and_then(|v| v.as_str()) {
-                    if !m.is_empty() { ctx.push_str(&format!("mission: {m}\n")); }
+                    if !m.is_empty() {
+                        ctx.push_str(&format!("mission: {m}\n"));
+                    }
                 }
             }
             // Identity
             if let Some(id) = state.get("identity") {
                 if let Some(n) = id.get("name").and_then(|v| v.as_str()) {
-                    if !n.is_empty() { ctx.push_str(&format!("your name: {n}\n")); }
+                    if !n.is_empty() {
+                        ctx.push_str(&format!("your name: {n}\n"));
+                    }
                 }
                 if let Some(arc) = id.get("current_arc").and_then(|v| v.as_str()) {
-                    if !arc.is_empty() { ctx.push_str(&format!("your arc: {arc}\n")); }
+                    if !arc.is_empty() {
+                        ctx.push_str(&format!("your arc: {arc}\n"));
+                    }
                 }
             }
             // Focus
             if let Some(focus) = state.get("current_focus") {
                 if let Some(g) = focus.get("active_goal").and_then(|v| v.as_str()) {
-                    if !g.is_empty() { ctx.push_str(&format!("active goal: {g}\n")); }
+                    if !g.is_empty() {
+                        ctx.push_str(&format!("active goal: {g}\n"));
+                    }
                 }
                 if let Some(t) = focus.get("current_task").and_then(|v| v.as_str()) {
-                    if !t.is_empty() { ctx.push_str(&format!("current task: {t}\n")); }
+                    if !t.is_empty() {
+                        ctx.push_str(&format!("current task: {t}\n"));
+                    }
                 }
                 if let Some(ns) = focus.get("next_step").and_then(|v| v.as_str()) {
-                    if !ns.is_empty() { ctx.push_str(&format!("next step: {ns}\n")); }
+                    if !ns.is_empty() {
+                        ctx.push_str(&format!("next step: {ns}\n"));
+                    }
                 }
             }
             // Open loops
@@ -1593,7 +1763,8 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
             .ok()
             .and_then(|raw| serde_json::from_str(&raw).ok())
             .unwrap_or_default();
-        let active: Vec<_> = tasks.iter()
+        let active: Vec<_> = tasks
+            .iter()
             .filter(|t| !matches!(t.status, tools::TaskStatus::Done))
             .collect();
         if active.is_empty() {
@@ -1601,8 +1772,15 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
         } else {
             let mut s = String::from("active tasks:\n");
             for t in &active {
-                let prio = if t.priority.is_empty() { String::new() } else { format!(" [{}]", t.priority) };
-                s.push_str(&format!("  - [{}]{} {} — {}\n", t.status, prio, t.id, t.title));
+                let prio = if t.priority.is_empty() {
+                    String::new()
+                } else {
+                    format!(" [{}]", t.priority)
+                };
+                s.push_str(&format!(
+                    "  - [{}]{} {} — {}\n",
+                    t.status, prio, t.id, t.title
+                ));
             }
             s
         }
@@ -1737,8 +1915,6 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
     )
 }
 
-
-
 async fn extract_sentiment(
     workspace_dir: &Path,
     instance_slug: &str,
@@ -1759,7 +1935,10 @@ async fn extract_sentiment(
     let history_context = if current_mood.mood_history.is_empty() {
         String::from("(no recent changes)")
     } else {
-        current_mood.mood_history.iter().enumerate()
+        current_mood
+            .mood_history
+            .iter()
+            .enumerate()
             .map(|(i, h)| format!("  {}. {}", i + 1, h))
             .collect::<Vec<_>>()
             .join("\n")
@@ -1791,7 +1970,11 @@ MOOD: <one of: {allowed}. write SAME unless there is a clear emotional reason to
 
 respond ONLY with those three lines."#,
         current_mood = current_mood.companion_mood,
-        context = if current_mood.emotional_context.is_empty() { "none" } else { &current_mood.emotional_context },
+        context = if current_mood.emotional_context.is_empty() {
+            "none"
+        } else {
+            &current_mood.emotional_context
+        },
         history = history_context,
         allowed = allowed,
     );
@@ -1823,7 +2006,12 @@ respond ONLY with those three lines."#,
             mood.emotional_context = context.trim().to_string();
         } else if let Some(m) = line.strip_prefix("MOOD:") {
             // Extract just the first word — LLM sometimes adds parenthetical notes
-            let m = m.trim().split_whitespace().next().unwrap_or("").to_lowercase();
+            let m = m
+                .trim()
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_lowercase();
             if m != "same" && tools::ALLOWED_MOODS.contains(&m.as_str()) && m != old_mood {
                 new_companion_mood = Some(m);
             }
@@ -1851,7 +2039,12 @@ respond ONLY with those three lines."#,
 
     if mood_changed {
         // Save mood change to rig_history so it persists across page reloads
-        match save_system_message(workspace_dir, instance_slug, _chat_id, &format!("[system] mood → {}", mood.companion_mood)) {
+        match save_system_message(
+            workspace_dir,
+            instance_slug,
+            _chat_id,
+            &format!("[system] mood → {}", mood.companion_mood),
+        ) {
             Ok(msg) => {
                 let _ = events.send(ServerEvent::ChatMessageCreated {
                     instance_slug: instance_slug.to_string(),
@@ -1867,13 +2060,25 @@ respond ONLY with those three lines."#,
         });
         log::info!("[sentiment] {instance_slug} mood → {}", mood.companion_mood);
     }
-
 }
 
 async fn convert_audio_to_mp3(input: &std::path::Path) -> Option<Vec<u8>> {
     let tmp = input.with_extension("_convert.mp3");
     let status = tokio::process::Command::new("ffmpeg")
-        .args(["-i", &input.to_string_lossy(), "-vn", "-ar", "44100", "-ac", "1", "-b:a", "64k", "-f", "mp3", "-y"])
+        .args([
+            "-i",
+            &input.to_string_lossy(),
+            "-vn",
+            "-ar",
+            "44100",
+            "-ac",
+            "1",
+            "-b:a",
+            "64k",
+            "-f",
+            "mp3",
+            "-y",
+        ])
         .arg(&tmp)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -1974,7 +2179,10 @@ async fn embed_recent_media(
 
         // Skip very large files (>20MB) — Gemini has limits
         if bytes.len() > 20 * 1024 * 1024 {
-            log::info!("[media_embed] skipping {original_name} — too large ({} MB)", bytes.len() / 1024 / 1024);
+            log::info!(
+                "[media_embed] skipping {original_name} — too large ({} MB)",
+                bytes.len() / 1024 / 1024
+            );
             continue;
         }
 
@@ -1982,7 +2190,8 @@ async fn embed_recent_media(
 
         // Convert unsupported audio formats (m4a, ogg, etc.) to mp3 via ffmpeg
         let (embed_bytes, embed_mime) = if source_type == "media_audio"
-            && mime_type != "audio/mpeg" && mime_type != "audio/wav"
+            && mime_type != "audio/mpeg"
+            && mime_type != "audio/wav"
         {
             match convert_audio_to_mp3(&file_path).await {
                 Some(mp3_bytes) => (mp3_bytes, "audio/mpeg"),
@@ -1996,7 +2205,10 @@ async fn embed_recent_media(
         };
 
         let vector = match source_type {
-            "media_image" => embedding::embed_text_and_image(google_ai_key, &desc, &embed_bytes, embed_mime).await,
+            "media_image" => {
+                embedding::embed_text_and_image(google_ai_key, &desc, &embed_bytes, embed_mime)
+                    .await
+            }
             _ => embedding::embed_media(google_ai_key, &embed_bytes, embed_mime).await,
         };
 
@@ -2026,5 +2238,3 @@ async fn embed_recent_media(
         }
     }
 }
-
-

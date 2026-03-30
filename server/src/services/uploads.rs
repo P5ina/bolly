@@ -121,28 +121,6 @@ pub fn save_upload(
     Ok(meta)
 }
 
-/// Update the Anthropic file_id on an existing upload's metadata sidecar.
-pub fn set_anthropic_file_id(
-    workspace_dir: &Path,
-    instance_slug: &str,
-    upload_id: &str,
-    file_id: &str,
-) -> io::Result<()> {
-    let uploads_dir = workspace_dir
-        .join("instances")
-        .join(instance_slug)
-        .join("uploads");
-    let meta_path = uploads_dir.join(format!("{upload_id}.json"));
-    let raw = fs::read_to_string(&meta_path)?;
-    let mut meta: UploadMeta = serde_json::from_str(&raw)
-        .map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
-    meta.anthropic_file_id = Some(file_id.to_string());
-    let json = serde_json::to_string_pretty(&meta)
-        .map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
-    fs::write(&meta_path, json)?;
-    Ok(())
-}
-
 pub fn list_uploads(workspace_dir: &Path, instance_slug: &str) -> io::Result<Vec<UploadMeta>> {
     let uploads_dir = workspace_dir
         .join("instances")

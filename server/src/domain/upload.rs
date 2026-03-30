@@ -8,7 +8,7 @@ pub struct UploadMeta {
     pub mime_type: String,
     pub size: u64,
     pub uploaded_at: String,
-    /// Anthropic Files API file_id (for efficient API usage without base64).
+    /// Legacy field — ignored, kept for backwards compat with existing sidecar JSON.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anthropic_file_id: Option<String>,
 }

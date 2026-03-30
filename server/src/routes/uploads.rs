@@ -64,7 +64,7 @@ async fn upload_file(
             .await
             .map_err(|e| (StatusCode::BAD_REQUEST, format!("failed to read file: {e}")))?;
 
-        let mut meta = uploads::save_upload(&state.workspace_dir, &instance_slug, &file_name, &bytes)
+        let meta = uploads::save_upload(&state.workspace_dir, &instance_slug, &file_name, &bytes)
             .map_err(|e| {
                 let status = match e.kind() {
                     std::io::ErrorKind::InvalidInput => StatusCode::BAD_REQUEST,
@@ -72,22 +72,6 @@ async fn upload_file(
                 };
                 (status, e.to_string())
             })?;
-
-        // Upload to Anthropic Files API synchronously so file_id is available immediately
-        let api_key = {
-            let cfg = state.config.read().await;
-            cfg.llm.api_key().map(|s| s.to_string())
-        };
-        if let Some(key) = api_key {
-            match crate::services::anthropic_files::upload_file(&key, &file_name, &bytes, &meta.mime_type).await {
-                Ok(file_id) => {
-                    log::info!("[uploads] uploaded to Anthropic: {} → {file_id}", meta.id);
-                    let _ = uploads::set_anthropic_file_id(&state.workspace_dir, &instance_slug, &meta.id, &file_id);
-                    meta.anthropic_file_id = Some(file_id);
-                }
-                Err(e) => log::warn!("[uploads] Anthropic upload failed for {}: {e}", meta.id),
-            }
-        }
 
         return Ok(Json(meta));
     }
