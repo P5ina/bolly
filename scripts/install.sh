@@ -30,71 +30,63 @@ step() { echo -e "\n${CYAN}${BOLD}$1${NC}"; }
 
 # ─── Orb animation (frames extracted from orb-onboarding.mp4) ─────────────────
 animate_orb() {
-    # Frame 1: tiny dot
-    printf '\033[2J\033[H'
-    echo '
-                   .......
+    local H=16  # fixed frame height
+
+    # Helper: pad frame to fixed height, centered vertically
+    show_frame() {
+        printf '\033[2J\033[H'
+        local content="$1"
+        local lines
+        lines=$(echo "$content" | wc -l)
+        local pad=$(( (H - lines) / 2 ))
+        for _ in $(seq 1 $pad); do echo; done
+        echo "$content"
+        local bottom=$(( H - lines - pad ))
+        for _ in $(seq 1 $bottom); do echo; done
+    }
+
+    show_frame '                   .......
                  ....··....
                  ....··....
-                   ......
-'
+                   ......'
     sleep 0.12
 
-    # Frame 2: expanding
-    printf '\033[2J\033[H'
-    echo '
-                   ......
+    show_frame '                   ......
                 ............
                ......··......
              ......·:++:·......
               .....··::··.....
                 .............
                  ...........
-                  ........
-'
+                  ........'
     sleep 0.12
 
-    # Frame 3: contracting
-    printf '\033[2J\033[H'
-    echo '
-                   ......
+    show_frame '                   ......
                   ..·**:...
                   ..·::·...
-                    ....
-'
+                    ....'
     sleep 0.1
 
-    # Frame 4: orb forming
-    printf '\033[2J\033[H'
-    echo '
-                        ..
+    show_frame '                        ..
                      ..:+·.
                  ...··+%*:·.
                 .·:+*%#%*+:.
                 ·+%%%***++:.
                 ..··.·::···..
-                     .....
-'
+                     .....'
     sleep 0.12
 
-    # Frame 5: orb growing
-    printf '\033[2J\033[H'
-    echo '
-               ......··.......
+    show_frame '               ......··.......
              ··...··:+++::::::··..
             .:+:·:+*%##%%*******+:..
              .:+**%#%***%%*:··:++:·.
           .··..·+%%##%%%%*+:··...
           ·**·..:*++++*%*:·...
            .·····++:::+*:..
-              ....·::::·...
-'
+              ....·::::·...'
     sleep 0.15
 
-    # Frame 6: orb maturing
-    printf '\033[2J\033[H'
-    echo '
-                .·:+***++:·.
+    show_frame '                .·:+***++:·.
              .·:+**%%%%%***+:·.
             .:**+:++++++++++**:..
           ..:**+::::·::++***+**+:.
@@ -104,14 +96,10 @@ animate_orb() {
            .·*%##%%*++**%%****:.
             .·+**%%%%%%%%%**+:.
               .·::+****++::·.
-                 ........
-'
+                 ........'
     sleep 0.15
 
-    # Frame 7: orb complete
-    printf '\033[2J\033[H'
-    echo '
-                .·:++**++:·.
+    show_frame '                .·:++**++:·.
              .·:*%%#####%%*+::.
            .·+**********%%%*+*+·.
           .+**+**++*%******%%***:.
@@ -122,15 +110,10 @@ animate_orb() {
           .:****%##%%******%%%%%+.
            .·+***********%%%%%*:.
              .·+*%%%%%%%%%%*+:.
-                .··:+++::··.
-'
+                .··:+++::··.'
     sleep 0.2
 
-    # Frame 8: final orb + branding
-    printf '\033[2J\033[H'
-    cat <<'FINAL'
-
-                    ....
+    show_frame '                    ....
                 .·:+****++:.
              .·:*%########%*+:.
            .:+******+++++**+***:.
@@ -142,9 +125,7 @@ animate_orb() {
            ·:+%%%**++::++*%%#%+:·.
             .·:+*%%*****%%%%*+:..
               ..:+**%%%%%*+:·.
-                 ..·:::··..
-
-FINAL
+                 ..·:::··..'
     sleep 1.0
     printf '\033[2J\033[H'
 }
