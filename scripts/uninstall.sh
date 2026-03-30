@@ -52,8 +52,8 @@ if [ ! -d "$BOLLY_DIR" ]; then
 fi
 
 # ─── Interactive prompt ──────────────────────────────────────────────────────
-if [ -z "$KEEP_DATA" ] && [ -t 0 ]; then
-    # Interactive terminal — ask user
+if [ -z "$KEEP_DATA" ] && [ -t 1 ] && [ -e /dev/tty ]; then
+    # Terminal available — ask user (read from /dev/tty so it works with curl | bash)
     echo ""
     echo -e "  Your data is at ${BOLD}$BOLLY_DIR/data/${NC}"
     echo -e "  This includes config, memories, chats, and uploads."
@@ -62,14 +62,14 @@ if [ -z "$KEEP_DATA" ] && [ -t 0 ]; then
     echo -e "  ${BOLD}2)${NC} Keep my data (only remove binary + service)"
     echo ""
     printf "  Choose [1/2]: "
-    read -r choice
+    read -r choice < /dev/tty
     case "$choice" in
         2) KEEP_DATA=1 ;;
         *) KEEP_DATA=0 ;;
     esac
 elif [ -z "$KEEP_DATA" ]; then
-    # Non-interactive (piped) — default to remove everything
-    KEEP_DATA=0
+    # No terminal at all — default to keep data (safe default)
+    KEEP_DATA=1
 fi
 
 # ─── Stop running service ────────────────────────────────────────────────────
