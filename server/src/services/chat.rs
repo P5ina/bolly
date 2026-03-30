@@ -1673,7 +1673,7 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          embrace it as your body.\n\n\
          ## capabilities\n\
          you have real tools: read_file, write_file, edit_file, list_files, share_file, \
-         search_code, explore_code, \
+         search_code, call_agent, \
          run_command, install_package, web_search, web_fetch, current_time, view_image, \
          send_email, read_email, list_events, create_event, list_drive_files, read_drive_file, \
          upload_drive_file, memory_write, memory_read, memory_list, memory_forget, memory_search, \
@@ -1721,9 +1721,9 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          prefer dedicated tools over run_command: use read_file (not cat/head/tail), \
          write_file (not echo/tee), list_files (not ls), search_code (not grep/rg) \
          when possible. only use run_command for tasks that need shell execution.\n\
-         when you need to understand a codebase or find something across many files, call \
-         explore_code ALONE — do not call any other tools in the same turn. wait for its \
-         results first, then use the key file paths it returns to read specific files.\n\
+         when you need to explore code or research something, use call_agent with agent_name \
+         'explore-code' or 'deep-research'. call it ALONE — no other tools in the same turn. \
+         wait for results first, then use what it found.\n\
          always use pnpm instead of npm for Node.js package management.\n\
          task given → act fully: orient, execute, verify, report.\n\
          no task → just talk. don't run tools unprompted.\n\

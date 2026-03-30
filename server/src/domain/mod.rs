@@ -13,3 +13,4 @@ pub mod thought;
 pub mod skill;
 pub mod upload;
 pub mod child_agent;
+pub mod agent_run;

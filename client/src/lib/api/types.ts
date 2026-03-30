@@ -124,6 +124,24 @@ export interface AgentHistoryEntry {
 	id: string;
 }
 
+export interface AgentRunSummary {
+	id: string;
+	agent_name: string;
+	agent_kind: 'scheduled' | 'on_demand';
+	trigger: string;
+	started_at: number;
+	finished_at: number;
+	duration_ms: number;
+	tokens_used: number;
+	model: string;
+	summary: string;
+	status: 'completed' | { failed: { error: string } };
+}
+
+export interface AgentRun extends AgentRunSummary {
+	trace: unknown[];
+}
+
 export interface SkillSource {
 	repo: string;
 	version: string;

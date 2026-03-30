@@ -1538,158 +1538,62 @@ fn search_files_recursive(
     }
 }
 
-pub struct ExploreCodeTool {
+// ---------------------------------------------------------------------------
+// call_agent — universal on-demand agent invocation
+// ---------------------------------------------------------------------------
+
+pub struct CallAgentTool {
     workspace_dir: PathBuf,
     instance_slug: String,
     llm: crate::services::llm::LlmBackend,
+    events: tokio::sync::broadcast::Sender<crate::domain::events::ServerEvent>,
+    vector_store: std::sync::Arc<crate::services::vector::VectorStore>,
+    google_ai_key: String,
 }
 
-impl ExploreCodeTool {
-    pub fn new(workspace_dir: &Path, instance_slug: &str, llm: crate::services::llm::LlmBackend) -> Self {
-        Self {
-            workspace_dir: workspace_dir.to_path_buf(),
-            instance_slug: instance_slug.to_string(),
-            llm: llm.cheap_variant(),
-        }
-    }
-}
-
-#[derive(Deserialize, JsonSchema)]
-pub struct ExploreCodeArgs {
-    /// What you want to find out about the codebase. Be specific — e.g. "how does authentication
-    /// middleware work", "find where database migrations are defined", "what components render the
-    /// dashboard page".
-    pub question: String,
-    /// Root directory to explore. Absolute path (e.g. "/Users/timur/projects/app") or relative to
-    /// instance workspace. The explore agent will search within this directory.
-    pub path: String,
-}
-
-impl Tool for ExploreCodeTool {
-    const NAME: &'static str = "explore_code";
-    type Error = ToolExecError;
-    type Args = ExploreCodeArgs;
-    type Output = String;
-
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "explore_code".into(),
-            description: "Ask a sub-agent to explore the codebase. Returns summary with file paths and line numbers.".into(),
-            parameters: openai_schema::<ExploreCodeArgs>(),
-        }
-    }
-
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let explore_dir = if args.path.starts_with('/') {
-            PathBuf::from(&args.path)
-        } else {
-            self.workspace_dir
-                .join("instances")
-                .join(&self.instance_slug)
-                .join(&args.path)
-        };
-
-        if !explore_dir.exists() {
-            return Err(ToolExecError(format!(
-                "path does not exist: {}",
-                explore_dir.display()
-            )));
-        }
-
-        let explore_dir_str = explore_dir.display().to_string();
-
-        let tools: Vec<Box<dyn ToolDyn>> = vec![
-            Box::new(super::files::ReadFileTool::new(&self.workspace_dir, &self.instance_slug)),
-            Box::new(super::files::ListFilesTool::new(&self.workspace_dir, &self.instance_slug)),
-            Box::new(SearchCodeTool::new(&self.workspace_dir, &self.instance_slug)),
-        ];
-
-        let system_prompt = format!(
-            "you are a code exploration agent. your job is to thoroughly explore a codebase \
-             and answer a question.\n\n\
-             ## rules\n\
-             - explore the directory at: {explore_dir_str}\n\
-             - start by listing files to understand the structure, then read relevant files\n\
-             - use search_code to find specific patterns, functions, or types\n\
-             - read as many files as you need — be thorough\n\
-             - use read_file with offset/limit for large files — read specific sections\n\
-             - NEVER give up or say you can't access something — use the tools\n\n\
-             ## your final response MUST include\n\
-             1. a clear, concise answer to the question\n\
-             2. key file paths with line numbers for the most relevant code\n\
-             3. any important patterns, relationships, or gotchas you noticed\n\n\
-             keep your answer focused and under 2000 chars. the caller will read specific \
-             files themselves — you just need to point them in the right direction."
-        );
-
-        log::info!("[explore_code] starting sub-agent for: {}", &args.question);
-        let start = std::time::Instant::now();
-
-        let (result, _tokens) = self.llm
-            .chat_with_tools_only(
-                &system_prompt,
-                &args.question,
-                vec![],
-                tools,
-            )
-            .await
-            .map_err(|e| {
-                log::warn!("[explore_code] sub-agent failed after {:?}: {e}", start.elapsed());
-                ToolExecError(format!("explore agent failed: {e}"))
-            })?;
-
-        log::info!("[explore_code] completed in {:?}, result: {} chars", start.elapsed(), result.len());
-        Ok(result)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// deep_research — general-purpose sub-agent
-// ---------------------------------------------------------------------------
-
-pub struct DeepResearchTool {
-    workspace_dir: PathBuf,
-    instance_slug: String,
-    llm: crate::services::llm::LlmBackend,
-}
-
-impl DeepResearchTool {
+impl CallAgentTool {
     pub fn new(
         workspace_dir: &Path,
         instance_slug: &str,
         llm: crate::services::llm::LlmBackend,
-        _config_path: &Path,
+        events: tokio::sync::broadcast::Sender<crate::domain::events::ServerEvent>,
+        vector_store: std::sync::Arc<crate::services::vector::VectorStore>,
+        google_ai_key: &str,
     ) -> Self {
         Self {
             workspace_dir: workspace_dir.to_path_buf(),
             instance_slug: instance_slug.to_string(),
-            llm: llm.cheap_variant(),
+            llm,
+            events,
+            vector_store,
+            google_ai_key: google_ai_key.to_string(),
         }
     }
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct DeepResearchArgs {
-    /// The research question or task to investigate. Be specific — e.g.
-    /// "find recent news about X", "research how Y works and summarize",
-    /// "look up Z in my memories and cross-reference with web sources".
+pub struct CallAgentArgs {
+    /// Name of the agent to call. Built-in agents: "explore-code", "deep-research".
+    /// Can also call any custom child agent by name.
+    pub agent_name: String,
+    /// The task or question for the agent. Be specific.
     pub task: String,
 }
 
-impl Tool for DeepResearchTool {
-    const NAME: &'static str = "deep_research";
+impl Tool for CallAgentTool {
+    const NAME: &'static str = "call_agent";
     type Error = ToolExecError;
-    type Args = DeepResearchArgs;
+    type Args = CallAgentArgs;
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: "deep_research".into(),
-            description: "Delegate a research task to a sub-agent that can search the web, \
-                read files, explore code, and access your memory library. \
-                Use for complex questions that need multiple steps of investigation."
+            name: "call_agent".into(),
+            description: "Call a child agent to perform a task. Built-in agents: \
+                'explore-code' (codebase exploration), 'deep-research' (web + memory research). \
+                Can also call any custom agent by name. Returns the agent's summary."
                 .into(),
-            parameters: openai_schema::<DeepResearchArgs>(),
+            parameters: openai_schema::<CallAgentArgs>(),
         }
     }
 
@@ -1699,52 +1603,42 @@ impl Tool for DeepResearchTool {
             return Err(ToolExecError("task cannot be empty".into()));
         }
 
-        // web_search and web_fetch are now native Anthropic server tools (added automatically)
-        let tools: Vec<Box<dyn ToolDyn>> = vec![
-            Box::new(super::files::ReadFileTool::new(&self.workspace_dir, &self.instance_slug)),
-            Box::new(super::files::ListFilesTool::new(&self.workspace_dir, &self.instance_slug)),
-            Box::new(SearchCodeTool::new(&self.workspace_dir, &self.instance_slug)),
-            Box::new(super::memory_tools::MemoryReadTool::new(&self.workspace_dir, &self.instance_slug)),
-            Box::new(super::memory_tools::MemoryListTool::new(&self.workspace_dir, &self.instance_slug)),
-        ];
-
-        let system_prompt = "\
-            you are a research agent. your job is to thoroughly investigate a question or task \
-            using all available tools.\n\n\
-            ## tools at your disposal\n\
-            - web_search — search the internet for information\n\
-            - web_fetch — fetch and read a specific URL\n\
-            - read_file / list_files / search_code — explore local files and code\n\
-            - memory_read / memory_list — access the companion's memory library\n\n\
-            ## rules\n\
-            - be thorough — use multiple sources when possible\n\
-            - cross-reference web results with local knowledge (memory)\n\
-            - if a web search doesn't return good results, try different queries\n\
-            - NEVER give up — always try alternative approaches\n\n\
-            ## your final response MUST include\n\
-            1. a clear, comprehensive answer\n\
-            2. key sources (URLs, file paths) for verification\n\
-            3. any caveats or uncertainties\n\n\
-            keep your answer focused and under 3000 chars.";
-
-        log::info!("[deep_research] starting sub-agent for: {task}");
-        let start = std::time::Instant::now();
-
-        let (result, _tokens) = self
-            .llm
-            .chat_with_tools_only(system_prompt, task, vec![], tools)
-            .await
-            .map_err(|e| {
-                log::warn!("[deep_research] sub-agent failed after {:?}: {e}", start.elapsed());
-                ToolExecError(format!("research agent failed: {e}"))
+        let agents = crate::services::child_agents::load_agents(&self.workspace_dir, &self.instance_slug);
+        let agent = agents.iter().find(|a| a.name == args.agent_name)
+            .ok_or_else(|| {
+                let available: Vec<_> = agents.iter().map(|a| a.name.as_str()).collect();
+                ToolExecError(format!("agent '{}' not found. available: {}", args.agent_name, available.join(", ")))
             })?;
 
-        log::info!(
-            "[deep_research] completed in {:?}, result: {} chars",
-            start.elapsed(),
-            result.len()
-        );
-        Ok(result)
+        if !agent.enabled {
+            return Err(ToolExecError(format!("agent '{}' is disabled", args.agent_name)));
+        }
+
+        let instance_dir = self.workspace_dir.join("instances").join(&self.instance_slug);
+
+        log::info!("[call_agent] invoking '{}' with task: {task}", agent.name);
+
+        let (tokens, run_id) = crate::services::child_agents::run_single_agent(
+            &self.workspace_dir,
+            &self.instance_slug,
+            &instance_dir,
+            &self.llm,
+            &self.events,
+            &self.vector_store,
+            &self.google_ai_key,
+            agent,
+            Some(task),
+            &format!("tool:call_agent:{}", agent.name),
+        )
+        .await
+        .map_err(|e| ToolExecError(format!("agent '{}' failed: {e}", agent.name)))?;
+
+        // Load the run to get the response
+        let run = crate::services::agent_runs::load_run(&self.workspace_dir, &self.instance_slug, &run_id)
+            .map_err(|e| ToolExecError(format!("failed to load run: {e}")))?;
+
+        log::info!("[call_agent] '{}' completed ({tokens} tokens, {run_id})", agent.name);
+        Ok(format!("{}\n\n[agent run: {run_id}]", run.summary))
     }
 }
 

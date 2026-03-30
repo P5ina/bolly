@@ -23,7 +23,7 @@ use crate::services::tools::{
     MemoryForgetTool, MemoryListTool, MemorySearchTool,
     MemoryReadTool, MemoryWriteTool, ReachOutTool,
     ReadFileTool, WriteFileTool, EditFileTool, ListFilesTool,
-    ExploreCodeTool, DeepResearchTool, RunCommandTool,
+    CallAgentTool, RunCommandTool,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -102,8 +102,75 @@ do 3-5 maintenance ops, then stop. don't overdo it.".to_string(),
     }
 }
 
+fn builtin_explore_code() -> ChildAgentConfig {
+    ChildAgentConfig {
+        name: "explore-code".to_string(),
+        description: "On-demand code exploration — finds files, patterns, and architecture".to_string(),
+        prompt: "\
+you are a code exploration agent. your job is to thoroughly explore a codebase and answer a question.
+
+## rules
+- start by listing files to understand the structure, then read relevant files
+- use search_code to find specific patterns, functions, or types
+- read as many files as you need — be thorough
+- use read_file with offset/limit for large files — read specific sections
+- NEVER give up or say you can't access something — use the tools
+
+## your final response MUST include
+1. a clear, concise answer to the question
+2. key file paths with line numbers for the most relevant code
+3. any important patterns, relationships, or gotchas you noticed
+
+keep your answer focused and under 2000 chars.".to_string(),
+        interval_hours: 0.0,
+        model: "cheap".to_string(),
+        triage: false,
+        tools: true,
+        enabled: true,
+    }
+}
+
+fn builtin_deep_research() -> ChildAgentConfig {
+    ChildAgentConfig {
+        name: "deep-research".to_string(),
+        description: "On-demand research — web search, memory, code, cross-referencing".to_string(),
+        prompt: "\
+you are a research agent. your job is to thoroughly investigate a question or task using all available tools.
+
+## tools at your disposal
+- web_search — search the internet for information
+- web_fetch — fetch and read a specific URL
+- read_file / list_files / search_code — explore local files and code
+- memory_read / memory_list — access the companion's memory library
+
+## rules
+- be thorough — use multiple sources when possible
+- cross-reference web results with local knowledge (memory)
+- if a web search doesn't return good results, try different queries
+- NEVER give up — always try alternative approaches
+
+## your final response MUST include
+1. a clear, comprehensive answer
+2. key sources (URLs, file paths) for verification
+3. any caveats or uncertainties
+
+keep your answer focused and under 3000 chars.".to_string(),
+        interval_hours: 0.0,
+        model: "cheap".to_string(),
+        triage: false,
+        tools: true,
+        enabled: true,
+    }
+}
+
 fn builtins() -> Vec<ChildAgentConfig> {
-    vec![builtin_companion(), builtin_reflection(), builtin_night_maintenance()]
+    vec![
+        builtin_companion(),
+        builtin_reflection(),
+        builtin_night_maintenance(),
+        builtin_explore_code(),
+        builtin_deep_research(),
+    ]
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -131,7 +198,7 @@ pub fn ensure_builtins(workspace_dir: &Path, slug: &str) {
 }
 
 /// Load all agent configs for an instance.
-fn load_agents(workspace_dir: &Path, slug: &str) -> Vec<ChildAgentConfig> {
+pub fn load_agents(workspace_dir: &Path, slug: &str) -> Vec<ChildAgentConfig> {
     ensure_builtins(workspace_dir, slug);
     let dir = agents_dir(workspace_dir, slug);
 
@@ -318,8 +385,8 @@ pub async fn triage_and_run(
 
         log::info!("[child-agents] {slug}: waking '{}' ({})", agent.name, agent.description);
 
-        match run_single_agent(workspace_dir, slug, instance_dir, llm, events, vector_store, google_ai_key, agent).await {
-            Ok(tokens) => {
+        match run_single_agent(workspace_dir, slug, instance_dir, llm, events, vector_store, google_ai_key, agent, None, "heartbeat").await {
+            Ok((tokens, _run_id)) => {
                 total_tokens += tokens;
                 mark_run(workspace_dir, slug, &agent.name);
 
@@ -359,7 +426,9 @@ pub async fn run_single_agent(
     vector_store: &Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
     agent: &ChildAgentConfig,
-) -> anyhow::Result<u64> {
+    task_override: Option<&str>,
+    trigger: &str,
+) -> anyhow::Result<(u64, String)> {
     let soul = fs::read_to_string(instance_dir.join("soul.md")).unwrap_or_default();
     let mood = load_mood_state(instance_dir);
 
@@ -450,16 +519,45 @@ pub async fn run_single_agent(
 
     let system = format!("{soul}\n\n## your task (child agent: {})\n{}", agent.name, agent.prompt);
 
-    let (response, tokens) = if agent.tools {
+    // On-demand agents: use task_override as the prompt instead of context
+    if let Some(task) = task_override {
+        prompt = task.to_string();
+    }
+
+    let start = std::time::Instant::now();
+    let start_ms = unix_millis();
+
+    let (response, tokens, trace) = if agent.tools {
         let agent_tools = build_agent_tools(
             workspace_dir, slug, events.clone(), &model_llm, vector_store.clone(), google_ai_key,
         );
-        model_llm.chat_with_tools_only(&system, &prompt, prev_messages, agent_tools).await?
+        model_llm.chat_with_tools_traced(&system, &prompt, prev_messages, agent_tools).await?
     } else {
-        model_llm.chat(&system, &prompt, prev_messages).await?
+        let (text, tok) = model_llm.chat(&system, &prompt, prev_messages).await?;
+        (text, tok, vec![])
     };
 
-    // Save to agent history
+    let finished_ms = unix_millis();
+    let run_id = format!("run_{}_{}", agent.name, start_ms);
+
+    // Save agent run trace
+    let run = crate::domain::agent_run::AgentRun {
+        id: run_id.clone(),
+        agent_name: agent.name.clone(),
+        agent_kind: if agent.interval_hours > 0.0 { crate::domain::agent_run::AgentKind::Scheduled } else { crate::domain::agent_run::AgentKind::OnDemand },
+        trigger: trigger.to_string(),
+        started_at: start_ms as u64,
+        finished_at: finished_ms as u64,
+        duration_ms: start.elapsed().as_millis() as u64,
+        tokens_used: tokens,
+        model: agent.model.clone(),
+        summary: response.chars().take(500).collect(),
+        trace,
+        status: crate::domain::agent_run::RunStatus::Completed,
+    };
+    crate::services::agent_runs::save_run(workspace_dir, slug, &run).ok();
+
+    // Save to agent history (for context in future runs)
     let entry = crate::services::llm::HistoryEntry::new(
         crate::services::llm::Message::assistant(&response),
         unix_millis().to_string(),
@@ -467,7 +565,7 @@ pub async fn run_single_agent(
     );
     chat::append_to_rig_history(&history_path, &entry);
 
-    Ok(tokens)
+    Ok((tokens, run_id))
 }
 
 /// Build the tool set for child agents.
@@ -502,12 +600,11 @@ fn build_agent_tools(
         Box::new(MemorySearchTool::new(workspace_dir, slug, vector_store.clone(), google_ai_key)),
         Box::new(CreateDropTool::new(workspace_dir, slug, events.clone())),
         Box::new(ReachOutTool::new(workspace_dir, slug, events.clone())),
-        Box::new(DeepResearchTool::new(workspace_dir, slug, llm.clone(), &config_path)),
+        Box::new(CallAgentTool::new(workspace_dir, slug, llm.clone(), events.clone(), vector_store.clone(), google_ai_key)),
         Box::new(ReadFileTool::new(workspace_dir, slug)),
         Box::new(WriteFileTool::new(workspace_dir, slug)),
         Box::new(EditFileTool::new(workspace_dir, slug)),
         Box::new(ListFilesTool::new(workspace_dir, slug)),
-        Box::new(ExploreCodeTool::new(workspace_dir, slug, llm.clone())),
         Box::new(RunCommandTool::new(workspace_dir, slug, "default", events.clone(), github_token)),
     ];
 
@@ -522,7 +619,7 @@ fn build_agent_tools(
     raw_tools
 }
 
-fn unix_millis() -> u128 {
+pub(crate) fn unix_millis() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system time should be after unix epoch")

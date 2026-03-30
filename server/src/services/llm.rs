@@ -697,6 +697,26 @@ impl LlmBackend {
 
         agent_loop(self, system_blocks, &tool_defs, &tools, &mut messages).await
     }
+
+    /// Like `chat_with_tools_only` but returns the full message trace.
+    pub async fn chat_with_tools_traced(
+        &self,
+        system_prompt: &str,
+        prompt: &str,
+        history: Vec<Message>,
+        tools: Vec<Box<dyn ToolDyn>>,
+    ) -> anyhow::Result<(String, u64, Vec<Message>)> {
+        if tools.is_empty() {
+            let (text, tokens) = self.chat(system_prompt, prompt, history).await?;
+            return Ok((text, tokens, vec![]));
+        }
+        let system_blocks: &[&str] = &[system_prompt];
+        let tool_defs = collect_tool_defs(&tools).await;
+        let mut messages = history;
+        messages.push(Message::user(prompt));
+        let (text, tokens) = agent_loop(self, system_blocks, &tool_defs, &tools, &mut messages).await?;
+        Ok((text, tokens, messages))
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

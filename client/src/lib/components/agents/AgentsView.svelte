@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { fetchAgents, triggerAgent, fetchAgentHistory } from "$lib/api/client.js";
-	import type { ChildAgent, AgentHistoryEntry } from "$lib/api/types.js";
+	import { fetchAgents, triggerAgent, fetchAgentHistory, fetchAgentRuns, fetchAgentRun } from "$lib/api/client.js";
+	import type { ChildAgent, AgentHistoryEntry, AgentRunSummary, AgentRun } from "$lib/api/types.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import { goto } from "$app/navigation";
 
@@ -16,6 +16,13 @@
 	let history = $state<AgentHistoryEntry[]>([]);
 	let historyLoading = $state(false);
 
+	// Activity panel
+	let runs = $state<AgentRunSummary[]>([]);
+	let runsLoading = $state(true);
+	let selectedRun = $state<AgentRun | null>(null);
+	let runLoading = $state(false);
+	let expandedRunId = $state<string | null>(null);
+
 	async function load() {
 		loading = true;
 		try {
@@ -27,8 +34,20 @@
 		}
 	}
 
+	async function loadRuns() {
+		runsLoading = true;
+		try {
+			runs = await fetchAgentRuns(slug, 30);
+		} catch {
+			runs = [];
+		} finally {
+			runsLoading = false;
+		}
+	}
+
 	$effect(() => {
 		load();
+		loadRuns();
 	});
 
 	async function handleTrigger(name: string) {
@@ -70,6 +89,7 @@
 	}
 
 	function formatInterval(hours: number): string {
+		if (hours === 0) return "on-demand";
 		if (hours < 1) return `${Math.round(hours * 60)}m`;
 		if (hours < 24) return `${hours}h`;
 		if (hours === 24) return "daily";
@@ -104,6 +124,114 @@
 		cheap: "oklch(0.72 0.10 140)",
 		default: "oklch(0.78 0.12 75)",
 	};
+
+	const kindColors: Record<string, string> = {
+		scheduled: "oklch(0.78 0.12 75)",
+		on_demand: "oklch(0.75 0.12 200)",
+	};
+
+	function formatDuration(ms: number): string {
+		if (ms < 1000) return `${ms}ms`;
+		const secs = ms / 1000;
+		if (secs < 60) return `${secs.toFixed(1)}s`;
+		const mins = Math.floor(secs / 60);
+		const remainSecs = Math.round(secs % 60);
+		return `${mins}m${remainSecs}s`;
+	}
+
+	function formatTokens(n: number): string {
+		if (n < 1000) return String(n);
+		if (n < 10000) return `${(n / 1000).toFixed(1)}k`;
+		return `${Math.round(n / 1000)}k`;
+	}
+
+	function formatTimestamp(epochSecs: number): string {
+		if (epochSecs === 0) return "never";
+		const diff = Date.now() / 1000 - epochSecs;
+		const mins = Math.floor(diff / 60);
+		const hours = Math.floor(diff / 3600);
+		const days = Math.floor(diff / 86400);
+		if (mins < 1) return "just now";
+		if (mins < 60) return `${mins}m ago`;
+		if (hours < 24) return `${hours}h ago`;
+		return `${days}d ago`;
+	}
+
+	function runStatusLabel(status: AgentRunSummary['status']): string {
+		if (status === 'completed') return 'completed';
+		return 'failed';
+	}
+
+	function runStatusFailed(status: AgentRunSummary['status']): boolean {
+		return status !== 'completed';
+	}
+
+	function runErrorMessage(status: AgentRunSummary['status']): string {
+		if (status === 'completed') return '';
+		if (typeof status === 'object' && 'failed' in status) return status.failed.error;
+		return 'unknown error';
+	}
+
+	async function toggleRunTrace(run: AgentRunSummary) {
+		if (expandedRunId === run.id) {
+			expandedRunId = null;
+			selectedRun = null;
+			return;
+		}
+		expandedRunId = run.id;
+		selectedRun = null;
+		runLoading = true;
+		try {
+			selectedRun = await fetchAgentRun(slug, run.id);
+		} catch {
+			toast.error("failed to load run trace");
+			expandedRunId = null;
+		} finally {
+			runLoading = false;
+		}
+	}
+
+	function traceRole(msg: any): string {
+		return msg?.role ?? 'unknown';
+	}
+
+	function traceContent(msg: any): string {
+		if (typeof msg?.content === 'string') return msg.content;
+		if (Array.isArray(msg?.content)) {
+			return msg.content
+				.filter((b: any) => b.type === 'text')
+				.map((b: any) => b.text)
+				.join('\n');
+		}
+		return '';
+	}
+
+	function traceToolUses(msg: any): { name: string; input: string }[] {
+		if (!Array.isArray(msg?.content)) return [];
+		return msg.content
+			.filter((b: any) => b.type === 'tool_use')
+			.map((b: any) => ({
+				name: b.name ?? 'tool',
+				input: typeof b.input === 'string' ? b.input : JSON.stringify(b.input ?? {}).slice(0, 300),
+			}));
+	}
+
+	function traceToolResults(msg: any): { content: string }[] {
+		if (!Array.isArray(msg?.content)) return [];
+		return msg.content
+			.filter((b: any) => b.type === 'tool_result')
+			.map((b: any) => {
+				let text = '';
+				if (typeof b.content === 'string') text = b.content;
+				else if (Array.isArray(b.content)) {
+					text = b.content
+						.filter((c: any) => c.type === 'text')
+						.map((c: any) => c.text)
+						.join('\n');
+				}
+				return { content: text.slice(0, 500) + (text.length > 500 ? '...' : '') };
+			});
+	}
 </script>
 
 <div class="agents-page">
@@ -147,7 +275,7 @@
 							<div class="agent-top">
 								<span class="agent-name">{agent.name}</span>
 								<span class="agent-model" style="color: {color};">{modelLabel(agent.model)}</span>
-								<span class="agent-interval">every {formatInterval(agent.interval_hours)}</span>
+								<span class="agent-interval">{agent.interval_hours === 0 ? 'on-demand' : `every ${formatInterval(agent.interval_hours)}`}</span>
 							</div>
 
 							<p class="agent-desc">{agent.description}</p>
@@ -214,6 +342,113 @@
 				{/each}
 			</div>
 		{/if}
+
+		<!-- Recent activity section -->
+		<div class="activity-section">
+			<div class="activity-header">
+				<div class="agents-title">
+					<span class="agents-count">{runs.length}</span>
+					recent activity
+				</div>
+			</div>
+
+			{#if runsLoading}
+				<div class="activity-loading"><div class="pulse-dot"></div></div>
+			{:else if runs.length === 0}
+				<div class="activity-empty">
+					<p class="empty-text">no recent runs</p>
+				</div>
+			{:else}
+				<div class="runs-list">
+					{#each runs as run (run.id)}
+						{@const color = kindColors[run.agent_kind] ?? kindColors.scheduled}
+						{@const isFailed = runStatusFailed(run.status)}
+						{@const isExpanded = expandedRunId === run.id}
+
+						<button
+							class="run-card"
+							class:run-card-expanded={isExpanded}
+							class:run-card-failed={isFailed}
+							onclick={() => toggleRunTrace(run)}
+						>
+							<div class="run-dot" style="background: {isFailed ? 'oklch(0.65 0.15 25)' : color};"></div>
+
+							<div class="run-main">
+								<div class="run-top">
+									<span class="run-agent" style="color: {color};">{run.agent_name}</span>
+									<span class="run-trigger">{run.trigger}</span>
+								</div>
+								<div class="run-meta">
+									<span class="run-time">{formatTimestamp(run.started_at)}</span>
+									<span class="run-sep">&middot;</span>
+									<span class="run-duration">{formatDuration(run.duration_ms)}</span>
+									<span class="run-sep">&middot;</span>
+									<span class="run-tokens">{formatTokens(run.tokens_used)} tok</span>
+									<span class="run-sep">&middot;</span>
+									<span class="run-status" class:run-status-fail={isFailed}>
+										{runStatusLabel(run.status)}
+									</span>
+								</div>
+								{#if run.summary}
+									<p class="run-summary">{run.summary}</p>
+								{/if}
+							</div>
+
+							<div class="run-chevron" class:run-chevron-open={isExpanded}>
+								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+							</div>
+						</button>
+
+						<!-- Expanded trace -->
+						{#if isExpanded}
+							<div class="run-trace">
+								{#if runLoading}
+									<div class="activity-loading"><div class="pulse-dot"></div></div>
+								{:else if selectedRun && selectedRun.trace.length > 0}
+									<div class="trace-scroll">
+										{#each selectedRun.trace as msg, i (i)}
+											{@const role = traceRole(msg)}
+											{@const text = traceContent(msg)}
+											{@const toolUses = traceToolUses(msg)}
+											{@const toolResults = traceToolResults(msg)}
+
+											<div class="trace-msg" class:trace-msg-user={role === 'user'} class:trace-msg-assistant={role === 'assistant'}>
+												<span class="trace-role">{role}</span>
+
+												{#if text}
+													<p class="trace-text">{text.slice(0, 800)}{text.length > 800 ? '...' : ''}</p>
+												{/if}
+
+												{#each toolUses as tu (tu.name + tu.input.slice(0, 20))}
+													<div class="trace-tool-use">
+														<span class="trace-tool-name">{tu.name}</span>
+														<pre class="trace-tool-input">{tu.input}</pre>
+													</div>
+												{/each}
+
+												{#each toolResults as tr (tr.content.slice(0, 30))}
+													<div class="trace-tool-result">
+														<pre class="trace-tool-output">{tr.content}</pre>
+													</div>
+												{/each}
+											</div>
+										{/each}
+									</div>
+								{:else if selectedRun}
+									<p class="history-empty">empty trace</p>
+								{/if}
+
+								{#if selectedRun && runStatusFailed(selectedRun.status)}
+									<div class="trace-error">
+										{runErrorMessage(selectedRun.status)}
+									</div>
+								{/if}
+							</div>
+						{/if}
+					{/each}
+				</div>
+			{/if}
+		</div>
 	{/if}
 </div>
 
@@ -515,6 +750,260 @@
 		line-height: 1.5;
 		margin: 0;
 		white-space: pre-line;
+	}
+
+	/* Activity section */
+	.activity-section {
+		max-width: 600px;
+		margin: 2rem auto 0;
+	}
+
+	.activity-header {
+		margin-bottom: 1rem;
+	}
+
+	.activity-loading {
+		display: flex;
+		justify-content: center;
+		padding: 1rem 0;
+	}
+
+	.activity-empty {
+		text-align: center;
+		padding: 1rem 0;
+	}
+
+	/* Run cards */
+	.runs-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+
+	.run-card {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.625rem;
+		padding: 0.625rem 0.875rem;
+		border-radius: 0.5rem;
+		background: oklch(1 0 0 / 1.5%);
+		border: 1px solid oklch(1 0 0 / 4%);
+		transition: all 0.2s ease;
+		cursor: pointer;
+		text-align: left;
+		width: 100%;
+		font: inherit;
+		color: inherit;
+	}
+	.run-card:hover {
+		background: oklch(1 0 0 / 3%);
+		border-color: oklch(1 0 0 / 7%);
+	}
+	.run-card-expanded {
+		background: oklch(1 0 0 / 3%);
+		border-color: oklch(1 0 0 / 8%);
+		border-bottom-left-radius: 0;
+		border-bottom-right-radius: 0;
+	}
+	.run-card-failed {
+		border-color: oklch(0.65 0.15 25 / 10%);
+	}
+
+	.run-dot {
+		width: 5px;
+		height: 5px;
+		border-radius: 50%;
+		margin-top: 0.4rem;
+		flex-shrink: 0;
+		opacity: 0.5;
+	}
+
+	.run-main {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.run-top {
+		display: flex;
+		align-items: baseline;
+		gap: 0.4rem;
+		margin-bottom: 0.15rem;
+	}
+
+	.run-agent {
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		letter-spacing: 0.02em;
+	}
+
+	.run-trigger {
+		font-family: var(--font-mono);
+		font-size: 0.58rem;
+		color: oklch(1 0 0 / 20%);
+		letter-spacing: 0.04em;
+	}
+
+	.run-meta {
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		flex-wrap: wrap;
+	}
+
+	.run-time,
+	.run-duration,
+	.run-tokens {
+		font-family: var(--font-mono);
+		font-size: 0.55rem;
+		color: oklch(1 0 0 / 22%);
+		letter-spacing: 0.04em;
+	}
+
+	.run-sep {
+		font-size: 0.5rem;
+		color: oklch(1 0 0 / 12%);
+	}
+
+	.run-status {
+		font-family: var(--font-mono);
+		font-size: 0.55rem;
+		color: oklch(0.72 0.10 140 / 50%);
+		letter-spacing: 0.04em;
+	}
+	.run-status-fail {
+		color: oklch(0.65 0.15 25 / 60%);
+	}
+
+	.run-summary {
+		font-size: 0.65rem;
+		color: oklch(1 0 0 / 25%);
+		line-height: 1.4;
+		margin: 0.2rem 0 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.run-chevron {
+		flex-shrink: 0;
+		margin-top: 0.25rem;
+		color: oklch(1 0 0 / 18%);
+		transition: transform 0.2s ease;
+	}
+	.run-chevron-open {
+		transform: rotate(180deg);
+	}
+
+	/* Trace view */
+	.run-trace {
+		border: 1px solid oklch(1 0 0 / 6%);
+		border-top: none;
+		border-bottom-left-radius: 0.5rem;
+		border-bottom-right-radius: 0.5rem;
+		background: oklch(1 0 0 / 1%);
+		padding: 0.5rem;
+		margin-bottom: 0.375rem;
+	}
+
+	.trace-scroll {
+		max-height: 400px;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+		scrollbar-width: thin;
+		scrollbar-color: oklch(1 0 0 / 8%) transparent;
+	}
+
+	.trace-msg {
+		padding: 0.5rem 0.625rem;
+		border-radius: 0.375rem;
+		border: 1px solid oklch(1 0 0 / 3%);
+	}
+	.trace-msg-user {
+		background: oklch(1 0 0 / 2.5%);
+	}
+	.trace-msg-assistant {
+		background: oklch(1 0 0 / 1%);
+	}
+
+	.trace-role {
+		font-family: var(--font-mono);
+		font-size: 0.52rem;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: oklch(1 0 0 / 22%);
+		display: block;
+		margin-bottom: 0.25rem;
+	}
+
+	.trace-text {
+		font-size: 0.68rem;
+		color: oklch(1 0 0 / 55%);
+		line-height: 1.5;
+		margin: 0;
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+	.trace-msg-assistant .trace-text {
+		color: oklch(1 0 0 / 75%);
+	}
+
+	.trace-tool-use {
+		margin-top: 0.25rem;
+		padding: 0.35rem 0.5rem;
+		border-radius: 0.25rem;
+		background: oklch(0.78 0.12 75 / 3%);
+		border: 1px solid oklch(0.78 0.12 75 / 6%);
+	}
+
+	.trace-tool-name {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: oklch(0.78 0.12 75 / 55%);
+		letter-spacing: 0.04em;
+	}
+
+	.trace-tool-input {
+		font-family: var(--font-mono);
+		font-size: 0.58rem;
+		color: oklch(1 0 0 / 28%);
+		margin: 0.15rem 0 0;
+		white-space: pre-wrap;
+		word-break: break-all;
+		line-height: 1.4;
+	}
+
+	.trace-tool-result {
+		margin-top: 0.25rem;
+		padding: 0.35rem 0.5rem;
+		border-radius: 0.25rem;
+		background: oklch(1 0 0 / 2%);
+		border: 1px solid oklch(1 0 0 / 4%);
+	}
+
+	.trace-tool-output {
+		font-family: var(--font-mono);
+		font-size: 0.58rem;
+		color: oklch(1 0 0 / 30%);
+		margin: 0;
+		white-space: pre-wrap;
+		word-break: break-all;
+		line-height: 1.4;
+		max-height: 200px;
+		overflow-y: auto;
+	}
+
+	.trace-error {
+		margin-top: 0.375rem;
+		padding: 0.4rem 0.625rem;
+		border-radius: 0.375rem;
+		background: oklch(0.65 0.15 25 / 5%);
+		border: 1px solid oklch(0.65 0.15 25 / 10%);
+		font-family: var(--font-mono);
+		font-size: 0.62rem;
+		color: oklch(0.65 0.15 25 / 60%);
+		line-height: 1.4;
 	}
 
 	@media (max-width: 640px) {

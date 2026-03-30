@@ -404,6 +404,16 @@ export function fetchAgentHistory(slug: string, agentName: string): Promise<Agen
 	return json(`/api/instances/${encodeURIComponent(slug)}/agents/${encodeURIComponent(agentName)}/history`);
 }
 
+export function fetchAgentRuns(slug: string, limit = 50, agentName?: string): Promise<import("./types.js").AgentRunSummary[]> {
+	const params = new URLSearchParams({ limit: String(limit) });
+	if (agentName) params.set("agent_name", agentName);
+	return json(`/api/instances/${encodeURIComponent(slug)}/agent-runs?${params}`);
+}
+
+export function fetchAgentRun(slug: string, runId: string): Promise<import("./types.js").AgentRun> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/agent-runs/${encodeURIComponent(runId)}`);
+}
+
 export function fetchStats(slug: string): Promise<Stats> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/stats`);
 }

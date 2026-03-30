@@ -45,7 +45,7 @@ pub use memory_tools::{MemoryForgetTool, MemoryListTool, MemoryReadTool, MemoryS
 pub use project::{TaskItem, TaskStatus};
 pub use skills::{ActivateSkillTool, ListSkillsTool, ReadSkillReferenceTool};
 pub use system::{
-    ClearContextTool, CreateDropTool, DeepResearchTool, ExploreCodeTool, ExportProfileTool,
+    CallAgentTool, ClearContextTool, CreateDropTool, ExportProfileTool,
     GetSettingsTool, GetTimeTool, ImportProfileTool, InteractiveSessionTool, RequestSecretTool,
     RestartMachineTool, RunCommandTool, UpdateConfigTool,
 };
@@ -517,9 +517,10 @@ pub fn build_tools(
             google_ai_key, workspace_dir, instance_slug, &public_url, auth_token,
         ))));
     }
-    // ── Code ──
-    tools.push(wrap(Box::new(ExploreCodeTool::new(workspace_dir, instance_slug, llm.clone()))));
-    tools.push(wrap(Box::new(DeepResearchTool::new(workspace_dir, instance_slug, llm.clone(), config_path))));
+    // ── Agents ──
+    tools.push(wrap(Box::new(CallAgentTool::new(
+        workspace_dir, instance_slug, llm.clone(), events.clone(), vector_store.clone(), google_ai_key,
+    ))));
 
     // ── Creative ──
     tools.push(wrap(Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone()))));

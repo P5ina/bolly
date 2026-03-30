@@ -1,10 +1,10 @@
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 
 use crate::app::state::AppState;
@@ -16,6 +16,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/agents", get(list_agents))
         .route("/api/instances/{instance_slug}/agents/{agent_name}/run", post(trigger_agent))
         .route("/api/instances/{instance_slug}/agents/{agent_name}/history", get(agent_history))
+        .route("/api/instances/{instance_slug}/agent-runs", get(list_runs))
+        .route("/api/instances/{instance_slug}/agent-runs/{run_id}", get(get_run))
 }
 
 #[derive(Serialize)]
@@ -105,10 +107,10 @@ async fn trigger_agent(
 
     tokio::spawn(async move {
         match child_agents::run_single_agent(
-            &ws, &slug, &instance_dir, &llm_clone, &events, &vs, &google_ai_key, &agent,
+            &ws, &slug, &instance_dir, &llm_clone, &events, &vs, &google_ai_key, &agent, None, "manual",
         ).await {
-            Ok(tokens) => {
-                log::info!("[agents-api] {slug}: manually triggered '{}' ({tokens} tokens)", agent.name);
+            Ok((tokens, run_id)) => {
+                log::info!("[agents-api] {slug}: manually triggered '{}' ({tokens} tokens, {run_id})", agent.name);
             }
             Err(e) => {
                 log::warn!("[agents-api] {slug}: manual trigger '{}' failed: {e}", agent.name);
@@ -159,4 +161,41 @@ async fn agent_history(
     }).collect();
 
     Ok(Json(result))
+}
+
+// ── Agent Runs ──────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct ListRunsParams {
+    #[serde(default = "default_limit")]
+    limit: usize,
+    agent_name: Option<String>,
+}
+
+fn default_limit() -> usize {
+    50
+}
+
+async fn list_runs(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+    Query(params): Query<ListRunsParams>,
+) -> Result<Json<Vec<crate::domain::agent_run::AgentRunSummary>>, (StatusCode, String)> {
+    let runs = crate::services::agent_runs::list_runs(
+        &state.workspace_dir,
+        &instance_slug,
+        params.limit,
+        params.agent_name.as_deref(),
+    )
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(runs))
+}
+
+async fn get_run(
+    State(state): State<AppState>,
+    Path((instance_slug, run_id)): Path<(String, String)>,
+) -> Result<Json<crate::domain::agent_run::AgentRun>, (StatusCode, String)> {
+    let run = crate::services::agent_runs::load_run(&state.workspace_dir, &instance_slug, &run_id)
+        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
+    Ok(Json(run))
 }

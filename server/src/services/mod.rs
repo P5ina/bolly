@@ -23,3 +23,4 @@ pub mod uploads;
 pub mod vector;
 pub mod workspace;
 pub mod machine_registry;
+pub mod agent_runs;
