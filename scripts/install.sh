@@ -181,33 +181,47 @@ log "install dir: ${BOLD}$BOLLY_DIR${NC}"
 # ─── Download binary ─────────────────────────────────────────────────────────
 step "downloading bolly"
 
-if [ "$CHANNEL" = "nightly" ]; then
-    API_URL="https://api.github.com/repos/$REPO/releases/tags/nightly"
-else
-    API_URL="https://api.github.com/repos/$REPO/releases/latest"
-fi
-
-RELEASE_JSON=$(curl -fsSL "$API_URL" 2>/dev/null) || fail "could not fetch release info"
-TAG=$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*: "//;s/".*//')
-
-if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
-    fail "could not find a $CHANNEL release"
+AUTH_HEADER=""
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    AUTH_HEADER="Authorization: token $GITHUB_TOKEN"
 fi
 
 ASSET_NAME="bolly-server-$TARGET"
 ASSET_NAME_LEGACY="bolly-$TARGET"
-DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME"
-DOWNLOAD_URL_LEGACY="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME_LEGACY"
+
+if [ "$CHANNEL" = "nightly" ]; then
+    # Nightly: must use API to get tag
+    API_URL="https://api.github.com/repos/$REPO/releases/tags/nightly"
+    RELEASE_JSON=$(curl -fsSL ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$API_URL" 2>/dev/null) || fail "could not fetch release info (try setting GITHUB_TOKEN if rate limited)"
+    TAG=$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*: "//;s/".*//')
+    if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+        fail "could not find a nightly release"
+    fi
+    DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME"
+    DOWNLOAD_URL_LEGACY="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME_LEGACY"
+else
+    # Stable: use redirect URL — no API call, no rate limit
+    DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download/$ASSET_NAME"
+    DOWNLOAD_URL_LEGACY="https://github.com/$REPO/releases/latest/download/$ASSET_NAME_LEGACY"
+    TAG="latest"
+fi
 
 mkdir -p "$BIN_DIR" "$BOLLY_DIR"
 
-info "downloading $TAG for $TARGET..."
+info "downloading ${BOLD}$CHANNEL${NC} for $TARGET..."
 # Try new asset name first, fall back to legacy for older releases
 if ! curl -fsSL --head "$DOWNLOAD_URL" >/dev/null 2>&1; then
     DOWNLOAD_URL="$DOWNLOAD_URL_LEGACY"
 fi
 curl -fL --progress-bar "$DOWNLOAD_URL" -o "$BIN" || \
     fail "download failed — check https://github.com/$REPO/releases"
+
+# Resolve actual version from downloaded binary or GitHub redirect
+if [ "$TAG" = "latest" ]; then
+    RESOLVED=$(curl -fsSIL "$DOWNLOAD_URL" 2>/dev/null | grep -i '^location:' | tail -1 | sed 's|.*/download/\([^/]*\)/.*|\1|' | tr -d '\r')
+    TAG="${RESOLVED:-latest}"
+fi
+
 chmod +x "$BIN"
 echo "$TAG" > "$BIN_DIR/.version"
 
@@ -243,21 +257,29 @@ REPO="$REPO"
 BIN="$BIN"
 CHANNEL="\${BOLLY_CHANNEL:-$CHANNEL}"
 TARGET="$TARGET"
+# Use redirect URL for stable — no API call, no rate limit
+DOWNLOAD_URL="https://github.com/\$REPO/releases/latest/download/bolly-server-\$TARGET"
+DOWNLOAD_URL_LEGACY="https://github.com/\$REPO/releases/latest/download/bolly-\$TARGET"
 if [ "\$CHANNEL" = "nightly" ]; then
     API_URL="https://api.github.com/repos/\$REPO/releases/tags/nightly"
-else
-    API_URL="https://api.github.com/repos/\$REPO/releases/latest"
+    RELEASE_JSON=\$(curl -fsSL "\$API_URL") || { echo "could not fetch release info"; exit 1; }
+    TAG=\$(echo "\$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*: "//;s/".*//')
+    DOWNLOAD_URL="https://github.com/\$REPO/releases/download/\$TAG/bolly-server-\$TARGET"
+    DOWNLOAD_URL_LEGACY="https://github.com/\$REPO/releases/download/\$TAG/bolly-\$TARGET"
 fi
-RELEASE_JSON=\$(curl -fsSL "\$API_URL")
-TAG=\$(echo "\$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*: "//;s/".*//')
+echo "checking for updates..."
+curl -fsSL "\$DOWNLOAD_URL" -o "\$BIN.tmp" 2>/dev/null || \
+    curl -fsSL "\$DOWNLOAD_URL_LEGACY" -o "\$BIN.tmp" || \
+    { echo "download failed"; exit 1; }
+# Resolve version from redirect
+TAG=\$(curl -fsSIL "\$DOWNLOAD_URL" 2>/dev/null | grep -i '^location:' | tail -1 | sed 's|.*/download/\([^/]*\)/.*|\1|' | tr -d '\r')
+TAG="\${TAG:-unknown}"
 CURRENT=\$(cat "$BIN_DIR/.version" 2>/dev/null || echo "none")
 if [ "\$TAG" = "\$CURRENT" ]; then
+    rm -f "\$BIN.tmp"
     echo "already at \$TAG"
     exit 0
 fi
-echo "updating to \$TAG..."
-curl -fsSL -L "https://github.com/\$REPO/releases/download/\$TAG/bolly-server-\$TARGET" -o "\$BIN.tmp" 2>/dev/null || \
-    curl -fsSL -L "https://github.com/\$REPO/releases/download/\$TAG/bolly-\$TARGET" -o "\$BIN.tmp"
 chmod +x "\$BIN.tmp"
 mv "\$BIN.tmp" "\$BIN"
 echo "\$TAG" > "$BIN_DIR/.version"
