@@ -53,10 +53,6 @@ jobs:
             target: aarch64-apple-darwin
             artifact: bolly-server-aarch64-apple-darwin
             ext: ''
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact: bolly-server-x86_64-pc-windows-msvc.exe
-            ext: '.exe'
 
     runs-on: ${{ matrix.os }}
     steps:
