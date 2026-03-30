@@ -29,6 +29,7 @@
 		fetchScheduledTasks,
 		cancelScheduledTask,
 		fetchSuggestedMcp,
+		updateLlmConfig,
 		type ScheduledTask,
 	} from "$lib/api/client.js";
 	import type { McpServerInfo, EmailConfig } from "$lib/api/client.js";
