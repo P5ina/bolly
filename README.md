@@ -19,7 +19,7 @@ curl -fsSL https://bollyai.dev/install.sh | bash
 
 This downloads the latest binary, creates a config file, and sets up a background service (systemd on Linux, launchd on macOS).
 
-Then edit `~/.bolly/data/config.toml` and add your Anthropic API key:
+Then edit `~/.bolly/config.toml` and add your Anthropic API key:
 
 ```toml
 [llm.tokens]
@@ -165,7 +165,7 @@ Everything is a file. No black boxes.
 ## Configuration
 
 ```toml
-# ~/.bolly/data/config.toml
+# ~/.bolly/config.toml
 
 host = "0.0.0.0"
 port = 26559

@@ -171,7 +171,6 @@ REPO="triangle-int/bolly"
 CHANNEL="${BOLLY_CHANNEL:-stable}"
 BOLLY_DIR="${BOLLY_DIR:-$HOME/.bolly}"
 BIN_DIR="$BOLLY_DIR/bin"
-DATA_DIR="$BOLLY_DIR/data"
 BIN="$BIN_DIR/bolly"
 
 step "detecting environment"
@@ -200,7 +199,7 @@ ASSET_NAME_LEGACY="bolly-$TARGET"
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME"
 DOWNLOAD_URL_LEGACY="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME_LEGACY"
 
-mkdir -p "$BIN_DIR" "$DATA_DIR"
+mkdir -p "$BIN_DIR" "$BOLLY_DIR"
 
 info "downloading $TAG for $TARGET..."
 # Try new asset name first, fall back to legacy for older releases
@@ -215,9 +214,9 @@ echo "$TAG" > "$BIN_DIR/.version"
 log "downloaded ${BOLD}$TAG${NC}"
 
 # ─── Config file ──────────────────────────────────────────────────────────────
-if [ ! -f "$DATA_DIR/config.toml" ]; then
+if [ ! -f "$BOLLY_DIR/config.toml" ]; then
     step "creating config"
-    cat > "$DATA_DIR/config.toml" <<'CONF'
+    cat > "$BOLLY_DIR/config.toml" <<'CONF'
 host = "0.0.0.0"
 port = 26559
 auth_token = ""
@@ -231,7 +230,7 @@ ANTHROPIC = ""       # Required — get key at https://console.anthropic.com
 GOOGLE_AI = ""       # Optional — embeddings + media analysis
 ELEVENLABS = ""      # Optional — text-to-speech
 CONF
-    log "created $DATA_DIR/config.toml"
+    log "created $BOLLY_DIR/config.toml"
 else
     log "config already exists, skipping"
 fi
@@ -281,8 +280,8 @@ After=network.target
 [Service]
 Type=simple
 User=$(whoami)
-WorkingDirectory=$DATA_DIR
-Environment=BOLLY_HOME=$DATA_DIR
+WorkingDirectory=$BOLLY_DIR
+Environment=BOLLY_HOME=$BOLLY_DIR
 Environment=RUST_LOG=info
 ExecStart=$BIN
 Restart=always
@@ -307,8 +306,8 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=$DATA_DIR
-Environment=BOLLY_HOME=$DATA_DIR
+WorkingDirectory=$BOLLY_DIR
+Environment=BOLLY_HOME=$BOLLY_DIR
 Environment=RUST_LOG=info
 ExecStart=$BIN
 Restart=always
@@ -343,11 +342,11 @@ elif [ "$PLATFORM" = "macos" ]; then
         <string>$BIN</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>$DATA_DIR</string>
+    <string>$BOLLY_DIR</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>BOLLY_HOME</key>
-        <string>$DATA_DIR</string>
+        <string>$BOLLY_DIR</string>
         <key>RUST_LOG</key>
         <string>info</string>
     </dict>
@@ -389,8 +388,8 @@ export PATH="$BIN_DIR:$PATH"
 
 # Read port from config (default 26559)
 BOLLY_PORT=26559
-if [ -f "$DATA_DIR/config.toml" ]; then
-    CFG_PORT=$(grep -E '^port\s*=' "$DATA_DIR/config.toml" | head -1 | sed 's/.*=\s*//' | tr -d ' ')
+if [ -f "$BOLLY_DIR/config.toml" ]; then
+    CFG_PORT=$(grep -E '^port\s*=' "$BOLLY_DIR/config.toml" | head -1 | sed 's/.*=\s*//' | tr -d ' ')
     if [ -n "$CFG_PORT" ]; then
         BOLLY_PORT="$CFG_PORT"
     fi
