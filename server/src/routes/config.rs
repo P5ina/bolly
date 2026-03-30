@@ -159,8 +159,14 @@ async fn update_llm_key(
     }
 
     // Rebuild LLM backend if anthropic key changed
+    // Note: can't use reload_config() here — it compares disk config with
+    // in-memory config, but we just updated in-memory above, so it sees no diff.
     if changes.contains(&"anthropic") {
-        state.reload_config().await;
+        let cfg = state.config.read().await;
+        let new_llm = crate::services::llm::LlmBackend::from_config(&cfg);
+        drop(cfg);
+        *state.llm.write().await = new_llm;
+        log::info!("LLM backend rebuilt after API key change");
     }
 
     Ok(Json(json!({ "status": "ok", "updated": changes })))
