@@ -1,5 +1,4 @@
 pub mod anthropic_files;
-pub mod anthropic_skills;
 pub mod chat;
 pub mod daily_stats;
 pub mod embedding;

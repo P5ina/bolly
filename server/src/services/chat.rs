@@ -397,14 +397,8 @@ pub async fn run_single_turn(
          tell them it was automatically redacted for safety and ask them to use \
          the secure input instead (which you trigger via `request_secret`). \
          this is mandatory, not optional.\n\n\
-         ## code execution (two separate environments)\n\
-         you have TWO code execution environments — they are completely separate:\n\
-         - `run_command`: runs on the LOCAL server. use for file operations, installs, git, local scripts.\n\
-         - `code_execution`: runs in Anthropic's SANDBOX. use only for Anthropic skills (document generation).\n\
-         variables, files, and state do NOT persist between these environments.\n\
-         to use Anthropic skills, call activate_skill first. once activated, code_execution can use the skill.\n\
-         generated files are automatically downloaded and sent to the user.\n\
-         NEVER use run_command for Anthropic skill tasks. NEVER use code_execution for local server tasks."
+         ## code execution\n\
+         use `run_command` for shell commands, file operations, installs, git, local scripts."
     );
 
     // System prompt is fully static (soul, skills, style, integrations).
@@ -577,8 +571,6 @@ pub async fn run_single_turn(
         let t = if !instance_token.is_empty() { instance_token } else { global_token };
         if t.is_empty() { None } else { Some(t) }
     };
-    let activated_anthropic_skills: std::sync::Arc<tokio::sync::RwLock<std::collections::HashSet<String>>> =
-        Default::default();
     let (all_tools, sent_files) = tools::build_tools(
         workspace_dir, &instance_slug, &chat_id,
         config_path, events.clone(), llm,
@@ -592,7 +584,6 @@ pub async fn run_single_turn(
         github_token,
         vector_store.clone(),
         google_ai_key,
-        activated_anthropic_skills.clone(),
         machine_registry,
     );
     tools::cache_tool_defs(&all_tools).await;
@@ -617,7 +608,6 @@ pub async fn run_single_turn(
             events.clone(), &instance_slug, &chat_id,
             workspace_dir,
             Some(mcp_snapshot),
-            activated_anthropic_skills,
             sent_files,
         )
         .await;
@@ -1507,11 +1497,10 @@ fn unix_millis() -> u128 {
 
 /// Build a prompt section listing active skills and their instructions.
 fn build_skills_prompt(workspace_dir: &Path) -> String {
-    use crate::domain::skill::SkillKind;
     let all_skills = skills::list_skills(workspace_dir);
     let active: Vec<_> = all_skills
         .into_iter()
-        .filter(|s| s.enabled && (!s.instructions.is_empty() || s.kind == SkillKind::Anthropic))
+        .filter(|s| s.enabled && !s.instructions.is_empty())
         .collect();
 
     if active.is_empty() {
@@ -1519,23 +1508,13 @@ fn build_skills_prompt(workspace_dir: &Path) -> String {
     }
 
     let mut out = String::from("## skills\nyou have the following skills installed. \
-        call `activate_skill` to use any skill. \
-        [local] skills return instructions for local execution. \
-        [anthropic] skills load into the code execution sandbox.\n\
-        IMPORTANT: for generating documents (PDF, DOCX, presentations, spreadsheets), \
-        ALWAYS use an [anthropic] skill — NOT a [local] skill like frontend-design. \
-        [local] skills are for building web UI, not for creating downloadable files.\n\n");
+        call `activate_skill` to use any skill — it will return instructions for execution.\n\n");
     for skill in &active {
-        let kind_label = match skill.kind {
-            SkillKind::Local => "[local]",
-            SkillKind::Anthropic => "[anthropic]",
-        };
         let has_refs = skill.resources.iter().any(|r| r.starts_with("references/"));
         out.push_str(&format!(
-            "- **{}** (id: `{}`) {}: {}{}\n",
+            "- **{}** (id: `{}`): {}{}\n",
             skill.name,
             skill.id,
-            kind_label,
             skill.description,
             if has_refs { " [has references]" } else { "" },
         ));
