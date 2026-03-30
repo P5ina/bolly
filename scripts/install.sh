@@ -203,10 +203,12 @@ DOWNLOAD_URL_LEGACY="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME
 mkdir -p "$BIN_DIR" "$DATA_DIR"
 
 info "downloading $TAG for $TARGET..."
-if ! curl -fsSL "$DOWNLOAD_URL" -o "$BIN" 2>/dev/null; then
-    curl -fL --progress-bar "$DOWNLOAD_URL_LEGACY" -o "$BIN" || \
-        fail "download failed — check https://github.com/$REPO/releases"
+# Try new asset name first, fall back to legacy for older releases
+if ! curl -fsSL --head "$DOWNLOAD_URL" >/dev/null 2>&1; then
+    DOWNLOAD_URL="$DOWNLOAD_URL_LEGACY"
 fi
+curl -fL --progress-bar "$DOWNLOAD_URL" -o "$BIN" || \
+    fail "download failed — check https://github.com/$REPO/releases"
 chmod +x "$BIN"
 echo "$TAG" > "$BIN_DIR/.version"
 
