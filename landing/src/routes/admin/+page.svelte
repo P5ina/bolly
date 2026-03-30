@@ -28,6 +28,7 @@
 	let migrating = $state(false);
 	let notifying = $state(false);
 	let patching = $state(false);
+	let destroying = $state<string | null>(null);
 	let priceMessage = $state('');
 
 	function formatTokens(n: number) {
@@ -472,6 +473,38 @@
 													<Play size={12} />
 												{/if}
 												start
+											</button>
+										</form>
+									{/if}
+									{#if !tenant.stripeSubscriptionId && tenant.status !== 'destroyed'}
+										<form method="POST" action="?/destroyTenant" use:enhance={() => {
+											if (!confirm(`Destroy ${tenant.slug}? This deletes the Fly app and cannot be undone.`)) { return async () => {}; }
+											destroying = tenant.id;
+											actionError = null;
+											return async ({ result, update }) => {
+												destroying = null;
+												if (result.type === 'failure') {
+													actionError = (result.data as { error?: string })?.error ?? 'Failed to destroy';
+												} else if (result.type === 'success') {
+													actionSuccess = `Destroyed ${tenant.slug}`;
+												}
+												await update();
+											};
+										}}>
+											<input type="hidden" name="tenantId" value={tenant.id} />
+											<button
+												type="submit"
+												disabled={destroying === tenant.id}
+												class="inline-flex items-center gap-1 text-xs py-1.5 px-3 rounded-lg transition-all duration-300 disabled:opacity-40"
+												style="color: oklch(0.65 0.15 25); background: oklch(0.65 0.15 25 / 8%); border: 1px solid oklch(0.65 0.15 25 / 20%);"
+												title="Destroy (no subscription)"
+											>
+												{#if destroying === tenant.id}
+													<Loader size={12} class="animate-spin" />
+												{:else}
+													<AlertTriangle size={12} />
+												{/if}
+												destroy
 											</button>
 										</form>
 									{/if}

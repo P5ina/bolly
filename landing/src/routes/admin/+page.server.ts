@@ -5,7 +5,7 @@ import { tenants, users, rateLimits } from '$lib/server/db/schema.js';
 import { eq, ne } from 'drizzle-orm';
 import { ADMIN_EMAILS } from '$env/static/private';
 import * as fly from '$lib/server/fly/index.js';
-import { provisionTenant } from '$lib/server/tenants.js';
+import { provisionTenant, destroyTenant } from '$lib/server/tenants.js';
 import { PLANS, type PlanId, stripe, priceIdForPlan } from '$lib/server/stripe/index.js';
 import { sendPriceChangeEmail } from '$lib/server/email/index.js';
 
@@ -31,6 +31,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			storageLimit: tenants.storageLimit,
 			tokensPerMonth: tenants.tokensPerMonth,
 			errorMessage: tenants.errorMessage,
+			stripeSubscriptionId: tenants.stripeSubscriptionId,
 			createdAt: tenants.createdAt,
 			updatedAt: tenants.updatedAt,
 			userId: tenants.userId,
@@ -466,6 +467,33 @@ export const actions: Actions = {
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'Unknown error';
 			return fail(500, { error: `Failed to update ${tenant.slug}: ${msg}` });
+		}
+	},
+
+	destroyTenant: async ({ request, locals }) => {
+		if (!locals.user || !isAdmin(locals.user.email)) error(403, 'Forbidden');
+
+		const form = await request.formData();
+		const tenantId = form.get('tenantId') as string;
+		if (!tenantId) return fail(400, { error: 'Missing tenantId' });
+
+		const [tenant] = await db()
+			.select({ slug: tenants.slug, stripeSubscriptionId: tenants.stripeSubscriptionId })
+			.from(tenants)
+			.where(eq(tenants.id, tenantId))
+			.limit(1);
+
+		if (!tenant) return fail(404, { error: 'Tenant not found' });
+		if (tenant.stripeSubscriptionId) {
+			return fail(400, { error: `${tenant.slug} has a Stripe subscription — cancel it first` });
+		}
+
+		try {
+			await destroyTenant(tenantId);
+			return { success: true, slug: tenant.slug };
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'Unknown error';
+			return fail(500, { error: `Failed to destroy ${tenant.slug}: ${msg}` });
 		}
 	},
 };
