@@ -196,12 +196,16 @@ if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
 fi
 
 ASSET_NAME="bolly-server-$TARGET"
+ASSET_NAME_LEGACY="bolly-$TARGET"
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME"
+DOWNLOAD_URL_LEGACY="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME_LEGACY"
 
 mkdir -p "$BIN_DIR" "$DATA_DIR"
 
 info "downloading $TAG for $TARGET..."
-curl -fL --progress-bar "$DOWNLOAD_URL" -o "$BIN" || fail "download failed — check https://github.com/$REPO/releases"
+curl -fL --progress-bar "$DOWNLOAD_URL" -o "$BIN" 2>/dev/null || \
+    curl -fL --progress-bar "$DOWNLOAD_URL_LEGACY" -o "$BIN" || \
+    fail "download failed — check https://github.com/$REPO/releases"
 chmod +x "$BIN"
 echo "$TAG" > "$BIN_DIR/.version"
 
@@ -250,7 +254,8 @@ if [ "\$TAG" = "\$CURRENT" ]; then
     exit 0
 fi
 echo "updating to \$TAG..."
-curl -fsSL -L "https://github.com/\$REPO/releases/download/\$TAG/bolly-server-\$TARGET" -o "\$BIN.tmp"
+curl -fsSL -L "https://github.com/\$REPO/releases/download/\$TAG/bolly-server-\$TARGET" -o "\$BIN.tmp" 2>/dev/null || \
+    curl -fsSL -L "https://github.com/\$REPO/releases/download/\$TAG/bolly-\$TARGET" -o "\$BIN.tmp"
 chmod +x "\$BIN.tmp"
 mv "\$BIN.tmp" "\$BIN"
 echo "\$TAG" > "$BIN_DIR/.version"

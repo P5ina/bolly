@@ -67,9 +67,14 @@ echo "[update] downloading bolly $VERSION ($CHANNEL) for $TARGET..."
 # Use GitHub API asset endpoint with Accept: application/octet-stream instead.
 # See: https://docs.github.com/en/rest/releases/assets#get-a-release-asset
 ASSET_NAME="bolly-server-$TARGET"
+ASSET_NAME_LEGACY="bolly-$TARGET"
 ASSET_API_URL=""
 if [ -n "$RELEASE_TOKEN" ] && command -v jq >/dev/null 2>&1; then
     ASSET_API_URL=$(jq -r ".assets[] | select(.name == \"$ASSET_NAME\") | .url" "$RELEASE_FILE" 2>/dev/null) || true
+    # Fallback to legacy name
+    if [ -z "$ASSET_API_URL" ] || [ "$ASSET_API_URL" = "null" ]; then
+        ASSET_API_URL=$(jq -r ".assets[] | select(.name == \"$ASSET_NAME_LEGACY\") | .url" "$RELEASE_FILE" 2>/dev/null) || true
+    fi
 fi
 
 DOWNLOAD_OK=false
@@ -85,13 +90,16 @@ if [ -n "$ASSET_API_URL" ] && [ "$ASSET_API_URL" != "null" ] && [ -n "$RELEASE_T
         echo "[update] curl failed (exit $?), URL: $ASSET_API_URL"
     fi
 else
-    # Public repo fallback: direct download URL
+    # Public repo: try new name, fall back to legacy
     ASSET_URL="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME"
+    ASSET_URL_LEGACY="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME_LEGACY"
     echo "[update] downloading via direct URL"
     if curl -fSL --max-time 120 ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$ASSET_URL" -o "$BINARY.tmp" 2>&1; then
         DOWNLOAD_OK=true
+    elif curl -fSL --max-time 120 ${AUTH_HEADER:+-H "$AUTH_HEADER"} "$ASSET_URL_LEGACY" -o "$BINARY.tmp" 2>&1; then
+        DOWNLOAD_OK=true
     else
-        echo "[update] curl failed (exit $?), URL: $ASSET_URL"
+        echo "[update] curl failed (exit $?)"
     fi
 fi
 
