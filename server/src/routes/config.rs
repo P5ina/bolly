@@ -106,6 +106,33 @@ async fn update_llm_key(
     State(state): State<AppState>,
     Json(req): Json<UpdateLlmKeyRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    // Validate Anthropic key before saving
+    if let Some(key) = &req.api_key {
+        let key = key.trim();
+        if !key.is_empty() {
+            let http = reqwest::Client::new();
+            let res = http
+                .post("https://api.anthropic.com/v1/messages")
+                .header("x-api-key", key)
+                .header("anthropic-version", "2023-06-01")
+                .header("content-type", "application/json")
+                .body(r#"{"model":"claude-haiku-4-5-20241022","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}"#)
+                .send()
+                .await
+                .map_err(|e| (StatusCode::BAD_GATEWAY, format!("failed to reach Anthropic: {e}")))?;
+
+            if res.status() == reqwest::StatusCode::UNAUTHORIZED {
+                return Err((StatusCode::UNAUTHORIZED, "invalid API key".into()));
+            }
+            // 400 (bad request) is fine — means key is valid but request was malformed (shouldn't happen)
+            // 429 (rate limited) is fine — means key is valid
+            // 200 is fine — means key works
+            if res.status().is_server_error() {
+                return Err((StatusCode::BAD_GATEWAY, "Anthropic API error — try again".into()));
+            }
+        }
+    }
+
     let mut changes = Vec::new();
 
     {
