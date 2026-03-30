@@ -19,6 +19,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/config/mcp/{name}", delete(remove_mcp_server))
         .route("/api/config/github", get(get_github))
         .route("/api/config/github", put(update_github))
+        .route("/api/config/server", get(get_server))
+        .route("/api/config/server", put(update_server))
 }
 
 async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -47,6 +49,9 @@ async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
         "fast_model": config.llm.fast_model_name(),
         "model_mode": mode,
         "configured_keys": keys,
+        "host": config.host,
+        "port": config.port,
+        "auth_token_set": !config.auth_token.is_empty(),
     }))
 }
 
@@ -304,6 +309,58 @@ async fn update_github(
     Ok(Json(json!({
         "status": "ok",
         "configured": configured,
+    })))
+}
+
+// ---------------------------------------------------------------------------
+// Server settings (host, port, auth_token)
+// ---------------------------------------------------------------------------
+
+async fn get_server(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let config = state.config.read().await;
+    Json(json!({
+        "host": config.host,
+        "port": config.port,
+        "auth_token_set": !config.auth_token.is_empty(),
+    }))
+}
+
+#[derive(Deserialize)]
+struct UpdateServerRequest {
+    host: Option<String>,
+    port: Option<u16>,
+    auth_token: Option<String>,
+}
+
+async fn update_server(
+    State(state): State<AppState>,
+    Json(request): Json<UpdateServerRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let mut needs_restart = false;
+
+    {
+        let mut config = state.config.write().await;
+        if let Some(host) = &request.host {
+            if config.host != *host {
+                config.host = host.trim().to_string();
+                needs_restart = true;
+            }
+        }
+        if let Some(port) = request.port {
+            if port > 0 && config.port != port {
+                config.port = port;
+                needs_restart = true;
+            }
+        }
+        if let Some(token) = &request.auth_token {
+            config.auth_token = token.trim().to_string();
+        }
+        save_config(&config)?;
+    }
+
+    Ok(Json(json!({
+        "status": "ok",
+        "needs_restart": needs_restart,
     })))
 }
 

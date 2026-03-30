@@ -170,6 +170,18 @@ export function fetchConfigStatus(): Promise<{
 	return json("/api/config/status");
 }
 
+export function fetchServerConfig(): Promise<{ host: string; port: number; auth_token_set: boolean }> {
+	return json("/api/config/server");
+}
+
+export function updateServerConfig(updates: { host?: string; port?: number; auth_token?: string }): Promise<{ status: string; needs_restart: boolean }> {
+	return json("/api/config/server", {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(updates),
+	});
+}
+
 export function updateModelMode(mode: string): Promise<{ status: string; model_mode: string }> {
 	return json("/api/config/model-mode", {
 		method: "PUT",

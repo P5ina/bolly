@@ -156,6 +156,75 @@
 	let ghError = $state("");
 	let ghEditing = $state(false);
 
+	// Server state
+	let serverHost = $state("0.0.0.0");
+	let serverPort = $state(26559);
+	let serverAuthSet = $state(false);
+	let serverLoading = $state(true);
+	let serverSaving = $state(false);
+	let serverNeedsRestart = $state(false);
+	let serverAuthInput = $state("");
+	let serverPortInput = $state("26559");
+
+	async function loadServer() {
+		serverLoading = true;
+		try {
+			const { fetchServerConfig } = await import("$lib/api/client.js");
+			const res = await fetchServerConfig();
+			serverHost = res.host;
+			serverPort = res.port;
+			serverPortInput = String(res.port);
+			serverAuthSet = res.auth_token_set;
+		} catch {
+			// not critical
+		} finally {
+			serverLoading = false;
+		}
+	}
+
+	async function saveServerPort() {
+		const port = parseInt(serverPortInput);
+		if (isNaN(port) || port < 1 || port > 65535) return;
+		serverSaving = true;
+		try {
+			const { updateServerConfig } = await import("$lib/api/client.js");
+			const res = await updateServerConfig({ port });
+			serverPort = port;
+			serverNeedsRestart = res.needs_restart;
+		} catch {
+			// ignore
+		} finally {
+			serverSaving = false;
+		}
+	}
+
+	async function saveServerAuth() {
+		serverSaving = true;
+		try {
+			const { updateServerConfig } = await import("$lib/api/client.js");
+			await updateServerConfig({ auth_token: serverAuthInput.trim() });
+			serverAuthSet = serverAuthInput.trim().length > 0;
+			serverAuthInput = "";
+		} catch {
+			// ignore
+		} finally {
+			serverSaving = false;
+		}
+	}
+
+	async function clearServerAuth() {
+		serverSaving = true;
+		try {
+			const { updateServerConfig } = await import("$lib/api/client.js");
+			await updateServerConfig({ auth_token: "" });
+			serverAuthSet = false;
+		} catch {
+			// ignore
+		} finally {
+			serverSaving = false;
+		}
+	}
+
 	// Music state
 	let musicEnabledVal = $state(true);
 	let musicLoading = $state(true);
@@ -551,6 +620,7 @@
 		loadEmail();
 		loadVoice();
 		loadMusic();
+		loadServer();
 		loadScheduled();
 	});
 
@@ -603,6 +673,72 @@
 
 	<div class="settings-grid">
 
+	<!-- Server -->
+	<section class="settings-section">
+		<div class="section-header">
+			<div>
+				<h3 class="section-label">server</h3>
+				<p class="section-desc">Network and authentication settings.</p>
+			</div>
+		</div>
+
+		{#if serverLoading}
+			<p class="dim-text">loading...</p>
+		{:else}
+			<div class="setting-row">
+				<label class="setting-label">Port</label>
+				<div class="setting-input-row">
+					<input
+						class="setting-input"
+						type="number"
+						min="1"
+						max="65535"
+						bind:value={serverPortInput}
+					/>
+					{#if String(serverPort) !== serverPortInput}
+						<button class="setting-btn" onclick={saveServerPort} disabled={serverSaving}>
+							{serverSaving ? "..." : "save"}
+						</button>
+					{/if}
+				</div>
+				{#if serverNeedsRestart}
+					<p class="setting-hint setting-warning">restart bolly to apply port change</p>
+				{/if}
+			</div>
+
+			<div class="setting-row">
+				<label class="setting-label">Auth token</label>
+				{#if serverAuthSet}
+					<div class="setting-input-row">
+						<span class="dim-text">configured</span>
+						<button class="setting-btn setting-btn-danger" onclick={clearServerAuth} disabled={serverSaving}>
+							remove
+						</button>
+					</div>
+				{:else}
+					<div class="setting-input-row">
+						<input
+							class="setting-input"
+							type="password"
+							placeholder="optional — protects your API"
+							bind:value={serverAuthInput}
+						/>
+						{#if serverAuthInput.trim()}
+							<button class="setting-btn" onclick={saveServerAuth} disabled={serverSaving}>
+								{serverSaving ? "..." : "set"}
+							</button>
+						{/if}
+					</div>
+				{/if}
+				<p class="setting-hint">leave empty for no authentication</p>
+			</div>
+
+			<div class="setting-row">
+				<label class="setting-label">Host</label>
+				<span class="dim-text">{serverHost}</span>
+			</div>
+		{/if}
+	</section>
 
 	<!-- Usage -->
 	{#if usage && (usage.tokens_4h_limit > 0 || usage.tokens_week_limit > 0 || usage.tokens_month_limit > 0)}
@@ -1950,4 +2086,29 @@
 	.key-change-add { color: var(--color-warm); }
 	.key-change-add:hover { color: oklch(0.88 0.14 75); }
 	.key-error { margin-top: 8px; font-size: 0.72rem; color: oklch(0.65 0.15 25 / 70%); font-style: italic; }
+
+	/* ── Server settings ── */
+	.setting-row { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; }
+	.setting-row + .setting-row { border-top: 1px solid oklch(1 0 0 / 4%); }
+	.setting-label { font-size: 0.75rem; font-weight: 500; color: oklch(0.90 0.02 75 / 60%); letter-spacing: 0.03em; }
+	.setting-input-row { display: flex; align-items: center; gap: 8px; }
+	.setting-input {
+		flex: 1; max-width: 200px;
+		padding: 6px 10px; border-radius: 6px; border: 1px solid oklch(1 0 0 / 8%);
+		background: oklch(1 0 0 / 3%); color: oklch(0.90 0.02 75); font-size: 0.8rem;
+		font-family: var(--font-mono); outline: none; transition: border-color 0.2s;
+	}
+	.setting-input:focus { border-color: oklch(0.78 0.12 75 / 30%); }
+	.setting-btn {
+		padding: 4px 12px; border-radius: 6px; border: 1px solid oklch(0.78 0.12 75 / 15%);
+		background: oklch(0.78 0.12 75 / 6%); color: oklch(0.78 0.12 75 / 70%);
+		font-size: 0.72rem; font-family: var(--font-mono); cursor: pointer; transition: all 0.2s;
+	}
+	.setting-btn:hover:not(:disabled) { background: oklch(0.78 0.12 75 / 12%); border-color: oklch(0.78 0.12 75 / 25%); }
+	.setting-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+	.setting-btn-danger { border-color: oklch(0.65 0.15 25 / 15%); background: oklch(0.65 0.15 25 / 6%); color: oklch(0.65 0.15 25 / 70%); }
+	.setting-btn-danger:hover:not(:disabled) { background: oklch(0.65 0.15 25 / 12%); }
+	.setting-hint { font-size: 0.65rem; color: oklch(1 0 0 / 20%); margin: 0; }
+	.setting-warning { color: oklch(0.78 0.12 75 / 60%); }
+	.dim-text { font-size: 0.75rem; color: oklch(1 0 0 / 25%); font-family: var(--font-mono); }
 </style>
