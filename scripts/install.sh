@@ -203,9 +203,10 @@ DOWNLOAD_URL_LEGACY="https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME
 mkdir -p "$BIN_DIR" "$DATA_DIR"
 
 info "downloading $TAG for $TARGET..."
-curl -fL --progress-bar "$DOWNLOAD_URL" -o "$BIN" 2>/dev/null || \
+if ! curl -fsSL "$DOWNLOAD_URL" -o "$BIN" 2>/dev/null; then
     curl -fL --progress-bar "$DOWNLOAD_URL_LEGACY" -o "$BIN" || \
-    fail "download failed — check https://github.com/$REPO/releases"
+        fail "download failed — check https://github.com/$REPO/releases"
+fi
 chmod +x "$BIN"
 echo "$TAG" > "$BIN_DIR/.version"
 

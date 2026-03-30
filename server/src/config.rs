@@ -248,7 +248,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             host: default_host(),
-            port: 8080,
+            port: default_port(),
             auth_token: String::new(),
             static_dir: String::new(),
             landing_url: String::new(),
