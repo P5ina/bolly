@@ -313,28 +313,54 @@ pub async fn run_prompt(
         cmd.arg("--append-system-prompt").arg(system_prompt);
     }
 
-    // Write temp MCP config if provided
+    // Write temp MCP config with stdio bridge script
     let mcp_temp_dir = if let Some(mcp) = mcp {
-        let dir = std::env::temp_dir().join(format!("bolly-mcp-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("bmcp-{}", &uuid::Uuid::new_v4().to_string()[..8]));
         std::fs::create_dir_all(&dir)?;
-        let mcp_config_path = dir.join("mcp.json");
+
         let mcp_url = format!(
             "{}/mcp/{}/{}",
             mcp.server_url, mcp.instance_slug, mcp.chat_id,
         );
+
+        // Create a stdio→HTTP bridge script
+        // Claude CLI only supports stdio MCP (command+args), not HTTP
+        let bridge_script = dir.join("bridge.sh");
+        let script_content = format!(
+            r#"#!/bin/sh
+# MCP stdio→HTTP bridge: reads JSON-RPC from stdin, POSTs to server, writes response to stdout
+while IFS= read -r line; do
+  if [ -n "$line" ]; then
+    curl -s -X POST "{mcp_url}" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer {auth}" \
+      -d "$line"
+    printf '\n'
+  fi
+done
+"#,
+            mcp_url = mcp_url,
+            auth = mcp.auth_token,
+        );
+        std::fs::write(&bridge_script, &script_content)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bridge_script, std::fs::Permissions::from_mode(0o755))?;
+        }
+
+        let mcp_config_path = dir.join("mcp.json");
         let config = serde_json::json!({
             "mcpServers": {
                 "personality": {
-                    "url": mcp_url,
-                    "headers": {
-                        "Authorization": format!("Bearer {}", mcp.auth_token),
-                    }
+                    "command": bridge_script.to_string_lossy(),
+                    "args": []
                 }
             }
         });
         std::fs::write(&mcp_config_path, serde_json::to_string_pretty(&config)?)?;
         cmd.arg("--mcp-config").arg(&mcp_config_path);
-        log::info!("claude CLI: MCP config at {}", mcp_config_path.display());
+        log::info!("claude CLI: MCP bridge at {} → {}", bridge_script.display(), mcp_url);
         Some(dir)
     } else {
         None
