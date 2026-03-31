@@ -10,6 +10,15 @@ use log::info;
 
 #[tokio::main]
 async fn main() {
+    // MCP bridge mode: `server --mcp-bridge <url> <token>`
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(|s| s.as_str()) == Some("--mcp-bridge") {
+        let url = args.get(2).expect("usage: server --mcp-bridge <url> <token>");
+        let token = args.get(3).expect("usage: server --mcp-bridge <url> <token>");
+        services::claude_cli::run_mcp_bridge(url, token);
+        return;
+    }
+
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .filter_module("tracing::span", log::LevelFilter::Warn)
         .filter_module("lance", log::LevelFilter::Warn)

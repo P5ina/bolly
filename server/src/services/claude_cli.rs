@@ -313,7 +313,7 @@ pub async fn run_prompt(
         cmd.arg("--append-system-prompt").arg(system_prompt);
     }
 
-    // Write temp MCP config with stdio bridge script
+    // Write temp MCP config pointing to ourselves as stdio bridge
     let mcp_temp_dir = if let Some(mcp) = mcp {
         let dir = std::env::temp_dir().join(format!("bmcp-{}", &uuid::Uuid::new_v4().to_string()[..8]));
         std::fs::create_dir_all(&dir)?;
@@ -323,44 +323,22 @@ pub async fn run_prompt(
             mcp.server_url, mcp.instance_slug, mcp.chat_id,
         );
 
-        // Create a stdio→HTTP bridge script
-        // Claude CLI only supports stdio MCP (command+args), not HTTP
-        let bridge_script = dir.join("bridge.sh");
-        let script_content = format!(
-            r#"#!/bin/sh
-# MCP stdio→HTTP bridge: reads JSON-RPC from stdin, POSTs to server, writes response to stdout
-while IFS= read -r line; do
-  if [ -n "$line" ]; then
-    curl -s -X POST "{mcp_url}" \
-      -H "Content-Type: application/json" \
-      -H "Authorization: Bearer {auth}" \
-      -d "$line"
-    printf '\n'
-  fi
-done
-"#,
-            mcp_url = mcp_url,
-            auth = mcp.auth_token,
-        );
-        std::fs::write(&bridge_script, &script_content)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&bridge_script, std::fs::Permissions::from_mode(0o755))?;
-        }
+        // Use our own binary as the MCP stdio bridge
+        let self_bin = std::env::current_exe()
+            .unwrap_or_else(|_| std::path::PathBuf::from("server"));
 
         let mcp_config_path = dir.join("mcp.json");
         let config = serde_json::json!({
             "mcpServers": {
                 "personality": {
-                    "command": bridge_script.to_string_lossy(),
-                    "args": []
+                    "command": self_bin.to_string_lossy(),
+                    "args": ["--mcp-bridge", &mcp_url, &mcp.auth_token]
                 }
             }
         });
         std::fs::write(&mcp_config_path, serde_json::to_string_pretty(&config)?)?;
         cmd.arg("--mcp-config").arg(&mcp_config_path);
-        log::info!("claude CLI: MCP bridge at {} → {}", bridge_script.display(), mcp_url);
+        log::info!("claude CLI: MCP bridge via {} → {}", self_bin.display(), mcp_url);
         Some(dir)
     } else {
         None
@@ -462,6 +440,72 @@ mod hex {
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect()
+    }
+}
+
+// ── MCP stdio bridge (runs in same binary) ──
+
+/// Run as MCP stdio bridge: read JSON-RPC from stdin, POST to server, write to stdout.
+/// Called via `server --mcp-bridge <url> <token>`.
+pub fn run_mcp_bridge(server_url: &str, auth_token: &str) {
+    use std::io::{BufRead, Write};
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(300))
+        .build()
+        .expect("failed to create HTTP client");
+
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+
+    for line in stdin.lock().lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // Validate JSON
+        if serde_json::from_str::<serde_json::Value>(trimmed).is_err() {
+            continue;
+        }
+
+        let resp = client
+            .post(server_url)
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {auth_token}"))
+            .body(trimmed.to_string())
+            .send();
+
+        match resp {
+            Ok(r) => {
+                if let Ok(body) = r.text() {
+                    let mut out = stdout.lock();
+                    let _ = out.write_all(body.as_bytes());
+                    let _ = out.write_all(b"\n");
+                    let _ = out.flush();
+                }
+            }
+            Err(e) => {
+                // Return JSON-RPC error so Claude CLI doesn't hang
+                if let Ok(req) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                    let id = req.get("id").cloned().unwrap_or(serde_json::Value::Null);
+                    let err = serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": { "code": -32603, "message": format!("bridge error: {e}") }
+                    });
+                    let mut out = stdout.lock();
+                    let _ = serde_json::to_writer(&mut out, &err);
+                    let _ = out.write_all(b"\n");
+                    let _ = out.flush();
+                }
+            }
+        }
     }
 }
 
