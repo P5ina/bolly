@@ -344,7 +344,8 @@ pub async fn run_prompt(
         None
     };
 
-    cmd.arg(user_message);
+    // Pass prompt via stdin (not as arg — args have OS length limits)
+    cmd.arg("-");
 
     // Pass OAuth token via env var
     cmd.env("CLAUDE_CODE_OAUTH_TOKEN", oauth_token);
@@ -352,12 +353,20 @@ pub async fn run_prompt(
     // Clear any system Anthropic key to ensure CLI uses OAuth
     cmd.env_remove("ANTHROPIC_API_KEY");
 
-    cmd.stdout(std::process::Stdio::piped())
+    cmd.stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
     let mut child = cmd.spawn().map_err(|e| {
         anyhow::anyhow!("failed to spawn claude CLI: {e} — is it installed?")
     })?;
+
+    // Write prompt to stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        use tokio::io::AsyncWriteExt;
+        stdin.write_all(user_message.as_bytes()).await?;
+        drop(stdin); // close stdin so CLI starts processing
+    }
 
     let stdout = child
         .stdout
