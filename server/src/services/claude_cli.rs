@@ -313,11 +313,8 @@ pub async fn run_prompt(
         .arg("--model")
         .arg(cli_model_name(model));
 
-    // Write system prompt to file (too long for CLI arg)
     if !system_prompt.is_empty() {
-        let sp_path = temp_dir.join("system-prompt.txt");
-        std::fs::write(&sp_path, system_prompt)?;
-        cmd.arg("--system-prompt").arg(&sp_path);
+        cmd.arg("--append-system-prompt").arg(system_prompt);
     }
 
     // Write MCP config pointing to ourselves as stdio bridge
