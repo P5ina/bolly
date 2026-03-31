@@ -38,13 +38,27 @@
 		try {
 			await applyUpdate();
 		} catch {}
-		// Wait for server to go DOWN
-		for (let i = 0; i < 20; i++) {
-			await new Promise(r => setTimeout(r, 1000));
-			try { await checkUpdate(); } catch { break; }
+		// Wait for server to go DOWN (fast poll — server restarts quickly)
+		let sawDown = false;
+		for (let i = 0; i < 15; i++) {
+			await new Promise(r => setTimeout(r, 400));
+			try {
+				const info = await checkUpdate();
+				// Server came back with new commit before we saw it go down
+				if (info.commit !== frozenCommit) {
+					updateInfo = info;
+					updating = false;
+					handleReborn();
+					return;
+				}
+			} catch {
+				sawDown = true;
+				break;
+			}
 		}
 		// Poll until it comes back with a new commit
-		for (let i = 0; i < 40; i++) {
+		for (let i = 0; i < 30; i++) {
+			await new Promise(r => setTimeout(r, 800));
 			try {
 				const info = await checkUpdate();
 				if (info.commit !== frozenCommit) {
@@ -54,7 +68,6 @@
 					return;
 				}
 			} catch {}
-			await new Promise(r => setTimeout(r, 2000));
 		}
 		updating = false;
 	}

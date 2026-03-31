@@ -473,30 +473,30 @@
 		font-family: var(--font-body);
 		font-size: 1rem;
 		line-height: 1.6;
-		color: oklch(0.92 0.02 75 / 95%);
-		background: oklch(0.12 0.015 220 / 65%);
-		backdrop-filter: blur(24px) saturate(160%) brightness(1.06);
-		-webkit-backdrop-filter: blur(24px) saturate(160%) brightness(1.06);
-		border: 1px solid oklch(1 0 0 / 14%);
-		border-top-color: oklch(1 0 0 / 20%);
+		color: oklch(0.94 0.01 75);
+		background: oklch(0.14 0.01 230 / 90%);
+		border: 1px solid oklch(0.45 0.03 220 / 45%);
+		border-top-color: oklch(0.50 0.03 220 / 50%);
 		border-radius: 14px;
 		outline: none;
 		transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 		letter-spacing: 0.01em;
-		box-shadow: 0 2px 8px oklch(0 0 0 / 18%), inset 0 1px 0 oklch(1 0 0 / 4%);
+		box-shadow:
+			0 2px 12px oklch(0 0 0 / 30%),
+			inset 0 1px 0 oklch(1 0 0 / 6%);
 	}
 	.whisper-input::placeholder {
-		color: oklch(0.50 0.04 200 / 55%);
+		color: oklch(0.50 0.03 220 / 65%);
 		font-style: italic;
 		font-family: var(--font-display);
 	}
 	.whisper-input:focus {
-		border-color: oklch(0.55 0.08 200 / 30%);
-		background: oklch(0.14 0.02 210 / 72%);
+		border-color: oklch(0.55 0.06 200 / 55%);
+		background: oklch(0.16 0.015 220 / 95%);
 		box-shadow:
-			0 0 0 4px oklch(0.55 0.08 200 / 10%),
-			0 4px 16px oklch(0 0 0 / 22%),
-			inset 0 1px 0 oklch(1 0 0 / 4%);
+			0 0 0 3px oklch(0.55 0.08 200 / 14%),
+			0 4px 20px oklch(0 0 0 / 35%),
+			inset 0 1px 0 oklch(1 0 0 / 6%);
 	}
 	.whisper-input:disabled {
 		opacity: 0.35;
