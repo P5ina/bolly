@@ -374,9 +374,16 @@ pub async fn run_prompt(
         }
     }
 
-    let status = child.wait().await?;
-    if !status.success() && result_text.is_empty() {
-        anyhow::bail!("claude CLI exited with {status}");
+    let output = child.wait_with_output().await?;
+    if !output.status.success() && result_text.is_empty() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr_trimmed = stderr.trim();
+        if stderr_trimmed.is_empty() {
+            anyhow::bail!("claude CLI exited with {}", output.status);
+        } else {
+            log::error!("claude CLI stderr: {stderr_trimmed}");
+            anyhow::bail!("claude CLI error: {stderr_trimmed}");
+        }
     }
 
     Ok((result_text, tokens_used))
