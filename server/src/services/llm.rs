@@ -776,12 +776,24 @@ impl LlmBackend {
         log::info!("claude CLI: sending prompt ({} chars) with system ({} chars)",
             full_prompt.len(), system.len());
 
+        // Build MCP config so Claude CLI can call our tools
+        let mcp = {
+            let config = crate::config::load_config().ok();
+            config.map(|c| super::claude_cli::McpConfig {
+                server_url: format!("http://localhost:{}", c.port),
+                auth_token: c.auth_token.clone(),
+                instance_slug: instance_slug.to_string(),
+                chat_id: chat_id.to_string(),
+            })
+        };
+
         // Call Claude CLI
         let (text, tokens_used) = super::claude_cli::run_prompt(
             &self.model,
             &system,
             &full_prompt,
             &token.access_token,
+            mcp.as_ref(),
         ).await?;
 
         // Fake-stream the result word by word

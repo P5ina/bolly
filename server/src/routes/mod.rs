@@ -2,6 +2,7 @@ pub mod agents;
 pub mod auth;
 pub mod chat;
 pub mod config;
+pub mod mcp_bridge;
 pub mod drops;
 pub mod google;
 pub mod health;

@@ -286,11 +286,19 @@ fn cli_model_name(model: &str) -> &str {
 
 // ── Run a prompt through Claude CLI ──
 
+pub struct McpConfig {
+    pub server_url: String,
+    pub auth_token: String,
+    pub instance_slug: String,
+    pub chat_id: String,
+}
+
 pub async fn run_prompt(
     model: &str,
     system_prompt: &str,
     user_message: &str,
     oauth_token: &str,
+    mcp: Option<&McpConfig>,
 ) -> anyhow::Result<(String, u64)> {
     let bin = resolve_binary();
     let mut cmd = tokio::process::Command::new(&bin);
@@ -303,6 +311,33 @@ pub async fn run_prompt(
     if !system_prompt.is_empty() {
         cmd.arg("--append-system-prompt").arg(system_prompt);
     }
+
+    // Write temp MCP config if provided
+    let mcp_temp_dir = if let Some(mcp) = mcp {
+        let dir = std::env::temp_dir().join(format!("bolly-mcp-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir)?;
+        let mcp_config_path = dir.join("mcp.json");
+        let mcp_url = format!(
+            "{}/mcp/{}/{}",
+            mcp.server_url, mcp.instance_slug, mcp.chat_id,
+        );
+        let config = serde_json::json!({
+            "mcpServers": {
+                "personality": {
+                    "url": mcp_url,
+                    "headers": {
+                        "Authorization": format!("Bearer {}", mcp.auth_token),
+                    }
+                }
+            }
+        });
+        std::fs::write(&mcp_config_path, serde_json::to_string_pretty(&config)?)?;
+        cmd.arg("--mcp-config").arg(&mcp_config_path);
+        log::info!("claude CLI: MCP config at {}", mcp_config_path.display());
+        Some(dir)
+    } else {
+        None
+    };
 
     cmd.arg(user_message);
 
@@ -382,6 +417,11 @@ pub async fn run_prompt(
             log::error!("claude CLI stderr: {stderr_trimmed}");
             anyhow::bail!("claude CLI error: {stderr_trimmed}");
         }
+    }
+
+    // Clean up temp MCP config
+    if let Some(dir) = mcp_temp_dir {
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     Ok((result_text, tokens_used))
