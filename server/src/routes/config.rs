@@ -440,6 +440,14 @@ async fn update_provider(
         other => return Err((StatusCode::BAD_REQUEST, format!("unknown provider: {other}"))),
     };
 
+    // Auto-install Claude CLI when switching to it
+    if provider == config::LlmProvider::ClaudeCli {
+        if let Err(e) = crate::services::claude_cli::ensure_installed().await {
+            log::warn!("Claude CLI auto-install failed: {e}");
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to install Claude CLI: {e}")));
+        }
+    }
+
     {
         let mut cfg = state.config.write().await;
         cfg.llm.provider = provider;
@@ -522,6 +530,11 @@ async fn claude_cli_oauth_exchange(
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("No pending OAuth flow: {e}")))?;
     let oauth_state: claude_cli::OAuthState = serde_json::from_str(&state_json)
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid OAuth state: {e}")))?;
+
+    // Ensure CLI is installed before we need it
+    if let Err(e) = claude_cli::ensure_installed().await {
+        log::warn!("Claude CLI auto-install failed during OAuth: {e}");
+    }
 
     // Exchange code for tokens
     let http = reqwest::Client::new();
