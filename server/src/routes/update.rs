@@ -1,5 +1,18 @@
+use std::sync::Mutex;
 use axum::{Json, Router, extract::State, routing::{get, post}};
 use crate::app::state::AppState;
+
+// ── GitHub API cache (avoid rate limits: 60 req/h unauthenticated) ──
+
+struct CachedResponse {
+    data: serde_json::Value,
+    fetched_at: std::time::Instant,
+}
+
+static RELEASE_CACHE: Mutex<Option<(String, CachedResponse)>> = Mutex::new(None);
+static CHANGELOG_CACHE: Mutex<Option<CachedResponse>> = Mutex::new(None);
+
+const CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(300); // 5 min
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -191,6 +204,21 @@ struct ReleaseInfo {
 async fn fetch_release_info(channel: &str) -> Option<ReleaseInfo> {
     let repo = "triangle-int/bolly";
 
+    // Check cache
+    {
+        let cache = RELEASE_CACHE.lock().ok()?;
+        if let Some((ref cached_channel, ref entry)) = *cache {
+            if cached_channel == channel && entry.fetched_at.elapsed() < CACHE_TTL {
+                let data = &entry.data;
+                return Some(ReleaseInfo {
+                    tag: data["tag_name"].as_str()?.to_string(),
+                    name: data["name"].as_str().map(|s| s.to_string()),
+                    body: data["body"].as_str().map(|s| s.to_string()),
+                });
+            }
+        }
+    }
+
     let url = if channel == "nightly" {
         format!("https://api.github.com/repos/{repo}/releases/tags/nightly")
     } else {
@@ -203,7 +231,21 @@ async fn fetch_release_info(channel: &str) -> Option<ReleaseInfo> {
         .header("User-Agent", "bolly-update")
         .send().await.ok()?;
 
+    if !resp.status().is_success() {
+        log::warn!("[update] GitHub API returned {}", resp.status());
+        return None;
+    }
+
     let data: serde_json::Value = resp.json().await.ok()?;
+
+    // Update cache
+    if let Ok(mut cache) = RELEASE_CACHE.lock() {
+        *cache = Some((channel.to_string(), CachedResponse {
+            data: data.clone(),
+            fetched_at: std::time::Instant::now(),
+        }));
+    }
+
     Some(ReleaseInfo {
         tag: data["tag_name"].as_str()?.to_string(),
         name: data["name"].as_str().map(|s| s.to_string()),
@@ -221,17 +263,45 @@ async fn get_changelog(State(state): State<AppState>) -> Json<Vec<Changelog>> {
     let channel = get_channel_value(&state.workspace_dir);
     let repo = "triangle-int/bolly";
 
-    // Fetch recent releases from GitHub
-    let url = format!("https://api.github.com/repos/{repo}/releases?per_page=10");
-    let client = reqwest::Client::new();
-    let resp = match client.get(&url).header("User-Agent", "bolly-update").send().await {
-        Ok(r) => r,
-        Err(_) => return Json(vec![]),
-    };
+    // Check cache
+    let cached = CHANGELOG_CACHE.lock().ok().and_then(|cache| {
+        cache.as_ref().and_then(|entry| {
+            if entry.fetched_at.elapsed() < CACHE_TTL {
+                serde_json::from_value::<Vec<serde_json::Value>>(entry.data.clone()).ok()
+            } else {
+                None
+            }
+        })
+    });
 
-    let data: Vec<serde_json::Value> = match resp.json().await {
-        Ok(d) => d,
-        Err(_) => return Json(vec![]),
+    let data = if let Some(d) = cached {
+        d
+    } else {
+        let url = format!("https://api.github.com/repos/{repo}/releases?per_page=10");
+        let client = reqwest::Client::new();
+        let resp = match client.get(&url).header("User-Agent", "bolly-update").send().await {
+            Ok(r) if r.status().is_success() => r,
+            Ok(r) => {
+                log::warn!("[changelog] GitHub API returned {}", r.status());
+                return Json(vec![]);
+            }
+            Err(_) => return Json(vec![]),
+        };
+
+        let d: Vec<serde_json::Value> = match resp.json().await {
+            Ok(d) => d,
+            Err(_) => return Json(vec![]),
+        };
+
+        // Update cache
+        if let Ok(mut cache) = CHANGELOG_CACHE.lock() {
+            *cache = Some(CachedResponse {
+                data: serde_json::to_value(&d).unwrap_or_default(),
+                fetched_at: std::time::Instant::now(),
+            });
+        }
+
+        d
     };
 
     let entries: Vec<Changelog> = data.iter()
