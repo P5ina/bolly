@@ -323,6 +323,11 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                     log::info!("[usage] {instance_slug} used {recorded} tokens (raw={}, heavy={used_heavy})", turn.estimated_tokens);
                 }
 
+                // CLI backend: always single turn (no continuation)
+                if effective_llm.is_cli() {
+                    break;
+                }
+
                 // Check if a new user message arrived while agent was processing
                 if has_pending_user_message(&state, &instance_slug, &chat_id).await {
                     log::info!("[agent] {instance_slug}/{chat_id} — new user message arrived, continuing");
