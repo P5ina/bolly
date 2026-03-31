@@ -655,6 +655,99 @@ fn cleanup_empty_dirs(dir: &Path, base: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// memory_connect — create/remove connections in the memory graph
+// ---------------------------------------------------------------------------
+
+pub struct MemoryConnectTool {
+    workspace_dir: PathBuf,
+    instance_slug: String,
+}
+
+impl MemoryConnectTool {
+    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+        Self {
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct MemoryConnectArgs {
+    /// Action: "connect" to add an edge, "disconnect" to remove, "neighbors" to list connections.
+    action: String,
+    /// First memory path (e.g. "about/work.md").
+    path_a: String,
+    /// Second memory path (required for connect/disconnect, ignored for neighbors).
+    #[serde(default)]
+    path_b: String,
+}
+
+impl Tool for MemoryConnectTool {
+    const NAME: &'static str = "memory_connect";
+    type Error = ToolExecError;
+    type Args = MemoryConnectArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "memory_connect".into(),
+            description: "Manage the memory graph — connect related memories, disconnect them, or list neighbors. \
+                           The graph is undirected: connecting A to B also connects B to A.".into(),
+            parameters: openai_schema::<MemoryConnectArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, ToolExecError> {
+        use crate::services::memory;
+
+        match args.action.as_str() {
+            "connect" => {
+                if args.path_b.is_empty() {
+                    return Ok("error: path_b is required for connect".into());
+                }
+                let added = memory::add_edge(&self.workspace_dir, &self.instance_slug, &args.path_a, &args.path_b);
+                if added {
+                    Ok(format!("connected: {} <-> {}", args.path_a, args.path_b))
+                } else {
+                    Ok(format!("already connected: {} <-> {}", args.path_a, args.path_b))
+                }
+            }
+            "disconnect" => {
+                if args.path_b.is_empty() {
+                    return Ok("error: path_b is required for disconnect".into());
+                }
+                let mut graph = memory::load_graph(&self.workspace_dir, &self.instance_slug);
+                let edge = if args.path_a <= args.path_b {
+                    [args.path_a.clone(), args.path_b.clone()]
+                } else {
+                    [args.path_b.clone(), args.path_a.clone()]
+                };
+                let before = graph.edges.len();
+                graph.edges.retain(|e| *e != edge);
+                if graph.edges.len() != before {
+                    memory::save_graph(&self.workspace_dir, &self.instance_slug, &graph);
+                    Ok(format!("disconnected: {} <-> {}", args.path_a, args.path_b))
+                } else {
+                    Ok(format!("no connection found between {} and {}", args.path_a, args.path_b))
+                }
+            }
+            "neighbors" => {
+                let graph = memory::load_graph(&self.workspace_dir, &self.instance_slug);
+                let neighbors = memory::get_neighbors(&graph, &args.path_a);
+                if neighbors.is_empty() {
+                    Ok(format!("{} has no connections", args.path_a))
+                } else {
+                    Ok(format!("{} is connected to:\n{}", args.path_a,
+                        neighbors.iter().map(|n| format!("- {n}")).collect::<Vec<_>>().join("\n")))
+                }
+            }
+            _ => Ok(format!("unknown action: {}. use connect, disconnect, or neighbors", args.action)),
+        }
+    }
+}
+
 /// Embed a memory file into the vector store.
 async fn embed_memory_to_vector(
     vector_store: &VectorStore,

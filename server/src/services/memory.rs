@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use crate::domain::chat::ChatMessage;
-use crate::domain::memory::MemoryEntry;
+use crate::domain::memory::{MemoryEntry, MemoryGraph};
 use crate::services::llm::LlmBackend;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -274,6 +274,85 @@ pub fn build_library_catalog(workspace_dir: &Path, instance_slug: &str) -> Strin
         result.push_str(&format!("- {} — {}\n", entry.path, entry.summary));
     }
     result
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Memory graph — undirected connections between memory files
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn graph_path(workspace_dir: &Path, instance_slug: &str) -> std::path::PathBuf {
+    workspace_dir
+        .join("instances")
+        .join(instance_slug)
+        .join("memory_graph.json")
+}
+
+/// Load the memory graph from disk. Returns empty graph if file doesn't exist.
+pub fn load_graph(workspace_dir: &Path, instance_slug: &str) -> MemoryGraph {
+    let path = graph_path(workspace_dir, instance_slug);
+    match std::fs::read_to_string(&path) {
+        Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
+        Err(_) => MemoryGraph::default(),
+    }
+}
+
+/// Save the memory graph to disk.
+pub fn save_graph(workspace_dir: &Path, instance_slug: &str, graph: &MemoryGraph) {
+    let path = graph_path(workspace_dir, instance_slug);
+    if let Ok(json) = serde_json::to_string_pretty(graph) {
+        if let Err(e) = std::fs::write(&path, json) {
+            log::warn!("[graph] failed to write memory_graph.json: {e}");
+        }
+    }
+}
+
+/// Normalize an edge to a sorted pair (for deduplication).
+fn sorted_edge(a: &str, b: &str) -> [String; 2] {
+    if a <= b {
+        [a.to_string(), b.to_string()]
+    } else {
+        [b.to_string(), a.to_string()]
+    }
+}
+
+/// Add an edge between two memory paths. Returns true if the edge was new.
+pub fn add_edge(workspace_dir: &Path, instance_slug: &str, a: &str, b: &str) -> bool {
+    if a == b {
+        return false;
+    }
+    let mut graph = load_graph(workspace_dir, instance_slug);
+    let edge = sorted_edge(a, b);
+    if graph.edges.iter().any(|e| *e == edge) {
+        return false;
+    }
+    graph.edges.push(edge);
+    save_graph(workspace_dir, instance_slug, &graph);
+    log::info!("[graph] added edge: {} <-> {} for {instance_slug}", a, b);
+    true
+}
+
+/// Remove all edges involving a given path (used when deleting a memory file).
+pub fn remove_edges_for_path(workspace_dir: &Path, instance_slug: &str, path: &str) {
+    let mut graph = load_graph(workspace_dir, instance_slug);
+    let before = graph.edges.len();
+    graph.edges.retain(|e| e[0] != path && e[1] != path);
+    if graph.edges.len() != before {
+        save_graph(workspace_dir, instance_slug, &graph);
+        log::info!("[graph] removed {} edges for deleted path: {path}", before - graph.edges.len());
+    }
+}
+
+/// Get all neighbors (connected paths) for a given path.
+pub fn get_neighbors(graph: &MemoryGraph, path: &str) -> Vec<String> {
+    let mut neighbors = Vec::new();
+    for edge in &graph.edges {
+        if edge[0] == path {
+            neighbors.push(edge[1].clone());
+        } else if edge[1] == path {
+            neighbors.push(edge[0].clone());
+        }
+    }
+    neighbors
 }
 
 /// Run legacy migration for all instances in the workspace.
@@ -564,7 +643,17 @@ rules:
 - NEVER create a write or append op with empty content — every write/append MUST have non-empty content
 - there are currently {file_count} files. aim for quality over quantity — merge related topics
 
-do NOT save images unless they are clearly meaningful (personal photos, important screenshots). ignore memes, random links, UI screenshots."#
+do NOT save images unless they are clearly meaningful (personal photos, important screenshots). ignore memes, random links, UI screenshots.
+
+## memory graph
+you can also create connections between related memories using the "connect" action:
+{{"action": "connect", "from": "about/work.md", "to": "schedule/meetings.md"}}
+this creates an undirected edge in the memory graph — meaning these two facts are related.
+examples of good connections:
+- "Тимур учится в 9:25" <-> "Тимур встает в 8" (schedule implies routine)
+- "любит кофе" <-> "утренние привычки" (preference relates to habit)
+- "работает в компании X" <-> "проект Y" (context connects)
+only connect memories that are meaningfully related. don't over-connect."#
     );
 
     let schema = serde_json::json!({
@@ -577,12 +666,14 @@ do NOT save images unless they are clearly meaningful (personal photos, importan
                     "properties": {
                         "action": {
                             "type": "string",
-                            "enum": ["write", "append", "delete", "save_image"]
+                            "enum": ["write", "append", "delete", "save_image", "connect"]
                         },
                         "path": { "type": "string" },
                         "content": { "type": "string" },
                         "upload_id": { "type": "string" },
-                        "description": { "type": "string" }
+                        "description": { "type": "string" },
+                        "from": { "type": "string" },
+                        "to": { "type": "string" }
                     },
                     "required": ["action", "path", "content"],
                     "additionalProperties": false
@@ -671,6 +762,15 @@ do NOT save images unless they are clearly meaningful (personal photos, importan
                     if let Err(e) = vector_store.delete_by_path(instance_slug, &clean_path).await {
                         log::warn!("memory: vector delete failed for {clean_path}: {e}");
                     }
+                    // Clean up graph edges for deleted path
+                    remove_edges_for_path(workspace_dir, instance_slug, &clean_path);
+                }
+            }
+            "connect" => {
+                let from = &op.from;
+                let to = &op.to;
+                if !from.is_empty() && !to.is_empty() {
+                    add_edge(workspace_dir, instance_slug, from, to);
                 }
             }
             "save_image" => {
@@ -848,6 +948,7 @@ pub fn forget_memories(workspace_dir: &Path, instance_slug: &str, query: &str) -
 #[derive(serde::Deserialize)]
 struct MemoryOp {
     action: String,
+    #[serde(default)]
     path: String,
     #[serde(default)]
     content: String,
@@ -857,6 +958,12 @@ struct MemoryOp {
     /// Description for save_image action.
     #[serde(default)]
     description: String,
+    /// Source path for connect action.
+    #[serde(default)]
+    from: String,
+    /// Target path for connect action.
+    #[serde(default)]
+    to: String,
 }
 
 #[derive(serde::Deserialize)]

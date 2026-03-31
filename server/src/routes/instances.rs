@@ -32,6 +32,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/memory/search", get(search_memory))
         .route("/api/instances/{instance_slug}/memory/reindex", post(reindex_memory))
         .route("/api/instances/{instance_slug}/memory/vectors", get(list_vectors))
+        .route("/api/instances/{instance_slug}/memory/graph", get(get_memory_graph))
         .route("/api/instances/{instance_slug}/memory/{*path}", get(read_memory_file).delete(delete_memory_file))
         .route("/api/instances/{instance_slug}/email", get(get_email_config))
         .route("/api/instances/{instance_slug}/email", put(set_email_config))
@@ -617,6 +618,13 @@ async fn list_vectors(
         .collect();
 
     Ok(Json(serde_json::Value::Array(json)))
+}
+
+async fn get_memory_graph(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> Json<crate::domain::memory::MemoryGraph> {
+    Json(memory::load_graph(&state.workspace_dir, &instance_slug))
 }
 
 async fn reindex_memory(

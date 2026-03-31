@@ -10,3 +10,10 @@ pub struct MemoryEntry {
     /// File size in bytes.
     pub size: usize,
 }
+
+/// Undirected graph of connections between memory files.
+/// Each edge is a sorted pair of paths (a < b) to avoid duplicates.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MemoryGraph {
+    pub edges: Vec<[String; 2]>,
+}

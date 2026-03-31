@@ -20,7 +20,7 @@ use crate::services::tool::ToolDyn;
 use crate::services::{chat, llm::LlmBackend, memory};
 use crate::services::tools::{
     self, load_mood_state, CreateDropTool,
-    MemoryForgetTool, MemoryListTool, MemorySearchTool,
+    MemoryConnectTool, MemoryForgetTool, MemoryListTool, MemorySearchTool,
     MemoryReadTool, MemoryWriteTool, ReachOutTool,
     ReadFileTool, WriteFileTool, EditFileTool, ListFilesTool,
     CallAgentTool, RunCommandTool,
@@ -93,6 +93,8 @@ fn builtin_night_maintenance() -> ChildAgentConfig {
         prompt: "\
 nighttime memory maintenance — review and clean up the memory library.
 merge duplicates, delete outdated entries, reorganize messy folders, trim verbose files.
+also review the memory graph — use memory_connect to create connections between related memories \
+that aren't yet connected, and disconnect any stale links to deleted files.
 do 3-5 maintenance ops, then stop. don't overdo it.".to_string(),
         interval_hours: 24.0,
         model: "default".to_string(),
@@ -598,6 +600,7 @@ fn build_agent_tools(
         Box::new(MemoryListTool::new(workspace_dir, slug)),
         Box::new(MemoryForgetTool::new(workspace_dir, slug, vector_store.clone(), google_ai_key)),
         Box::new(MemorySearchTool::new(workspace_dir, slug, vector_store.clone(), google_ai_key)),
+        Box::new(MemoryConnectTool::new(workspace_dir, slug)),
         Box::new(CreateDropTool::new(workspace_dir, slug, events.clone())),
         Box::new(ReachOutTool::new(workspace_dir, slug, events.clone())),
         Box::new(ReadFileTool::new(workspace_dir, slug)),

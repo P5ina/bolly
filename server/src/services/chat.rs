@@ -522,6 +522,40 @@ pub async fn run_single_turn(
         });
         all_results.truncate(5);
 
+        // 4. Graph expansion — follow edges 1 hop to pull connected memories
+        if !all_results.is_empty() {
+            let graph = memory::load_graph(workspace_dir, &instance_slug);
+            if !graph.edges.is_empty() {
+                let found_paths: Vec<String> = all_results.iter().map(|r| r.path.clone()).collect();
+                let memory_dir = workspace_dir.join("instances").join(&instance_slug).join("memory");
+                for path in &found_paths {
+                    for neighbor in memory::get_neighbors(&graph, path) {
+                        if all_results.iter().any(|r| r.path == neighbor) {
+                            continue; // already in results
+                        }
+                        // Read neighbor content and add as a graph-connected result
+                        let full_path = memory_dir.join(&neighbor);
+                        if let Ok(content) = std::fs::read_to_string(&full_path) {
+                            let (_, body) = memory::parse_frontmatter(&content);
+                            let preview: String = body.trim().chars().take(500).collect();
+                            all_results.push(crate::services::vector::VectorSearchResult {
+                                path: neighbor,
+                                content_preview: preview,
+                                score: 0.25, // below regular threshold, marks as graph-sourced
+                                source_type: "text_memory".to_string(),
+                                upload_id: None,
+                            });
+                        }
+                    }
+                }
+                // Re-sort and cap at 8 (allow a few extra from graph)
+                all_results.sort_by(|a, b| {
+                    b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal)
+                });
+                all_results.truncate(8);
+            }
+        }
+
         if !all_results.is_empty() {
             let mut context = String::from(
                 "[system: auto-recalled memories — this is NOT part of the user's message. \

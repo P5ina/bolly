@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { fetchMemory, fetchMemoryContent, searchMemory, deleteMemoryFile, fetchVectors, getAuthToken, type MemorySearchResult, type VectorEntry } from "$lib/api/client.js";
+	import { fetchMemory, fetchMemoryContent, searchMemory, deleteMemoryFile, fetchVectors, fetchMemoryGraph, getAuthToken, type MemorySearchResult, type VectorEntry } from "$lib/api/client.js";
 	import { Play, Music, FileText } from "@lucide/svelte";
-	import type { MemoryEntry } from "$lib/api/types.js";
+	import type { MemoryEntry, MemoryGraph } from "$lib/api/types.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 
 	const toast = getToasts();
@@ -9,7 +9,9 @@
 	let { slug }: { slug: string } = $props();
 
 	let entries = $state<MemoryEntry[]>([]);
+	let graph = $state<MemoryGraph>({ edges: [] });
 	let loading = $state(true);
+	let graphMode = $state(false);
 	let focusedFolder = $state<string | null>(null);
 	let hoveredNode = $state<string | null>(null);
 	let containerEl = $state<HTMLDivElement | null>(null);
@@ -59,7 +61,9 @@
 	async function load() {
 		loading = true;
 		try {
-			entries = await fetchMemory(slug);
+			const [e, g] = await Promise.all([fetchMemory(slug), fetchMemoryGraph(slug)]);
+			entries = e;
+			graph = g;
 		} catch {
 			toast.error("failed to load memory");
 		} finally {
@@ -375,6 +379,188 @@
 
 	let activeCircles = $derived(focusedFolder ? fileCircles : folderCircles);
 
+	// ── Graph mode: force-directed layout ──
+
+	interface GraphNode {
+		id: string;
+		x: number; y: number;
+		vx: number; vy: number;
+		r: number;
+		label: string;
+		hex: string;
+		size: number;
+		entry: MemoryEntry;
+		floatSeed: number;
+	}
+
+	interface GraphEdge {
+		from: string;
+		to: string;
+	}
+
+	let graphNodes = $state<GraphNode[]>([]);
+	let graphEdges = $state<GraphEdge[]>([]);
+
+	// Build graph data when entering graph mode
+	$effect(() => {
+		if (!graphMode || entries.length === 0 || graph.edges.length === 0) {
+			graphNodes = [];
+			graphEdges = [];
+			return;
+		}
+
+		// Collect all paths that appear in edges
+		const edgePaths = new Set<string>();
+		for (const [a, b] of graph.edges) {
+			edgePaths.add(a);
+			edgePaths.add(b);
+		}
+
+		// Create nodes for all entries that have connections
+		const w = containerWidth;
+		const h = mapH;
+		const nodes: GraphNode[] = [];
+		let i = 0;
+		for (const entry of entries) {
+			if (!edgePaths.has(entry.path)) continue;
+			const slash = entry.path.indexOf("/");
+			const folder = slash !== -1 ? entry.path.substring(0, slash) : "(root)";
+			const logSize = Math.log1p(Math.max(entry.size, 20)) / Math.log(10);
+			const r = Math.max(24, Math.min(60, logSize * 16));
+			nodes.push({
+				id: entry.path,
+				x: w * 0.2 + Math.random() * w * 0.6,
+				y: h * 0.2 + Math.random() * h * 0.6,
+				vx: 0, vy: 0,
+				r,
+				label: entry.path.split("/").pop()?.replace(".md", "") ?? entry.path,
+				hex: getHex(folder),
+				size: entry.size,
+				entry,
+				floatSeed: i * 1.3,
+			});
+			i++;
+		}
+
+		// Build edge list (only edges where both nodes exist)
+		const nodeIds = new Set(nodes.map(n => n.id));
+		const edges: GraphEdge[] = [];
+		for (const [a, b] of graph.edges) {
+			if (nodeIds.has(a) && nodeIds.has(b)) {
+				edges.push({ from: a, to: b });
+			}
+		}
+
+		graphNodes = nodes;
+		graphEdges = edges;
+	});
+
+	// Force simulation
+	$effect(() => {
+		if (!graphMode || graphNodes.length === 0) return;
+
+		const nodes = graphNodes;
+		const edges = graphEdges;
+		const w = containerWidth;
+		const h = mapH;
+		let raf: number;
+		let ticks = 0;
+		const MAX_TICKS = 300;
+
+		function tick() {
+			if (ticks >= MAX_TICKS) return;
+			ticks++;
+
+			const alpha = Math.max(0.01, 1 - ticks / MAX_TICKS);
+			const repulsion = 3000;
+			const attraction = 0.005;
+			const centerPull = 0.002;
+
+			// Reset forces
+			for (const n of nodes) { n.vx = 0; n.vy = 0; }
+
+			// Repulsion (all pairs)
+			for (let i = 0; i < nodes.length; i++) {
+				for (let j = i + 1; j < nodes.length; j++) {
+					const a = nodes[i], b = nodes[j];
+					let dx = a.x - b.x;
+					let dy = a.y - b.y;
+					const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+					const minDist = a.r + b.r + 20;
+					const force = repulsion / (dist * dist);
+					// Extra push when overlapping
+					const overlap = minDist - dist;
+					const totalForce = force + (overlap > 0 ? overlap * 0.5 : 0);
+					const fx = (dx / dist) * totalForce;
+					const fy = (dy / dist) * totalForce;
+					a.vx += fx; a.vy += fy;
+					b.vx -= fx; b.vy -= fy;
+				}
+			}
+
+			// Attraction (edges)
+			for (const e of edges) {
+				const a = nodes.find(n => n.id === e.from);
+				const b = nodes.find(n => n.id === e.to);
+				if (!a || !b) continue;
+				const dx = b.x - a.x;
+				const dy = b.y - a.y;
+				const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+				const targetDist = a.r + b.r + 60;
+				const force = (dist - targetDist) * attraction;
+				const fx = (dx / dist) * force;
+				const fy = (dy / dist) * force;
+				a.vx += fx; a.vy += fy;
+				b.vx -= fx; b.vy -= fy;
+			}
+
+			// Center gravity
+			const cx = w / 2, cy = h / 2;
+			for (const n of nodes) {
+				n.vx += (cx - n.x) * centerPull;
+				n.vy += (cy - n.y) * centerPull;
+			}
+
+			// Apply velocity with damping
+			for (const n of nodes) {
+				n.x += n.vx * alpha;
+				n.y += n.vy * alpha;
+				// Clamp to bounds
+				n.x = Math.max(n.r + 16, Math.min(w - n.r - 16, n.x));
+				n.y = Math.max(n.r + 16, Math.min(h - n.r - 16, n.y));
+			}
+
+			graphNodes = [...nodes]; // trigger reactivity
+			if (ticks < MAX_TICKS) {
+				raf = requestAnimationFrame(tick);
+			}
+		}
+
+		raf = requestAnimationFrame(tick);
+		return () => cancelAnimationFrame(raf);
+	});
+
+	// SVG edge lines for graph mode
+	let graphSvgEdges = $derived.by(() => {
+		if (!graphMode || graphNodes.length === 0) return [];
+		const nodeMap = new Map(graphNodes.map(n => [n.id, n]));
+		return graphEdges.map(e => {
+			const from = nodeMap.get(e.from);
+			const to = nodeMap.get(e.to);
+			if (!from || !to) return null;
+			return { x1: from.x, y1: from.y, x2: to.x, y2: to.y, hex: from.hex };
+		}).filter(Boolean) as { x1: number; y1: number; x2: number; y2: number; hex: string }[];
+	});
+
+	function toggleGraphMode() {
+		graphMode = !graphMode;
+		if (graphMode) {
+			focusedFolder = null;
+			viewingEntry = null;
+			resetView();
+		}
+	}
+
 	function resetView() {
 		panX = 0; panY = 0; zoom = 1;
 	}
@@ -603,6 +789,14 @@
 					<circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" stroke-linecap="round"/>
 				</svg>
 			</button>
+			{#if graph.edges.length > 0}
+				<button class="search-toggle" class:search-toggle-active={graphMode} onclick={toggleGraphMode} title="memory graph ({graph.edges.length} connections)">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+						<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/>
+						<path d="M8.5 7l3 8.5M15.5 7l-3 8.5" stroke-linecap="round"/>
+					</svg>
+				</button>
+			{/if}
 			<button class="search-toggle" class:search-toggle-active={debugOpen} onclick={toggleDebug} title="vector debug">
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
 					<path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" stroke-linecap="round" stroke-linejoin="round"/>
@@ -699,6 +893,112 @@ ttt<!-- svelte-ignore a11y_autofocus -->
 		{/if}
 
 		{#if !searchOpen && !debugOpen}
+		{#if graphMode && graphNodes.length > 0}
+			<!-- Graph mode: force-directed layout with edges -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="memory-map"
+				style="height: {mapH}px"
+				onmousedown={onMapMouseDown}
+				onwheel={onWheel}
+			>
+				<div class="memory-map-inner" style="transform: translate({panX}px, {panY}px) scale({zoom}); transform-origin: 0 0">
+					<!-- Edge lines -->
+					<svg class="graph-edges" style="width: {containerWidth}px; height: {mapH}px">
+						{#each graphSvgEdges as edge}
+							<line
+								x1={edge.x1} y1={edge.y1}
+								x2={edge.x2} y2={edge.y2}
+								stroke={edge.hex}
+								stroke-opacity="0.25"
+								stroke-width="1.5"
+							/>
+						{/each}
+					</svg>
+					<!-- Nodes -->
+					{#each graphNodes as node (node.id)}
+						{@const isHovered = hoveredNode === node.id}
+						{@const diameter = node.r * 2}
+						{@const showLabel = node.r > 18}
+						{@const showSub = node.r > 36}
+						{@const isImage = IMAGE_EXTS.some(ext => node.entry.path.toLowerCase().endsWith(ext))}
+						{@const fileType = mediaType(node.entry.path)}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div
+							class="bubble-anchor"
+							style="left: {node.x}px; top: {node.y}px"
+						>
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<!-- svelte-ignore a11y_click_events_have_key_events -->
+							<div
+								class="bubble bubble-clickable"
+								class:bubble-hovered={isHovered}
+								style="
+									width: {diameter}px;
+									height: {diameter}px;
+									--c: {node.hex};
+									--float-x: 0px;
+									--float-y: 0px;
+									--float-dur: 99s;
+									--float-delay: 0s;
+								"
+								onmouseenter={() => hoveredNode = node.id}
+								onmouseleave={() => hoveredNode = null}
+								onclick={() => openDocument(node.entry)}
+							>
+								{#if isImage}
+									<img class="bubble-thumb" src={mediaUrl(node.entry.path)} alt="" loading="lazy" />
+								{:else if fileType === 'video'}
+									<video class="bubble-thumb" src={mediaUrl(node.entry.path)} autoplay muted loop playsinline></video>
+								{:else if fileType === 'audio'}
+									<div class="bubble-type-icon"><Music size={20} /></div>
+								{:else if fileType === 'pdf'}
+									<div class="bubble-type-icon"><FileText size={20} /></div>
+								{:else}
+									<div class="bubble-core"></div>
+								{/if}
+								<div class="bubble-shine"></div>
+								{#if isHovered}
+									<div class="bubble-ring"></div>
+								{/if}
+								{#if showLabel}
+									<span class="bubble-label">{truncLabel(node.label, node.r)}</span>
+									{#if showSub}
+										<span class="bubble-sub">{formatSize(node.size)}</span>
+									{/if}
+								{/if}
+							</div>
+						</div>
+					{/each}
+				</div>
+			</div>
+
+			<!-- Tooltip for graph mode -->
+			{#if hoveredNode && !isPanning}
+				{@const node = graphNodes.find(n => n.id === hoveredNode)}
+				{#if node}
+					{@const neighbors = graphEdges
+						.filter(e => e.from === node.id || e.to === node.id)
+						.map(e => e.from === node.id ? e.to : e.from)
+						.map(p => p.split("/").pop()?.replace(".md", "") ?? p)}
+					<div class="memory-tooltip" style="--c: {node.hex}">
+						<div class="memory-tooltip-dot" style="background: {node.hex}"></div>
+						<div class="memory-tooltip-body">
+							<div class="memory-tooltip-name">{node.entry.path}</div>
+							<div class="memory-tooltip-summary">{node.entry.summary}</div>
+							{#if neighbors.length > 0}
+								<div class="memory-tooltip-files">
+									{#each neighbors as n}
+										<span class="memory-tooltip-file">{n}</span>
+									{/each}
+								</div>
+							{/if}
+							<div class="memory-tooltip-meta">{formatSize(node.size)} · {neighbors.length} connections</div>
+						</div>
+					</div>
+				{/if}
+			{/if}
+		{:else}
 		{#key viewKey}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
@@ -798,6 +1098,7 @@ ttt<!-- svelte-ignore a11y_autofocus -->
 					</div>
 				</div>
 			{/if}
+		{/if}
 		{/if}
 		{/if}
 	{/if}
@@ -1071,6 +1372,14 @@ ttt<!-- svelte-ignore a11y_autofocus -->
 		position: absolute;
 		inset: 0;
 		will-change: transform;
+	}
+
+	.graph-edges {
+		position: absolute;
+		top: 0;
+		left: 0;
+		pointer-events: none;
+		z-index: 0;
 	}
 
 	.bubble-anchor {

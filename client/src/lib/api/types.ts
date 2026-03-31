@@ -233,6 +233,10 @@ export interface MemoryEntry {
 	size: number;
 }
 
+export interface MemoryGraph {
+	edges: [string, string][];
+}
+
 export type ServerEvent =
 	| {
 			type: "chat_message_created";
