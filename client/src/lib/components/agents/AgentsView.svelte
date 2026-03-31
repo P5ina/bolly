@@ -145,9 +145,9 @@
 		return `${Math.round(n / 1000)}k`;
 	}
 
-	function formatTimestamp(epochSecs: number): string {
-		if (epochSecs === 0) return "never";
-		const diff = Date.now() / 1000 - epochSecs;
+	function formatTimestamp(epochMs: number): string {
+		if (epochMs === 0) return "never";
+		const diff = (Date.now() - epochMs) / 1000;
 		const mins = Math.floor(diff / 60);
 		const hours = Math.floor(diff / 3600);
 		const days = Math.floor(diff / 86400);
