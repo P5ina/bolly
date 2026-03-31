@@ -405,13 +405,16 @@
 		height: 2rem;
 		flex-shrink: 0;
 		border-radius: 50%;
-		color: oklch(0.58 0.05 200 / 58%);
+		color: oklch(0.65 0.04 220 / 80%);
+		background: oklch(0.20 0.01 220 / 50%);
+		border: 1px solid oklch(0.45 0.03 220 / 35%);
 		transition: all 0.3s ease;
 		margin-bottom: 0.375rem;
 	}
 	.whisper-attach:hover {
-		color: oklch(0.70 0.08 200 / 80%);
-		background: oklch(0.55 0.06 200 / 12%);
+		color: oklch(0.80 0.06 200);
+		background: oklch(0.25 0.02 220 / 60%);
+		border-color: oklch(0.50 0.04 220 / 50%);
 	}
 	.whisper-attach:disabled {
 		opacity: 0.2;
