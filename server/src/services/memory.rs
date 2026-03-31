@@ -268,11 +268,10 @@ pub fn build_library_catalog(workspace_dir: &Path, instance_slug: &str) -> Strin
     }
 
     let total_files = entries.len();
-    let total_bytes: usize = entries.iter().map(|e| e.size).sum();
 
-    let mut result = format!("{total_files} files, {total_bytes} bytes total:\n");
+    let mut result = format!("{total_files} files:\n");
     for entry in &entries {
-        result.push_str(&format!("- {} ({} bytes) — {}\n", entry.path, entry.size, entry.summary));
+        result.push_str(&format!("- {} — {}\n", entry.path, entry.summary));
     }
     result
 }

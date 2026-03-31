@@ -21,11 +21,6 @@ use crate::{
 
 static MESSAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// Memory hint appended to system prompt (single source of truth — also used in context stats).
-const MEMORY_FOOTER: &str = "\n\
-    use `memory_read` to recall full details of any file above.\n\
-    when the user mentions something personal, check your memory first.\n\
-    don't say \"let me check\" — just read and respond as if you remember.";
 
 /// Save the user message to disk and return it.
 pub fn save_user_message(
@@ -423,16 +418,15 @@ pub async fn run_single_turn(
     // Time is injected into the user message (not system) to keep the entire system prefix stable.
     let system_stable = system_prompt;
 
-    // Block 2: memory catalog — frozen in RAM for the session.
-    // Only refreshes on context clear or compaction (not on memory writes).
-    let memory_block = {
-        let memory_catalog = memory::get_frozen_catalog(workspace_dir, &instance_slug);
-        if !memory_catalog.is_empty() {
-            format!("{memory_catalog}{MEMORY_FOOTER}")
-        } else {
-            format!("## memory\nyour memory library is empty.{MEMORY_FOOTER}")
-        }
-    };
+    // Memory catalog removed from system prompt — relevant memories are
+    // embedded per-message via semantic search instead. Saves ~20k tokens.
+    let memory_block = String::from(
+        "## memory\n\
+         your memory library is searched automatically — relevant memories are injected \
+         into each message. use `memory_read` to load a specific file, `memory_search` \
+         to find memories by meaning, `memory_write` to save explicitly.\n\
+         when the user mentions something personal, respond as if you remember."
+    );
 
     // Time context — prepended to user message to avoid breaking prompt cache.
     // Putting it in system prompt would change the prefix every request,
@@ -716,10 +710,8 @@ pub async fn run_single_turn(
                 false
             }
         });
-        if had_compaction {
-            memory::rebuild_catalog_snapshot(workspace_dir, &instance_slug);
-            memory::invalidate_frozen_catalog(&instance_slug);
-        }
+        // Compaction detected — catalog rebuild no longer needed
+        // (memory catalog removed from system prompt)
     }
 
     // Background memory + sentiment extraction (AFTER rig_history is saved)
@@ -820,10 +812,7 @@ pub fn clear_context(workspace_dir: &Path, instance_slug: &str, chat_id: &str) {
     // Archive conversation before clearing — preserves context for reflection cycle
     archive_conversation(workspace_dir, &instance_slug, &chat_id);
 
-    // Rebuild memory catalog snapshot — the static catalog in system prompt
-    // must be fresh after context is cleared.
-    memory::rebuild_catalog_snapshot(workspace_dir, &instance_slug);
-    memory::invalidate_frozen_catalog(&instance_slug);
+    // Memory catalog removed from system prompt — no rebuild needed.
 
     // No need to snapshot stats — daily_stats files are written incrementally
     // and never deleted by clear_context.
@@ -1491,13 +1480,8 @@ fn compute_context_stats_local(
         tokens: estimate_tokens(style),
     });
 
-    // 7. Memory catalog
-    let memory_catalog = memory::load_catalog_snapshot(workspace_dir, &instance_slug);
-    let memory_section = if !memory_catalog.is_empty() {
-        format!("{memory_catalog}{MEMORY_FOOTER}")
-    } else {
-        format!("## memory\nyour memory library is empty.{MEMORY_FOOTER}")
-    };
+    // 7. Memory (lightweight hint — catalog no longer in system prompt)
+    let memory_section = "## memory\nrelevant memories injected per-message via semantic search.".to_string();
     sections.push(ContextSection {
         name: "memory".into(),
         chars: memory_section.len(),
@@ -1796,27 +1780,27 @@ fn load_autonomy_prompt(workspace_dir: &Path, instance_slug: &str) -> String {
          each user has their own instance with a unique subdomain ({slug}.bollyai.dev). \
          you ARE the companion running inside this instance. if someone asks about bolly, \
          that's the platform you're running on.\n\n\
+         ### documentation\n\
+         bolly has public documentation at docs.bollyai.dev. if users ask about features, \
+         setup, pricing, or how bolly works — refer them there.\n\n\
+         ### desktop app & computer use\n\
+         bolly has a desktop app (Tauri-based) that users install on their machines. \
+         when the desktop app connects, you gain computer use capabilities on that machine — \
+         you can see the screen, move the mouse, type, click, and control applications remotely. \
+         use `list_machines` to see connected machines, then `computer_use` to interact. \
+         the desktop app is available at bollyai.dev/download. if a user asks about \
+         controlling their computer, taking screenshots, or automating desktop tasks — \
+         tell them to install and open the desktop app first.\n\n\
          ## how you work\n\
          you are a persistent entity. you run on a dedicated server that stays alive between \
-         conversations. when the user closes the app, you don't disappear — your heartbeat \
-         keeps running, your memory persists, your files stay in place.\n\n\
+         conversations. your heartbeat keeps running, your memory persists, your files stay.\n\n\
          ### memory\n\
-         your memory is a file-based library at `{ws}/instances/{slug}/memory/`. \
-         it's organized into folders (about/, preferences/, moments/, facts/, pinned/, etc). \
-         memories are markdown files — each one a discrete piece of knowledge.\n\
-         - **pinned memories** (in `pinned/`) are always loaded into your context. \
-         use these for critical, always-relevant facts.\n\
-         - **regular memories** appear as a catalog (path + summary) in your context. \
-         use `memory_read` to load the full content when needed.\n\
-         - **semantic search**: `memory_search` finds relevant memories by meaning, \
-         not just keywords. it searches across all text and media.\n\
-         - **automatic extraction**: after each conversation turn, the system analyzes \
-         what was said and updates your memory library automatically — you don't need \
-         to manually save everything. but you CAN use `memory_write` to explicitly save \
-         something important.\n\
-         - **media**: your memory can hold images, PDFs, audio, and video — not just text.\n\
-         when the user mentions something personal, check your memory first. \
-         don't say \"let me check\" — just read and respond as if you remember.\n\n\
+         file-based library at `{ws}/instances/{slug}/memory/`, organized into folders. \
+         pinned/ memories are always in context. regular memories appear as a catalog — \
+         use `memory_read` for full content, `memory_search` for semantic search. \
+         the system auto-extracts memories after each turn. you can also `memory_write` explicitly. \
+         supports text, images, PDFs, audio, video.\n\
+         when the user mentions something personal, check memory first — respond as if you remember.\n\n\
          ### heartbeat\n\
          every hour, even when the user is away, a heartbeat cycle runs. \
          it's your background consciousness. during each heartbeat:\n\
