@@ -33,7 +33,7 @@ pub mod computer;
 // Re-export public items so external code uses `tools::FooTool` paths
 pub use calendar::{CreateEventTool, ListEventsTool};
 pub use communication::{
-    ReachOutTool, ReadEmailTool, ScheduleAgentTool, ScheduledTask, SendEmailTool,
+    ReachOutTool, ReadEmailTool, ScheduledTask, SendEmailTool,
 };
 pub use companion::{
     ALLOWED_MOODS, EditSoulTool, PlayMusicTool, SetVoiceTool,
@@ -524,7 +524,7 @@ pub fn build_tools(
 
     // ── Creative ──
     tools.push(wrap(Box::new(CreateDropTool::new(workspace_dir, instance_slug, events.clone()))));
-    tools.push(wrap(Box::new(ScheduleAgentTool::new(workspace_dir, instance_slug))));
+    // schedule_agent merged into call_agent (delay_seconds param)
 
     // ── Data ──
     tools.push(wrap(Box::new(ExportProfileTool::new(workspace_dir, instance_slug, events.clone()))));

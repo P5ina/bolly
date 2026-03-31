@@ -1597,6 +1597,9 @@ pub struct CallAgentArgs {
     pub agent_name: String,
     /// The task or question for the agent. Be specific.
     pub task: String,
+    /// Optional: delay in seconds before running. If set (> 0), the agent is scheduled
+    /// for later instead of running immediately (e.g. 3600 = 1 hour, 86400 = 1 day).
+    pub delay_seconds: Option<u32>,
 }
 
 impl Tool for CallAgentTool {
@@ -1611,6 +1614,8 @@ impl Tool for CallAgentTool {
             description: "Call a child agent to perform a task. Built-in agents: \
                 'explore-code' (codebase exploration), 'deep-research' (web + memory research). \
                 Can also call any custom agent by name. Returns the agent's summary. \
+                Set delay_seconds to schedule the agent for later instead of running now \
+                (e.g. 3600 = 1h, 86400 = 1d). \
                 IMPORTANT: call this tool ONCE per task — do NOT call the same agent \
                 repeatedly for the same question. The agent does thorough work internally."
                 .into(),
@@ -1624,6 +1629,40 @@ impl Tool for CallAgentTool {
             return Err(ToolExecError("task cannot be empty".into()));
         }
 
+        // Scheduled mode: write a timer file and return immediately
+        if let Some(delay) = args.delay_seconds {
+            if delay > 0 {
+                let instance_dir = self.workspace_dir.join("instances").join(&self.instance_slug);
+                let now = chrono::Utc::now().timestamp();
+                let scheduled = crate::services::tools::communication::ScheduledTask {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    task: task.to_string(),
+                    deliver_at: now + delay as i64,
+                    created_at: now,
+                };
+                let schedule_dir = instance_dir.join("scheduled");
+                std::fs::create_dir_all(&schedule_dir).map_err(|e| ToolExecError(e.to_string()))?;
+                let file_path = schedule_dir.join(format!("{}.json", scheduled.id));
+                let json = serde_json::to_string_pretty(&scheduled).map_err(|e| ToolExecError(e.to_string()))?;
+                std::fs::write(&file_path, json).map_err(|e| ToolExecError(e.to_string()))?;
+
+                let time_desc = if delay >= 86400 {
+                    let d = delay / 86400; let h = (delay % 86400) / 3600;
+                    if h > 0 { format!("{d}d {h}h") } else { format!("{d}d") }
+                } else if delay >= 3600 {
+                    let h = delay / 3600; let m = (delay % 3600) / 60;
+                    if m > 0 { format!("{h}h {m}m") } else { format!("{h}h") }
+                } else if delay >= 60 {
+                    let m = delay / 60; let s = delay % 60;
+                    if s > 0 { format!("{m}m {s}s") } else { format!("{m}m") }
+                } else {
+                    format!("{delay}s")
+                };
+                return Ok(format!("agent wake-up scheduled in {time_desc}."));
+            }
+        }
+
+        // Immediate mode: run the agent now
         let agents = crate::services::child_agents::load_agents(&self.workspace_dir, &self.instance_slug);
         let agent = agents.iter().find(|a| a.name == args.agent_name)
             .ok_or_else(|| {
