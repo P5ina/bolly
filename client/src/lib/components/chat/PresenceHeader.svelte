@@ -128,7 +128,7 @@
 	}
 
 	.presence-sep {
-		color: oklch(0.78 0.12 75 / 24%);
+		color: oklch(0.78 0.12 75 / 45%);
 	}
 
 	.presence-metrics {
@@ -137,7 +137,7 @@
 		gap: 0.7rem;
 		font-family: var(--font-mono);
 		font-size: 0.67rem;
-		color: oklch(0.78 0.02 280 / 55%);
+		color: oklch(0.78 0.02 280 / 72%);
 	}
 
 	.status-waiting,
@@ -147,7 +147,7 @@
 	}
 
 	.status-waiting {
-		color: oklch(0.76 0.02 260 / 65%);
+		color: oklch(0.76 0.02 260 / 80%);
 	}
 
 	.status-thinking {
@@ -184,7 +184,7 @@
 		font-size: 0.72rem;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		color: oklch(0.78 0.02 280 / 42%);
+		color: oklch(0.78 0.02 280 / 62%);
 	}
 
 	.presence-focus p,

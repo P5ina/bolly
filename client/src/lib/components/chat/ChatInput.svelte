@@ -355,13 +355,13 @@
 
 	.attachment-icon {
 		display: flex;
-		color: oklch(0.6 0.08 200 / 45%);
+		color: oklch(0.6 0.08 200 / 65%);
 	}
 
 	.attachment-name {
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		color: oklch(0.78 0.03 200 / 65%);
+		color: oklch(0.80 0.03 200 / 82%);
 		max-width: 100px;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -371,7 +371,7 @@
 	.attachment-size {
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
-		color: oklch(0.5 0.03 200 / 35%);
+		color: oklch(0.55 0.03 200 / 55%);
 	}
 
 	.attachment-remove {
@@ -405,13 +405,13 @@
 		height: 2rem;
 		flex-shrink: 0;
 		border-radius: 50%;
-		color: oklch(0.55 0.06 200 / 35%);
+		color: oklch(0.58 0.05 200 / 58%);
 		transition: all 0.3s ease;
 		margin-bottom: 0.375rem;
 	}
 	.whisper-attach:hover {
-		color: oklch(0.65 0.08 200 / 65%);
-		background: oklch(0.55 0.06 200 / 10%);
+		color: oklch(0.70 0.08 200 / 80%);
+		background: oklch(0.55 0.06 200 / 12%);
 	}
 	.whisper-attach:disabled {
 		opacity: 0.2;
@@ -430,36 +430,36 @@
 		font-size: 0.6rem;
 		font-weight: 600;
 		letter-spacing: 0.05em;
-		color: oklch(0.55 0.06 200 / 40%);
-		background: oklch(0.14 0.02 200 / 25%);
+		color: oklch(0.58 0.05 200 / 62%);
+		background: oklch(0.14 0.02 200 / 35%);
 		backdrop-filter: blur(8px);
 		-webkit-backdrop-filter: blur(8px);
-		border: 1px solid oklch(0.5 0.06 200 / 10%);
+		border: 1px solid oklch(0.5 0.06 200 / 16%);
 		cursor: pointer;
 		transition: all 0.2s;
 		margin-bottom: 0.75rem;
 	}
 	.mode-toggle:hover {
-		color: oklch(0.65 0.08 200 / 65%);
-		background: oklch(0.14 0.02 200 / 40%);
+		color: oklch(0.70 0.08 200 / 80%);
+		background: oklch(0.14 0.02 200 / 50%);
 	}
 	.mode-toggle-fast {
-		color: oklch(0.65 0.1 170 / 55%);
-		background: oklch(0.12 0.02 170 / 25%);
-		border-color: oklch(0.5 0.08 170 / 15%);
+		color: oklch(0.68 0.1 170 / 72%);
+		background: oklch(0.12 0.02 170 / 35%);
+		border-color: oklch(0.5 0.08 170 / 22%);
 	}
 	.mode-toggle-fast:hover {
-		color: oklch(0.72 0.12 170 / 80%);
-		background: oklch(0.12 0.02 170 / 40%);
+		color: oklch(0.75 0.12 170 / 90%);
+		background: oklch(0.12 0.02 170 / 50%);
 	}
 	.mode-toggle-heavy {
-		color: oklch(0.6 0.08 250 / 55%);
-		background: oklch(0.12 0.02 250 / 25%);
-		border-color: oklch(0.5 0.06 250 / 15%);
+		color: oklch(0.63 0.08 250 / 72%);
+		background: oklch(0.12 0.02 250 / 35%);
+		border-color: oklch(0.5 0.06 250 / 22%);
 	}
 	.mode-toggle-heavy:hover {
-		color: oklch(0.68 0.1 250 / 80%);
-		background: oklch(0.12 0.02 250 / 40%);
+		color: oklch(0.72 0.1 250 / 90%);
+		background: oklch(0.12 0.02 250 / 50%);
 	}
 
 	.whisper-input {
@@ -473,39 +473,33 @@
 		font-family: var(--font-body);
 		font-size: 1rem;
 		line-height: 1.6;
-		color: oklch(0.90 0.02 75 / 90%);
-		background: linear-gradient(
-			155deg,
-			oklch(1 0 0 / 5%) 0%,
-			oklch(0.5 0.02 210 / 10%) 40%,
-			oklch(1 0 0 / 3%) 100%
-		);
+		color: oklch(0.92 0.02 75 / 95%);
+		background: oklch(0.12 0.015 220 / 65%);
 		backdrop-filter: blur(24px) saturate(160%) brightness(1.06);
 		-webkit-backdrop-filter: blur(24px) saturate(160%) brightness(1.06);
-		border: 1px solid oklch(1 0 0 / 10%);
-		border-top-color: oklch(1 0 0 / 16%);
+		border: 1px solid oklch(1 0 0 / 14%);
+		border-top-color: oklch(1 0 0 / 20%);
 		border-radius: 14px;
 		outline: none;
 		transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 		letter-spacing: 0.01em;
-		box-shadow: inset 0 1px 0 oklch(1 0 0 / 6%), inset 0 -1px 0 oklch(0 0 0 / 4%);
-		box-shadow: 0 2px 8px oklch(0 0 0 / 12%), inset 0 1px 0 oklch(1 0 0 / 2%);
+		box-shadow: 0 2px 8px oklch(0 0 0 / 18%), inset 0 1px 0 oklch(1 0 0 / 4%);
 	}
 	.whisper-input::placeholder {
-		color: oklch(0.55 0.06 200 / 30%);
+		color: oklch(0.50 0.04 200 / 55%);
 		font-style: italic;
 		font-family: var(--font-display);
 	}
 	.whisper-input:focus {
-		border-color: oklch(0.55 0.08 200 / 20%);
-		background: oklch(0.12 0.02 210 / 40%);
+		border-color: oklch(0.55 0.08 200 / 30%);
+		background: oklch(0.14 0.02 210 / 72%);
 		box-shadow:
-			0 0 0 4px oklch(0.55 0.08 200 / 8%),
-			0 4px 16px oklch(0 0 0 / 18%),
-			inset 0 1px 0 oklch(1 0 0 / 3%);
+			0 0 0 4px oklch(0.55 0.08 200 / 10%),
+			0 4px 16px oklch(0 0 0 / 22%),
+			inset 0 1px 0 oklch(1 0 0 / 4%);
 	}
 	.whisper-input:disabled {
-		opacity: 0.3;
+		opacity: 0.35;
 	}
 
 	.whisper-send {
@@ -516,14 +510,14 @@
 		height: 2rem;
 		flex-shrink: 0;
 		border-radius: 50%;
-		color: oklch(0.6 0.1 190 / 55%);
+		color: oklch(0.65 0.1 190 / 75%);
 		transition: all 0.3s ease;
 		animation: send-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 		margin-bottom: 0.375rem;
 	}
 	.whisper-send:hover {
-		color: oklch(0.7 0.12 190 / 85%);
-		background: oklch(0.55 0.08 200 / 10%);
+		color: oklch(0.75 0.12 190 / 95%);
+		background: oklch(0.55 0.08 200 / 14%);
 	}
 
 	.whisper-stop {
@@ -607,7 +601,7 @@
 		height: 100%;
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
-		color: oklch(0.6 0.08 200 / 45%);
+		color: oklch(0.63 0.06 200 / 65%);
 		letter-spacing: 0.04em;
 	}
 

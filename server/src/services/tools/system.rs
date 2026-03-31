@@ -6,6 +6,7 @@ use std::{
 };
 
 use crate::services::tool::{ToolDefinition, Tool, ToolDyn};
+use crate::services::chat;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio::sync::broadcast;
@@ -1238,15 +1239,24 @@ impl Tool for UpdateConfigTool {
 // ---------------------------------------------------------------------------
 
 pub struct ClearContextTool {
-    instance_dir: PathBuf,
+    workspace_dir: PathBuf,
     instance_slug: String,
+    chat_id: String,
+    events: broadcast::Sender<ServerEvent>,
 }
 
 impl ClearContextTool {
-    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+    pub fn new(
+        workspace_dir: &Path,
+        instance_slug: &str,
+        chat_id: &str,
+        events: broadcast::Sender<ServerEvent>,
+    ) -> Self {
         Self {
-            instance_dir: workspace_dir.join("instances").join(instance_slug),
+            workspace_dir: workspace_dir.to_path_buf(),
             instance_slug: instance_slug.to_string(),
+            chat_id: chat_id.to_string(),
+            events,
         }
     }
 }
@@ -1273,24 +1283,33 @@ impl Tool for ClearContextTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let compact_path = self.instance_dir.join("chat").join("compact.md");
-        if compact_path.exists() {
-            fs::remove_file(&compact_path)
-                .map_err(|e| ToolExecError(format!("failed to clear compact context: {e}")))?;
-        }
-
         if args.clear_messages {
-            let messages_path = self.instance_dir.join("chat").join("messages.json");
-            if messages_path.exists() {
-                let lock = super::chat_file_lock(&messages_path);
-                let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
-                fs::write(&messages_path, "[]")
-                    .map_err(|e| ToolExecError(format!("failed to clear messages: {e}")))?;
+            // Full clear — use the same service function as the HTTP endpoint
+            chat::clear_context(&self.workspace_dir, &self.instance_slug, &self.chat_id);
+        } else {
+            // Only clear compacted summary
+            let compact = chat::compact_path(
+                &self.workspace_dir,
+                &self.instance_slug,
+                &self.chat_id,
+            );
+            if compact.exists() {
+                let _ = fs::remove_file(&compact);
             }
         }
 
         // Clear temporary voice override
         super::companion::clear_voice_override(&self.instance_slug);
+
+        // Broadcast snapshot so the client UI updates immediately
+        if args.clear_messages {
+            let _ = self.events.send(ServerEvent::ChatSnapshot {
+                instance_slug: self.instance_slug.clone(),
+                chat_id: self.chat_id.clone(),
+                messages: vec![],
+                agent_running: true,
+            });
+        }
 
         let what = if args.clear_messages {
             "compacted context and chat history cleared"

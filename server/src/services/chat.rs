@@ -1540,7 +1540,7 @@ fn compute_context_stats_local(
     }
 }
 
-fn compact_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> PathBuf {
+pub fn compact_path(workspace_dir: &Path, instance_slug: &str, chat_id: &str) -> PathBuf {
     chat_dir(workspace_dir, instance_slug, chat_id).join("compact.md")
 }
 

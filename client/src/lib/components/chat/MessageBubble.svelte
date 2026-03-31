@@ -522,14 +522,14 @@
 	.msg-time {
 		display: block;
 		font-size: 0.5625rem;
-		color: oklch(0.5 0.04 200 / 15%);
+		color: oklch(0.55 0.03 200 / 45%);
 		margin-top: 0.2rem;
 		font-family: var(--font-mono);
 		letter-spacing: 0.04em;
 		transition: color 0.3s ease;
 	}
 	.msg:hover .msg-time {
-		color: oklch(0.6 0.06 200 / 40%);
+		color: oklch(0.65 0.04 200 / 70%);
 	}
 	.msg-time-right {
 		text-align: left;
@@ -609,19 +609,19 @@
 		font-size: 0.5rem;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		background: oklch(0.55 0.08 200 / 12%);
-		color: oklch(0.55 0.08 200 / 45%);
+		background: oklch(0.55 0.08 200 / 18%);
+		color: oklch(0.58 0.06 200 / 65%);
 		vertical-align: middle;
 	}
 	.msg-model-fast {
-		background: oklch(0.65 0.1 170 / 12%);
-		color: oklch(0.65 0.1 170 / 45%);
+		background: oklch(0.65 0.1 170 / 18%);
+		color: oklch(0.65 0.08 170 / 65%);
 	}
 	.msg:hover .msg-model {
-		color: oklch(0.55 0.08 200 / 65%);
+		color: oklch(0.60 0.08 200 / 80%);
 	}
 	.msg:hover .msg-model-fast {
-		color: oklch(0.65 0.1 170 / 65%);
+		color: oklch(0.68 0.1 170 / 80%);
 	}
 
 	/* --- Voice word reveal --- */

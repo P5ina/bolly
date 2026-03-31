@@ -480,7 +480,7 @@ pub fn build_tools(
         wrap(Box::new(PlayMusicTool::new(workspace_dir, instance_slug, events.clone()))),
         wrap(Box::new(SetVoiceTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(RunCommandTool::new(workspace_dir, instance_slug, chat_id, events.clone(), github_token))),
-        wrap(Box::new(ClearContextTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(ClearContextTool::new(workspace_dir, instance_slug, chat_id, events.clone()))),
     ];
 
     // ── System ──

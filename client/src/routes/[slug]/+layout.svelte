@@ -237,7 +237,7 @@
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
 		letter-spacing: 0.04em;
-		color: oklch(0.65 0.04 240 / 50%);
+		color: oklch(0.62 0.03 240 / 72%);
 		background: none;
 		border: none;
 		padding: 0.6rem 1rem 0.7rem;
@@ -251,13 +251,13 @@
 	}
 
 	.instance-tab:hover {
-		color: oklch(0.80 0.04 240 / 75%);
-		background: oklch(1 0 0 / 3%);
+		color: oklch(0.82 0.03 240 / 90%);
+		background: oklch(1 0 0 / 5%);
 	}
 
 	.instance-tab-active {
-		color: oklch(0.90 0.03 240 / 90%);
-		background: oklch(1 0 0 / 5%);
+		color: oklch(0.92 0.02 240);
+		background: oklch(1 0 0 / 6%);
 	}
 
 	.instance-tab-active::after {
@@ -267,7 +267,7 @@
 		left: 0.75rem;
 		right: 0.75rem;
 		height: 1.5px;
-		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 35%), transparent);
+		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 50%), transparent);
 	}
 
 	.instance-tab-home {
@@ -310,7 +310,7 @@
 	}
 
 	.instance-tab-delete {
-		color: oklch(0.65 0.05 20 / 35%);
+		color: oklch(0.65 0.05 20 / 55%);
 		padding: 0.5rem 0.6rem 0.625rem;
 		display: flex;
 		align-items: center;

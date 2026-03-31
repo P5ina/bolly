@@ -820,7 +820,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 									<span class="compaction-text">context compacted</span>
 									<span class="compaction-time">{item.timestamp}</span>
 								</div>
-							{:else if showToolActivity}
+							{:else if item.kind === "mood" || showToolActivity}
 								<StreamActivity kind={item.kind} label={item.label} timestamp={item.timestamp} />
 							{/if}
 						{/each}
@@ -1035,30 +1035,30 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	}
 
 	.bar-name {
-		color: oklch(0.78 0.03 200 / 65%);
+		color: oklch(0.80 0.03 200 / 88%);
 	}
 
 	.bar-mood {
 		font-family: var(--font-mono);
 		font-size: 0.62rem;
 		letter-spacing: 0.06em;
-		color: oklch(0.55 0.06 200 / 30%);
+		color: oklch(0.58 0.05 200 / 55%);
 		transition: color 0.5s ease;
 	}
-	.bar-mood[data-mood="focused"] { color: oklch(0.65 0.1 180 / 40%); }
-	.bar-mood[data-mood="playful"] { color: oklch(0.7 0.12 160 / 40%); }
-	.bar-mood[data-mood="loving"] { color: oklch(0.7 0.1 20 / 40%); }
-	.bar-mood[data-mood="warm"] { color: oklch(0.7 0.1 65 / 40%); }
-	.bar-mood[data-mood="reflective"] { color: oklch(0.6 0.08 280 / 40%); }
-	.bar-mood[data-mood="excited"] { color: oklch(0.75 0.12 85 / 40%); }
-	.bar-mood[data-mood="curious"] { color: oklch(0.65 0.1 200 / 40%); }
-	.bar-mood[data-mood="melancholy"] { color: oklch(0.5 0.06 250 / 40%); }
-	.bar-mood[data-mood="sad"] { color: oklch(0.45 0.05 245 / 40%); }
-	.bar-mood[data-mood="anxious"] { color: oklch(0.6 0.1 30 / 40%); }
-	.bar-mood[data-mood="creative"] { color: oklch(0.7 0.12 155 / 40%); }
-	.bar-mood[data-mood="energetic"] { color: oklch(0.75 0.14 100 / 40%); }
-	.bar-mood[data-mood="tired"] { color: oklch(0.4 0.03 250 / 40%); }
-	.bar-mood[data-mood="peaceful"] { color: oklch(0.6 0.08 170 / 40%); }
+	.bar-mood[data-mood="focused"] { color: oklch(0.65 0.1 180 / 72%); }
+	.bar-mood[data-mood="playful"] { color: oklch(0.7 0.12 160 / 72%); }
+	.bar-mood[data-mood="loving"] { color: oklch(0.7 0.1 20 / 72%); }
+	.bar-mood[data-mood="warm"] { color: oklch(0.7 0.1 65 / 72%); }
+	.bar-mood[data-mood="reflective"] { color: oklch(0.6 0.08 280 / 72%); }
+	.bar-mood[data-mood="excited"] { color: oklch(0.75 0.12 85 / 72%); }
+	.bar-mood[data-mood="curious"] { color: oklch(0.65 0.1 200 / 72%); }
+	.bar-mood[data-mood="melancholy"] { color: oklch(0.55 0.06 250 / 72%); }
+	.bar-mood[data-mood="sad"] { color: oklch(0.50 0.05 245 / 72%); }
+	.bar-mood[data-mood="anxious"] { color: oklch(0.6 0.1 30 / 72%); }
+	.bar-mood[data-mood="creative"] { color: oklch(0.7 0.12 155 / 72%); }
+	.bar-mood[data-mood="energetic"] { color: oklch(0.75 0.14 100 / 72%); }
+	.bar-mood[data-mood="tired"] { color: oklch(0.45 0.03 250 / 72%); }
+	.bar-mood[data-mood="peaceful"] { color: oklch(0.6 0.08 170 / 72%); }
 
 	.bar-activity {
 		display: flex;
@@ -1067,7 +1067,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		font-family: var(--font-mono);
 		font-size: 0.68rem;
 		letter-spacing: 0.06em;
-		color: oklch(0.55 0.06 200 / 45%);
+		color: oklch(0.60 0.06 200 / 70%);
 		animation: fade-up 0.3s ease both;
 	}
 
@@ -1075,7 +1075,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		width: 4px;
 		height: 4px;
 		border-radius: 50%;
-		background: oklch(0.6 0.1 190 / 60%);
+		background: oklch(0.65 0.1 190 / 80%);
 		animation: pulse-alive 2.5s ease-in-out infinite;
 	}
 
@@ -1085,18 +1085,18 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		justify-content: center;
 		width: 1.75rem;
 		height: 1.75rem;
-		color: oklch(0.45 0.04 200 / 30%);
+		color: oklch(0.55 0.04 200 / 55%);
 		border-radius: 7px;
 		transition: all 0.2s ease;
 	}
 
 	.bar-btn-active {
-		color: oklch(0.6 0.08 200 / 55%);
+		color: oklch(0.65 0.06 200 / 78%);
 	}
 
 	.bar-btn:hover {
-		color: oklch(0.65 0.08 200 / 65%);
-		background: oklch(0.5 0.06 200 / 6%);
+		color: oklch(0.72 0.06 200 / 85%);
+		background: oklch(0.5 0.06 200 / 10%);
 	}
 
 	/* --- columns --- */

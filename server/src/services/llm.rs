@@ -949,6 +949,16 @@ async fn maybe_compact_history(
     }).collect();
     super::chat::save_rig_history(&rig_path, &entries);
 
+    // Broadcast snapshot so the client immediately reflects the compacted state
+    if let Ok(resp) = super::chat::load_messages(workspace_dir, instance_slug, chat_id) {
+        let _ = events.send(ServerEvent::ChatSnapshot {
+            instance_slug: instance_slug.to_string(),
+            chat_id: chat_id.to_string(),
+            messages: resp.messages,
+            agent_running: true,
+        });
+    }
+
     log::info!(
         "[compaction] compacted {compacted_count} messages → {} remaining",
         messages.len(),
