@@ -1163,8 +1163,8 @@ ttt<!-- svelte-ignore a11y_autofocus -->
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
-		color: oklch(0.78 0.12 75 / 40%);
-		opacity: 0.6;
+		color: oklch(0.78 0.12 75 / 55%);
+		opacity: 0.75;
 	}
 
 	.bubble-core {
@@ -1201,8 +1201,11 @@ ttt<!-- svelte-ignore a11y_autofocus -->
 
 	.bubble-label {
 		font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.05em;
-		color: color-mix(in srgb, var(--c) 85%, white);
-		text-shadow: 0 1px 8px color-mix(in srgb, var(--c) 30%, transparent);
+		font-weight: 600;
+		color: oklch(0.92 0.02 75);
+		text-shadow:
+			0 1px 6px oklch(0 0 0 / 70%),
+			0 0 20px color-mix(in srgb, var(--c) 40%, transparent);
 		pointer-events: none; user-select: none; z-index: 2;
 		text-align: center; line-height: 1; max-width: 85%;
 		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1210,7 +1213,8 @@ ttt<!-- svelte-ignore a11y_autofocus -->
 
 	.bubble-sub {
 		font-family: var(--font-mono); font-size: 0.7rem;
-		color: color-mix(in srgb, var(--c) 45%, transparent);
+		color: oklch(0.75 0.03 75 / 80%);
+		text-shadow: 0 1px 4px oklch(0 0 0 / 60%);
 		pointer-events: none; user-select: none; z-index: 2;
 	}
 
