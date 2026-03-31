@@ -1010,6 +1010,11 @@
 								}}
 								disabled={keySaving === key.id}
 							>change</button>
+							<button
+								class="key-change key-change-remove"
+								onclick={() => saveKey(key.id, "")}
+								disabled={keySaving === key.id}
+							>remove</button>
 						{:else}
 							<button
 								class="key-change key-change-add"
@@ -2236,6 +2241,8 @@
 	.key-change:hover { color: oklch(0.90 0.02 75); }
 	.key-change-add { color: var(--color-warm); }
 	.key-change-add:hover { color: oklch(0.88 0.14 75); }
+	.key-change-remove { color: oklch(0.55 0.08 25 / 60%); }
+	.key-change-remove:hover { color: oklch(0.65 0.15 25); }
 	.key-error { margin-top: 8px; font-size: 0.72rem; color: oklch(0.65 0.15 25 / 70%); font-style: italic; }
 
 	/* --- Claude CLI OAuth --- */
