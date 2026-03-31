@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, LazyLock, Mutex},
 };
 
-use crate::services::tool::{ToolDefinition, Tool, ToolDyn};
+use crate::services::tool::{ToolDefinition, Tool};
 use crate::services::chat;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -1406,11 +1406,13 @@ impl Tool for CreateDropTool {
 // explore_code + search_code
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 pub struct SearchCodeTool {
     instance_dir: PathBuf,
 }
 
 impl SearchCodeTool {
+    #[allow(dead_code)]
     pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
         Self {
             instance_dir: workspace_dir.join("instances").join(instance_slug),
@@ -1419,6 +1421,7 @@ impl SearchCodeTool {
 }
 
 #[derive(Deserialize, JsonSchema)]
+#[allow(dead_code)]
 pub struct SearchCodeArgs {
     /// Text or pattern to search for (case-insensitive substring match).
     pub query: String,
@@ -1488,6 +1491,7 @@ impl Tool for SearchCodeTool {
     }
 }
 
+#[allow(dead_code)]
 fn search_files_recursive(
     dir: &Path,
     query: &str,

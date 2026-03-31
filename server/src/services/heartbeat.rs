@@ -11,7 +11,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use chrono::{Timelike, Utc};
 use tokio::sync::{broadcast, RwLock};
 
-use crate::config;
 use crate::domain::chat::ChatRole;
 use crate::domain::events::ServerEvent;
 use crate::domain::mood::MoodState;

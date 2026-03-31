@@ -16,11 +16,13 @@ use crate::services::google::GoogleClient;
 // schedule_agent
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 pub struct ScheduleAgentTool {
     instance_dir: PathBuf,
 }
 
 impl ScheduleAgentTool {
+    #[allow(dead_code)]
     pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
         Self {
             instance_dir: workspace_dir.join("instances").join(instance_slug),
@@ -39,6 +41,7 @@ pub struct ScheduledTask {
 
 /// Arguments for schedule_agent tool.
 #[derive(Deserialize, JsonSchema)]
+#[allow(dead_code)]
 pub struct ScheduleAgentArgs {
     /// What to do when the timer fires. Describe the task clearly — you'll be woken up with full tools to execute it.
     pub task: String,

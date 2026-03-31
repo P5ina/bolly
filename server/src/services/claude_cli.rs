@@ -130,7 +130,7 @@ pub fn initiate_oauth() -> OAuthState {
     let state = hex::encode(state_bytes);
     let code_verifier = generate_code_verifier();
 
-    let code_challenge = {
+    let _code_challenge = {
         let mut hasher = Sha256::new();
         hasher.update(code_verifier.as_bytes());
         URL_SAFE_NO_PAD.encode(hasher.finalize())

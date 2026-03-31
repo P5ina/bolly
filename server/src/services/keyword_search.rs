@@ -92,6 +92,7 @@ impl KeywordStore {
     }
 
     /// Invalidate the index for an instance (e.g. after memory write/delete).
+    #[allow(dead_code)]
     pub fn invalidate(&self, instance_slug: &str) {
         let mut indices = self.indices.write().unwrap_or_else(|e| e.into_inner());
         indices.remove(instance_slug);

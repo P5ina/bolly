@@ -81,6 +81,7 @@ static FROZEN_CATALOG: Mutex<Option<std::collections::HashMap<String, String>>> 
 /// Get the frozen memory catalog for an instance.
 /// First call loads from disk and caches; subsequent calls return the cached version.
 /// This prevents system prompt changes (and cache invalidation) when memories are written.
+#[allow(dead_code)]
 pub fn get_frozen_catalog(workspace_dir: &Path, instance_slug: &str) -> String {
     let key = instance_slug.to_string();
     let mut guard = FROZEN_CATALOG.lock().unwrap();
@@ -254,6 +255,7 @@ pub fn rebuild_catalog_snapshot(workspace_dir: &Path, instance_slug: &str) {
 
 /// Load the static memory catalog snapshot from disk.
 /// Returns empty string if no snapshot exists yet (first boot / pre-compaction).
+#[allow(dead_code)]
 pub fn load_catalog_snapshot(workspace_dir: &Path, instance_slug: &str) -> String {
     let path = catalog_snapshot_path(workspace_dir, instance_slug);
     std::fs::read_to_string(&path).unwrap_or_default()

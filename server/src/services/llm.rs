@@ -814,6 +814,7 @@ impl LlmBackend {
     }
 
     /// Simplified tool call (no streaming). Used by heartbeat.
+    #[allow(dead_code)]
     pub async fn chat_with_tools_only(
         &self,
         system_prompt: &str,

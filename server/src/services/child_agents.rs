@@ -23,7 +23,7 @@ use crate::services::tools::{
     MemoryConnectTool, MemoryForgetTool, MemoryListTool, MemorySearchTool,
     MemoryReadTool, MemoryWriteTool, ReachOutTool,
     ReadFileTool, WriteFileTool, EditFileTool, ListFilesTool,
-    CallAgentTool, RunCommandTool,
+    RunCommandTool,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -575,7 +575,7 @@ fn build_agent_tools(
     workspace_dir: &Path,
     slug: &str,
     events: broadcast::Sender<ServerEvent>,
-    llm: &LlmBackend,
+    _llm: &LlmBackend,
     vector_store: Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
 ) -> Vec<Box<dyn ToolDyn>> {
@@ -584,7 +584,7 @@ fn build_agent_tools(
     let landing_url = cfg.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
     let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
     let email_accounts = crate::config::EmailAccounts::load(workspace_dir, slug);
-    let config_path = crate::config::config_path();
+    let _config_path = crate::config::config_path();
     let instance_cfg = crate::config::InstanceConfig::load(workspace_dir, slug);
     let github_token = {
         let global_token = cfg.as_ref().map(|c| c.github.token.clone()).unwrap_or_default();

@@ -735,7 +735,7 @@ pub async fn run_single_turn(
 
     // If compaction fired, rebuild the memory catalog snapshot
     if let Some(ref h) = tool_result.rig_history {
-        let had_compaction = h.iter().any(|msg| {
+        let _had_compaction = h.iter().any(|msg| {
             if let llm::Message::Assistant { content } = msg {
                 content
                     .iter()

@@ -28,6 +28,7 @@ pub struct ActionResult {
     pub image: Option<String>,
     pub width: Option<u32>,
     pub height: Option<u32>,
+    #[allow(dead_code)]
     pub scale: Option<f64>,
     /// For action results
     pub success: Option<bool>,

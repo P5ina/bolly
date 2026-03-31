@@ -39,7 +39,7 @@ pub struct AppState {
     /// Landing server URL (empty for self-hosted).
     pub landing_url: String,
     /// Auth token for landing API calls.
-    pub landing_auth_token: String,
+    pub _landing_auth_token: String,
     /// LanceDB vector store for semantic memory search.
     pub vector_store: Arc<VectorStore>,
     /// BM25 keyword search over memory files.
@@ -101,7 +101,7 @@ impl AppState {
             mcp_registry,
             http_client,
             landing_url,
-            landing_auth_token,
+            _landing_auth_token: landing_auth_token,
             vector_store: Arc::new(vector_store),
             keyword_store: Arc::new(KeywordStore::new()),
             machine_registry: MachineRegistry::new(),
@@ -110,7 +110,7 @@ impl AppState {
 
     /// Reload config from disk and rebuild LLM if tokens changed.
     pub async fn reload_config(&self) {
-        let mut new_config = match config::load_config() {
+        let new_config = match config::load_config() {
             Ok(c) => c,
             Err(e) => {
                 log::warn!("failed to reload config: {e}");
