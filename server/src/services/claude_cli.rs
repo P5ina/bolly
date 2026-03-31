@@ -341,8 +341,7 @@ pub async fn run_prompt(
         log::info!("claude CLI: MCP bridge via {} → {}", self_bin.display(), mcp_url);
     }
 
-    // Read prompt from stdin (too long for CLI arg)
-    cmd.arg("-");
+    // Prompt is passed via stdin (no arg needed — `-p` reads stdin if no prompt arg given)
 
     // Pass OAuth token via env var
     cmd.env("CLAUDE_CODE_OAUTH_TOKEN", oauth_token);
