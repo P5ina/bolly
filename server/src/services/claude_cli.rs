@@ -300,6 +300,10 @@ pub async fn run_prompt(
     oauth_token: &str,
     mcp: Option<&McpConfig>,
 ) -> anyhow::Result<(String, u64)> {
+    // Create temp dir for all temp files (system prompt, MCP config, etc.)
+    let temp_dir = std::env::temp_dir().join(format!("bolly-cli-{}", &uuid::Uuid::new_v4().to_string()[..8]));
+    std::fs::create_dir_all(&temp_dir)?;
+
     let bin = resolve_binary();
     let mut cmd = tokio::process::Command::new(&bin);
     cmd.arg("-p")
@@ -309,25 +313,24 @@ pub async fn run_prompt(
         .arg("--model")
         .arg(cli_model_name(model));
 
+    // Write system prompt to file (too long for CLI arg)
     if !system_prompt.is_empty() {
-        cmd.arg("--append-system-prompt").arg(system_prompt);
+        let sp_path = temp_dir.join("system-prompt.txt");
+        std::fs::write(&sp_path, system_prompt)?;
+        cmd.arg("--system-prompt").arg(&sp_path);
     }
 
-    // Write temp MCP config pointing to ourselves as stdio bridge
-    let mcp_temp_dir = if let Some(mcp) = mcp {
-        let dir = std::env::temp_dir().join(format!("bmcp-{}", &uuid::Uuid::new_v4().to_string()[..8]));
-        std::fs::create_dir_all(&dir)?;
-
+    // Write MCP config pointing to ourselves as stdio bridge
+    if let Some(mcp) = mcp {
         let mcp_url = format!(
             "{}/mcp/{}/{}",
             mcp.server_url, mcp.instance_slug, mcp.chat_id,
         );
 
-        // Use our own binary as the MCP stdio bridge
         let self_bin = std::env::current_exe()
             .unwrap_or_else(|_| std::path::PathBuf::from("server"));
 
-        let mcp_config_path = dir.join("mcp.json");
+        let mcp_config_path = temp_dir.join("mcp.json");
         let config = serde_json::json!({
             "mcpServers": {
                 "personality": {
@@ -339,12 +342,9 @@ pub async fn run_prompt(
         std::fs::write(&mcp_config_path, serde_json::to_string_pretty(&config)?)?;
         cmd.arg("--mcp-config").arg(&mcp_config_path);
         log::info!("claude CLI: MCP bridge via {} → {}", self_bin.display(), mcp_url);
-        Some(dir)
-    } else {
-        None
-    };
+    }
 
-    // Pass prompt via stdin (not as arg — args have OS length limits)
+    // Read prompt from stdin (too long for CLI arg)
     cmd.arg("-");
 
     // Pass OAuth token via env var
@@ -433,10 +433,8 @@ pub async fn run_prompt(
         }
     }
 
-    // Clean up temp MCP config
-    if let Some(dir) = mcp_temp_dir {
-        let _ = std::fs::remove_dir_all(&dir);
-    }
+    // Clean up temp dir
+    let _ = std::fs::remove_dir_all(&temp_dir);
 
     Ok((result_text, tokens_used))
 }
