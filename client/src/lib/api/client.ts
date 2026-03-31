@@ -180,12 +180,14 @@ export function updateProvider(provider: 'api' | 'claude_cli'): Promise<{ status
 	});
 }
 
-export function fetchClaudeCliStatus(): Promise<{
+export function fetchClaudeCliStatus(instanceSlug?: string): Promise<{
 	installed: boolean;
 	version?: string;
 	cli_available: boolean;
+	authenticated: boolean;
 }> {
-	return json("/api/claude-cli/status");
+	const qs = instanceSlug ? `?instance_slug=${encodeURIComponent(instanceSlug)}` : "";
+	return json(`/api/claude-cli/status${qs}`);
 }
 
 export function startClaudeCliOAuth(): Promise<{ auth_url: string }> {

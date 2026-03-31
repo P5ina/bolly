@@ -454,20 +454,31 @@ async fn update_provider(
 // Claude CLI status & OAuth
 // ---------------------------------------------------------------------------
 
+#[derive(Deserialize)]
+struct CliStatusQuery {
+    #[serde(default)]
+    instance_slug: Option<String>,
+}
+
 async fn claude_cli_status(
     State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<CliStatusQuery>,
 ) -> Json<serde_json::Value> {
     use crate::services::claude_cli;
 
     let installed = claude_cli::is_available();
     let version = claude_cli::version();
 
-    // Check if any instance has a valid token (generic status)
-    // For per-instance check, the client should pass instance_slug
+    let authenticated = query.instance_slug
+        .as_deref()
+        .map(|slug| claude_cli::has_valid_token(&state.workspace_dir, slug))
+        .unwrap_or(false);
+
     Json(json!({
         "installed": installed,
         "version": version,
         "cli_available": installed,
+        "authenticated": authenticated,
     }))
 }
 

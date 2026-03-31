@@ -376,7 +376,7 @@
 	let keyError = $state("");
 
 	// Claude CLI OAuth state
-	let cliStatus = $state<{ installed: boolean; version?: string } | null>(null);
+	let cliConnected = $state(false);
 	let cliOAuthCode = $state("");
 	let cliConnecting = $state(false);
 	let cliError = $state("");
@@ -387,6 +387,15 @@
 			if (s.configured_keys) configuredKeys = s.configured_keys;
 			if (s.provider) provider = s.provider;
 		}).catch(() => {});
+	});
+
+	// Check CLI token status when provider is claude_cli
+	$effect(() => {
+		if (provider === "claude_cli") {
+			fetchClaudeCliStatus(slug).then(s => {
+				cliConnected = s.authenticated;
+			}).catch(() => {});
+		}
 	});
 
 	async function setProvider(p: 'api' | 'claude_cli') {
@@ -420,10 +429,8 @@
 		try {
 			await exchangeClaudeCliOAuth(cliOAuthCode.trim(), slug);
 			provider = "claude_cli";
+			cliConnected = true;
 			cliOAuthCode = "";
-			// Refresh status
-			const s = await fetchConfigStatus();
-			if (s.provider) provider = s.provider;
 		} catch (e) {
 			cliError = e instanceof Error ? e.message : "failed to exchange code";
 		} finally {
@@ -929,37 +936,47 @@
 
 		{#if provider === "claude_cli"}
 			<div class="cli-oauth-section">
-				<p class="cli-instruction">Connect your Claude account to use your subscription.</p>
-				<div class="cli-oauth-row">
-					<button
-						class="key-change key-change-add"
-						onclick={startOAuth}
-						disabled={cliConnecting}
-					>
-						{cliConnecting ? "opening..." : "connect with Claude"}
-					</button>
-				</div>
-				<p class="cli-instruction" style="margin-top: 0.75rem; opacity: 0.6; font-size: 0.8rem;">
-					After authorizing, paste the code below:
-				</p>
-				<div class="cli-oauth-row">
-					<input
-						type="text"
-						class="cli-code-input"
-						placeholder="paste authorization code"
-						bind:value={cliOAuthCode}
-						onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter") submitOAuthCode(); }}
-					/>
-					<button
-						class="key-change"
-						onclick={submitOAuthCode}
-						disabled={!cliOAuthCode.trim() || cliConnecting}
-					>
-						{cliConnecting ? "..." : "submit"}
-					</button>
-				</div>
-				{#if cliError}
-					<p class="key-error">{cliError}</p>
+				{#if cliConnected}
+					<div class="cli-oauth-row" style="justify-content: space-between;">
+						<span class="key-badge key-badge-ok">connected</span>
+						<button
+							class="key-change"
+							onclick={() => { cliConnected = false; }}
+						>reconnect</button>
+					</div>
+				{:else}
+					<p class="cli-instruction">Connect your Claude account to use your subscription.</p>
+					<div class="cli-oauth-row">
+						<button
+							class="key-change key-change-add"
+							onclick={startOAuth}
+							disabled={cliConnecting}
+						>
+							{cliConnecting ? "opening..." : "connect with Claude"}
+						</button>
+					</div>
+					<p class="cli-instruction" style="margin-top: 0.75rem; opacity: 0.6; font-size: 0.8rem;">
+						After authorizing, paste the code below:
+					</p>
+					<div class="cli-oauth-row">
+						<input
+							type="text"
+							class="cli-code-input"
+							placeholder="paste authorization code"
+							bind:value={cliOAuthCode}
+							onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter") submitOAuthCode(); }}
+						/>
+						<button
+							class="key-change"
+							onclick={submitOAuthCode}
+							disabled={!cliOAuthCode.trim() || cliConnecting}
+						>
+							{cliConnecting ? "..." : "submit"}
+						</button>
+					</div>
+					{#if cliError}
+						<p class="key-error">{cliError}</p>
+					{/if}
 				{/if}
 			</div>
 		{/if}
