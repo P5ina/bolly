@@ -35,9 +35,33 @@ pub struct OAuthState {
 
 // ── CLI availability ──
 
-/// Check if the `claude` CLI binary is on PATH.
+/// Resolve the path to the `claude` binary.
+/// Checks PATH first, then falls back to ~/.local/bin/claude (native install location).
+fn resolve_binary() -> String {
+    // Try PATH first
+    if std::process::Command::new("claude")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok()
+    {
+        return "claude".to_string();
+    }
+    // Fallback: native install location
+    if let Some(home) = dirs::home_dir() {
+        let local = home.join(".local/bin/claude");
+        if local.exists() {
+            return local.to_string_lossy().to_string();
+        }
+    }
+    "claude".to_string()
+}
+
+/// Check if the `claude` CLI binary is available.
 pub fn is_available() -> bool {
-    std::process::Command::new("claude")
+    let bin = resolve_binary();
+    std::process::Command::new(&bin)
         .arg("--version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -47,7 +71,8 @@ pub fn is_available() -> bool {
 
 /// Get claude CLI version string, if available.
 pub fn version() -> Option<String> {
-    let output = std::process::Command::new("claude")
+    let bin = resolve_binary();
+    let output = std::process::Command::new(&bin)
         .arg("--version")
         .output()
         .ok()?;
@@ -267,7 +292,8 @@ pub async fn run_prompt(
     user_message: &str,
     oauth_token: &str,
 ) -> anyhow::Result<(String, u64)> {
-    let mut cmd = tokio::process::Command::new("claude");
+    let bin = resolve_binary();
+    let mut cmd = tokio::process::Command::new(&bin);
     cmd.arg("-p")
         .arg("--output-format")
         .arg("stream-json")
