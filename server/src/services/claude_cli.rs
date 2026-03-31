@@ -306,12 +306,21 @@ pub async fn run_prompt(
 
     let bin = resolve_binary();
     let mut cmd = tokio::process::Command::new(&bin);
+    // Create empty plugin dir so CLI loads no plugins
+    let empty_plugin_dir = temp_dir.join("plugins");
+    std::fs::create_dir_all(&empty_plugin_dir)?;
+
     cmd.arg("-p")
         .arg("--output-format")
         .arg("stream-json")
         .arg("--verbose")
         .arg("--model")
-        .arg(cli_model_name(model));
+        .arg(cli_model_name(model))
+        .arg("--strict-mcp-config")      // ignore global MCP servers
+        .arg("--plugin-dir")             // override plugin dir with empty
+        .arg(&empty_plugin_dir)
+        .arg("--no-chrome")              // no browser integration
+        .arg("--no-session-persistence"); // don't save CLI sessions to disk
 
     if !system_prompt.is_empty() {
         cmd.arg("--append-system-prompt").arg(system_prompt);
