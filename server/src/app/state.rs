@@ -118,19 +118,21 @@ impl AppState {
             }
         };
 
-        let (tokens_changed, mcp_changed) = {
+        let (llm_changed, mcp_changed) = {
             let old = self.config.read().await;
             let tokens = old.llm.tokens.anthropic != new_config.llm.tokens.anthropic;
+            let provider = old.llm.provider != new_config.llm.provider;
+            let llm = tokens || provider;
             let mcp = old.mcp_servers.len() != new_config.mcp_servers.len()
                 || old.mcp_servers.iter().zip(new_config.mcp_servers.iter())
                     .any(|(a, b)| a.name != b.name || a.url != b.url);
-            (tokens, mcp)
+            (llm, mcp)
         };
 
-        if tokens_changed {
+        if llm_changed {
             let new_llm = LlmBackend::from_config(&new_config);
             *self.llm.write().await = new_llm;
-            log::info!("config reloaded: LLM rebuilt");
+            log::info!("config reloaded: LLM rebuilt (provider={:?})", new_config.llm.provider);
         }
 
         if mcp_changed {

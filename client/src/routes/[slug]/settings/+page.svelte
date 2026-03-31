@@ -30,6 +30,10 @@
 		cancelScheduledTask,
 		fetchSuggestedMcp,
 		updateLlmConfig,
+		updateProvider,
+		fetchClaudeCliStatus,
+		startClaudeCliOAuth,
+		exchangeClaudeCliOAuth,
 		type ScheduledTask,
 	} from "$lib/api/client.js";
 	import type { McpServerInfo, EmailConfig } from "$lib/api/client.js";
@@ -362,19 +366,70 @@
 		{ id: "elevenlabs", name: "ElevenLabs", hint: "Text-to-speech voice", required: false, configKey: "elevenlabs" },
 	];
 
-	// Model mode + API keys state
+	// Provider + Model mode + API keys state
+	let provider = $state("api");
+	let providerSaving = $state(false);
 	let modelMode = $state("auto");
 	let modelModeSaving = $state(false);
 	let configuredKeys = $state<string[]>([]);
 	let keySaving = $state("");
 	let keyError = $state("");
 
+	// Claude CLI OAuth state
+	let cliStatus = $state<{ installed: boolean; version?: string } | null>(null);
+	let cliOAuthCode = $state("");
+	let cliConnecting = $state(false);
+	let cliError = $state("");
+
 	$effect(() => {
 		fetchConfigStatus().then(s => {
 			if (s.model_mode) modelMode = s.model_mode;
 			if (s.configured_keys) configuredKeys = s.configured_keys;
+			if (s.provider) provider = s.provider;
 		}).catch(() => {});
 	});
+
+	async function setProvider(p: 'api' | 'claude_cli') {
+		providerSaving = true;
+		try {
+			await updateProvider(p);
+			provider = p;
+		} catch {
+		} finally {
+			providerSaving = false;
+		}
+	}
+
+	async function startOAuth() {
+		cliConnecting = true;
+		cliError = "";
+		try {
+			const { auth_url } = await startClaudeCliOAuth();
+			window.open(auth_url, "_blank");
+		} catch (e) {
+			cliError = e instanceof Error ? e.message : "failed to start OAuth";
+		} finally {
+			cliConnecting = false;
+		}
+	}
+
+	async function submitOAuthCode() {
+		if (!cliOAuthCode.trim()) return;
+		cliConnecting = true;
+		cliError = "";
+		try {
+			await exchangeClaudeCliOAuth(cliOAuthCode.trim(), slug);
+			provider = "claude_cli";
+			cliOAuthCode = "";
+			// Refresh status
+			const s = await fetchConfigStatus();
+			if (s.provider) provider = s.provider;
+		} catch (e) {
+			cliError = e instanceof Error ? e.message : "failed to exchange code";
+		} finally {
+			cliConnecting = false;
+		}
+	}
 
 	async function saveKey(field: string, value: string) {
 		keySaving = field;
@@ -842,13 +897,81 @@
 		</div>
 	</section>
 
+	<!-- Provider -->
+	<section class="settings-section">
+		<div class="section-header">
+			<div class="section-icon">⚡</div>
+			<div>
+				<h3 class="section-label">provider</h3>
+				<p class="section-desc">How your companion connects to Claude.</p>
+			</div>
+		</div>
+		<div class="model-mode-options" class:disabled={providerSaving}>
+			<button
+				class="mode-option"
+				class:mode-active={provider === "api"}
+				onclick={() => setProvider("api")}
+				disabled={providerSaving}
+			>
+				<span class="mode-name">API key</span>
+				<span class="mode-desc">pay-per-use with your own Anthropic API key</span>
+			</button>
+			<button
+				class="mode-option"
+				class:mode-active={provider === "claude_cli"}
+				onclick={() => setProvider("claude_cli")}
+				disabled={providerSaving}
+			>
+				<span class="mode-name">Claude Code</span>
+				<span class="mode-desc">use your Pro/Max subscription — no API key needed</span>
+			</button>
+		</div>
+
+		{#if provider === "claude_cli"}
+			<div class="cli-oauth-section">
+				<p class="cli-instruction">Connect your Claude account to use your subscription.</p>
+				<div class="cli-oauth-row">
+					<button
+						class="key-change key-change-add"
+						onclick={startOAuth}
+						disabled={cliConnecting}
+					>
+						{cliConnecting ? "opening..." : "connect with Claude"}
+					</button>
+				</div>
+				<p class="cli-instruction" style="margin-top: 0.75rem; opacity: 0.6; font-size: 0.8rem;">
+					After authorizing, paste the code below:
+				</p>
+				<div class="cli-oauth-row">
+					<input
+						type="text"
+						class="cli-code-input"
+						placeholder="paste authorization code"
+						bind:value={cliOAuthCode}
+						onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter") submitOAuthCode(); }}
+					/>
+					<button
+						class="key-change"
+						onclick={submitOAuthCode}
+						disabled={!cliOAuthCode.trim() || cliConnecting}
+					>
+						{cliConnecting ? "..." : "submit"}
+					</button>
+				</div>
+				{#if cliError}
+					<p class="key-error">{cliError}</p>
+				{/if}
+			</div>
+		{/if}
+	</section>
+
 	<!-- API Keys -->
 	<section class="settings-section">
 		<div class="section-header">
 			<div class="section-icon">🔑</div>
 			<div>
 				<h3 class="section-label">api keys</h3>
-				<p class="section-desc">Connect your own API keys. Only Anthropic is required.</p>
+				<p class="section-desc">Connect your own API keys.{provider === "api" ? " Only Anthropic is required." : ""}</p>
 			</div>
 		</div>
 		<div class="keys-list">
@@ -2097,6 +2220,37 @@
 	.key-change-add { color: var(--color-warm); }
 	.key-change-add:hover { color: oklch(0.88 0.14 75); }
 	.key-error { margin-top: 8px; font-size: 0.72rem; color: oklch(0.65 0.15 25 / 70%); font-style: italic; }
+
+	/* --- Claude CLI OAuth --- */
+	.cli-oauth-section {
+		margin-top: 1rem;
+		padding: 1rem;
+		border-radius: 12px;
+		background: oklch(0.18 0.01 75 / 40%);
+		border: 1px solid oklch(0.3 0.02 75 / 30%);
+	}
+	.cli-instruction {
+		font-size: 0.82rem;
+		color: oklch(0.7 0.02 75 / 80%);
+		margin: 0 0 0.75rem;
+	}
+	.cli-oauth-row {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+	}
+	.cli-code-input {
+		flex: 1;
+		background: oklch(0.12 0.01 75 / 60%);
+		border: 1px solid oklch(0.3 0.02 75 / 40%);
+		border-radius: 8px;
+		padding: 0.5rem 0.75rem;
+		font-size: 0.82rem;
+		color: oklch(0.85 0.02 75);
+		font-family: inherit;
+	}
+	.cli-code-input::placeholder { color: oklch(0.5 0.02 75 / 60%); }
+	.cli-code-input:focus { outline: none; border-color: var(--color-warm); }
 
 	/* ── Server settings ── */
 	.setting-row { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; }

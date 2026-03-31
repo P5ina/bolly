@@ -192,6 +192,19 @@ pub const DEFAULT_FAST_MODEL: &str = "claude-sonnet-4-6";
 pub const CHEAP_MODEL: &str = "claude-haiku-4-5-20251001";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LlmProvider {
+    /// Direct Anthropic API calls (requires API key).
+    Api,
+    /// Claude Code CLI subprocess (uses user's Claude subscription via OAuth).
+    ClaudeCli,
+}
+
+impl Default for LlmProvider {
+    fn default() -> Self { LlmProvider::Api }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ModelMode {
     Auto,
@@ -207,6 +220,8 @@ fn default_heavy_multiplier() -> f32 { 1.7 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LlmConfig {
+    #[serde(default)]
+    pub provider: LlmProvider,
     #[serde(default)]
     pub tokens: LlmTokens,
     #[serde(default)]
@@ -277,9 +292,12 @@ impl LlmConfig {
         if self.tokens.anthropic.is_empty() { None } else { Some(&self.tokens.anthropic) }
     }
 
-    /// Whether the LLM is fully configured (Anthropic key present).
+    /// Whether the LLM is fully configured.
     pub fn is_configured(&self) -> bool {
-        self.api_key().is_some()
+        match self.provider {
+            LlmProvider::Api => self.api_key().is_some(),
+            LlmProvider::ClaudeCli => true, // CLI handles its own auth
+        }
     }
 
     /// List of service names that have API keys set.
@@ -302,6 +320,7 @@ impl LlmConfig {
 impl Default for LlmConfig {
     fn default() -> Self {
         Self {
+            provider: LlmProvider::default(),
             tokens: LlmTokens::default(),
             model_mode: ModelMode::default(),
             heavy_multiplier: default_heavy_multiplier(),

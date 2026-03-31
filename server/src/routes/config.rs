@@ -13,6 +13,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/config/model-mode", put(update_model_mode))
         .route("/api/config/status", get(get_status))
         .route("/api/config/llm", put(update_llm_key))
+        .route("/api/config/provider", put(update_provider))
         .route("/api/config/mcp", get(list_mcp_servers))
         .route("/api/config/mcp", post(add_mcp_server))
         .route("/api/config/mcp/suggested", get(suggested_mcp_servers))
@@ -21,6 +22,10 @@ pub fn router() -> Router<AppState> {
         .route("/api/config/github", put(update_github))
         .route("/api/config/server", get(get_server))
         .route("/api/config/server", put(update_server))
+        // Claude CLI OAuth
+        .route("/api/claude-cli/status", get(claude_cli_status))
+        .route("/api/claude-cli/oauth/start", get(claude_cli_oauth_start))
+        .route("/api/claude-cli/oauth/exchange", post(claude_cli_oauth_exchange))
 }
 
 async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -43,8 +48,14 @@ async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
     .map(|(name, _)| *name)
     .collect();
 
+    let provider = match config.llm.provider {
+        config::LlmProvider::Api => "api",
+        config::LlmProvider::ClaudeCli => "claude_cli",
+    };
+
     Json(json!({
         "llm_configured": config.llm.is_configured(),
+        "provider": provider,
         "model": config.llm.model_name(),
         "fast_model": config.llm.fast_model_name(),
         "model_mode": mode,
@@ -408,4 +419,123 @@ fn save_config(config: &config::Config) -> Result<(), (StatusCode, String)> {
         (StatusCode::INTERNAL_SERVER_ERROR, format!("failed to write config: {e}"))
     })?;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Provider switching
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct UpdateProviderRequest {
+    provider: String,
+}
+
+async fn update_provider(
+    State(state): State<AppState>,
+    Json(req): Json<UpdateProviderRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let provider = match req.provider.as_str() {
+        "api" | "anthropic" => config::LlmProvider::Api,
+        "claude_cli" | "cli" => config::LlmProvider::ClaudeCli,
+        other => return Err((StatusCode::BAD_REQUEST, format!("unknown provider: {other}"))),
+    };
+
+    {
+        let mut cfg = state.config.write().await;
+        cfg.llm.provider = provider;
+        save_config(&cfg)?;
+    }
+    state.reload_config().await;
+
+    Ok(Json(json!({ "status": "ok", "provider": req.provider })))
+}
+
+// ---------------------------------------------------------------------------
+// Claude CLI status & OAuth
+// ---------------------------------------------------------------------------
+
+async fn claude_cli_status(
+    State(state): State<AppState>,
+) -> Json<serde_json::Value> {
+    use crate::services::claude_cli;
+
+    let installed = claude_cli::is_available();
+    let version = claude_cli::version();
+
+    // Check if any instance has a valid token (generic status)
+    // For per-instance check, the client should pass instance_slug
+    Json(json!({
+        "installed": installed,
+        "version": version,
+        "cli_available": installed,
+    }))
+}
+
+/// Start OAuth PKCE flow — returns an authorization URL for the user to visit.
+async fn claude_cli_oauth_start(
+    State(_state): State<AppState>,
+) -> Json<serde_json::Value> {
+    use crate::services::claude_cli;
+
+    let oauth_state = claude_cli::initiate_oauth();
+    let auth_url = claude_cli::build_auth_url(&oauth_state);
+
+    // Store the PKCE state temporarily for the exchange step.
+    // We use a simple file since this is a short-lived flow (10 min).
+    let state_path = config::workspace_root().join(".claude_oauth_state.json");
+    if let Ok(json) = serde_json::to_string_pretty(&oauth_state) {
+        let _ = std::fs::write(&state_path, json);
+    }
+
+    Json(json!({
+        "auth_url": auth_url,
+    }))
+}
+
+#[derive(Deserialize)]
+struct OAuthExchangeRequest {
+    code: String,
+    instance_slug: String,
+}
+
+/// Exchange authorization code for tokens and store per-instance.
+async fn claude_cli_oauth_exchange(
+    State(state): State<AppState>,
+    Json(req): Json<OAuthExchangeRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    use crate::services::claude_cli;
+
+    // Load PKCE state
+    let state_path = config::workspace_root().join(".claude_oauth_state.json");
+    let state_json = std::fs::read_to_string(&state_path)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("No pending OAuth flow: {e}")))?;
+    let oauth_state: claude_cli::OAuthState = serde_json::from_str(&state_json)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid OAuth state: {e}")))?;
+
+    // Exchange code for tokens
+    let http = reqwest::Client::new();
+    let tokens = claude_cli::exchange_code(&http, &req.code, &oauth_state)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("OAuth exchange failed: {e}")))?;
+
+    // Save per-instance
+    let workspace = state.workspace_dir.clone();
+    claude_cli::save_token(&workspace, &req.instance_slug, &tokens)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save token: {e}")))?;
+
+    // Clean up state file
+    let _ = std::fs::remove_file(&state_path);
+
+    // Auto-switch provider to claude_cli
+    {
+        let mut cfg = state.config.write().await;
+        cfg.llm.provider = config::LlmProvider::ClaudeCli;
+        let _ = save_config(&cfg);
+    }
+    state.reload_config().await;
+
+    Ok(Json(json!({
+        "status": "ok",
+        "expires_at": tokens.expires_at,
+    })))
 }

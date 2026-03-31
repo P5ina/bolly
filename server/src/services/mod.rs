@@ -1,4 +1,5 @@
 pub mod chat;
+pub mod claude_cli;
 pub mod daily_stats;
 pub mod embedding;
 pub mod google;

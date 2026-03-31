@@ -163,12 +163,41 @@ export function updateLlmConfig(req: {
 
 export function fetchConfigStatus(): Promise<{
 	llm_configured: boolean;
+	provider?: string;
 	model?: string;
 	model_mode?: string;
 	configured_keys?: string[];
 	is_managed?: boolean;
 }> {
 	return json("/api/config/status");
+}
+
+export function updateProvider(provider: 'api' | 'claude_cli'): Promise<{ status: string; provider: string }> {
+	return json("/api/config/provider", {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ provider }),
+	});
+}
+
+export function fetchClaudeCliStatus(): Promise<{
+	installed: boolean;
+	version?: string;
+	cli_available: boolean;
+}> {
+	return json("/api/claude-cli/status");
+}
+
+export function startClaudeCliOAuth(): Promise<{ auth_url: string }> {
+	return json("/api/claude-cli/oauth/start");
+}
+
+export function exchangeClaudeCliOAuth(code: string, instanceSlug: string): Promise<{ status: string; expires_at: number }> {
+	return json("/api/claude-cli/oauth/exchange", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ code, instance_slug: instanceSlug }),
+	});
 }
 
 export function fetchServerConfig(): Promise<{ host: string; port: number; auth_token_set: boolean }> {

@@ -471,14 +471,34 @@ pub struct LlmBackend {
     pub http: reqwest::Client,
     pub api_key: String,
     pub model: String,
+    /// Provider type — Api (direct Anthropic) or ClaudeCli (subprocess).
+    pub provider: crate::config::LlmProvider,
 }
 
 impl LlmBackend {
     pub fn from_config(config: &Config) -> Option<Self> {
-        let api_key = config.llm.api_key()?.to_string();
-        let model = config.llm.model_name().to_string();
         let http = reqwest::Client::new();
-        Some(Self { http, api_key, model })
+        let model = config.llm.model_name().to_string();
+
+        match config.llm.provider {
+            crate::config::LlmProvider::Api => {
+                let api_key = config.llm.api_key()?.to_string();
+                Some(Self { http, api_key, model, provider: crate::config::LlmProvider::Api })
+            }
+            crate::config::LlmProvider::ClaudeCli => {
+                Some(Self {
+                    http,
+                    api_key: String::new(), // not used for CLI
+                    model,
+                    provider: crate::config::LlmProvider::ClaudeCli,
+                })
+            }
+        }
+    }
+
+    /// Whether this backend uses the Claude CLI subprocess.
+    pub fn is_cli(&self) -> bool {
+        matches!(self.provider, crate::config::LlmProvider::ClaudeCli)
     }
 
     /// Create a variant using the fast/cheap model.
@@ -488,6 +508,7 @@ impl LlmBackend {
             api_key: self.api_key.clone(),
             model: override_model.filter(|s| !s.is_empty())
                 .unwrap_or(DEFAULT_FAST_MODEL).to_string(),
+            provider: self.provider,
         }
     }
 
@@ -497,6 +518,7 @@ impl LlmBackend {
             http: self.http.clone(),
             api_key: self.api_key.clone(),
             model: CHEAP_MODEL.to_string(),
+            provider: self.provider,
         }
     }
 
@@ -506,6 +528,7 @@ impl LlmBackend {
             http: self.http.clone(),
             api_key: self.api_key.clone(),
             model: DEFAULT_MODEL.to_string(),
+            provider: self.provider,
         }
     }
 
@@ -516,8 +539,11 @@ impl LlmBackend {
 
 
     /// Classify whether a user message needs the heavy model.
-    /// Uses the fast model with a minimal prompt. Falls back to heavy on error.
+    /// CLI mode: always returns false to save subscription quota.
     pub async fn classify_needs_heavy(&self, user_message: &str) -> bool {
+        if self.is_cli() {
+            return false;
+        }
         let classifier = self.cheap_variant();
         let system = "Classify this message. Respond with exactly one word.\n\
             Say \"heavy\" if it needs: complex reasoning, code, analysis, creative writing, research, multi-step tasks, tool use.\n\
@@ -546,6 +572,11 @@ impl LlmBackend {
         prompt: &str,
         history: Vec<Message>,
     ) -> anyhow::Result<(String, u64)> {
+        if self.is_cli() {
+            return Err(anyhow::anyhow!(
+                "Claude CLI backend requires OAuth token — use chat_with_tools_streaming with workspace context"
+            ));
+        }
         let backend = self.clone();
         let system = system_prompt.to_string();
         let prompt = prompt.to_string();
@@ -565,13 +596,16 @@ impl LlmBackend {
         .await
     }
 
-    /// Chat with structured JSON output (Anthropic only, falls back to text parsing for other providers).
+    /// Chat with structured JSON output (Anthropic API only; CLI mode errors).
     pub async fn chat_json(
         &self,
         system_prompt: &str,
         prompt: &str,
         schema: serde_json::Value,
     ) -> anyhow::Result<(String, u64)> {
+        if self.is_cli() {
+            return Err(anyhow::anyhow!("chat_json not supported in Claude CLI mode"));
+        }
         let backend = self.clone();
         let system = system_prompt.to_string();
         let prompt = prompt.to_string();
@@ -640,6 +674,13 @@ impl LlmBackend {
         mcp_snapshot: Option<super::mcp::McpAppSnapshot>,
         sent_files: super::tools::SentFiles,
     ) -> anyhow::Result<ToolChatResult> {
+        if self.is_cli() {
+            return self.cli_chat_streaming(
+                system_prompt, prompt, history, events,
+                instance_slug, chat_id, workspace_dir,
+            ).await;
+        }
+
         log::info!("chat_with_tools_streaming: {} tools", tools.len());
 
         let tool_defs = collect_tool_defs(&tools).await;
@@ -672,6 +713,104 @@ impl LlmBackend {
             }),
             Err(e) => Err(e),
         }
+    }
+
+    /// Claude CLI chat path: spawn subprocess, fake-stream result.
+    async fn cli_chat_streaming(
+        &self,
+        system_prompt: &[&str],
+        prompt: Message,
+        history: Vec<Message>,
+        events: broadcast::Sender<ServerEvent>,
+        instance_slug: &str,
+        chat_id: &str,
+        workspace_dir: &Path,
+    ) -> anyhow::Result<ToolChatResult> {
+        // Load per-instance OAuth token
+        let token = super::claude_cli::load_token(workspace_dir, instance_slug)
+            .ok_or_else(|| anyhow::anyhow!(
+                "No Claude CLI OAuth token found for this instance. Please connect your Claude account in Settings."
+            ))?;
+
+        // Build system prompt string
+        let system = system_prompt.join("\n\n");
+
+        // Extract the last user message text
+        let user_text = if let Message::User { content } = &prompt {
+            content.iter().filter_map(|b| {
+                if let ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
+            }).collect::<Vec<_>>().join("\n")
+        } else {
+            String::new()
+        };
+
+        // Build history context to embed in the prompt
+        let mut context = String::new();
+        let recent = if history.len() > 20 { &history[history.len() - 20..] } else { &history };
+        if !recent.is_empty() {
+            context.push_str("[Recent conversation]\n");
+            for msg in recent {
+                match msg {
+                    Message::User { content } => {
+                        let text: String = content.iter().filter_map(|b| {
+                            if let ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
+                        }).collect::<Vec<_>>().join(" ");
+                        if !text.is_empty() {
+                            context.push_str(&format!("User: {text}\n"));
+                        }
+                    }
+                    Message::Assistant { content } => {
+                        let text: String = content.iter().filter_map(|b| {
+                            if let ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
+                        }).collect::<Vec<_>>().join(" ");
+                        if !text.is_empty() {
+                            context.push_str(&format!("Assistant: {text}\n"));
+                        }
+                    }
+                }
+            }
+            context.push_str("\n[Current message]\n");
+        }
+        let full_prompt = format!("{context}{user_text}");
+
+        log::info!("claude CLI: sending prompt ({} chars) with system ({} chars)",
+            full_prompt.len(), system.len());
+
+        // Call Claude CLI
+        let (text, tokens_used) = super::claude_cli::run_prompt(
+            &self.model,
+            &system,
+            &full_prompt,
+            &token.access_token,
+        ).await?;
+
+        // Fake-stream the result word by word
+        let message_id = super::chat::next_id();
+        for word in text.split_inclusive(char::is_whitespace) {
+            let _ = events.send(crate::domain::events::ServerEvent::ChatStreamDelta {
+                instance_slug: instance_slug.to_string(),
+                chat_id: chat_id.to_string(),
+                message_id: message_id.clone(),
+                delta: word.to_string(),
+            });
+            tokio::time::sleep(std::time::Duration::from_millis(8)).await;
+        }
+
+        // Build messages list for rig_history
+        let mut messages = history;
+        if let Message::User { content } = prompt {
+            messages.push(Message::User { content });
+        }
+        messages.push(Message::Assistant {
+            content: vec![ContentBlock::Text { text: text.clone() }],
+        });
+
+        Ok(ToolChatResult {
+            text,
+            rig_history: Some(messages),
+            message_id: Some(message_id),
+            tokens_used,
+        })
     }
 
     /// Simplified tool call (no streaming). Used by heartbeat.

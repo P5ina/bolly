@@ -7,6 +7,8 @@
 		setCompanionName,
 		fetchConfigStatus,
 		updateLlmConfig,
+		startClaudeCliOAuth,
+		exchangeClaudeCliOAuth,
 	} from "$lib/api/client.js";
 	import type { SoulTemplate } from "$lib/api/types.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
@@ -30,9 +32,15 @@
 		| "picking-language"
 		| "naming-companion"
 		| "picking-soul"
+		| "picking-provider"
+		| "claude-oauth"
 		| "waiting-first"
 		| "sending"
 		| "departing";
+
+	let oauthCode = $state("");
+	let oauthError = $state("");
+	let oauthConnecting = $state(false);
 
 	let stage = $state<Stage>("reveal");
 	let revealed = $state(false);
@@ -179,11 +187,50 @@
 			}
 		} catch {}
 
-		// No key configured — ask for one
-		await typewrite("one more thing — i need an anthropic api key to think.");
+		// Ask how they want to connect
+		await typewrite("one more thing — how should i think?");
+		stage = "picking-provider";
+	}
+
+	async function pickProviderApi() {
+		stage = "intro";
+		await typewrite("got it. i'll need an anthropic api key.");
 		stage = "waiting-key";
 		await pause(100);
 		apiKeyInputEl?.focus();
+	}
+
+	async function pickProviderClaude() {
+		stage = "intro";
+		await typewrite("let's connect your claude account.");
+		oauthError = "";
+		oauthConnecting = true;
+		try {
+			const { auth_url } = await startClaudeCliOAuth();
+			window.open(auth_url, "_blank");
+		} catch (e) {
+			oauthError = e instanceof Error ? e.message : "failed";
+		} finally {
+			oauthConnecting = false;
+		}
+		stage = "claude-oauth";
+	}
+
+	async function submitOAuthCode() {
+		const code = oauthCode.trim();
+		if (!code) return;
+		oauthError = "";
+		oauthConnecting = true;
+		try {
+			await exchangeClaudeCliOAuth(code, slug);
+			stage = "intro";
+			await typewrite("connected.");
+			await pause(400);
+			await askFirstMessage();
+		} catch (e) {
+			oauthError = e instanceof Error ? e.message : "invalid code";
+			oauthConnecting = false;
+		}
 	}
 
 	async function submitApiKey() {
@@ -302,6 +349,42 @@
 							</button>
 						{/each}
 					</div>
+				</div>
+			{/if}
+
+			{#if stage === "picking-provider"}
+				<div class="ob-enter">
+					<div class="ob-pills">
+						<button onclick={pickProviderApi} class="ob-pill ob-pill-col ob-pill-soul">
+							<span class="ob-pill-label">API key</span>
+							<span class="ob-pill-note">pay-per-use</span>
+						</button>
+						<button onclick={pickProviderClaude} class="ob-pill ob-pill-col ob-pill-soul">
+							<span class="ob-pill-label">Claude Code</span>
+							<span class="ob-pill-note">use your subscription</span>
+						</button>
+					</div>
+				</div>
+			{/if}
+
+			{#if stage === "claude-oauth"}
+				<div class="ob-enter">
+					<p class="ob-hint" style="margin-bottom: 0.75rem">after authorizing in your browser, paste the code below</p>
+					<div class="ob-field">
+						<input
+							bind:value={oauthCode}
+							onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); submitOAuthCode(); } }}
+							placeholder="paste authorization code"
+							class="ob-input ob-input-mono"
+							type="text"
+						/>
+						{#if oauthCode.trim()}
+							<button onclick={submitOAuthCode} class="ob-go" disabled={oauthConnecting} aria-label="Submit">→</button>
+						{/if}
+					</div>
+					{#if oauthError}
+						<p class="ob-error">{oauthError}</p>
+					{/if}
 				</div>
 			{/if}
 
