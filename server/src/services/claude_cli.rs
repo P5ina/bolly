@@ -305,6 +305,7 @@ pub async fn run_prompt(
     cmd.arg("-p")
         .arg("--output-format")
         .arg("stream-json")
+        .arg("--verbose")
         .arg("--model")
         .arg(cli_model_name(model));
 
