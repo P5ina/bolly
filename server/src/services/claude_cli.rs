@@ -341,7 +341,10 @@ pub async fn run_prompt(
         log::info!("claude CLI: MCP bridge via {} → {}", self_bin.display(), mcp_url);
     }
 
-    // Prompt is passed via stdin (no arg needed — `-p` reads stdin if no prompt arg given)
+    // Write prompt to temp file (stdin pipe doesn't close reliably in async)
+    let prompt_path = temp_dir.join("prompt.txt");
+    std::fs::write(&prompt_path, user_message)?;
+    cmd.stdin(std::process::Stdio::from(std::fs::File::open(&prompt_path)?));
 
     // Pass OAuth token via env var
     cmd.env("CLAUDE_CODE_OAUTH_TOKEN", oauth_token);
@@ -349,20 +352,12 @@ pub async fn run_prompt(
     // Clear any system Anthropic key to ensure CLI uses OAuth
     cmd.env_remove("ANTHROPIC_API_KEY");
 
-    cmd.stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
+    cmd.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
     let mut child = cmd.spawn().map_err(|e| {
         anyhow::anyhow!("failed to spawn claude CLI: {e} — is it installed?")
     })?;
-
-    // Write prompt to stdin
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin.write_all(user_message.as_bytes()).await?;
-        drop(stdin); // close stdin so CLI starts processing
-    }
 
     let stdout = child
         .stdout
@@ -383,8 +378,11 @@ pub async fn run_prompt(
                 continue;
             }
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                let event_type = json["type"].as_str().unwrap_or("unknown");
+                log::debug!("claude CLI event: type={event_type}");
                 match json["type"].as_str() {
                     Some("result") => {
+                        log::info!("claude CLI: got result ({} chars)", json["result"].as_str().map(|s| s.len()).unwrap_or(0));
                         if let Some(text) = json["result"].as_str() {
                             result_text = text.to_string();
                         }
@@ -398,6 +396,7 @@ pub async fn run_prompt(
                 }
             }
         }
+        log::info!("claude CLI: stream ended, result_text={} chars, tokens={}", result_text.len(), tokens_used);
         Ok::<(), anyhow::Error>(())
     })
     .await;

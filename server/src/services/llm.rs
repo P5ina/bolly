@@ -501,6 +501,20 @@ impl LlmBackend {
         matches!(self.provider, crate::config::LlmProvider::ClaudeCli)
     }
 
+    /// Find an OAuth token from any instance for background CLI calls.
+    fn resolve_cli_token(&self) -> String {
+        let workspace = crate::config::workspace_root();
+        let instances_dir = workspace.join("instances");
+        if let Ok(entries) = std::fs::read_dir(&instances_dir) {
+            for entry in entries.flatten() {
+                if let Some(token) = super::claude_cli::load_token(&workspace, &entry.file_name().to_string_lossy()) {
+                    return token.access_token;
+                }
+            }
+        }
+        String::new()
+    }
+
     /// Create a variant using the fast/cheap model.
     pub fn fast_variant_with(&self, override_model: Option<&str>) -> Self {
         Self {
@@ -539,11 +553,7 @@ impl LlmBackend {
 
 
     /// Classify whether a user message needs the heavy model.
-    /// CLI mode: always returns false to save subscription quota.
     pub async fn classify_needs_heavy(&self, user_message: &str) -> bool {
-        if self.is_cli() {
-            return false;
-        }
         let classifier = self.cheap_variant();
         let system = "Classify this message. Respond with exactly one word.\n\
             Say \"heavy\" if it needs: complex reasoning, code, analysis, creative writing, research, multi-step tasks, tool use.\n\
@@ -573,9 +583,24 @@ impl LlmBackend {
         history: Vec<Message>,
     ) -> anyhow::Result<(String, u64)> {
         if self.is_cli() {
-            return Err(anyhow::anyhow!(
-                "Claude CLI backend requires OAuth token — use chat_with_tools_streaming with workspace context"
-            ));
+            // Build context from history
+            let mut context = String::new();
+            for msg in &history {
+                match msg {
+                    Message::User { content } => {
+                        let t: String = content.iter().filter_map(|b| if let ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join(" ");
+                        if !t.is_empty() { context.push_str(&format!("User: {t}\n")); }
+                    }
+                    Message::Assistant { content } => {
+                        let t: String = content.iter().filter_map(|b| if let ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join(" ");
+                        if !t.is_empty() { context.push_str(&format!("Assistant: {t}\n")); }
+                    }
+                }
+            }
+            let full = if context.is_empty() { prompt.to_string() } else { format!("{context}\n{prompt}") };
+            // Load any available OAuth token (try all instances)
+            let token = self.resolve_cli_token();
+            return super::claude_cli::run_prompt(&self.model, system_prompt, &full, &token, None).await;
         }
         let backend = self.clone();
         let system = system_prompt.to_string();
@@ -596,7 +621,7 @@ impl LlmBackend {
         .await
     }
 
-    /// Chat with structured JSON output (Anthropic API only; CLI mode errors).
+    /// Chat with structured JSON output.
     pub async fn chat_json(
         &self,
         system_prompt: &str,
@@ -604,7 +629,19 @@ impl LlmBackend {
         schema: serde_json::Value,
     ) -> anyhow::Result<(String, u64)> {
         if self.is_cli() {
-            return Err(anyhow::anyhow!("chat_json not supported in Claude CLI mode"));
+            // CLI mode: ask for JSON in the prompt, parse from response
+            let json_prompt = format!(
+                "{prompt}\n\nIMPORTANT: Respond with ONLY valid JSON matching this schema, no other text:\n{schema}",
+                schema = serde_json::to_string_pretty(&schema).unwrap_or_default()
+            );
+            let token = self.resolve_cli_token();
+            let (text, tokens) = super::claude_cli::run_prompt(&self.model, system_prompt, &json_prompt, &token, None).await?;
+            // Try to extract JSON from response (may have markdown fences)
+            let cleaned = text.trim()
+                .trim_start_matches("```json").trim_start_matches("```")
+                .trim_end_matches("```")
+                .trim();
+            return Ok((cleaned.to_string(), tokens));
         }
         let backend = self.clone();
         let system = system_prompt.to_string();
@@ -777,6 +814,7 @@ impl LlmBackend {
             full_prompt.len(), system.len());
 
         // Build MCP config so Claude CLI can call our tools
+        // Build MCP config so Claude CLI can call our tools
         let mcp = {
             let config = crate::config::load_config().ok();
             config.map(|c| super::claude_cli::McpConfig {
@@ -796,6 +834,8 @@ impl LlmBackend {
             mcp.as_ref(),
         ).await?;
 
+        log::info!("claude CLI: response received, {} chars. Streaming to client...", text.len());
+
         // Fake-stream the result word by word
         let message_id = super::chat::next_id();
         for word in text.split_inclusive(char::is_whitespace) {
@@ -813,9 +853,34 @@ impl LlmBackend {
         if let Message::User { content } = prompt {
             messages.push(Message::User { content });
         }
-        messages.push(Message::Assistant {
+        let assistant_msg = Message::Assistant {
             content: vec![ContentBlock::Text { text: text.clone() }],
-        });
+        };
+
+        // Save to rig_history (the API path does this inside streaming_agent_loop)
+        let rig_path = super::chat::rig_history_path(workspace_dir, instance_slug, chat_id);
+        let ts = crate::services::tools::unix_millis().to_string();
+        let mut entry = HistoryEntry::new(
+            assistant_msg.clone(),
+            ts,
+            message_id.clone(),
+        );
+        entry.model = Some(self.model.clone());
+        super::chat::append_to_rig_history(&rig_path, &entry);
+
+        messages.push(assistant_msg);
+
+        // Send snapshot so client refreshes the chat
+        if let Ok(resp) = super::chat::load_messages(workspace_dir, instance_slug, chat_id) {
+            let _ = events.send(crate::domain::events::ServerEvent::ChatSnapshot {
+                instance_slug: instance_slug.to_string(),
+                chat_id: chat_id.to_string(),
+                messages: resp.messages,
+                agent_running: false,
+            });
+        }
+
+        log::info!("claude CLI: turn complete, saved {} chars to rig_history", text.len());
 
         Ok(ToolChatResult {
             text,
@@ -834,7 +899,7 @@ impl LlmBackend {
         history: Vec<Message>,
         tools: Vec<Box<dyn ToolDyn>>,
     ) -> anyhow::Result<(String, u64)> {
-        if tools.is_empty() {
+        if self.is_cli() || tools.is_empty() {
             return self.chat(system_prompt, prompt, history).await;
         }
         let system_blocks: &[&str] = &[system_prompt];
