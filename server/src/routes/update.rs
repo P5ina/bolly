@@ -226,13 +226,10 @@ async fn fetch_release_info(channel: &str) -> Option<ReleaseInfo> {
     };
 
     let client = reqwest::Client::new();
-    let mut req = client.get(&url).header("User-Agent", "bolly-update");
-    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-        if !token.is_empty() {
-            req = req.header("Authorization", format!("token {token}"));
-        }
-    }
-    let resp = req.send().await.ok()?;
+    let resp = client
+        .get(&url)
+        .header("User-Agent", "bolly-update")
+        .send().await.ok()?;
 
     if !resp.status().is_success() {
         log::warn!("[update] GitHub API returned {}", resp.status());
@@ -282,13 +279,7 @@ async fn get_changelog(State(state): State<AppState>) -> Json<Vec<Changelog>> {
     } else {
         let url = format!("https://api.github.com/repos/{repo}/releases?per_page=10");
         let client = reqwest::Client::new();
-        let mut req = client.get(&url).header("User-Agent", "bolly-update");
-        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            if !token.is_empty() {
-                req = req.header("Authorization", format!("token {token}"));
-            }
-        }
-        let resp = match req.send().await {
+        let resp = match client.get(&url).header("User-Agent", "bolly-update").send().await {
             Ok(r) if r.status().is_success() => r,
             Ok(r) => {
                 log::warn!("[changelog] GitHub API returned {}", r.status());
