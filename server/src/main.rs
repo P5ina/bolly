@@ -10,7 +10,15 @@ use log::info;
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .filter_module("tracing::span", log::LevelFilter::Warn)
+        .filter_module("lance", log::LevelFilter::Warn)
+        .filter_module("lance_core", log::LevelFilter::Warn)
+        .filter_module("lance_io", log::LevelFilter::Warn)
+        .filter_module("lance_index", log::LevelFilter::Warn)
+        .filter_module("lance_table", log::LevelFilter::Warn)
+        .filter_module("lancedb", log::LevelFilter::Warn)
+        .init();
 
     let config = config::load_config().unwrap_or_else(|err| {
         panic!(
