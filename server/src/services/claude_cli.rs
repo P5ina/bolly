@@ -320,7 +320,9 @@ pub async fn run_prompt(
         .arg("--plugin-dir")             // override plugin dir with empty
         .arg(&empty_plugin_dir)
         .arg("--no-chrome")              // no browser integration
-        .arg("--no-session-persistence"); // don't save CLI sessions to disk
+        .arg("--no-session-persistence") // don't save CLI sessions to disk
+        .arg("--tools")                  // disable all built-in tools
+        .arg("");
 
     if !system_prompt.is_empty() {
         cmd.arg("--append-system-prompt").arg(system_prompt);
