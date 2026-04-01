@@ -159,7 +159,7 @@ pub async fn start_meridian(workspace_dir: &Path) -> anyhow::Result<()> {
             .status();
         log::info!("Running Meridian as user 'bolly' (bypassPermissions blocked for root)");
         let mut c = std::process::Command::new("sudo");
-        c.args(["-u", "bolly", "-E", "meridian"]);
+        c.args(["-u", "bolly", "-H", "meridian"]);
         c
     } else {
         std::process::Command::new("meridian")
