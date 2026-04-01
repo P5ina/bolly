@@ -56,11 +56,24 @@ pub async fn ensure_meridian_installed() -> anyhow::Result<()> {
 
 /// Start Meridian as a detached background process.
 /// Listens on http://127.0.0.1:3456, proxying to Claude subscription.
-pub async fn start_meridian() -> anyhow::Result<()> {
+/// Writes OAuth credentials to ~/.claude/.credentials.json so the
+/// Claude Code SDK (used by Meridian) can authenticate.
+pub async fn start_meridian(workspace_dir: &Path) -> anyhow::Result<()> {
+    // Find OAuth token from any instance and write to Claude credentials file
+    let instances_dir = workspace_dir.join("instances");
+    if let Ok(entries) = std::fs::read_dir(&instances_dir) {
+        for entry in entries.flatten() {
+            let slug = entry.file_name().to_string_lossy().to_string();
+            if let Some(token) = load_token(workspace_dir, &slug) {
+                write_claude_credentials(&token);
+                log::info!("Wrote Claude credentials from instance '{slug}' for Meridian");
+                break;
+            }
+        }
+    }
+
     log::info!("Starting Meridian proxy on port 3456...");
 
-    // Must fully detach: null stdio + setsid. Piped stdout/stderr causes
-    // Meridian to hang (it expects a real terminal or /dev/null).
     let child = std::process::Command::new("meridian")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -232,6 +245,33 @@ pub fn has_valid_token(workspace_dir: &Path, instance_slug: &str) -> bool {
             t.expires_at > now
         }
         None => false,
+    }
+}
+
+/// Write OAuth tokens to ~/.claude/.credentials.json so Claude Code SDK
+/// (used by Meridian) can authenticate on headless/managed servers.
+fn write_claude_credentials(tokens: &OAuthTokens) {
+    let Some(home) = dirs::home_dir() else { return };
+    let claude_dir = home.join(".claude");
+    let _ = std::fs::create_dir_all(&claude_dir);
+
+    let creds = serde_json::json!({
+        "claudeAiOauth": {
+            "accessToken": tokens.access_token,
+            "refreshToken": tokens.refresh_token,
+            "expiresAt": tokens.expires_at,
+        }
+    });
+
+    let path = claude_dir.join(".credentials.json");
+    if let Err(e) = std::fs::write(&path, serde_json::to_string_pretty(&creds).unwrap_or_default()) {
+        log::warn!("Failed to write Claude credentials: {e}");
+    }
+
+    // Also ensure onboarding is skipped
+    let claude_json = claude_dir.join("claude.json");
+    if !claude_json.exists() {
+        let _ = std::fs::write(&claude_json, r#"{"hasCompletedOnboarding":true}"#);
     }
 }
 

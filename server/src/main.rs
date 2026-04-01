@@ -46,7 +46,7 @@ async fn main() {
         if !services::claude_cli::is_meridian_running().await {
             if let Err(e) = services::claude_cli::ensure_meridian_installed().await {
                 log::error!("Failed to install Meridian: {e}");
-            } else if let Err(e) = services::claude_cli::start_meridian().await {
+            } else if let Err(e) = services::claude_cli::start_meridian(&config::workspace_root()).await {
                 log::error!("Failed to start Meridian: {e}");
             }
         } else {
