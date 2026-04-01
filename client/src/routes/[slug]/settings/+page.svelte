@@ -387,7 +387,8 @@
 	$effect(() => { fetchUsage().then(u => usage = u).catch(() => {}); });
 
 	const apiKeyDefs = [
-		{ id: "api_key", name: "Anthropic", hint: "sk-ant-... (required for chat)", required: true, configKey: "anthropic" },
+		{ id: "api_key", name: "Anthropic", hint: "sk-ant-...", required: false, configKey: "anthropic" },
+		{ id: "openai", name: "OpenAI", hint: "sk-...", required: false, configKey: "openai" },
 		{ id: "google_ai", name: "Google AI", hint: "Memory search + video/audio analysis", required: false, configKey: "google_ai" },
 		{ id: "elevenlabs", name: "ElevenLabs", hint: "Text-to-speech voice", required: false, configKey: "elevenlabs" },
 	];
@@ -1004,29 +1005,6 @@
 			</button>
 		</div>
 
-		{#if provider === "openai"}
-			<div class="cli-oauth-section">
-				<p class="cli-instruction">Enter your OpenAI API key.</p>
-				<div class="cli-oauth-row">
-					<input
-						type="password"
-						class="cli-code-input"
-						placeholder="sk-..."
-						bind:value={cliOAuthCode}
-						onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter") { saveKey("openai", cliOAuthCode); cliOAuthCode = ""; } }}
-					/>
-					<button
-						class="key-change"
-						onclick={() => { saveKey("openai", cliOAuthCode); cliOAuthCode = ""; }}
-						disabled={!cliOAuthCode.trim()}
-					>save</button>
-				</div>
-				<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" class="ob-hint" style="margin-top: 0.5rem; display: block; font-size: 0.75rem;">
-					get your key at platform.openai.com
-				</a>
-			</div>
-		{/if}
-
 		{#if provider === "codex"}
 			<div class="cli-oauth-section">
 				<p class="cli-instruction">Codex uses your ChatGPT subscription. Requires terminal access.</p>
@@ -1112,7 +1090,7 @@
 			<div class="section-icon">🔑</div>
 			<div>
 				<h3 class="section-label">api keys</h3>
-				<p class="section-desc">Connect your own API keys.{provider === "api" ? " Only Anthropic is required." : ""}</p>
+				<p class="section-desc">Connect your API keys. Required for API key providers.</p>
 			</div>
 		</div>
 		<div class="keys-list">
