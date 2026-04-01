@@ -2352,7 +2352,7 @@
 
 	/* ── API Keys ── */
 	.keys-list { display: flex; flex-direction: column; gap: 1px; background: oklch(var(--ink) / 4%); border-radius: 12px; overflow: hidden; }
-	.key-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: oklch(0.04 0.015 260); }
+	.key-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--surface-elevated); }
 	.key-info { display: flex; flex-direction: column; gap: 2px; }
 	.key-name { font-size: 0.82rem; font-weight: 500; color: var(--foreground); }
 	.key-hint { font-size: 0.68rem; color: var(--text-muted); }
