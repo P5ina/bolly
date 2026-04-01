@@ -250,7 +250,7 @@ CONF
 else
     log "config already exists, skipping"
     # Backfill auth_token if empty (upgrade from older install)
-    EXISTING_TOKEN=$(grep -E '^auth_token\s*=' "$BOLLY_DIR/config.toml" | head -1 | sed 's/.*=\s*"\{0,1\}//;s/"\{0,1\}\s*$//')
+    EXISTING_TOKEN=$(grep -E '^auth_token\s*=' "$BOLLY_DIR/config.toml" | head -1 | sed 's/[^=]*=\s*//' | tr -d ' "')
     if [ -z "$EXISTING_TOKEN" ]; then
         AUTH_TOKEN=$(head -c 256 /dev/urandom | LC_ALL=C tr -dc 'a-z0-9' | head -c 32)
         sed -i.bak "s/^auth_token\s*=.*/auth_token = \"$AUTH_TOKEN\"/" "$BOLLY_DIR/config.toml"
@@ -460,7 +460,7 @@ for i in $(seq 1 30); do
 done
 
     # Read auth token from config for browser URL
-AUTH_TOKEN=$(grep -E '^auth_token\s*=' "$BOLLY_DIR/config.toml" | head -1 | sed 's/.*=\s*"\{0,1\}//;s/"\{0,1\}\s*$//')
+AUTH_TOKEN=$(grep -E '^auth_token\s*=' "$BOLLY_DIR/config.toml" | head -1 | sed 's/[^=]*=\s*//' | tr -d ' "')
 AUTH_URL="$BOLLY_URL/auth?token=$AUTH_TOKEN"
 
 if curl -sf "$BOLLY_URL/api/health" >/dev/null 2>&1; then
