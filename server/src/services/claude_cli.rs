@@ -88,9 +88,9 @@ pub async fn ensure_meridian_installed() -> anyhow::Result<()> {
     if check.map(|s| s.success()).unwrap_or(false) {
         return Ok(());
     }
-    log::info!("Installing Meridian proxy...");
+    log::info!("Installing Meridian proxy (triangle-int fork)...");
     let status = tokio::process::Command::new("npm")
-        .args(["install", "-g", "@rynfar/meridian"])
+        .args(["install", "-g", "github:triangle-int/meridian"])
         .status()
         .await?;
     if !status.success() {
