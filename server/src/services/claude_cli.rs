@@ -32,6 +32,7 @@ pub struct OAuthState {
 // ── Claude CLI install ──
 
 /// Resolve the path to the `claude` binary.
+#[allow(dead_code)]
 fn resolve_claude_binary() -> String {
     if let Some(home) = dirs::home_dir() {
         let local = home.join(".local/bin/claude");
@@ -44,15 +45,11 @@ fn resolve_claude_binary() -> String {
 
 /// Install Claude CLI using the official install script.
 async fn ensure_installed() -> anyhow::Result<()> {
-    let bin = resolve_claude_binary();
-    if std::process::Command::new(&bin)
-        .arg("--version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok()
-    {
-        return Ok(());
+    // Check if binary exists at ~/.local/bin/claude (don't run it — avoids PATH issues)
+    if let Some(home) = dirs::home_dir() {
+        if home.join(".local/bin/claude").exists() {
+            return Ok(());
+        }
     }
 
     log::info!("Claude CLI not found, installing...");
