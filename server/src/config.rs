@@ -196,6 +196,11 @@ pub const DEFAULT_FAST_MODEL: &str = "claude-sonnet-4-6";
 /// Cheapest model for background tasks (Haiku).
 pub const CHEAP_MODEL: &str = "claude-haiku-4-5-20251001";
 
+// OpenAI defaults
+pub const DEFAULT_OPENAI_MODEL: &str = "codex/gpt-5.4";
+pub const DEFAULT_OPENAI_FAST_MODEL: &str = "codex/gpt-5.4";
+pub const CHEAP_OPENAI_MODEL: &str = "codex/gpt-5.4-mini";
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -299,14 +304,14 @@ impl Default for Config {
 }
 
 impl LlmConfig {
-    /// The heavy model (Opus).
+    /// The heavy model for the current provider.
     pub fn model_name(&self) -> &'static str {
-        DEFAULT_MODEL
+        if self.provider.is_openai_format() { DEFAULT_OPENAI_MODEL } else { DEFAULT_MODEL }
     }
 
-    /// The fast model (Sonnet).
+    /// The fast model for the current provider.
     pub fn fast_model_name(&self) -> &'static str {
-        DEFAULT_FAST_MODEL
+        if self.provider.is_openai_format() { DEFAULT_OPENAI_FAST_MODEL } else { DEFAULT_FAST_MODEL }
     }
 
     /// The Anthropic API key, or None if not configured.

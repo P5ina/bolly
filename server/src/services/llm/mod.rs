@@ -8,7 +8,7 @@ use std::path::Path;
 
 use tokio::sync::broadcast;
 
-use crate::config::{Config, CHEAP_MODEL, DEFAULT_FAST_MODEL, DEFAULT_MODEL};
+use crate::config::{Config, CHEAP_MODEL, CHEAP_OPENAI_MODEL, DEFAULT_FAST_MODEL, DEFAULT_MODEL, DEFAULT_OPENAI_MODEL};
 use crate::domain::events::ServerEvent;
 use crate::services::tool::ToolDyn;
 
@@ -101,23 +101,25 @@ impl LlmBackend {
         }
     }
 
-    /// Create a variant using the cheapest model for background tasks (Haiku).
+    /// Create a variant using the cheapest model for background tasks.
     pub fn cheap_variant(&self) -> Self {
+        let model = if self.provider.is_openai_format() { CHEAP_OPENAI_MODEL } else { CHEAP_MODEL };
         Self {
             http: self.http.clone(),
             api_key: self.api_key.clone(),
-            model: CHEAP_MODEL.to_string(),
+            model: model.to_string(),
             base_url: self.base_url.clone(),
             provider: self.provider,
         }
     }
 
-    /// Create a variant using the heavy model (Opus) for deep reflection.
+    /// Create a variant using the heavy model for deep reflection.
     pub fn heavy_variant(&self) -> Self {
+        let model = if self.provider.is_openai_format() { DEFAULT_OPENAI_MODEL } else { DEFAULT_MODEL };
         Self {
             http: self.http.clone(),
             api_key: self.api_key.clone(),
-            model: DEFAULT_MODEL.to_string(),
+            model: model.to_string(),
             base_url: self.base_url.clone(),
             provider: self.provider,
         }
