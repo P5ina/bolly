@@ -104,7 +104,8 @@ pub async fn ensure_meridian_installed() -> anyhow::Result<()> {
 /// Listens on http://127.0.0.1:3456, proxying to Claude subscription.
 /// Writes OAuth credentials to ~/.claude/.credentials.json so the
 /// Claude Code SDK (used by Meridian) can authenticate.
-pub async fn start_meridian(workspace_dir: &Path) -> anyhow::Result<()> {
+/// Start Meridian as a child process. Returns the handle — drop it to kill Meridian.
+pub async fn start_meridian(workspace_dir: &Path) -> anyhow::Result<tokio::process::Child> {
     // Ensure Claude CLI is installed (Meridian needs it)
     if let Err(e) = ensure_installed().await {
         log::warn!("Claude CLI install failed: {e}");
@@ -145,26 +146,26 @@ pub async fn start_meridian(workspace_dir: &Path) -> anyhow::Result<()> {
     // copying credentials to their home directory.
     let is_root = unsafe { libc::getuid() } == 0;
 
-    let mut cmd = if is_root {
-        // Create 'bolly' user if needed, copy credentials
+    // Setup user for root environments
+    if is_root {
         let _ = std::process::Command::new("sh").arg("-c")
             .arg("id bolly 2>/dev/null || useradd -m -s /bin/bash bolly")
             .status();
-        // Copy Claude credentials to bolly user's home
         let _ = std::process::Command::new("sh").arg("-c")
             .arg("mkdir -p /home/bolly/.claude && cp -f /root/.claude/.credentials.json /home/bolly/.claude/ 2>/dev/null; cp -f /root/.claude.json /home/bolly/.claude.json 2>/dev/null; cp -f /root/.claude/claude.json /home/bolly/.claude/ 2>/dev/null; chown -R bolly:bolly /home/bolly/.claude /home/bolly/.claude.json 2>/dev/null")
             .status();
         log::info!("Running Meridian as user 'bolly' (bypassPermissions blocked for root)");
-        let mut c = std::process::Command::new("sudo");
+    }
+
+    let mut cmd = if is_root {
+        let mut c = tokio::process::Command::new("sudo");
         c.args(["-u", "bolly", "-H", "meridian"]);
         c
     } else {
-        std::process::Command::new("meridian")
+        tokio::process::Command::new("meridian")
     };
 
     cmd.env("PATH", &path_env);
-    // Passthrough mode: forward tool calls to client instead of executing internally.
-    // Without this, Meridian/SDK uses its own built-in tools and ignores ours.
     cmd.env("MERIDIAN_PASSTHROUGH", "true");
     cmd.stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -173,7 +174,7 @@ pub async fn start_meridian(workspace_dir: &Path) -> anyhow::Result<()> {
     let child = cmd.spawn()
         .map_err(|e| anyhow::anyhow!("failed to start meridian: {e}"))?;
 
-    log::info!("Meridian launched (pid={})", child.id());
+    log::info!("Meridian launched (pid={})", child.id().unwrap_or(0));
 
     // Wait until it's ready
     let client = reqwest::Client::new();
@@ -184,12 +185,12 @@ pub async fn start_meridian(workspace_dir: &Path) -> anyhow::Result<()> {
             .send().await.is_ok()
         {
             log::info!("Meridian is ready on port 3456");
-            return Ok(());
+            return Ok(child);
         }
     }
 
     log::warn!("Meridian launched but not responding after 15s");
-    Ok(())
+    Ok(child)
 }
 
 
@@ -206,6 +207,14 @@ pub fn kill_meridian() {
     }
     // Give it a moment to die
     std::thread::sleep(std::time::Duration::from_millis(500));
+}
+
+/// Start Meridian and leak the handle (for use in request handlers where
+/// we can't store the child in AppState).
+pub async fn start_meridian_detached(workspace_dir: &Path) -> anyhow::Result<()> {
+    let child = start_meridian(workspace_dir).await?;
+    std::mem::forget(child); // keep alive, will be killed by kill_meridian()
+    Ok(())
 }
 
 /// Check if Meridian is running.

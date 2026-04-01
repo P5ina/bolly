@@ -447,7 +447,7 @@ async fn update_provider(
             return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to install Meridian: {e}")));
         }
         if !crate::services::claude_cli::is_meridian_running().await {
-            if let Err(e) = crate::services::claude_cli::start_meridian(&state.workspace_dir).await {
+            if let Err(e) = crate::services::claude_cli::start_meridian_detached(&state.workspace_dir).await {
                 log::warn!("Meridian start failed: {e}");
             }
         }
@@ -544,7 +544,7 @@ async fn claude_cli_oauth_exchange(
         log::warn!("Meridian install failed during OAuth: {e}");
     }
     if !claude_cli::is_meridian_running().await {
-        let _ = claude_cli::start_meridian(&state.workspace_dir).await;
+        let _ = claude_cli::start_meridian_detached(&state.workspace_dir).await;
     }
 
     // Exchange code for tokens
@@ -562,7 +562,7 @@ async fn claude_cli_oauth_exchange(
     // and restart Meridian so it picks up the new credentials
     claude_cli::write_claude_credentials(&tokens);
     claude_cli::kill_meridian();
-    if let Err(e) = claude_cli::start_meridian(&workspace).await {
+    if let Err(e) = claude_cli::start_meridian_detached(&workspace).await {
         log::warn!("Failed to restart Meridian after OAuth: {e}");
     }
 
