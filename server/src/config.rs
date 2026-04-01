@@ -401,11 +401,7 @@ pub fn load_config() -> anyhow::Result<Config> {
         }
     }
 
-    // On Fly.io, listen on port 8080 (internal_port in machine config)
-    if env::var("FLY_APP_NAME").is_ok() {
-        config.port = 8080;
-    }
-    // Explicit PORT env var override
+    // PORT env var override (set by Fly.io machine config)
     if let Ok(port) = env::var("PORT") {
         if let Ok(p) = port.parse::<u16>() {
             config.port = p;

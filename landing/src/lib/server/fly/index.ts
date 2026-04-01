@@ -24,6 +24,7 @@ export function machineEnv(opts: {
 }): Record<string, string> {
 	return {
 		BOLLY_HOME: '/data',
+		PORT: '8080',
 		RUST_LOG: 'info,rig=warn',
 		BOLLY_CHANNEL: opts.channel ?? 'stable',
 		BOLLY_AUTH_TOKEN: opts.authToken,
