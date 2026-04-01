@@ -402,6 +402,18 @@ export async function updateMusicEnabled(slug: string, enabled: boolean): Promis
 	}
 }
 
+export function fetchSkin(slug: string): Promise<{ skin: string }> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/skin`);
+}
+
+export function updateSkin(slug: string, skin: string): Promise<void> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/skin`, {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ skin }),
+	});
+}
+
 export function fetchVoiceEnabled(slug: string): Promise<{ voice_enabled: boolean }> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/voice-mode`);
 }

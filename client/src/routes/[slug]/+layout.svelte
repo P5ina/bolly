@@ -5,6 +5,7 @@
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getPresentationState } from "$lib/stores/presentation.svelte.js";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
+	import { getSkinStore } from "$lib/stores/skin.svelte.js";
 	import { getVoiceState } from "$lib/stores/voice.svelte.js";
 	import InstanceOnboarding from "$lib/components/onboarding/InstanceOnboarding.svelte";
 	import UpdateBanner from "$lib/components/UpdateBanner.svelte";
@@ -14,6 +15,7 @@
 	const instances = getInstances();
 	const presentation = getPresentationState();
 	const scene = getSceneStore();
+	const skinStore = getSkinStore();
 	const voice = getVoiceState();
 	const isNew = $derived(
 		!instances.loading && !instances.list.some((i) => i.slug === slug)
@@ -28,6 +30,7 @@
 					.then((res) => scene.setMusicEnabled(res.music_enabled))
 					.catch(() => {}),
 				voice.loadForInstance(slug),
+				skinStore.loadForInstance(slug),
 			]).finally(() => scene.enterChat(slug));
 		}
 	});

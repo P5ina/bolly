@@ -4,6 +4,7 @@
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
 	import { createSceneStore, setSceneStore } from "$lib/stores/scene.svelte.js";
+	import { createSkinStore, setSkinStore } from "$lib/stores/skin.svelte.js";
 	import { AuthError } from "$lib/api/client.js";
 	import type { ServerEvent } from "$lib/api/types.js";
 	import { onMount, onDestroy } from "svelte";
@@ -18,6 +19,8 @@
 	const ws = getWebSocket();
 	const sceneStore = createSceneStore();
 	setSceneStore(sceneStore);
+	const skinStore = createSkinStore();
+	setSkinStore(skinStore);
 
 	onDestroy(() => sceneStore.destroy());
 

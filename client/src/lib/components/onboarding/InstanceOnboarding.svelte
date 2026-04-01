@@ -13,12 +13,14 @@
 	import type { SoulTemplate } from "$lib/api/types.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
+	import { getSkinStore, SKINS } from "$lib/stores/skin.svelte.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import { play, playImmediate, preload } from "$lib/sounds.js";
 	import { hapticReveal } from "$lib/haptics.js";
 
 	const toast = getToasts();
 	const scene = getSceneStore();
+	const skinStore = getSkinStore();
 
 	let { slug, oncomplete }: { slug: string; oncomplete: () => void } = $props();
 
@@ -31,6 +33,7 @@
 		| "testing"
 		| "picking-language"
 		| "naming-companion"
+		| "picking-skin"
 		| "picking-soul"
 		| "picking-provider"
 		| "claude-oauth"
@@ -99,15 +102,11 @@
 	}
 
 	async function runSequence() {
-		// Tell scene to show a centered sphere for this slug
-		scene.enterOnboarding(slug);
+		skinStore.setSlug(slug);
 
 		preload("intro_reveal", "typewriter");
-		await pause(600);
-		play("intro_reveal");
 		hapticReveal();
 		revealed = true;
-		await pause(1800);
 		stage = "intro";
 		await pause(400);
 		const userName = typeof localStorage !== "undefined" ? localStorage.getItem("bolly:preferredName") || slug : slug;
@@ -142,6 +141,23 @@
 		await typewrite(`${name}. i like that.`);
 		try { await setCompanionName(slug, name); } catch {}
 		await pause(400);
+
+		await typewrite("how should i look?");
+		stage = "picking-skin";
+	}
+
+	async function pickSkin(skinId: string) {
+		skinStore.setSkin(skinId);
+		stage = "intro";
+		await pause(200);
+		const skin = SKINS.find((s) => s.id === skinId);
+		await typewrite(`${skin?.label ?? skinId}. let me show you.`);
+		await pause(400);
+
+		// Now trigger the onboarding animation with the chosen skin
+		play("intro_reveal");
+		scene.enterOnboarding(slug);
+		await pause(3000);
 
 		let hasSoul = false;
 		try {
@@ -335,6 +351,19 @@
 						{#if companionNameInput.trim()}
 							<button onclick={submitCompanionName} class="ob-go" aria-label="Confirm">→</button>
 						{/if}
+					</div>
+				</div>
+			{/if}
+
+			{#if stage === "picking-skin"}
+				<div class="ob-enter">
+					<div class="ob-pills ob-pills-skin">
+						{#each SKINS as skin (skin.id)}
+							<button onclick={() => pickSkin(skin.id)} class="ob-pill ob-pill-col ob-pill-skin" class:ob-pill-active={skinStore.skinId === skin.id}>
+								<img src={skin.thumbnail} alt={skin.label} class="ob-skin-thumb" />
+								<span class="ob-pill-label">{skin.label}</span>
+							</button>
+						{/each}
 					</div>
 				</div>
 			{/if}
@@ -673,6 +702,21 @@
 		font-size: 0.72rem;
 		font-style: italic;
 		color: oklch(1 0 0 / 30%);
+	}
+
+	/* ── Skin picker ── */
+	.ob-pills-skin { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+	.ob-pill-skin {
+		border-radius: 1rem;
+		padding: 0.75rem;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	.ob-skin-thumb {
+		width: 64px;
+		height: 64px;
+		border-radius: 0.5rem;
+		object-fit: cover;
 	}
 
 	/* ── Depart ── */

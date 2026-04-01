@@ -77,7 +77,12 @@ pub struct InstanceConfig {
     /// Whether voice mode (TTS) is enabled. Default: false.
     #[serde(default)]
     pub voice_enabled: bool,
+    /// Visual skin for this instance (e.g. "orb", "mint"). Default: "orb".
+    #[serde(default = "default_skin")]
+    pub skin: String,
 }
+
+fn default_skin() -> String { "orb".to_string() }
 
 fn default_true() -> bool { true }
 

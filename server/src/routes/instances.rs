@@ -43,6 +43,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/music", put(set_music_enabled))
         .route("/api/instances/{instance_slug}/voice-mode", get(get_voice_enabled))
         .route("/api/instances/{instance_slug}/voice-mode", put(set_voice_enabled))
+        .route("/api/instances/{instance_slug}/skin", get(get_skin))
+        .route("/api/instances/{instance_slug}/skin", put(set_skin))
         .route("/api/instances/{instance_slug}/scheduled", get(list_scheduled))
         .route("/api/instances/{instance_slug}/scheduled/{message_id}", delete(cancel_scheduled))
         .route("/api/instances/{instance_slug}/export", get(export_instance))
@@ -303,6 +305,36 @@ async fn set_voice_enabled(
 ) -> StatusCode {
     let mut inst = crate::config::InstanceConfig::load(&state.workspace_dir, &instance_slug);
     inst.voice_enabled = req.voice_enabled;
+    match inst.save(&state.workspace_dir, &instance_slug) {
+        Ok(_) => StatusCode::OK,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Skin
+// ---------------------------------------------------------------------------
+
+async fn get_skin(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> Json<serde_json::Value> {
+    let inst = crate::config::InstanceConfig::load(&state.workspace_dir, &instance_slug);
+    Json(serde_json::json!({ "skin": inst.skin }))
+}
+
+#[derive(Deserialize)]
+struct SetSkinRequest {
+    skin: String,
+}
+
+async fn set_skin(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+    Json(req): Json<SetSkinRequest>,
+) -> StatusCode {
+    let mut inst = crate::config::InstanceConfig::load(&state.workspace_dir, &instance_slug);
+    inst.skin = req.skin;
     match inst.save(&state.workspace_dir, &instance_slug) {
         Ok(_) => StatusCode::OK,
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR,

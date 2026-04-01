@@ -39,10 +39,12 @@
 	import type { McpServerInfo, EmailConfig } from "$lib/api/client.js";
 	import type { Usage, ServerEvent } from "$lib/api/types.js";
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
+	import { getSkinStore, SKINS } from "$lib/stores/skin.svelte.js";
 	import { onDestroy } from "svelte";
 
 	const slug = $derived(page.params.slug!);
 	const scene = getSceneStore();
+	const skinStore = getSkinStore();
 
 	// --- suggested extensions (loaded from server) ---
 	interface SuggestedMcp {
@@ -817,7 +819,7 @@
 	{#if usage && (usage.tokens_4h_limit > 0 || usage.tokens_week_limit > 0 || usage.tokens_month_limit > 0)}
 		<section class="settings-section">
 			<div class="section-header">
-				<img src="/icon-usage.png" alt="" class="section-icon-img" />
+				<img src="/icons/icon-usage.png" alt="" class="section-icon-img" />
 				<div>
 					<h3 class="section-label">usage</h3>
 					<p class="section-desc">Token usage across time windows.</p>
@@ -864,10 +866,36 @@
 		</section>
 	{/if}
 
+	<!-- Skin -->
+	<section class="settings-section">
+		<div class="section-header">
+			<div class="section-icon">✦</div>
+			<div>
+				<h3 class="section-label">skin</h3>
+				<p class="section-desc">Change how your companion looks and animates.</p>
+			</div>
+		</div>
+		<div class="model-mode-options">
+			{#each SKINS as skin (skin.id)}
+				<button
+					class="mode-option skin-option"
+					class:mode-active={skinStore.skinId === skin.id}
+					onclick={() => skinStore.setSkin(skin.id)}
+				>
+					<img src={skin.thumbnail} alt={skin.label} class="skin-thumb" />
+					<div>
+						<span class="mode-name">{skin.label}</span>
+						<span class="mode-desc">{skin.clips.thinking.length} animations</span>
+					</div>
+				</button>
+			{/each}
+		</div>
+	</section>
+
 	<!-- Model Mode -->
 	<section class="settings-section">
 		<div class="section-header">
-			<img src="/icon-model.png" alt="" class="section-icon-img" />
+			<img src="/icons/icon-model.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">model mode</h3>
 				<p class="section-desc">Choose how your companion picks the AI model for each message.</p>
@@ -1037,7 +1065,7 @@
 	<!-- Timezone -->
 	<section class="settings-section">
 		<div class="section-header">
-			<img src="/icon-timezone.png" alt="" class="section-icon-img" />
+			<img src="/icons/icon-timezone.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">timezone</h3>
 				<p class="section-desc">
@@ -1073,7 +1101,7 @@
 	<!-- Extensions (MCP Servers) -->
 	<section class="settings-section">
 		<div class="section-header">
-			<img src="/icon-extensions.png" alt="" class="section-icon-img" />
+			<img src="/icons/icon-extensions.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">extensions</h3>
 				<p class="section-desc">Give your companion new abilities via MCP servers.</p>
@@ -1199,7 +1227,7 @@
 	<!-- Google Accounts -->
 	<section class="settings-section">
 		<div class="section-header">
-			<img src="/icon-google.png" alt="" class="section-icon-img" />
+			<img src="/icons/icon-google.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">google accounts</h3>
 				<p class="section-desc">
@@ -1251,7 +1279,7 @@
 	<!-- Email (SMTP/IMAP) -->
 	<section class="settings-section">
 		<div class="section-header">
-			<img src="/icon-email.png" alt="" class="section-icon-img" />
+			<img src="/icons/icon-email.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">email</h3>
 				<p class="section-desc">
@@ -1339,7 +1367,7 @@
 	<!-- GitHub -->
 	<section class="settings-section">
 		<div class="section-header">
-			<img src="/icon-github.png" alt="" class="section-icon-img" />
+			<img src="/icons/icon-github.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">github</h3>
 				<p class="section-desc">
@@ -1405,7 +1433,7 @@
 	<!-- Music -->
 	<section class="settings-section">
 		<div class="section-header">
-			<img src="/icon-music.png" alt="" class="section-icon-img" />
+			<img src="/icons/icon-music.png" alt="" class="section-icon-img" />
 			<div class="section-header-text">
 				<h3 class="section-label">music</h3>
 				<p class="section-desc">
@@ -1433,7 +1461,7 @@
 	<!-- Voice -->
 	<section class="settings-section">
 		<div class="section-header">
-			<img src="/icon-voice.png" alt="" class="section-icon-img" />
+			<img src="/icons/icon-voice.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">voice</h3>
 				<p class="section-desc">
@@ -1481,7 +1509,7 @@
 	{#if !scheduledLoading && scheduledTasks.length > 0}
 		<section class="settings-section">
 			<div class="section-header">
-				<img src="/icon-scheduled.png" alt="" class="section-icon-img" />
+				<img src="/icons/icon-scheduled.png" alt="" class="section-icon-img" />
 				<div>
 					<h3 class="section-label">scheduled</h3>
 					<p class="section-desc">{scheduledTasks.length} pending task{scheduledTasks.length === 1 ? "" : "s"}</p>
@@ -1510,7 +1538,7 @@
 	<!-- Export / Import -->
 	<section class="settings-section">
 		<div class="section-header">
-			<img src="/icon-data.png" alt="" class="section-icon-img" />
+			<img src="/icons/icon-data.png" alt="" class="section-icon-img" />
 			<div>
 				<h3 class="section-label">data</h3>
 			</div>
@@ -2190,6 +2218,19 @@
 		opacity: 0.5;
 		pointer-events: none;
 	}
+	.skin-option {
+		flex-direction: row;
+		align-items: center;
+		gap: 0.75rem;
+	}
+	.skin-thumb {
+		width: 48px;
+		height: 48px;
+		border-radius: 0.375rem;
+		object-fit: cover;
+		flex-shrink: 0;
+	}
+
 	.mode-option {
 		display: flex;
 		flex-direction: column;

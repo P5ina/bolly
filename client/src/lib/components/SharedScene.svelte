@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
+	import { getSkinStore, type ClipSource } from "$lib/stores/skin.svelte.js";
 
 	const store = getSceneStore();
+	const skinStore = getSkinStore();
 
 	let container: HTMLDivElement | undefined = $state();
 
@@ -12,38 +14,29 @@
 	}
 
 	// ── Video Animator ──
-	// States: intro → idle ↔ morphing shapes (cube, tesseract, prism)
-	//
-	// Thinking cycle: idle → orb-to-{shape} → {shape}-to-orb → repeat or idle
-	// Each cycle picks a random shape. Shapes never repeat consecutively.
+	// States: intro → idle ↔ thinking
+	// Clips are provided by the active skin definition.
 
-	type VideoPhase = 'intro' | 'idle' | 'toShape' | 'fromShape';
-
-	const shapes = ['cube', 'tesseract', 'prism'] as const;
-	type Shape = typeof shapes[number];
-
-	const shapeSrc: Record<Shape, { to: string; from: string }> = {
-		cube:       { to: '/orb-to-cube.mp4',       from: '/cube-to-orb.mp4' },
-		tesseract:  { to: '/orb-to-tesseract.mp4',  from: '/tesseract-to-orb.mp4' },
-		prism:      { to: '/orb-to-prism.mp4',      from: '/prism-to-orb.mp4' },
-	};
+	type VideoPhase = 'intro' | 'idle' | 'thinking';
 
 	let introPlayed = $state(store.mode === 'chat');
 	let orbState = $state<VideoPhase>(store.mode === 'onboarding' ? 'intro' : 'idle');
-	let currentShape = $state<Shape>('cube');
-	let lastShape = $state<Shape | null>(null);
+	let thinkingIdx = $state(0);
+	let lastThinkingIdx = $state(-1);
 
-	function pickShape(): Shape {
-		const available = shapes.filter(s => s !== lastShape);
+	function pickThinkingIdx(): number {
+		const clips = skinStore.skin.clips.thinking;
+		if (clips.length <= 1) return 0;
+		const available = Array.from({ length: clips.length }, (_, i) => i).filter(i => i !== lastThinkingIdx);
 		return available[Math.floor(Math.random() * available.length)];
 	}
 
 	let videoSrc = $derived.by(() => {
+		const clips = skinStore.skin.clips;
 		switch (orbState) {
-			case 'intro': return '/orb-onboarding.mp4';
-			case 'idle': return '/orb-idle-loop.mp4';
-			case 'toShape': return shapeSrc[currentShape].to;
-			case 'fromShape': return shapeSrc[currentShape].from;
+			case 'intro': return clips.onboarding;
+			case 'idle': return clips.idle;
+			case 'thinking': return clips.thinking[thinkingIdx] ?? clips.idle;
 		}
 	});
 	let isLooping = $derived(orbState === 'idle');
@@ -60,11 +53,11 @@
 			return;
 		}
 
-		// Start thinking: pick a shape and morph to it
+		// Start thinking: pick a clip
 		if (mode === 'chat' && thinking && orbState === 'idle') {
-			currentShape = pickShape();
-			lastShape = currentShape;
-			orbState = 'toShape';
+			thinkingIdx = pickThinkingIdx();
+			lastThinkingIdx = thinkingIdx;
+			orbState = 'thinking';
 		}
 	});
 
@@ -75,18 +68,13 @@
 				introPlayed = true;
 				orbState = 'idle';
 				break;
-			case 'toShape':
-				// Shape reached — morph back to orb
-				orbState = 'fromShape';
-				break;
-			case 'fromShape':
+			case 'thinking':
 				if (store.thinking) {
-					// Still thinking — pick next shape and continue
-					currentShape = pickShape();
-					lastShape = currentShape;
-					orbState = 'toShape';
+					// Still thinking — pick next clip
+					thinkingIdx = pickThinkingIdx();
+					lastThinkingIdx = thinkingIdx;
+					orbState = 'thinking';
 				} else {
-					// Done thinking — back to idle
 					orbState = 'idle';
 				}
 				break;
@@ -95,21 +83,34 @@
 
 	// One video element per orb — track by slug
 	let videoRefs: Record<string, HTMLVideoElement> = {};
-	let lastSrc = '';
+	let lastClipKey = '';
+
+	function applyClip(el: HTMLVideoElement, clip: ClipSource, loop: boolean) {
+		el.innerHTML = '';
+		const webm = document.createElement('source');
+		webm.src = clip.webm;
+		webm.type = 'video/webm; codecs="vp9"';
+		const mov = document.createElement('source');
+		mov.src = clip.mov;
+		mov.type = 'video/quicktime; codecs="hvc1"';
+		el.appendChild(webm);
+		el.appendChild(mov);
+		el.loop = loop;
+		el.load();
+		el.play().catch(() => {
+			setTimeout(() => el?.play().catch(() => {}), 100);
+		});
+	}
 
 	$effect(() => {
-		const src = videoSrc;
+		const clip = videoSrc;
 		const loop = isLooping;
-		if (src !== lastSrc) {
-			lastSrc = src;
+		const key = clip.webm;
+		if (key !== lastClipKey) {
+			lastClipKey = key;
 			for (const el of Object.values(videoRefs)) {
 				if (!el) continue;
-				el.src = src;
-				el.loop = loop;
-				el.load();
-				el.play().catch(() => {
-					setTimeout(() => el?.play().catch(() => {}), 100);
-				});
+				applyClip(el, clip, loop);
 			}
 		} else {
 			for (const el of Object.values(videoRefs)) {
@@ -353,11 +354,13 @@
 				<video
 					bind:this={videoRefs[orb.slug]}
 					autoplay muted playsinline
-					src={videoSrc}
 					loop={isLooping}
 					class="orb-vid"
-						onended={handleVideoEnded}
-				></video>
+					onended={handleVideoEnded}
+				>
+					<source src={videoSrc.webm} type='video/webm; codecs="vp9"' />
+					<source src={videoSrc.mov} type='video/quicktime; codecs="hvc1"' />
+				</video>
 			</button>
 		{/if}
 	{/each}
