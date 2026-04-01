@@ -928,6 +928,7 @@ async fn cancel_scheduled(
 // ---------------------------------------------------------------------------
 
 /// GET /api/instances/{slug}/export → tar.gz download of the entire instance directory.
+/// Streams the tar output directly so the client receives data immediately.
 async fn export_instance(
     Path(instance_slug): Path<String>,
     State(state): State<AppState>,
@@ -937,18 +938,28 @@ async fn export_instance(
         return (StatusCode::NOT_FOUND, "instance not found").into_response();
     }
 
-    // Create tar.gz in memory via the `tar` command
-    let result = tokio::process::Command::new("tar")
+    // Spawn tar and stream stdout directly to the response.
+    let child = tokio::process::Command::new("tar")
         .arg("czf")
         .arg("-") // stdout
         .arg("-C")
         .arg(state.workspace_dir.join("instances"))
         .arg(&instance_slug)
-        .output()
-        .await;
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn();
 
-    match result {
-        Ok(output) if output.status.success() => {
+    match child {
+        Ok(mut child) => {
+            let stdout = child.stdout.take().unwrap();
+            let stream = tokio_util::io::ReaderStream::new(stdout);
+            let body = Body::from_stream(stream);
+
+            // Reap the child process in the background to avoid zombies.
+            tokio::spawn(async move {
+                let _ = child.wait().await;
+            });
+
             let headers = [
                 (axum::http::header::CONTENT_TYPE, "application/gzip"),
                 (
@@ -956,15 +967,10 @@ async fn export_instance(
                     &format!("attachment; filename=\"{instance_slug}.tar.gz\""),
                 ),
             ];
-            (headers, Body::from(output.stdout)).into_response()
-        }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            log::error!("[export] tar failed: {stderr}");
-            (StatusCode::INTERNAL_SERVER_ERROR, "export failed").into_response()
+            (headers, body).into_response()
         }
         Err(e) => {
-            log::error!("[export] failed to run tar: {e}");
+            log::error!("[export] failed to spawn tar: {e}");
             (StatusCode::INTERNAL_SERVER_ERROR, "export failed").into_response()
         }
     }

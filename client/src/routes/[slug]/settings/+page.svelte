@@ -22,7 +22,7 @@
 		fetchUsage,
 		fetchConfigStatus,
 		updateModelMode,
-		exportInstanceUrl,
+		exportInstance,
 		importInstance,
 		reindexMemory,
 		importKnowledge,
@@ -59,13 +59,37 @@
 	let suggestedMcp = $state<SuggestedMcp[]>([]);
 
 	// Export / Import
+	let exporting = $state(false);
+	let exportBytes = $state(0);
+	let exportError = $state("");
 	let importing = $state(false);
 	let importError = $state("");
 	let importDone = $state(false);
 	let importFileInput: HTMLInputElement | undefined = $state();
 
-	function handleExport() {
-		window.location.href = exportInstanceUrl(slug);
+	function formatBytes(bytes: number): string {
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
+
+	async function handleExport() {
+		exporting = true;
+		exportBytes = 0;
+		exportError = "";
+		try {
+			const blob = await exportInstance(slug, (bytes) => { exportBytes = bytes; });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = `${slug}.tar.gz`;
+			a.click();
+			URL.revokeObjectURL(url);
+		} catch (e) {
+			exportError = e instanceof Error ? e.message : "export failed";
+		} finally {
+			exporting = false;
+		}
 	}
 
 	async function handleImport() {
@@ -1544,8 +1568,12 @@
 			</div>
 		</div>
 		<div class="data-actions">
-			<button class="data-btn" onclick={handleExport}>
-				export
+			<button class="data-btn" onclick={handleExport} disabled={exporting}>
+				{#if exporting}
+					exporting… {formatBytes(exportBytes)}
+				{:else}
+					export
+				{/if}
 			</button>
 			<label class="data-btn data-btn-import">
 				{#if importing}
@@ -1625,6 +1653,9 @@
 		</div>
 		{#if importError}
 			<p class="error-msg">{importError}</p>
+		{/if}
+		{#if exportError}
+			<p class="error-msg">{exportError}</p>
 		{/if}
 	</section>
 

@@ -1,6 +1,6 @@
 [package]
 name = "server"
-version = "0.26.0"
+version = "0.26.1"
 edition = "2024"
 description = "Bolly — AI companion server"
 authors = ["Triangle Interactive LLC"]
@@ -24,7 +24,7 @@ arrow-array = "57"
 arrow-schema = "57"
 chrono = "0.4"
 schemars = "1"
-tokio-util = { version = "0.7.18", features = ["rt", "compat"] }
+tokio-util = { version = "0.7.18", features = ["rt", "compat", "io"] }
 tower-http = { version = "0.6", features = ["fs"] }
 tower = "0.5"
 futures = "0.3"

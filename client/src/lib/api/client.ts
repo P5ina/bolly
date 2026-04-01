@@ -759,6 +759,30 @@ export function exportInstanceUrl(slug: string): string {
 	return token ? `${base}?token=${encodeURIComponent(token)}` : base;
 }
 
+/** Stream-download the export archive, reporting bytes received via callback. */
+export async function exportInstance(
+	slug: string,
+	onProgress?: (downloadedBytes: number) => void,
+): Promise<Blob> {
+	const url = exportInstanceUrl(slug);
+	const res = await fetch(url);
+	if (!res.ok) throw new Error(await res.text() || "export failed");
+
+	const reader = res.body!.getReader();
+	const chunks: BlobPart[] = [];
+	let downloaded = 0;
+
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		chunks.push(value as BlobPart);
+		downloaded += value.length;
+		onProgress?.(downloaded);
+	}
+
+	return new Blob(chunks, { type: "application/gzip" });
+}
+
 export async function importInstance(slug: string, file: File): Promise<{ ok: boolean }> {
 	const form = new FormData();
 	form.append("file", file);
