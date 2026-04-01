@@ -51,6 +51,8 @@ async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
     let provider = match config.llm.provider {
         config::LlmProvider::Api => "api",
         config::LlmProvider::ClaudeCli => "claude_cli",
+        config::LlmProvider::Openai => "openai",
+        config::LlmProvider::Codex => "codex",
     };
 
     Json(json!({
@@ -437,11 +439,13 @@ async fn update_provider(
     let provider = match req.provider.as_str() {
         "api" | "anthropic" => config::LlmProvider::Api,
         "claude_cli" | "cli" => config::LlmProvider::ClaudeCli,
+        "openai" => config::LlmProvider::Openai,
+        "codex" => config::LlmProvider::Codex,
         other => return Err((StatusCode::BAD_REQUEST, format!("unknown provider: {other}"))),
     };
 
-    // Auto-install and start Meridian proxy when switching to Claude subscription
-    if provider == config::LlmProvider::ClaudeCli {
+    // Auto-install and start BYOKEY proxy when switching to subscription provider
+    if provider.is_proxy() {
         if let Err(e) = crate::services::claude_cli::ensure_proxy_installed().await {
             log::warn!("BYOKEY install failed: {e}");
             return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to install Meridian: {e}")));

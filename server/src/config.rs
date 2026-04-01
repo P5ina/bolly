@@ -196,13 +196,30 @@ pub const DEFAULT_FAST_MODEL: &str = "claude-sonnet-4-6";
 /// Cheapest model for background tasks (Haiku).
 pub const CHEAP_MODEL: &str = "claude-haiku-4-5-20251001";
 
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LlmProvider {
-    /// Direct Anthropic API calls (requires API key).
+    /// Direct Anthropic API (requires API key). Format: Anthropic Messages.
     Api,
-    /// Claude Code CLI subprocess (uses user's Claude subscription via OAuth).
+    /// Claude subscription via BYOKEY proxy. Format: Anthropic Messages.
     ClaudeCli,
+    /// OpenAI API (requires API key). Format: OpenAI Chat Completions.
+    Openai,
+    /// Codex subscription via BYOKEY proxy. Format: OpenAI Chat Completions.
+    Codex,
+}
+
+impl LlmProvider {
+    /// Whether this provider uses OpenAI chat completions format (vs Anthropic messages).
+    pub fn is_openai_format(&self) -> bool {
+        matches!(self, LlmProvider::Openai | LlmProvider::Codex)
+    }
+
+    /// Whether this provider routes through BYOKEY proxy.
+    pub fn is_proxy(&self) -> bool {
+        matches!(self, LlmProvider::ClaudeCli | LlmProvider::Codex)
+    }
 }
 
 impl Default for LlmProvider {
@@ -301,7 +318,8 @@ impl LlmConfig {
     pub fn is_configured(&self) -> bool {
         match self.provider {
             LlmProvider::Api => self.api_key().is_some(),
-            LlmProvider::ClaudeCli => true, // CLI handles its own auth
+            LlmProvider::Openai => !self.tokens.open_ai.is_empty(),
+            LlmProvider::ClaudeCli | LlmProvider::Codex => true, // proxy handles auth
         }
     }
 
