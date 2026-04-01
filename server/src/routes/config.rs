@@ -440,11 +440,16 @@ async fn update_provider(
         other => return Err((StatusCode::BAD_REQUEST, format!("unknown provider: {other}"))),
     };
 
-    // Auto-install Claude CLI when switching to it
+    // Auto-install and start Meridian proxy when switching to Claude subscription
     if provider == config::LlmProvider::ClaudeCli {
-        if let Err(e) = crate::services::claude_cli::ensure_installed().await {
-            log::warn!("Claude CLI auto-install failed: {e}");
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to install Claude CLI: {e}")));
+        if let Err(e) = crate::services::claude_cli::ensure_meridian_installed().await {
+            log::warn!("Meridian install failed: {e}");
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to install Meridian: {e}")));
+        }
+        if !crate::services::claude_cli::is_meridian_running().await {
+            if let Err(e) = crate::services::claude_cli::start_meridian().await {
+                log::warn!("Meridian start failed: {e}");
+            }
         }
     }
 
@@ -474,8 +479,7 @@ async fn claude_cli_status(
 ) -> Json<serde_json::Value> {
     use crate::services::claude_cli;
 
-    let installed = claude_cli::is_available();
-    let version = claude_cli::version();
+    let meridian_running = claude_cli::is_meridian_running().await;
 
     let authenticated = query.instance_slug
         .as_deref()
@@ -483,9 +487,7 @@ async fn claude_cli_status(
         .unwrap_or(false);
 
     Json(json!({
-        "installed": installed,
-        "version": version,
-        "cli_available": installed,
+        "meridian_running": meridian_running,
         "authenticated": authenticated,
     }))
 }
@@ -531,9 +533,12 @@ async fn claude_cli_oauth_exchange(
     let oauth_state: claude_cli::OAuthState = serde_json::from_str(&state_json)
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid OAuth state: {e}")))?;
 
-    // Ensure CLI is installed before we need it
-    if let Err(e) = claude_cli::ensure_installed().await {
-        log::warn!("Claude CLI auto-install failed during OAuth: {e}");
+    // Install + start Meridian if needed
+    if let Err(e) = claude_cli::ensure_meridian_installed().await {
+        log::warn!("Meridian install failed during OAuth: {e}");
+    }
+    if !claude_cli::is_meridian_running().await {
+        let _ = claude_cli::start_meridian().await;
     }
 
     // Exchange code for tokens

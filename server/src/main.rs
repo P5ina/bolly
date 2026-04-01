@@ -10,15 +10,6 @@ use log::info;
 
 #[tokio::main]
 async fn main() {
-    // MCP bridge mode: `server --mcp-bridge <url> <token>`
-    let args: Vec<String> = std::env::args().collect();
-    if args.get(1).map(|s| s.as_str()) == Some("--mcp-bridge") {
-        let url = args.get(2).expect("usage: server --mcp-bridge <url> <token>");
-        let token = args.get(3).expect("usage: server --mcp-bridge <url> <token>");
-        services::claude_cli::run_mcp_bridge(url, token);
-        return;
-    }
-
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .filter_module("tracing::span", log::LevelFilter::Warn)
         .filter_module("lance", log::LevelFilter::Warn)
@@ -49,6 +40,19 @@ async fn main() {
             None
         }
     };
+
+    // Start Meridian proxy if using Claude subscription
+    if config.llm.provider == config::LlmProvider::ClaudeCli {
+        if !services::claude_cli::is_meridian_running().await {
+            if let Err(e) = services::claude_cli::ensure_meridian_installed().await {
+                log::error!("Failed to install Meridian: {e}");
+            } else if let Err(e) = services::claude_cli::start_meridian().await {
+                log::error!("Failed to start Meridian: {e}");
+            }
+        } else {
+            log::info!("Meridian proxy already running on port 3456");
+        }
+    }
 
     let state = app::state::AppState::new(config).await;
 

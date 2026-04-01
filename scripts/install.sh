@@ -230,14 +230,15 @@ log "downloaded ${BOLD}$TAG${NC}"
 # ─── Config file ──────────────────────────────────────────────────────────────
 if [ ! -f "$BOLLY_DIR/config.toml" ]; then
     step "creating config"
-    cat > "$BOLLY_DIR/config.toml" <<'CONF'
+    # Generate a secure random auth token (32 chars, a-z0-9)
+    AUTH_TOKEN=$(head -c 256 /dev/urandom | LC_ALL=C tr -dc 'a-z0-9' | head -c 32)
+    cat > "$BOLLY_DIR/config.toml" <<CONF
 host = "0.0.0.0"
 port = 26559
-auth_token = ""
+auth_token = "$AUTH_TOKEN"
 
 [llm]
-provider = "anthropic"
-model = "claude-sonnet-4-6"
+model_mode = "auto"
 
 [llm.tokens]
 ANTHROPIC = ""       # Required — get key at https://console.anthropic.com
@@ -245,8 +246,18 @@ GOOGLE_AI = ""       # Optional — embeddings + media analysis
 ELEVENLABS = ""      # Optional — text-to-speech
 CONF
     log "created $BOLLY_DIR/config.toml"
+    log "auth token: ${BOLD}$AUTH_TOKEN${NC}"
 else
     log "config already exists, skipping"
+    # Backfill auth_token if empty (upgrade from older install)
+    EXISTING_TOKEN=$(grep -E '^auth_token\s*=' "$BOLLY_DIR/config.toml" | head -1 | sed 's/.*=\s*"\{0,1\}//;s/"\{0,1\}\s*$//')
+    if [ -z "$EXISTING_TOKEN" ]; then
+        AUTH_TOKEN=$(head -c 256 /dev/urandom | LC_ALL=C tr -dc 'a-z0-9' | head -c 32)
+        sed -i.bak "s/^auth_token\s*=.*/auth_token = \"$AUTH_TOKEN\"/" "$BOLLY_DIR/config.toml"
+        rm -f "$BOLLY_DIR/config.toml.bak"
+        log "generated auth token for existing install"
+        log "auth token: ${BOLD}$AUTH_TOKEN${NC}"
+    fi
 fi
 
 # ─── Update script ────────────────────────────────────────────────────────────
@@ -448,14 +459,18 @@ for i in $(seq 1 30); do
     sleep 0.5
 done
 
+    # Read auth token from config for browser URL
+AUTH_TOKEN=$(grep -E '^auth_token\s*=' "$BOLLY_DIR/config.toml" | head -1 | sed 's/.*=\s*"\{0,1\}//;s/"\{0,1\}\s*$//')
+AUTH_URL="$BOLLY_URL/auth?token=$AUTH_TOKEN"
+
 if curl -sf "$BOLLY_URL/api/health" >/dev/null 2>&1; then
     log "bolly is running on port $BOLLY_PORT"
 
-    # Open browser
+    # Open browser with auth
     if [ "$PLATFORM" = "macos" ]; then
-        open "$BOLLY_URL" 2>/dev/null
+        open "$AUTH_URL" 2>/dev/null
     elif command -v xdg-open &>/dev/null; then
-        xdg-open "$BOLLY_URL" 2>/dev/null
+        xdg-open "$AUTH_URL" 2>/dev/null
     fi
 
     echo ""
@@ -463,7 +478,7 @@ if curl -sf "$BOLLY_URL/api/health" >/dev/null 2>&1; then
     echo -e "${BOLD}  │${NC}  ${GREEN}bolly is ready!${NC}            ${BOLD}│${NC}"
     echo -e "${BOLD}  └─────────────────────────────┘${NC}"
     echo ""
-    echo -e "  ${CYAN}${BOLLY_URL}${NC} is open in your browser"
+    echo -e "  ${CYAN}${AUTH_URL}${NC}"
     echo ""
 else
     warn "bolly didn't start automatically"

@@ -28,7 +28,6 @@ pub fn build_router(state: AppState, static_dir: Option<PathBuf>) -> Router {
         .merge(routes::memory_import::router())
         .merge(routes::agents::router())
         .merge(routes::machine_agents::router())
-        .merge(routes::mcp_bridge::router())
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 
     // Public routes — no auth

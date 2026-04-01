@@ -471,9 +471,14 @@ pub struct LlmBackend {
     pub http: reqwest::Client,
     pub api_key: String,
     pub model: String,
-    /// Provider type — Api (direct Anthropic) or ClaudeCli (subprocess).
+    /// Base URL for Anthropic API calls.
+    pub base_url: String,
+    /// Provider type — Api (direct Anthropic) or ClaudeCli (via Meridian proxy).
     pub provider: crate::config::LlmProvider,
 }
+
+const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com";
+const MERIDIAN_BASE_URL: &str = "http://127.0.0.1:3456";
 
 impl LlmBackend {
     pub fn from_config(config: &Config) -> Option<Self> {
@@ -483,36 +488,25 @@ impl LlmBackend {
         match config.llm.provider {
             crate::config::LlmProvider::Api => {
                 let api_key = config.llm.api_key()?.to_string();
-                Some(Self { http, api_key, model, provider: crate::config::LlmProvider::Api })
+                Some(Self { http, api_key, model, base_url: ANTHROPIC_BASE_URL.to_string(), provider: crate::config::LlmProvider::Api })
             }
             crate::config::LlmProvider::ClaudeCli => {
+                // Meridian proxy: standard Anthropic API on localhost
                 Some(Self {
                     http,
-                    api_key: String::new(), // not used for CLI
+                    api_key: "meridian".to_string(), // dummy key, Meridian ignores it
                     model,
+                    base_url: MERIDIAN_BASE_URL.to_string(),
                     provider: crate::config::LlmProvider::ClaudeCli,
                 })
             }
         }
     }
 
-    /// Whether this backend uses the Claude CLI subprocess.
+    /// Whether this backend uses the Meridian proxy (Claude subscription).
+    #[allow(dead_code)]
     pub fn is_cli(&self) -> bool {
         matches!(self.provider, crate::config::LlmProvider::ClaudeCli)
-    }
-
-    /// Find an OAuth token from any instance for background CLI calls.
-    fn resolve_cli_token(&self) -> String {
-        let workspace = crate::config::workspace_root();
-        let instances_dir = workspace.join("instances");
-        if let Ok(entries) = std::fs::read_dir(&instances_dir) {
-            for entry in entries.flatten() {
-                if let Some(token) = super::claude_cli::load_token(&workspace, &entry.file_name().to_string_lossy()) {
-                    return token.access_token;
-                }
-            }
-        }
-        String::new()
     }
 
     /// Create a variant using the fast/cheap model.
@@ -522,6 +516,7 @@ impl LlmBackend {
             api_key: self.api_key.clone(),
             model: override_model.filter(|s| !s.is_empty())
                 .unwrap_or(DEFAULT_FAST_MODEL).to_string(),
+            base_url: self.base_url.clone(),
             provider: self.provider,
         }
     }
@@ -532,6 +527,7 @@ impl LlmBackend {
             http: self.http.clone(),
             api_key: self.api_key.clone(),
             model: CHEAP_MODEL.to_string(),
+            base_url: self.base_url.clone(),
             provider: self.provider,
         }
     }
@@ -542,6 +538,7 @@ impl LlmBackend {
             http: self.http.clone(),
             api_key: self.api_key.clone(),
             model: DEFAULT_MODEL.to_string(),
+            base_url: self.base_url.clone(),
             provider: self.provider,
         }
     }
@@ -582,26 +579,6 @@ impl LlmBackend {
         prompt: &str,
         history: Vec<Message>,
     ) -> anyhow::Result<(String, u64)> {
-        if self.is_cli() {
-            // Build context from history
-            let mut context = String::new();
-            for msg in &history {
-                match msg {
-                    Message::User { content } => {
-                        let t: String = content.iter().filter_map(|b| if let ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join(" ");
-                        if !t.is_empty() { context.push_str(&format!("User: {t}\n")); }
-                    }
-                    Message::Assistant { content } => {
-                        let t: String = content.iter().filter_map(|b| if let ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join(" ");
-                        if !t.is_empty() { context.push_str(&format!("Assistant: {t}\n")); }
-                    }
-                }
-            }
-            let full = if context.is_empty() { prompt.to_string() } else { format!("{context}\n{prompt}") };
-            // Load any available OAuth token (try all instances)
-            let token = self.resolve_cli_token();
-            return super::claude_cli::run_prompt(&self.model, system_prompt, &full, &token, None).await;
-        }
         let backend = self.clone();
         let system = system_prompt.to_string();
         let prompt = prompt.to_string();
@@ -613,7 +590,7 @@ impl LlmBackend {
             async move {
                 let mut messages = history;
                 messages.push(Message::user(&prompt));
-                anthropic_complete(&backend.http, &backend.api_key, &backend.model, &[&system], &[], &messages, 16384)
+                anthropic_complete(&backend.http, &backend.api_key, &backend.model, &[&system], &[], &messages, 16384, &backend.base_url)
                     .await
                     .map(|(text, _, _, tokens)| (text, tokens))
             }
@@ -628,21 +605,6 @@ impl LlmBackend {
         prompt: &str,
         schema: serde_json::Value,
     ) -> anyhow::Result<(String, u64)> {
-        if self.is_cli() {
-            // CLI mode: ask for JSON in the prompt, parse from response
-            let json_prompt = format!(
-                "{prompt}\n\nIMPORTANT: Respond with ONLY valid JSON matching this schema, no other text:\n{schema}",
-                schema = serde_json::to_string_pretty(&schema).unwrap_or_default()
-            );
-            let token = self.resolve_cli_token();
-            let (text, tokens) = super::claude_cli::run_prompt(&self.model, system_prompt, &json_prompt, &token, None).await?;
-            // Try to extract JSON from response (may have markdown fences)
-            let cleaned = text.trim()
-                .trim_start_matches("```json").trim_start_matches("```")
-                .trim_end_matches("```")
-                .trim();
-            return Ok((cleaned.to_string(), tokens));
-        }
         let backend = self.clone();
         let system = system_prompt.to_string();
         let prompt = prompt.to_string();
@@ -670,7 +632,7 @@ impl LlmBackend {
                 });
 
                 let resp = backend.http
-                    .post("https://api.anthropic.com/v1/messages")
+                    .post(&format!("{}/v1/messages", backend.base_url))
                     .headers(anthropic_headers(&backend.api_key))
                     .json(&req)
                     .send()
@@ -711,13 +673,6 @@ impl LlmBackend {
         mcp_snapshot: Option<super::mcp::McpAppSnapshot>,
         sent_files: super::tools::SentFiles,
     ) -> anyhow::Result<ToolChatResult> {
-        if self.is_cli() {
-            return self.cli_chat_streaming(
-                system_prompt, prompt, history, events,
-                instance_slug, chat_id, workspace_dir,
-            ).await;
-        }
-
         log::info!("chat_with_tools_streaming: {} tools", tools.len());
 
         let tool_defs = collect_tool_defs(&tools).await;
@@ -752,144 +707,6 @@ impl LlmBackend {
         }
     }
 
-    /// Claude CLI chat path: spawn subprocess, fake-stream result.
-    async fn cli_chat_streaming(
-        &self,
-        system_prompt: &[&str],
-        prompt: Message,
-        history: Vec<Message>,
-        events: broadcast::Sender<ServerEvent>,
-        instance_slug: &str,
-        chat_id: &str,
-        workspace_dir: &Path,
-    ) -> anyhow::Result<ToolChatResult> {
-        // Load per-instance OAuth token
-        let token = super::claude_cli::load_token(workspace_dir, instance_slug)
-            .ok_or_else(|| anyhow::anyhow!(
-                "No Claude CLI OAuth token found for this instance. Please connect your Claude account in Settings."
-            ))?;
-
-        // Build system prompt string
-        let system = system_prompt.join("\n\n");
-
-        // Extract the last user message text
-        let user_text = if let Message::User { content } = &prompt {
-            content.iter().filter_map(|b| {
-                if let ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
-            }).collect::<Vec<_>>().join("\n")
-        } else {
-            String::new()
-        };
-
-        // Build history context to embed in the prompt
-        let mut context = String::new();
-        let recent = if history.len() > 20 { &history[history.len() - 20..] } else { &history };
-        if !recent.is_empty() {
-            context.push_str("[Recent conversation]\n");
-            for msg in recent {
-                match msg {
-                    Message::User { content } => {
-                        let text: String = content.iter().filter_map(|b| {
-                            if let ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
-                        }).collect::<Vec<_>>().join(" ");
-                        if !text.is_empty() {
-                            context.push_str(&format!("User: {text}\n"));
-                        }
-                    }
-                    Message::Assistant { content } => {
-                        let text: String = content.iter().filter_map(|b| {
-                            if let ContentBlock::Text { text } = b { Some(text.as_str()) } else { None }
-                        }).collect::<Vec<_>>().join(" ");
-                        if !text.is_empty() {
-                            context.push_str(&format!("Assistant: {text}\n"));
-                        }
-                    }
-                }
-            }
-            context.push_str("\n[Current message]\n");
-        }
-        let full_prompt = format!("{context}{user_text}");
-
-        log::info!("claude CLI: sending prompt ({} chars) with system ({} chars)",
-            full_prompt.len(), system.len());
-
-        // Build MCP config so Claude CLI can call our tools
-        // Build MCP config so Claude CLI can call our tools
-        let mcp = {
-            let config = crate::config::load_config().ok();
-            config.map(|c| super::claude_cli::McpConfig {
-                server_url: format!("http://localhost:{}", c.port),
-                auth_token: c.auth_token.clone(),
-                instance_slug: instance_slug.to_string(),
-                chat_id: chat_id.to_string(),
-            })
-        };
-
-        // Call Claude CLI
-        let (text, tokens_used) = super::claude_cli::run_prompt(
-            &self.model,
-            &system,
-            &full_prompt,
-            &token.access_token,
-            mcp.as_ref(),
-        ).await?;
-
-        log::info!("claude CLI: response received, {} chars. Streaming to client...", text.len());
-
-        // Fake-stream the result word by word
-        let message_id = super::chat::next_id();
-        for word in text.split_inclusive(char::is_whitespace) {
-            let _ = events.send(crate::domain::events::ServerEvent::ChatStreamDelta {
-                instance_slug: instance_slug.to_string(),
-                chat_id: chat_id.to_string(),
-                message_id: message_id.clone(),
-                delta: word.to_string(),
-            });
-            tokio::time::sleep(std::time::Duration::from_millis(8)).await;
-        }
-
-        // Build messages list for rig_history
-        let mut messages = history;
-        if let Message::User { content } = prompt {
-            messages.push(Message::User { content });
-        }
-        let assistant_msg = Message::Assistant {
-            content: vec![ContentBlock::Text { text: text.clone() }],
-        };
-
-        // Save to rig_history (the API path does this inside streaming_agent_loop)
-        let rig_path = super::chat::rig_history_path(workspace_dir, instance_slug, chat_id);
-        let ts = crate::services::tools::unix_millis().to_string();
-        let mut entry = HistoryEntry::new(
-            assistant_msg.clone(),
-            ts,
-            message_id.clone(),
-        );
-        entry.model = Some(self.model.clone());
-        super::chat::append_to_rig_history(&rig_path, &entry);
-
-        messages.push(assistant_msg);
-
-        // Send snapshot so client refreshes the chat
-        if let Ok(resp) = super::chat::load_messages(workspace_dir, instance_slug, chat_id) {
-            let _ = events.send(crate::domain::events::ServerEvent::ChatSnapshot {
-                instance_slug: instance_slug.to_string(),
-                chat_id: chat_id.to_string(),
-                messages: resp.messages,
-                agent_running: false,
-            });
-        }
-
-        log::info!("claude CLI: turn complete, saved {} chars to rig_history", text.len());
-
-        Ok(ToolChatResult {
-            text,
-            rig_history: Some(messages),
-            message_id: Some(message_id),
-            tokens_used,
-        })
-    }
-
     /// Simplified tool call (no streaming). Used by heartbeat.
     #[allow(dead_code)]
     pub async fn chat_with_tools_only(
@@ -899,7 +716,7 @@ impl LlmBackend {
         history: Vec<Message>,
         tools: Vec<Box<dyn ToolDyn>>,
     ) -> anyhow::Result<(String, u64)> {
-        if self.is_cli() || tools.is_empty() {
+        if tools.is_empty() {
             return self.chat(system_prompt, prompt, history).await;
         }
         let system_blocks: &[&str] = &[system_prompt];
@@ -1390,7 +1207,7 @@ async fn complete_once(
     tool_defs: &[ToolDefinition],
     messages: &[Message],
 ) -> anyhow::Result<(String, Vec<ToolUseBlock>, String, u64)> {
-    anthropic_complete(&backend.http, &backend.api_key, &backend.model, system, tool_defs, messages, 16384).await
+    anthropic_complete(&backend.http, &backend.api_key, &backend.model, system, tool_defs, messages, 16384, &backend.base_url).await
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1612,11 +1429,12 @@ async fn anthropic_complete(
     tool_defs: &[ToolDefinition],
     messages: &[Message],
     max_tokens: u64,
+    base_url: &str,
 ) -> anyhow::Result<(String, Vec<ToolUseBlock>, String, u64)> {
     let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, false, api_key);
 
     let resp = http
-        .post("https://api.anthropic.com/v1/messages")
+        .post(&format!("{}/v1/messages", base_url))
         .headers(anthropic_headers(api_key))
         .json(&body)
         .send()
@@ -1701,12 +1519,13 @@ async fn anthropic_stream(
     chat_id: &str,
     message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
+    base_url: &str,
 ) -> anyhow::Result<(String, Vec<ToolUseBlock>, String, u64, Vec<ContentBlock>)> {
     let body = build_anthropic_request(model, system, tool_defs, messages, max_tokens, true, api_key);
 
     let headers = anthropic_headers(api_key);
     let resp = http
-        .post("https://api.anthropic.com/v1/messages")
+        .post(&format!("{}/v1/messages", base_url))
         .headers(headers)
         .json(&body)
         .send()
@@ -2030,7 +1849,7 @@ async fn stream_once(
     let (text, tool_uses, stop_reason, tokens_used, ordered_content) =
         anthropic_stream(
             &backend.http, &backend.api_key, &backend.model, system, tool_defs, messages,
-            16384, events, instance_slug, chat_id, message_id, mcp_snapshot,
+            16384, events, instance_slug, chat_id, message_id, mcp_snapshot, &backend.base_url,
         ).await?;
     Ok(StreamOnceResult { text, tool_uses, stop_reason, tokens_used, ordered_content })
 }
