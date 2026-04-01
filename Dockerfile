@@ -8,7 +8,7 @@ RUN apt-get update -qq && \
       python3 python3-pip python3-venv \
       fontconfig fonts-liberation fonts-dejavu-core && \
     # Node.js
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null 2>&1 && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - > /dev/null 2>&1 && \
     apt-get install -y nodejs > /dev/null 2>&1 && \
     npm install -g pnpm > /dev/null 2>&1 && \
     # yt-dlp
