@@ -558,6 +558,14 @@ async fn claude_cli_oauth_exchange(
     claude_cli::save_token(&workspace, &req.instance_slug, &tokens)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save token: {e}")))?;
 
+    // Write credentials for Claude Code SDK (used by Meridian)
+    // and restart Meridian so it picks up the new credentials
+    claude_cli::write_claude_credentials(&tokens);
+    claude_cli::kill_meridian();
+    if let Err(e) = claude_cli::start_meridian(&workspace).await {
+        log::warn!("Failed to restart Meridian after OAuth: {e}");
+    }
+
     // Clean up state file
     let _ = std::fs::remove_file(&state_path);
 

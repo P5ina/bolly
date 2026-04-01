@@ -100,6 +100,22 @@ pub async fn start_meridian(workspace_dir: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+
+/// Kill any running Meridian process.
+pub fn kill_meridian() {
+    // Find and kill meridian process
+    if let Ok(output) = std::process::Command::new("pkill")
+        .args(["-f", "meridian"])
+        .output()
+    {
+        if output.status.success() {
+            log::info!("Killed running Meridian process");
+        }
+    }
+    // Give it a moment to die
+    std::thread::sleep(std::time::Duration::from_millis(500));
+}
+
 /// Check if Meridian is running.
 pub async fn is_meridian_running() -> bool {
     let client = reqwest::Client::new();
@@ -250,7 +266,7 @@ pub fn has_valid_token(workspace_dir: &Path, instance_slug: &str) -> bool {
 
 /// Write OAuth tokens to ~/.claude/.credentials.json so Claude Code SDK
 /// (used by Meridian) can authenticate on headless/managed servers.
-fn write_claude_credentials(tokens: &OAuthTokens) {
+pub fn write_claude_credentials(tokens: &OAuthTokens) {
     let Some(home) = dirs::home_dir() else { return };
     let claude_dir = home.join(".claude");
     let _ = std::fs::create_dir_all(&claude_dir);
