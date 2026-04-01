@@ -150,6 +150,7 @@ export function sendMessage(
 
 export function updateLlmConfig(req: {
 	api_key?: string;
+	openai?: string;
 	google_ai?: string;
 	elevenlabs?: string;
 	openrouter?: string;
@@ -172,7 +173,7 @@ export function fetchConfigStatus(): Promise<{
 	return json("/api/config/status");
 }
 
-export function updateProvider(provider: 'api' | 'claude_cli'): Promise<{ status: string; provider: string }> {
+export function updateProvider(provider: 'api' | 'claude_cli' | 'openai' | 'codex'): Promise<{ status: string; provider: string }> {
 	return json("/api/config/provider", {
 		method: "PUT",
 		headers: { "Content-Type": "application/json" },

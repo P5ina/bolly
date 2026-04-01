@@ -39,6 +39,7 @@ async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
     let t = &config.llm.tokens;
     let keys: Vec<&str> = [
         ("anthropic", !t.anthropic.is_empty()),
+        ("openai", !t.open_ai.is_empty()),
         ("google_ai", !t.google_ai.is_empty()),
         ("elevenlabs", !t.elevenlabs.is_empty()),
         ("openrouter", !t.open_router.is_empty()),
@@ -104,9 +105,10 @@ async fn update_model_mode(
 
 #[derive(Deserialize)]
 struct UpdateLlmKeyRequest {
-    /// Which key to set: "api_key" (anthropic), "google_ai", "elevenlabs", "openrouter"
     #[serde(default)]
     api_key: Option<String>,
+    #[serde(default)]
+    openai: Option<String>,
     #[serde(default)]
     google_ai: Option<String>,
     #[serde(default)]
@@ -154,6 +156,10 @@ async fn update_llm_key(
         if let Some(key) = &req.api_key {
             cfg.llm.tokens.anthropic = key.trim().to_string();
             changes.push("anthropic");
+        }
+        if let Some(key) = &req.openai {
+            cfg.llm.tokens.open_ai = key.trim().to_string();
+            changes.push("openai");
         }
         if let Some(key) = &req.google_ai {
             cfg.llm.tokens.google_ai = key.trim().to_string();

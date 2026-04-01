@@ -424,7 +424,7 @@
 		}
 	});
 
-	async function setProvider(p: 'api' | 'claude_cli') {
+	async function setProvider(p: 'api' | 'claude_cli' | 'openai' | 'codex') {
 		providerSaving = true;
 		try {
 			await updateProvider(p);
@@ -962,7 +962,7 @@
 			<div class="section-icon">⚡</div>
 			<div>
 				<h3 class="section-label">provider</h3>
-				<p class="section-desc">How your companion connects to Claude.</p>
+				<p class="section-desc">Choose which AI powers your companion.</p>
 			</div>
 		</div>
 		<div class="model-mode-options" class:disabled={providerSaving}>
@@ -982,9 +982,69 @@
 				disabled={providerSaving}
 			>
 				<span class="mode-name">Claude Code</span>
-				<span class="mode-desc">use your Pro/Max subscription — no API key needed</span>
+				<span class="mode-desc">use your Claude Pro/Max subscription</span>
+			</button>
+			<button
+				class="mode-option"
+				class:mode-active={provider === "openai"}
+				onclick={() => setProvider("openai")}
+				disabled={providerSaving}
+			>
+				<span class="mode-name">OpenAI</span>
+				<span class="mode-desc">pay-per-use with your own OpenAI API key</span>
+			</button>
+			<button
+				class="mode-option"
+				class:mode-active={provider === "codex"}
+				onclick={() => setProvider("codex")}
+				disabled={providerSaving}
+			>
+				<span class="mode-name">Codex</span>
+				<span class="mode-desc">use your ChatGPT Plus/Pro subscription</span>
 			</button>
 		</div>
+
+		{#if provider === "openai"}
+			<div class="cli-oauth-section">
+				<p class="cli-instruction">Enter your OpenAI API key.</p>
+				<div class="cli-oauth-row">
+					<input
+						type="password"
+						class="cli-code-input"
+						placeholder="sk-..."
+						bind:value={cliOAuthCode}
+						onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter") { saveKey("openai", cliOAuthCode); cliOAuthCode = ""; } }}
+					/>
+					<button
+						class="key-change"
+						onclick={() => { saveKey("openai", cliOAuthCode); cliOAuthCode = ""; }}
+						disabled={!cliOAuthCode.trim()}
+					>save</button>
+				</div>
+				<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" class="ob-hint" style="margin-top: 0.5rem; display: block; font-size: 0.75rem;">
+					get your key at platform.openai.com
+				</a>
+			</div>
+		{/if}
+
+		{#if provider === "codex"}
+			<div class="cli-oauth-section">
+				{#if cliConnected}
+					<div class="cli-oauth-row" style="justify-content: space-between;">
+						<span class="key-badge key-badge-ok">connected</span>
+						<button
+							class="key-change"
+							onclick={() => { cliConnected = false; }}
+						>reconnect</button>
+					</div>
+				{:else}
+					<p class="cli-instruction">Connect your OpenAI/ChatGPT account.</p>
+					<p class="cli-instruction" style="opacity: 0.6; font-size: 0.8rem;">
+						Run <code>byokey login codex</code> on this machine, then restart.
+					</p>
+				{/if}
+			</div>
+		{/if}
 
 		{#if provider === "claude_cli"}
 			<div class="cli-oauth-section">

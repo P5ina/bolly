@@ -390,7 +390,11 @@
 						</button>
 						<button onclick={pickProviderClaude} class="ob-pill ob-pill-col ob-pill-soul">
 							<span class="ob-pill-label">Claude Code</span>
-							<span class="ob-pill-note">use your subscription</span>
+							<span class="ob-pill-note">Claude subscription</span>
+						</button>
+						<button onclick={pickProviderApi} class="ob-pill ob-pill-col ob-pill-soul">
+							<span class="ob-pill-label">OpenAI</span>
+							<span class="ob-pill-note">OpenAI API key</span>
 						</button>
 					</div>
 				</div>
