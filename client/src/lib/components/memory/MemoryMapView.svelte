@@ -1511,10 +1511,8 @@ ttt<!-- svelte-ignore a11y_autofocus -->
 	.bubble-label {
 		font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.05em;
 		font-weight: 600;
-		color: oklch(0.92 0.02 75);
-		text-shadow:
-			0 1px 6px oklch(var(--shade) / 70%),
-			0 0 20px color-mix(in srgb, var(--c) 40%, transparent);
+		color: var(--foreground);
+		text-shadow: 0 0 8px color-mix(in srgb, var(--c) 30%, transparent);
 		pointer-events: none; user-select: none; z-index: 2;
 		text-align: center; line-height: 1; max-width: 85%;
 		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1522,8 +1520,8 @@ ttt<!-- svelte-ignore a11y_autofocus -->
 
 	.bubble-sub {
 		font-family: var(--font-mono); font-size: 0.7rem;
-		color: oklch(0.75 0.03 75 / 80%);
-		text-shadow: 0 1px 4px oklch(var(--shade) / 60%);
+		color: var(--text-muted);
+		text-shadow: none;
 		pointer-events: none; user-select: none; z-index: 2;
 	}
 
