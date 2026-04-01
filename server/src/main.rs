@@ -42,15 +42,13 @@ async fn main() {
     };
 
     // Start Meridian proxy if using Claude subscription
+    // Always kill + restart to pick up new env vars / code changes
     if config.llm.provider == config::LlmProvider::ClaudeCli {
-        if !services::claude_cli::is_meridian_running().await {
-            if let Err(e) = services::claude_cli::ensure_meridian_installed().await {
-                log::error!("Failed to install Meridian: {e}");
-            } else if let Err(e) = services::claude_cli::start_meridian(&config::workspace_root()).await {
-                log::error!("Failed to start Meridian: {e}");
-            }
-        } else {
-            log::info!("Meridian proxy already running on port 3456");
+        services::claude_cli::kill_meridian();
+        if let Err(e) = services::claude_cli::ensure_meridian_installed().await {
+            log::error!("Failed to install Meridian: {e}");
+        } else if let Err(e) = services::claude_cli::start_meridian(&config::workspace_root()).await {
+            log::error!("Failed to start Meridian: {e}");
         }
     }
 
