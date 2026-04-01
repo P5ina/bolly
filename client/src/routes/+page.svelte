@@ -75,71 +75,103 @@
 
 <div class="home">
 	<div class="home-ui" class:home-ui-hidden={!uiVisible}>
-		<div class="hero">
-			<p class="greeting">{getGreeting()}</p>
-			<h1 class="title">
-				your friend that<br/>
-				<span class="title-accent">actually gets you</span>
-			</h1>
-		</div>
-
-		<!-- Mobile: list of instances (3D spheres don't fit on small screens) -->
-		{#if !instances.loading && instances.list.length > 0}
-			<div class="mobile-list">
-				{#each instances.list as inst (inst.slug)}
-					<button class="mobile-card" onclick={() => goto(`/${inst.slug}`)}>
-						<div class="mobile-card-orb"></div>
-						<div class="mobile-card-info">
-							<span class="mobile-card-name">{inst.companion_name || inst.slug}</span>
-							<span class="mobile-card-slug">{inst.slug}</span>
-						</div>
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mobile-card-arrow"><path d="m9 18 6-6-6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-					</button>
-				{/each}
+		{#if instances.loading}
+			<div class="empty-state">
+				<div class="loading-dot"></div>
 			</div>
-		{/if}
+		{:else if instances.list.length === 0}
+			<!-- Empty state: big centered get started -->
+			<div class="empty-state">
+				<div class="empty-glow"></div>
+				<p class="empty-greeting">{getGreeting()}</p>
+				<h1 class="empty-title">get started</h1>
+				<p class="empty-sub">create your first companion</p>
 
-		<div class="bottom">
-			{#if !showCreate}
-				{#if !instances.loading && instances.list.length > 0}
+				{#if !showCreate}
+					<button class="empty-cta" onclick={() => showCreate = true}>
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="empty-cta-icon"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>
+						<span>new companion</span>
+					</button>
+				{:else}
+					<div class="create-field">
+						<!-- svelte-ignore a11y_autofocus -->
+						<input bind:value={newSlug} onkeydown={handleKeydown} placeholder="what's your name?" autofocus class="create-input" />
+						{#if newSlug.trim()}
+							<button onclick={create} class="create-go" aria-label="Create">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M5 12h14" stroke-linecap="round"/><path d="m12 5 7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+							</button>
+						{/if}
+					</div>
+				{/if}
+
+				<div class="empty-hints">
+					<span>helps you study</span>
+					<span class="sep">·</span>
+					<span>thinks with you</span>
+					<span class="sep">·</span>
+					<span>feels your mood</span>
+				</div>
+			</div>
+		{:else}
+			<!-- Normal state: hero + instances -->
+			<div class="hero">
+				<p class="greeting">{getGreeting()}</p>
+				<h1 class="title">
+					your friend that<br/>
+					<span class="title-accent">actually gets you</span>
+				</h1>
+			</div>
+
+			<!-- Mobile: list of instances (3D spheres don't fit on small screens) -->
+			{#if !instances.loading && instances.list.length > 0}
+				<div class="mobile-list">
+					{#each instances.list as inst (inst.slug)}
+						<button class="mobile-card" onclick={() => goto(`/${inst.slug}`)}>
+							<div class="mobile-card-orb"></div>
+							<div class="mobile-card-info">
+								<span class="mobile-card-name">{inst.companion_name || inst.slug}</span>
+								<span class="mobile-card-slug">{inst.slug}</span>
+							</div>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mobile-card-arrow"><path d="m9 18 6-6-6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+						</button>
+					{/each}
+				</div>
+			{/if}
+
+			<div class="bottom">
+				{#if !showCreate}
 					<button class="new-btn" onclick={() => showCreate = true}>
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="new-icon"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>
 						<span>new companion</span>
 					</button>
-				{:else if !instances.loading}
-					<button class="start-btn" onclick={() => showCreate = true}>get started</button>
 				{/if}
-			{/if}
 
-			{#if showCreate}
-				<div class="create-field">
-					<!-- svelte-ignore a11y_autofocus -->
-					<input bind:value={newSlug} onkeydown={handleKeydown} placeholder="what's your name?" autofocus class="create-input" />
-					{#if newSlug.trim()}
-						<button onclick={create} class="create-go" aria-label="Create">
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M5 12h14" stroke-linecap="round"/><path d="m12 5 7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-						</button>
-					{/if}
+				{#if showCreate}
+					<div class="create-field">
+						<!-- svelte-ignore a11y_autofocus -->
+						<input bind:value={newSlug} onkeydown={handleKeydown} placeholder="what's your name?" autofocus class="create-input" />
+						{#if newSlug.trim()}
+							<button onclick={create} class="create-go" aria-label="Create">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M5 12h14" stroke-linecap="round"/><path d="m12 5 7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+							</button>
+						{/if}
+					</div>
+				{/if}
+
+				<!-- Hover label from 3D scene (desktop only) -->
+				{#if scene.hoveredSlug}
+					<div class="hover-name">{instances.list.find(i => i.slug === scene.hoveredSlug)?.companion_name || scene.hoveredSlug}</div>
+				{/if}
+
+				<div class="hints">
+					<span>helps you study</span>
+					<span class="sep">·</span>
+					<span>thinks with you</span>
+					<span class="sep">·</span>
+					<span>feels your mood</span>
 				</div>
-			{/if}
-
-			{#if instances.loading}
-				<div class="loading-dot"></div>
-			{/if}
-
-			<!-- Hover label from 3D scene (desktop only) -->
-			{#if scene.hoveredSlug}
-				<div class="hover-name">{instances.list.find(i => i.slug === scene.hoveredSlug)?.companion_name || scene.hoveredSlug}</div>
-			{/if}
-
-			<div class="hints">
-				<span>helps you study</span>
-				<span class="sep">·</span>
-				<span>thinks with you</span>
-				<span class="sep">·</span>
-				<span>feels your mood</span>
 			</div>
-		</div>
+		{/if}
 	</div>
 
 	{#if version && uiVisible}
@@ -197,6 +229,113 @@
 	.home-ui-hidden { opacity: 0; transform: translateY(-12px); pointer-events: none !important; }
 	.home-ui-hidden > * { pointer-events: none !important; }
 
+	/* ── Empty state (no instances) ── */
+	.empty-state {
+		position: absolute; inset: 0;
+		display: flex; flex-direction: column; align-items: center; justify-content: center;
+		gap: 0; padding: 2rem;
+		animation: empty-enter 1s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+	@keyframes empty-enter {
+		from { opacity: 0; transform: scale(0.96) translateY(20px); }
+		to { opacity: 1; transform: scale(1) translateY(0); }
+	}
+
+	.empty-glow {
+		position: absolute;
+		width: clamp(280px, 50vw, 500px); height: clamp(280px, 50vw, 500px);
+		border-radius: 50%;
+		background: radial-gradient(
+			circle,
+			oklch(0.50 0.12 240 / 12%) 0%,
+			oklch(0.45 0.08 260 / 6%) 40%,
+			transparent 70%
+		);
+		pointer-events: none;
+		animation: glow-breathe 6s ease-in-out infinite;
+	}
+	@keyframes glow-breathe {
+		0%, 100% { opacity: 0.6; transform: scale(1); }
+		50% { opacity: 1; transform: scale(1.08); }
+	}
+
+	.empty-greeting {
+		font-family: var(--font-display); font-size: 0.8rem; font-weight: 300;
+		font-style: italic; letter-spacing: 0.18em; text-transform: lowercase;
+		color: oklch(0.55 0.06 240 / 40%);
+		margin-bottom: 1rem;
+		animation: empty-enter 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: 200ms;
+	}
+
+	.empty-title {
+		font-family: var(--font-display); font-style: italic; font-weight: 300;
+		font-size: clamp(3rem, 10vw, 6rem);
+		letter-spacing: -0.03em; line-height: 1;
+		color: oklch(0.88 0.02 75 / 85%);
+		text-align: center;
+		margin-bottom: 0.5rem;
+		animation: empty-enter 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: 300ms;
+	}
+
+	.empty-sub {
+		font-family: var(--font-body); font-size: 0.85rem; font-weight: 300;
+		letter-spacing: 0.06em;
+		color: oklch(0.60 0.04 240 / 40%);
+		margin-bottom: 2.5rem;
+		animation: empty-enter 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: 400ms;
+	}
+
+	.empty-cta {
+		display: flex; align-items: center; gap: 0.75rem;
+		padding: 1rem 2.5rem; border-radius: 3rem;
+		background: oklch(0.50 0.10 240 / 20%);
+		border: 1px solid oklch(0.55 0.10 240 / 25%);
+		color: oklch(0.85 0.04 240 / 90%);
+		font-family: var(--font-display); font-style: italic;
+		font-size: 1.1rem; font-weight: 400;
+		cursor: pointer;
+		transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+		animation: empty-enter 1s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: 550ms;
+		box-shadow: 0 0 40px oklch(0.45 0.08 240 / 12%);
+	}
+	.empty-cta:hover {
+		background: oklch(0.55 0.12 240 / 30%);
+		border-color: oklch(0.60 0.12 240 / 35%);
+		color: oklch(0.92 0.03 75);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 50px oklch(0.50 0.10 240 / 20%);
+	}
+	.empty-cta:active {
+		transform: translateY(0) scale(0.98);
+	}
+	.empty-cta-icon { width: 20px; height: 20px; }
+
+	.empty-state .create-field {
+		animation: empty-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+	.empty-state .create-input {
+		width: 320px; padding: 1rem 1.5rem; border-radius: 3rem;
+		font-size: 1rem;
+	}
+
+	.empty-hints {
+		display: flex; align-items: center; gap: 0.625rem;
+		font-family: var(--font-body); font-size: 0.72rem; letter-spacing: 0.04em;
+		color: oklch(0.88 0.02 75 / 12%);
+		margin-top: 3rem;
+		animation: empty-enter 1s cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: 700ms;
+	}
+	.empty-hints .sep { font-size: 0.5rem; color: oklch(0.50 0.06 240 / 10%); }
+	@media (max-width: 540px) {
+		.empty-hints { flex-direction: column; gap: 0.3rem; }
+		.empty-hints .sep { display: none; }
+	}
+
 	.hero {
 		text-align: center; padding-top: clamp(3rem, 14vh, 10rem);
 		animation: enter-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -235,14 +374,6 @@
 	}
 	.new-btn:hover { background: oklch(1 0 0 / 8%); color: oklch(1 0 0 / 55%); }
 	.new-icon { width: 14px; height: 14px; }
-
-	.start-btn {
-		padding: 0.6rem 1.5rem; border-radius: 2rem;
-		background: oklch(0.50 0.08 240 / 15%); border: 1px solid oklch(0.50 0.08 240 / 20%);
-		color: oklch(0.60 0.08 240 / 80%); font-family: var(--font-display);
-		font-size: 0.85rem; font-style: italic; cursor: pointer; transition: all 0.3s ease;
-	}
-	.start-btn:hover { background: oklch(0.50 0.08 240 / 25%); }
 
 	.create-field { position: relative; animation: enter-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
 	.create-input {
