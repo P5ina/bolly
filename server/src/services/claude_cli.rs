@@ -7,11 +7,11 @@ use sha2::{Digest, Sha256};
 
 // ── OAuth constants (from grll/claude-code-login, public PKCE client) ──
 
-const OAUTH_AUTHORIZE_URL: &str = "https://claude.ai/oauth/authorize";
+const OAUTH_AUTHORIZE_URL: &str = "https://claude.com/cai/oauth/authorize";
 const OAUTH_TOKEN_URL: &str = "https://console.anthropic.com/v1/oauth/token";
 const CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-const REDIRECT_URI: &str = "https://console.anthropic.com/oauth/code/callback";
-const OAUTH_SCOPE: &str = "org:create_api_key user:profile user:inference";
+const REDIRECT_URI: &str = "https://platform.claude.com/oauth/code/callback";
+const OAUTH_SCOPE: &str = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
 
 // ── OAuth types ──
 
@@ -260,6 +260,14 @@ fn write_claude_credentials(tokens: &OAuthTokens) {
             "accessToken": tokens.access_token,
             "refreshToken": tokens.refresh_token,
             "expiresAt": tokens.expires_at,
+            "scopes": [
+                "org:create_api_key",
+                "user:profile",
+                "user:inference",
+                "user:sessions:claude_code",
+                "user:mcp_servers",
+                "user:file_upload"
+            ],
         }
     });
 
