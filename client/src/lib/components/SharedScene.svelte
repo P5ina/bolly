@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
-	import { getSkinStore, clipSrc } from "$lib/stores/skin.svelte.js";
+	import { getSkinStore, clipSrc, type ClipSource } from "$lib/stores/skin.svelte.js";
 
 	const store = getSceneStore();
 	const skinStore = getSkinStore();
