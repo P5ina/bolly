@@ -599,12 +599,28 @@ impl LlmBackend {
     }
 
     /// Chat with structured JSON output.
+    /// Uses Anthropic's output_config for direct API, falls back to
+    /// prompt-based JSON for Meridian proxy (which doesn't support output_config).
     pub async fn chat_json(
         &self,
         system_prompt: &str,
         prompt: &str,
         schema: serde_json::Value,
     ) -> anyhow::Result<(String, u64)> {
+        if self.is_cli() {
+            // Meridian doesn't support output_config — request JSON in the prompt
+            let json_prompt = format!(
+                "{prompt}\n\nIMPORTANT: You MUST respond with ONLY valid JSON matching this schema. No markdown, no explanation, no code fences — just raw JSON:\n{}",
+                serde_json::to_string(&schema).unwrap_or_default()
+            );
+            let (text, tokens) = self.chat(system_prompt, &json_prompt, vec![]).await?;
+            let cleaned = text.trim()
+                .trim_start_matches("```json").trim_start_matches("```")
+                .trim_end_matches("```")
+                .trim()
+                .to_string();
+            return Ok((cleaned, tokens));
+        }
         let backend = self.clone();
         let system = system_prompt.to_string();
         let prompt = prompt.to_string();
