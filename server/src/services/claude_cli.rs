@@ -166,6 +166,9 @@ pub async fn start_meridian(workspace_dir: &Path) -> anyhow::Result<()> {
     };
 
     cmd.env("PATH", &path_env);
+    // Passthrough mode: forward tool calls to client instead of executing internally.
+    // Without this, Meridian/SDK uses its own built-in tools and ignores ours.
+    cmd.env("MERIDIAN_PASSTHROUGH", "true");
     cmd.stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .stdin(std::process::Stdio::null());
