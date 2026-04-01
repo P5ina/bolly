@@ -211,6 +211,53 @@ impl LlmBackend {
         prompt: &str,
         schema: serde_json::Value,
     ) -> anyhow::Result<(String, u64)> {
+        if self.provider.is_openai_format() {
+            let backend = self.clone();
+            let system = system_prompt.to_string();
+            let prompt = prompt.to_string();
+            return retry_on_rate_limit(|| {
+                let backend = backend.clone();
+                let system = system.clone();
+                let prompt = prompt.clone();
+                let schema = schema.clone();
+                async move {
+                    // Include schema in prompt since Codex subscription may not
+                    // support response_format.json_schema. Use json_object mode
+                    // which is widely supported.
+                    let schema_str = serde_json::to_string(&schema).unwrap_or_default();
+                    let messages = vec![serde_json::json!(
+                        {"role": "system", "content": format!("{system}\n\nRespond with ONLY valid JSON matching this schema:\n{schema_str}")}
+                    ), serde_json::json!(
+                        {"role": "user", "content": &prompt}
+                    )];
+                    let req = serde_json::json!({
+                        "model": &backend.model,
+                        "max_tokens": 16384,
+                        "stream": false,
+                        "messages": messages,
+                        "response_format": { "type": "json_object" },
+                    });
+                    let resp = backend.http
+                        .post(&format!("{}/v1/chat/completions", backend.base_url))
+                        .header("Authorization", format!("Bearer {}", backend.api_key))
+                        .header("Content-Type", "application/json")
+                        .json(&req)
+                        .send()
+                        .await?;
+                    let status = resp.status();
+                    let resp_text = resp.text().await?;
+                    if !status.is_success() {
+                        return Err(anyhow::anyhow!("OpenAI API error {status}: {resp_text}"));
+                    }
+                    let resp_json: serde_json::Value = serde_json::from_str(&resp_text)?;
+                    let tokens = resp_json["usage"]["prompt_tokens"].as_u64().unwrap_or(0)
+                        + resp_json["usage"]["completion_tokens"].as_u64().unwrap_or(0);
+                    let text = resp_json["choices"][0]["message"]["content"]
+                        .as_str().unwrap_or("").to_string();
+                    Ok((text, tokens))
+                }
+            }).await;
+        }
         let backend = self.clone();
         let system = system_prompt.to_string();
         let prompt = prompt.to_string();
