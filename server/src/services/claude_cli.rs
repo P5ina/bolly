@@ -159,7 +159,7 @@ pub async fn start_meridian(workspace_dir: &Path) -> anyhow::Result<tokio::proce
 
     let mut cmd = if is_root {
         let mut c = tokio::process::Command::new("sudo");
-        c.args(["-u", "bolly", "-H", "meridian"]);
+        c.args(["-u", "bolly", "-H", "-E", "meridian"]);
         c
     } else {
         tokio::process::Command::new("meridian")
