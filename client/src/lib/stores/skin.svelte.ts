@@ -39,7 +39,7 @@ function orbClip(name: string): ClipSource {
 export const SKINS: SkinDefinition[] = [
 	{
 		id: "orb",
-		label: "Orb",
+		label: "Bolly",
 		thumbnail: "/skins/orb/orb.webp",
 		clips: {
 			idle: orbClip("orb-idle-loop"),
