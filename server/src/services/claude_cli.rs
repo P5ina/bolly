@@ -34,9 +34,11 @@ pub struct OAuthState {
 
 // ── BYOKEY proxy ──
 
-/// Install BYOKEY via cargo install (if not already installed).
+/// Install BYOKEY (if not already installed).
+/// Downloads pre-built binary from GitHub releases.
 pub async fn ensure_proxy_installed() -> anyhow::Result<()> {
-    let check = std::process::Command::new("byokey")
+    let bin = resolve_byokey_binary();
+    let check = std::process::Command::new(&bin)
         .arg("--version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -44,21 +46,52 @@ pub async fn ensure_proxy_installed() -> anyhow::Result<()> {
     if check.map(|s| s.success()).unwrap_or(false) {
         return Ok(());
     }
-    // Check ~/.cargo/bin/byokey
-    if let Some(home) = dirs::home_dir() {
-        if home.join(".cargo/bin/byokey").exists() {
-            return Ok(());
-        }
-    }
+
     log::info!("Installing BYOKEY proxy...");
-    let status = tokio::process::Command::new("cargo")
+
+    // Try cargo install first (works on macOS with Rust toolchain)
+    let cargo_result = tokio::process::Command::new("cargo")
         .args(["install", "byokey"])
         .status()
-        .await?;
-    if !status.success() {
-        anyhow::bail!("failed to install byokey");
+        .await;
+
+    if cargo_result.map(|s| s.success()).unwrap_or(false) {
+        log::info!("BYOKEY installed via cargo");
+        return Ok(());
     }
-    log::info!("BYOKEY installed successfully");
+
+    // Fallback: download pre-built binary from GitHub releases
+    let arch = if cfg!(target_arch = "x86_64") {
+        "x86_64-unknown-linux-gnu"
+    } else if cfg!(target_arch = "aarch64") {
+        "aarch64-unknown-linux-gnu"
+    } else {
+        anyhow::bail!("unsupported architecture for BYOKEY binary download");
+    };
+
+    let url = format!(
+        "https://github.com/AprilNEA/BYOKEY/releases/latest/download/byokey-v0.9.2-{arch}.tar.gz"
+    );
+    let install_dir = dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("/usr/local"))
+        .join(".local/bin");
+    let _ = std::fs::create_dir_all(&install_dir);
+
+    log::info!("Downloading BYOKEY from {url}...");
+    let status = tokio::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!(
+            "curl -fsSL '{url}' | tar xz -C '{dir}' byokey",
+            dir = install_dir.display(),
+        ))
+        .status()
+        .await?;
+
+    if !status.success() {
+        anyhow::bail!("failed to download BYOKEY binary");
+    }
+
+    log::info!("BYOKEY installed to {}", install_dir.display());
     Ok(())
 }
 
@@ -193,9 +226,11 @@ pub async fn is_proxy_running() -> bool {
 
 fn resolve_byokey_binary() -> String {
     if let Some(home) = dirs::home_dir() {
-        let cargo_bin = home.join(".cargo/bin/byokey");
-        if cargo_bin.exists() {
-            return cargo_bin.to_string_lossy().to_string();
+        for dir in [".cargo/bin", ".local/bin"] {
+            let bin = home.join(dir).join("byokey");
+            if bin.exists() {
+                return bin.to_string_lossy().to_string();
+            }
         }
     }
     "byokey".to_string()
