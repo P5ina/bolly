@@ -458,7 +458,13 @@ async fn update_provider(
         cfg.llm.provider = provider;
         save_config(&cfg)?;
     }
-    state.reload_config().await;
+    // Force LLM rebuild (reload_config diff would be empty since we changed in-memory first)
+    {
+        let cfg = state.config.read().await;
+        let new_llm = crate::services::llm::LlmBackend::from_config(&cfg);
+        *state.llm.write().await = new_llm;
+        log::info!("LLM rebuilt (provider={:?})", provider);
+    }
 
     Ok(Json(json!({ "status": "ok", "provider": req.provider })))
 }
@@ -555,13 +561,20 @@ async fn claude_cli_oauth_exchange(
     // Clean up state file
     let _ = std::fs::remove_file(&state_path);
 
-    // Auto-switch provider to claude_cli
+    // Auto-switch provider to claude_cli and force LLM rebuild
     {
         let mut cfg = state.config.write().await;
         cfg.llm.provider = config::LlmProvider::ClaudeCli;
         let _ = save_config(&cfg);
     }
-    state.reload_config().await;
+    // Force rebuild — reload_config compares old vs new, but we already
+    // changed the in-memory config above, so the diff would be empty.
+    {
+        let cfg = state.config.read().await;
+        let new_llm = crate::services::llm::LlmBackend::from_config(&cfg);
+        *state.llm.write().await = new_llm;
+        log::info!("LLM rebuilt after OAuth exchange (provider=ClaudeCli)");
+    }
 
     Ok(Json(json!({
         "status": "ok",
