@@ -26,7 +26,6 @@ pub fn router() -> Router<AppState> {
         .route("/api/claude-cli/status", get(claude_cli_status))
         .route("/api/claude-cli/oauth/start", get(claude_cli_oauth_start))
         .route("/api/claude-cli/oauth/exchange", post(claude_cli_oauth_exchange))
-        .route("/api/claude-cli/codex-login", post(codex_login))
 }
 
 async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -601,22 +600,3 @@ async fn claude_cli_oauth_exchange(
     })))
 }
 
-/// Trigger `byokey login codex` — opens browser for OpenAI OAuth.
-/// Only works on self-hosted (needs localhost callback).
-async fn codex_login() -> Json<serde_json::Value> {
-    let byokey = crate::services::claude_cli::resolve_byokey_binary_pub();
-
-    // Spawn byokey login codex in background — it opens browser
-    match tokio::process::Command::new(&byokey)
-        .args(["login", "codex"])
-        .spawn()
-    {
-        Ok(_) => Json(json!({
-            "status": "ok",
-            "message": "OpenAI login opened in browser. Complete the flow, then restart.",
-        })),
-        Err(e) => Json(json!({
-            "error": format!("failed to start byokey login: {e}. Install with: cargo install byokey"),
-        })),
-    }
-}

@@ -1007,32 +1007,10 @@
 
 		{#if provider === "codex"}
 			<div class="cli-oauth-section">
-				<p class="cli-instruction">Codex uses your ChatGPT subscription. Requires terminal access.</p>
-				<div class="cli-oauth-row">
-					<button
-						class="key-change key-change-add"
-						onclick={async () => {
-							cliConnecting = true;
-							cliError = "";
-							try {
-								const res = await fetch("/api/claude-cli/codex-login", { method: "POST" });
-								const data = await res.json();
-								if (data.auth_url) window.open(data.auth_url, "_blank");
-								else cliError = data.error || "login not available on this platform";
-							} catch (e) {
-								cliError = e instanceof Error ? e.message : "failed";
-							} finally {
-								cliConnecting = false;
-							}
-						}}
-						disabled={cliConnecting}
-					>
-						{cliConnecting ? "opening..." : "connect with OpenAI"}
-					</button>
-				</div>
-				{#if cliError}
-					<p class="key-error">{cliError}</p>
-				{/if}
+				<p class="cli-instruction">Codex uses your ChatGPT Plus/Pro subscription via BYOKEY.</p>
+				<p class="cli-instruction" style="opacity: 0.7; font-size: 0.78rem;">
+					Run <code style="background: var(--surface-input); padding: 2px 6px; border-radius: 4px;">byokey login codex</code> in a terminal on this machine, then restart the server.
+				</p>
 			</div>
 		{/if}
 

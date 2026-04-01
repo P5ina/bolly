@@ -224,10 +224,6 @@ pub async fn is_proxy_running() -> bool {
         .is_ok()
 }
 
-pub fn resolve_byokey_binary_pub() -> String {
-    resolve_byokey_binary()
-}
-
 fn resolve_byokey_binary() -> String {
     if let Some(home) = dirs::home_dir() {
         for dir in [".cargo/bin", ".local/bin"] {
