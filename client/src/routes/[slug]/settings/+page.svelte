@@ -34,6 +34,7 @@
 		fetchClaudeCliStatus,
 		startClaudeCliOAuth,
 		exchangeClaudeCliOAuth,
+		fetchByokeyStatus,
 		type ScheduledTask,
 	} from "$lib/api/client.js";
 	import type { McpServerInfo, EmailConfig } from "$lib/api/client.js";
@@ -421,6 +422,16 @@
 		if (provider === "claude_cli") {
 			fetchClaudeCliStatus(slug).then(s => {
 				cliConnected = s.authenticated;
+			}).catch(() => {});
+		}
+	});
+
+	// Check BYOKEY provider status for Codex
+	let codexConnected = $state(false);
+	$effect(() => {
+		if (provider === "codex") {
+			fetchByokeyStatus().then(s => {
+				codexConnected = s.providers?.codex ?? false;
 			}).catch(() => {});
 		}
 	});
@@ -1007,10 +1018,16 @@
 
 		{#if provider === "codex"}
 			<div class="cli-oauth-section">
-				<p class="cli-instruction">Codex uses your ChatGPT Plus/Pro subscription via BYOKEY.</p>
-				<p class="cli-instruction" style="opacity: 0.7; font-size: 0.78rem;">
-					Run <code style="background: var(--surface-input); padding: 2px 6px; border-radius: 4px;">byokey login codex</code> in a terminal on this machine, then restart the server.
-				</p>
+				{#if codexConnected}
+					<div class="cli-oauth-row" style="justify-content: space-between;">
+						<span class="key-badge key-badge-ok">connected</span>
+					</div>
+				{:else}
+					<p class="cli-instruction">Connect your ChatGPT Plus/Pro subscription via BYOKEY.</p>
+					<p class="cli-instruction" style="opacity: 0.7; font-size: 0.78rem;">
+						Run <code style="background: var(--surface-input); padding: 2px 6px; border-radius: 4px;">byokey login codex</code> in a terminal, then restart.
+					</p>
+				{/if}
 			</div>
 		{/if}
 

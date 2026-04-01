@@ -26,6 +26,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/claude-cli/status", get(claude_cli_status))
         .route("/api/claude-cli/oauth/start", get(claude_cli_oauth_start))
         .route("/api/claude-cli/oauth/exchange", post(claude_cli_oauth_exchange))
+        .route("/api/claude-cli/byokey-status", get(byokey_provider_status))
 }
 
 async fn get_status(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -598,5 +599,30 @@ async fn claude_cli_oauth_exchange(
         "status": "ok",
         "expires_at": tokens.expires_at,
     })))
+}
+
+/// Check which BYOKEY providers are authenticated.
+async fn byokey_provider_status() -> Json<serde_json::Value> {
+    let bin = crate::services::claude_cli::resolve_byokey_binary_pub();
+    let output = std::process::Command::new(&bin)
+        .arg("status")
+        .output();
+
+    let mut providers = serde_json::Map::new();
+    if let Ok(out) = output {
+        let text = String::from_utf8_lossy(&out.stdout);
+        for line in text.lines() {
+            let line = line.trim();
+            if let Some((name, status)) = line.split_once(':') {
+                let name = name.trim();
+                let authenticated = status.trim() == "authenticated";
+                if name != "server" {
+                    providers.insert(name.to_string(), serde_json::json!(authenticated));
+                }
+            }
+        }
+    }
+
+    Json(serde_json::json!({ "providers": providers }))
 }
 

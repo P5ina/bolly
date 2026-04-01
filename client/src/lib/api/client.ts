@@ -195,6 +195,10 @@ export function startClaudeCliOAuth(): Promise<{ auth_url: string }> {
 	return json("/api/claude-cli/oauth/start");
 }
 
+export function fetchByokeyStatus(): Promise<{ providers: Record<string, boolean> }> {
+	return json("/api/claude-cli/byokey-status");
+}
+
 export function exchangeClaudeCliOAuth(code: string, instanceSlug: string): Promise<{ status: string; expires_at: number }> {
 	return json("/api/claude-cli/oauth/exchange", {
 		method: "POST",
