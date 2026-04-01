@@ -37,8 +37,8 @@
 			0deg,
 			transparent 0px,
 			transparent 2px,
-			oklch(0 0 0 / 8%) 2px,
-			oklch(0 0 0 / 8%) 4px
+			oklch(var(--shade) / 8%) 2px,
+			oklch(var(--shade) / 8%) 4px
 		);
 		mix-blend-mode: multiply;
 	}

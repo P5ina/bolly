@@ -54,7 +54,7 @@ export const SKINS: SkinDefinition[] = [
 	},
 	{
 		id: "mint",
-		label: "Mint",
+		label: "Minty",
 		thumbnail: "/skins/mint/character.png",
 		clips: {
 			idle: mintClip("idle-loop"),
@@ -67,6 +67,14 @@ export const SKINS: SkinDefinition[] = [
 		},
 	},
 ];
+
+/** Pick the right video src for the current browser (HEVC alpha for Safari, VP9 for others) */
+const _useHEVC = typeof document !== 'undefined' &&
+	document.createElement('video').canPlayType('video/mp4; codecs="hvc1.2.4.L123.B0"') !== '';
+
+export function clipSrc(clip: ClipSource): string {
+	return _useHEVC ? clip.mov : clip.webm;
+}
 
 export interface SkinStore {
 	readonly skinId: string;

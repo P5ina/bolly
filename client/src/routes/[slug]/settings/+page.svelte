@@ -834,7 +834,7 @@
 							<span class="usage-window-value">{formatTokens(usage.tokens_last_4h)} / {formatTokens(usage.tokens_4h_limit)}</span>
 						</div>
 						<div class="usage-window-track">
-							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.55 0.08 240 / 50%)'}"></div>
+							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.55 0.08 var(--accent-hue) / 50%)'}"></div>
 						</div>
 					</div>
 				{/if}
@@ -846,7 +846,7 @@
 							<span class="usage-window-value">{formatTokens(usage.tokens_this_week)} / {formatTokens(usage.tokens_week_limit)}</span>
 						</div>
 						<div class="usage-window-track">
-							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.55 0.08 240 / 50%)'}"></div>
+							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.55 0.08 var(--accent-hue) / 50%)'}"></div>
 						</div>
 					</div>
 				{/if}
@@ -858,7 +858,7 @@
 							<span class="usage-window-value">{formatTokens(usage.tokens_this_month)} / {formatTokens(usage.tokens_month_limit)}</span>
 						</div>
 						<div class="usage-window-track">
-							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.55 0.08 240 / 50%)'}"></div>
+							<div class="usage-window-fill" style="width: {p}%; background: {p >= 90 ? 'oklch(0.65 0.2 25)' : p >= 70 ? 'oklch(0.75 0.15 85)' : 'oklch(0.55 0.08 var(--accent-hue) / 50%)'}"></div>
 						</div>
 					</div>
 				{/if}
@@ -1647,17 +1647,17 @@
 	.usage-window-label {
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		color: oklch(0.88 0.02 75 / 50%);
+		color: var(--foreground);
 	}
 	.usage-window-value {
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
-		color: oklch(0.55 0.08 240 / 30%);
+		color: oklch(0.55 0.08 var(--accent-hue) / 30%);
 	}
 	.usage-window-track {
 		height: 4px;
 		border-radius: 2px;
-		background: oklch(1 0 0 / 5%);
+		background: oklch(var(--ink) / 5%);
 		overflow: hidden;
 	}
 	.usage-window-fill {
@@ -1710,20 +1710,20 @@
 		position: relative;
 		padding: 1.25rem;
 		border-radius: 1rem;
-		border: 1px solid oklch(1 0 0 / 10%);
-		border-top-color: oklch(1 0 0 / 18%);
+		border: 1px solid oklch(var(--ink) / 10%);
+		border-top-color: oklch(var(--ink) / 18%);
 		background: linear-gradient(
 			150deg,
-			oklch(1 0 0 / 5%) 0%,
+			oklch(var(--ink) / 5%) 0%,
 			oklch(0.5 0.02 250 / 8%) 40%,
-			oklch(1 0 0 / 3%) 100%
+			oklch(var(--ink) / 3%) 100%
 		);
 		backdrop-filter: blur(20px) saturate(150%) brightness(1.05);
 		-webkit-backdrop-filter: blur(20px) saturate(150%) brightness(1.05);
 		box-shadow:
-			0 2px 12px oklch(0 0 0 / 12%),
-			inset 0 1px 0 oklch(1 0 0 / 8%),
-			inset 0 -1px 0 oklch(0 0 0 / 4%);
+			0 2px 12px oklch(var(--shade) / 12%),
+			inset 0 1px 0 oklch(var(--ink) / 8%),
+			inset 0 -1px 0 oklch(var(--shade) / 4%);
 		overflow: hidden;
 	}
 	.settings-section::before {
@@ -1733,7 +1733,7 @@
 		left: 10%;
 		right: 10%;
 		height: 1px;
-		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 20%), transparent);
+		background: linear-gradient(90deg, transparent, oklch(var(--ink) / 20%), transparent);
 		pointer-events: none;
 	}
 
@@ -1750,11 +1750,11 @@
 		object-fit: cover;
 		flex-shrink: 0;
 		border-radius: 0.625rem;
-		border: 1px solid oklch(1 0 0 / 10%);
-		border-top-color: oklch(1 0 0 / 18%);
+		border: 1px solid oklch(var(--ink) / 10%);
+		border-top-color: oklch(var(--ink) / 18%);
 		box-shadow:
-			0 2px 8px oklch(0 0 0 / 20%),
-			inset 0 1px 0 oklch(1 0 0 / 6%);
+			0 2px 8px oklch(var(--shade) / 20%),
+			inset 0 1px 0 oklch(var(--ink) / 6%);
 	}
 
 	.tz-picker {
@@ -1767,9 +1767,9 @@
 		flex: 1;
 		font-family: var(--font-mono);
 		font-size: 0.72rem;
-		color: oklch(0.88 0.02 75 / 80%);
-		background: oklch(1 0 0 / 3%);
-		border: 1px solid oklch(1 0 0 / 8%);
+		color: var(--foreground);
+		background: oklch(var(--ink) / 3%);
+		border: 1px solid oklch(var(--ink) / 8%);
 		padding: 0.5rem 0.75rem;
 		border-radius: 0.5rem;
 		outline: none;
@@ -1778,11 +1778,11 @@
 		cursor: pointer;
 	}
 	.tz-select:focus {
-		border-color: oklch(0.55 0.08 240 / 30%);
+		border-color: oklch(0.55 0.08 var(--accent-hue) / 30%);
 	}
 	.tz-select option {
 		background: oklch(0.10 0.015 280);
-		color: oklch(0.88 0.02 75 / 80%);
+		color: var(--foreground);
 	}
 
 	.tz-current {
@@ -1795,7 +1795,7 @@
 	.section-label {
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
-		color: oklch(0.88 0.02 75 / 70%);
+		color: var(--foreground);
 		letter-spacing: 0.02em;
 		margin-bottom: 0.2rem;
 	}
@@ -1803,7 +1803,7 @@
 	.section-desc {
 		font-family: var(--font-body);
 		font-size: 0.7rem;
-		color: oklch(0.88 0.02 75 / 35%);
+		color: var(--foreground);
 	}
 
 	/* --- extension catalog --- */
@@ -1838,19 +1838,19 @@
 	.ext-input {
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		color: oklch(0.88 0.02 75 / 80%);
-		background: oklch(1 0 0 / 3%);
-		border: 1px solid oklch(1 0 0 / 8%);
+		color: var(--foreground);
+		background: oklch(var(--ink) / 3%);
+		border: 1px solid oklch(var(--ink) / 8%);
 		padding: 0.5rem 0.75rem;
 		border-radius: 0.5rem;
 		outline: none;
 		transition: border-color 0.2s ease;
 	}
 	.ext-input:focus {
-		border-color: oklch(0.55 0.08 240 / 30%);
+		border-color: oklch(0.55 0.08 var(--accent-hue) / 30%);
 	}
 	.ext-input::placeholder {
-		color: oklch(0.88 0.02 75 / 20%);
+		color: var(--foreground);
 	}
 
 	.ext-form-actions {
@@ -1869,13 +1869,13 @@
 	}
 
 	.ext-form-add {
-		color: oklch(0.55 0.08 240 / 70%);
-		background: oklch(0.55 0.08 240 / 8%);
-		border: 1px solid oklch(0.55 0.08 240 / 15%);
+		color: oklch(0.55 0.08 var(--accent-hue) / 70%);
+		background: oklch(0.55 0.08 var(--accent-hue) / 8%);
+		border: 1px solid oklch(0.55 0.08 var(--accent-hue) / 15%);
 	}
 	.ext-form-add:hover:not(:disabled) {
-		background: oklch(0.55 0.08 240 / 14%);
-		border-color: oklch(0.55 0.08 240 / 35%);
+		background: oklch(0.55 0.08 var(--accent-hue) / 14%);
+		border-color: oklch(0.55 0.08 var(--accent-hue) / 35%);
 	}
 	.ext-form-add:disabled {
 		opacity: 0.4;
@@ -1885,11 +1885,11 @@
 	.ext-form-cancel {
 		color: oklch(0.70 0.02 280 / 45%);
 		background: none;
-		border: 1px solid oklch(1 0 0 / 6%);
+		border: 1px solid oklch(var(--ink) / 6%);
 	}
 	.ext-form-cancel:hover {
 		color: oklch(0.80 0.02 280 / 60%);
-		background: oklch(1 0 0 / 3%);
+		background: oklch(var(--ink) / 3%);
 	}
 
 	/* --- google / shared --- */
@@ -1907,20 +1907,20 @@
 		justify-content: space-between;
 		padding: 0.5rem 0.75rem;
 		border-radius: 0.5rem;
-		background: oklch(1 0 0 / 3%);
-		border: 1px solid oklch(1 0 0 / 5%);
+		background: oklch(var(--ink) / 3%);
+		border: 1px solid oklch(var(--ink) / 5%);
 	}
 
 	.account-email {
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
-		color: oklch(0.88 0.02 75 / 60%);
+		color: var(--foreground);
 	}
 
 	.no-accounts {
 		font-family: var(--font-body);
 		font-size: 0.75rem;
-		color: oklch(0.88 0.02 75 / 30%);
+		color: var(--foreground);
 		font-style: italic;
 		margin-bottom: 0.75rem;
 	}
@@ -1929,7 +1929,7 @@
 		width: 6px;
 		height: 6px;
 		border-radius: 50%;
-		background: oklch(0.55 0.08 240 / 30%);
+		background: oklch(0.55 0.08 var(--accent-hue) / 30%);
 		animation: pulse 1.5s ease-in-out infinite;
 	}
 	@keyframes pulse {
@@ -1953,8 +1953,8 @@
 		width: 2.5rem;
 		height: 1.375rem;
 		border-radius: 9999px;
-		border: 1px solid oklch(1 0 0 / 10%);
-		background: oklch(1 0 0 / 6%);
+		border: 1px solid oklch(var(--ink) / 10%);
+		background: oklch(var(--ink) / 6%);
 		cursor: pointer;
 		transition: all 0.2s ease;
 		padding: 0;
@@ -1979,7 +1979,7 @@
 		background: oklch(0.78 0.12 75);
 	}
 	.switch:hover {
-		border-color: oklch(1 0 0 / 18%);
+		border-color: oklch(var(--ink) / 18%);
 	}
 	.switch:disabled {
 		opacity: 0.4;
@@ -1992,8 +1992,8 @@
 		justify-content: space-between;
 		padding: 0.5rem 0.75rem;
 		border-radius: 0.5rem;
-		background: oklch(1 0 0 / 3%);
-		border: 1px solid oklch(1 0 0 / 5%);
+		background: oklch(var(--ink) / 3%);
+		border: 1px solid oklch(var(--ink) / 5%);
 	}
 
 	.gh-status-info {
@@ -2012,7 +2012,7 @@
 	.gh-status-text {
 		font-family: var(--font-mono);
 		font-size: 0.72rem;
-		color: oklch(0.88 0.02 75 / 60%);
+		color: var(--foreground);
 	}
 
 	.gh-status-actions {
@@ -2066,13 +2066,13 @@
 		border-radius: 0.375rem;
 		cursor: pointer;
 		transition: all 0.2s ease;
-		color: oklch(0.55 0.08 240 / 70%);
-		background: oklch(0.55 0.08 240 / 8%);
-		border: 1px solid oklch(0.55 0.08 240 / 15%);
+		color: oklch(0.55 0.08 var(--accent-hue) / 70%);
+		background: oklch(0.55 0.08 var(--accent-hue) / 8%);
+		border: 1px solid oklch(0.55 0.08 var(--accent-hue) / 15%);
 	}
 	.data-btn:hover {
-		background: oklch(0.55 0.08 240 / 14%);
-		border-color: oklch(0.55 0.08 240 / 25%);
+		background: oklch(0.55 0.08 var(--accent-hue) / 14%);
+		border-color: oklch(0.55 0.08 var(--accent-hue) / 25%);
 	}
 	.data-btn-knowledge {
 		color: oklch(0.78 0.12 75 / 80%);
@@ -2087,8 +2087,8 @@
 		margin-top: 0.75rem;
 		padding: 0.625rem 0.875rem;
 		border-radius: 0.5rem;
-		background: oklch(0.55 0.08 240 / 6%);
-		border: 1px solid oklch(0.55 0.08 240 / 12%);
+		background: oklch(0.55 0.08 var(--accent-hue) / 6%);
+		border: 1px solid oklch(0.55 0.08 var(--accent-hue) / 12%);
 	}
 	.import-progress.import-done {
 		background: oklch(0.72 0.15 155 / 6%);
@@ -2108,7 +2108,7 @@
 		font-size: 0.7rem;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
-		color: oklch(0.55 0.08 240 / 60%);
+		color: oklch(0.55 0.08 var(--accent-hue) / 60%);
 	}
 	.import-done .import-progress-stage {
 		color: oklch(0.72 0.15 155 / 80%);
@@ -2127,13 +2127,13 @@
 	}
 	.import-progress-detail {
 		font-size: 0.7rem;
-		color: oklch(0.55 0.08 240 / 40%);
+		color: oklch(0.55 0.08 var(--accent-hue) / 40%);
 		margin-top: 0.25rem;
 	}
 	.import-progress-spinner {
 		width: 12px;
 		height: 12px;
-		border: 1.5px solid oklch(0.55 0.08 240 / 20%);
+		border: 1.5px solid oklch(0.55 0.08 var(--accent-hue) / 20%);
 		border-top-color: oklch(0.78 0.12 75 / 60%);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
@@ -2203,7 +2203,7 @@
 	.data-hint {
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		color: oklch(0.88 0.02 75 / 30%);
+		color: var(--foreground);
 		margin-top: 0.5rem;
 		line-height: 1.5;
 	}
@@ -2237,49 +2237,49 @@
 		gap: 0.15rem;
 		padding: 0.5rem 0.75rem;
 		border-radius: 0.5rem;
-		background: oklch(1 0 0 / 3%);
-		border: 1px solid oklch(1 0 0 / 6%);
+		background: oklch(var(--ink) / 3%);
+		border: 1px solid oklch(var(--ink) / 6%);
 		cursor: pointer;
 		text-align: left;
 		transition: all 0.15s;
 	}
 	.mode-option:hover:not(:disabled) {
-		background: oklch(1 0 0 / 5%);
-		border-color: oklch(1 0 0 / 10%);
+		background: oklch(var(--ink) / 5%);
+		border-color: oklch(var(--ink) / 10%);
 	}
 	.mode-active {
-		background: oklch(0.55 0.08 240 / 8%);
-		border-color: oklch(0.55 0.08 240 / 25%);
+		background: oklch(0.55 0.08 var(--accent-hue) / 8%);
+		border-color: oklch(0.55 0.08 var(--accent-hue) / 25%);
 	}
 	.mode-active:hover:not(:disabled) {
-		background: oklch(0.55 0.08 240 / 12%);
+		background: oklch(0.55 0.08 var(--accent-hue) / 12%);
 	}
 	.mode-name {
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
 		font-weight: 500;
-		color: oklch(0.88 0.02 75 / 80%);
+		color: var(--foreground);
 	}
 	.mode-active .mode-name {
-		color: oklch(0.55 0.08 240);
+		color: oklch(0.55 0.08 var(--accent-hue));
 	}
 	.mode-desc {
 		font-family: var(--font-mono);
 		font-size: 0.68rem;
-		color: oklch(0.88 0.02 75 / 35%);
+		color: var(--foreground);
 	}
 
 	/* ── API Keys ── */
-	.keys-list { display: flex; flex-direction: column; gap: 1px; background: oklch(1 0 0 / 4%); border-radius: 12px; overflow: hidden; }
+	.keys-list { display: flex; flex-direction: column; gap: 1px; background: oklch(var(--ink) / 4%); border-radius: 12px; overflow: hidden; }
 	.key-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: oklch(0.04 0.015 260); }
 	.key-info { display: flex; flex-direction: column; gap: 2px; }
-	.key-name { font-size: 0.82rem; font-weight: 500; color: oklch(0.90 0.02 75); }
-	.key-hint { font-size: 0.68rem; color: oklch(0.60 0.03 240); }
+	.key-name { font-size: 0.82rem; font-weight: 500; color: var(--foreground); }
+	.key-hint { font-size: 0.68rem; color: var(--text-muted); }
 	.key-action { display: flex; align-items: center; gap: 8px; }
 	.key-badge { font-size: 0.65rem; padding: 2px 8px; border-radius: 12px; }
 	.key-badge-ok { background: oklch(0.72 0.17 142 / 12%); color: oklch(0.72 0.17 142); }
-	.key-change { font-size: 0.68rem; color: oklch(0.60 0.03 240); background: none; border: none; cursor: pointer; font-family: var(--font-body); transition: color 0.2s; }
-	.key-change:hover { color: oklch(0.90 0.02 75); }
+	.key-change { font-size: 0.68rem; color: var(--text-muted); background: none; border: none; cursor: pointer; font-family: var(--font-body); transition: color 0.2s; }
+	.key-change:hover { color: var(--foreground); }
 	.key-change-add { color: var(--color-warm); }
 	.key-change-add:hover { color: oklch(0.88 0.14 75); }
 	.key-change-remove { color: oklch(0.55 0.08 25 / 60%); }
@@ -2319,13 +2319,13 @@
 
 	/* ── Server settings ── */
 	.setting-row { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; }
-	.setting-row + .setting-row { border-top: 1px solid oklch(1 0 0 / 4%); }
-	.setting-label { font-size: 0.75rem; font-weight: 500; color: oklch(0.90 0.02 75 / 60%); letter-spacing: 0.03em; }
+	.setting-row + .setting-row { border-top: 1px solid oklch(var(--ink) / 4%); }
+	.setting-label { font-size: 0.75rem; font-weight: 500; color: var(--foreground); letter-spacing: 0.03em; }
 	.setting-input-row { display: flex; align-items: center; gap: 8px; }
 	.setting-input {
 		flex: 1; max-width: 200px;
-		padding: 6px 10px; border-radius: 6px; border: 1px solid oklch(1 0 0 / 8%);
-		background: oklch(1 0 0 / 3%); color: oklch(0.90 0.02 75); font-size: 0.8rem;
+		padding: 6px 10px; border-radius: 6px; border: 1px solid oklch(var(--ink) / 8%);
+		background: oklch(var(--ink) / 3%); color: var(--foreground); font-size: 0.8rem;
 		font-family: var(--font-mono); outline: none; transition: border-color 0.2s;
 	}
 	.setting-input:focus { border-color: oklch(0.78 0.12 75 / 30%); }
@@ -2338,7 +2338,7 @@
 	.setting-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 	.setting-btn-danger { border-color: oklch(0.65 0.15 25 / 15%); background: oklch(0.65 0.15 25 / 6%); color: oklch(0.65 0.15 25 / 70%); }
 	.setting-btn-danger:hover:not(:disabled) { background: oklch(0.65 0.15 25 / 12%); }
-	.setting-hint { font-size: 0.65rem; color: oklch(1 0 0 / 20%); margin: 0; }
+	.setting-hint { font-size: 0.65rem; color: oklch(var(--ink) / 20%); margin: 0; }
 	.setting-warning { color: oklch(0.78 0.12 75 / 60%); }
-	.dim-text { font-size: 0.75rem; color: oklch(1 0 0 / 25%); font-family: var(--font-mono); }
+	.dim-text { font-size: 0.75rem; color: oklch(var(--ink) / 25%); font-family: var(--font-mono); }
 </style>

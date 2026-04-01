@@ -506,7 +506,7 @@
 		font-weight: 400;
 		font-style: italic;
 		letter-spacing: -0.01em;
-		color: oklch(0.90 0.02 75 / 85%);
+		color: var(--foreground);
 		text-align: center;
 	}
 
@@ -514,7 +514,7 @@
 		font-family: var(--font-body);
 		font-size: 0.85rem;
 		line-height: 1.6;
-		color: oklch(1 0 0 / 45%);
+		color: oklch(var(--ink) / 45%);
 		text-align: center;
 	}
 
@@ -524,7 +524,7 @@
 		height: 1.05em;
 		margin-left: 1px;
 		vertical-align: text-bottom;
-		background: oklch(1 0 0 / 40%);
+		background: oklch(var(--ink) / 40%);
 		animation: blink 0.8s steps(2) infinite;
 	}
 	@keyframes blink { 0% { opacity: 1; } 100% { opacity: 0; } }
@@ -563,23 +563,23 @@
 		font-family: var(--font-display);
 		font-size: 0.8rem;
 		font-style: italic;
-		color: oklch(1 0 0 / 50%);
+		color: oklch(var(--ink) / 50%);
 		cursor: pointer;
 		transition: all 0.3s ease;
 		box-shadow:
-			0 1px 4px oklch(0 0 0 / 8%),
-			inset 0 1px 0 oklch(1 0 0 / 5%);
+			0 1px 4px oklch(var(--shade) / 8%),
+			inset 0 1px 0 oklch(var(--ink) / 5%);
 	}
 	.ob-pill:hover {
-		border-color: oklch(1 0 0 / 20%);
-		background: oklch(1 0 0 / 8%);
-		color: oklch(1 0 0 / 75%);
-		box-shadow: 0 2px 12px oklch(0 0 0 / 12%), inset 0 1px 0 oklch(1 0 0 / 8%);
+		border-color: oklch(var(--ink) / 20%);
+		background: oklch(var(--ink) / 8%);
+		color: oklch(var(--ink) / 75%);
+		box-shadow: 0 2px 12px oklch(var(--shade) / 12%), inset 0 1px 0 oklch(var(--ink) / 8%);
 	}
 	.ob-pill-active {
-		border-color: oklch(1 0 0 / 22%);
-		background: oklch(1 0 0 / 10%);
-		color: oklch(1 0 0 / 80%);
+		border-color: oklch(var(--ink) / 22%);
+		background: oklch(var(--ink) / 10%);
+		color: oklch(var(--ink) / 80%);
 	}
 
 	.ob-pill-col {
@@ -597,13 +597,13 @@
 		font-family: var(--font-display);
 		font-size: 0.8rem;
 		font-style: italic;
-		color: oklch(1 0 0 / 60%);
+		color: oklch(var(--ink) / 60%);
 	}
 	.ob-pill-note {
 		font-family: var(--font-body);
 		font-size: 0.6rem;
 		font-style: normal;
-		color: oklch(1 0 0 / 25%);
+		color: oklch(var(--ink) / 25%);
 	}
 
 	/* ── Input fields (liquid glass) ── */
@@ -621,16 +621,16 @@
 		font-family: var(--font-display);
 		font-size: 0.9rem;
 		font-style: italic;
-		color: oklch(1 0 0 / 80%);
+		color: oklch(var(--ink) / 80%);
 		outline: none;
 		text-align: center;
 		transition: all 0.3s ease;
-		box-shadow: inset 0 1px 0 oklch(1 0 0 / 5%), inset 0 -1px 0 oklch(0 0 0 / 4%);
+		box-shadow: inset 0 1px 0 oklch(var(--ink) / 5%), inset 0 -1px 0 oklch(var(--shade) / 4%);
 	}
-	.ob-input::placeholder { color: oklch(1 0 0 / 18%); font-style: italic; }
+	.ob-input::placeholder { color: oklch(var(--ink) / 18%); font-style: italic; }
 	.ob-input:focus {
-		border-color: oklch(1 0 0 / 20%);
-		box-shadow: 0 0 0 3px oklch(0.40 0.06 240 / 8%), inset 0 1px 0 oklch(1 0 0 / 8%);
+		border-color: oklch(var(--ink) / 20%);
+		box-shadow: 0 0 0 3px oklch(0.40 0.06 240 / 8%), inset 0 1px 0 oklch(var(--ink) / 8%);
 	}
 	.ob-input-mono { font-family: var(--font-mono); font-size: 0.8rem; font-style: normal; text-align: left; }
 
@@ -657,11 +657,11 @@
 		height: 2rem;
 		border-radius: 50%;
 		font-size: 0.9rem;
-		color: oklch(1 0 0 / 40%);
+		color: oklch(var(--ink) / 40%);
 		transition: all 0.3s ease;
 		cursor: pointer;
 	}
-	.ob-go:hover { color: oklch(1 0 0 / 70%); background: oklch(1 0 0 / 6%); }
+	.ob-go:hover { color: oklch(var(--ink) / 70%); background: oklch(var(--ink) / 6%); }
 	.ob-go-textarea { top: auto; bottom: 0.5rem; transform: none; }
 
 	.ob-error { margin-top: 0.5rem; font-size: 0.72rem; color: oklch(0.65 0.15 25 / 60%); font-style: italic; text-align: center; }
@@ -669,13 +669,13 @@
 		margin-top: 0.75rem;
 		width: 100%;
 		font-size: 0.68rem;
-		color: oklch(1 0 0 / 18%);
+		color: oklch(var(--ink) / 18%);
 		font-style: italic;
 		transition: color 0.2s ease;
 		cursor: pointer;
 		text-align: center;
 	}
-	.ob-skip:hover { color: oklch(1 0 0 / 40%); }
+	.ob-skip:hover { color: oklch(var(--ink) / 40%); }
 
 	.ob-hint {
 		display: block;
@@ -691,8 +691,8 @@
 	/* ── Spinner ── */
 	.ob-spinner {
 		width: 12px; height: 12px;
-		border: 1.5px solid oklch(1 0 0 / 10%);
-		border-top-color: oklch(1 0 0 / 40%);
+		border: 1.5px solid oklch(var(--ink) / 10%);
+		border-top-color: oklch(var(--ink) / 40%);
 		border-radius: 50%;
 		animation: spin 0.7s linear infinite;
 	}
@@ -701,7 +701,7 @@
 		font-family: var(--font-display);
 		font-size: 0.72rem;
 		font-style: italic;
-		color: oklch(1 0 0 / 30%);
+		color: oklch(var(--ink) / 30%);
 	}
 
 	/* ── Skin picker ── */

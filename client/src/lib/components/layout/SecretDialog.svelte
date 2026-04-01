@@ -89,7 +89,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: oklch(0 0 0 / 60%);
+		background: oklch(var(--shade) / 60%);
 		backdrop-filter: blur(8px);
 		animation: fade-in 0.2s ease;
 	}

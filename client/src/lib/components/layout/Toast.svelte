@@ -46,21 +46,21 @@
 		border-radius: 1rem;
 		background: linear-gradient(
 			155deg,
-			oklch(1 0 0 / 6%) 0%,
+			oklch(var(--ink) / 6%) 0%,
 			oklch(0.5 0.02 250 / 10%) 40%,
-			oklch(1 0 0 / 4%) 100%
+			oklch(var(--ink) / 4%) 100%
 		);
 		backdrop-filter: blur(24px) saturate(160%) brightness(1.06);
 		-webkit-backdrop-filter: blur(24px) saturate(160%) brightness(1.06);
-		border: 1px solid oklch(1 0 0 / 10%);
-		border-top-color: oklch(1 0 0 / 18%);
+		border: 1px solid oklch(var(--ink) / 10%);
+		border-top-color: oklch(var(--ink) / 18%);
 		box-shadow:
-			0 4px 20px oklch(0 0 0 / 20%),
-			inset 0 1px 0 oklch(1 0 0 / 8%),
-			inset 0 -1px 0 oklch(0 0 0 / 4%);
+			0 4px 20px oklch(var(--shade) / 20%),
+			inset 0 1px 0 oklch(var(--ink) / 8%),
+			inset 0 -1px 0 oklch(var(--shade) / 4%);
 		font-family: var(--font-body);
 		font-size: 0.75rem;
-		color: oklch(0.88 0.02 75 / 80%);
+		color: var(--foreground);
 		animation: toast-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 		white-space: nowrap;
 		overflow: hidden;
@@ -74,7 +74,7 @@
 		left: 15%;
 		right: 15%;
 		height: 1px;
-		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 25%), transparent);
+		background: linear-gradient(90deg, transparent, oklch(var(--ink) / 25%), transparent);
 		pointer-events: none;
 	}
 

@@ -140,7 +140,7 @@
 	.modal-backdrop {
 		position: fixed;
 		inset: 0;
-		background: oklch(0 0 0 / 60%);
+		background: oklch(var(--shade) / 60%);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -157,7 +157,7 @@
 		width: 90%;
 		max-width: 480px;
 		background: oklch(0.10 0.015 278);
-		border: 1px solid oklch(1 0 0 / 6%);
+		border: 1px solid oklch(var(--ink) / 6%);
 		border-radius: 1rem;
 		padding: 1.5rem;
 		animation: modal-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -185,7 +185,7 @@
 		font-family: var(--font-display);
 		font-size: 0.95rem;
 		font-weight: 500;
-		color: oklch(0.88 0.02 75);
+		color: var(--foreground);
 	}
 
 	.modal-close {
@@ -246,9 +246,9 @@
 	.field-input {
 		font-family: var(--font-mono);
 		font-size: 0.78rem;
-		color: oklch(0.88 0.02 75);
+		color: var(--foreground);
 		background: oklch(0.07 0.012 278);
-		border: 1px solid oklch(1 0 0 / 6%);
+		border: 1px solid oklch(var(--ink) / 6%);
 		border-radius: 0.5rem;
 		padding: 0.5rem 0.625rem;
 		outline: none;
@@ -266,9 +266,9 @@
 	.field-textarea {
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
-		color: oklch(0.88 0.02 75);
+		color: var(--foreground);
 		background: oklch(0.07 0.012 278);
-		border: 1px solid oklch(1 0 0 / 6%);
+		border: 1px solid oklch(var(--ink) / 6%);
 		border-radius: 0.5rem;
 		padding: 0.5rem 0.625rem;
 		outline: none;
@@ -303,7 +303,7 @@
 		font-size: 0.7rem;
 		color: oklch(0.78 0.12 75 / 35%);
 		background: none;
-		border: 1px solid oklch(1 0 0 / 6%);
+		border: 1px solid oklch(var(--ink) / 6%);
 		padding: 0.4rem 0.75rem;
 		border-radius: 0.5rem;
 		cursor: pointer;
@@ -312,13 +312,13 @@
 
 	.btn-cancel:hover {
 		color: oklch(0.78 0.12 75 / 55%);
-		border-color: oklch(1 0 0 / 10%);
+		border-color: oklch(var(--ink) / 10%);
 	}
 
 	.btn-create {
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		color: oklch(0.88 0.02 75);
+		color: var(--foreground);
 		background: oklch(0.78 0.12 75 / 15%);
 		border: 1px solid oklch(0.78 0.12 75 / 28%);
 		padding: 0.4rem 0.75rem;

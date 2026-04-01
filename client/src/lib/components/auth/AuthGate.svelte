@@ -52,7 +52,7 @@
 		padding: 2.5rem 3rem;
 		border-radius: 1rem;
 		background: oklch(0.09 0.018 278 / 60%);
-		border: 1px solid oklch(1 0 0 / 4%);
+		border: 1px solid oklch(var(--ink) / 4%);
 		backdrop-filter: blur(20px);
 		animation: auth-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
@@ -79,8 +79,8 @@
 		padding: 0.5rem 0.75rem;
 		border-radius: 0.5rem;
 		background: oklch(0.065 0.015 280);
-		border: 1px solid oklch(1 0 0 / 6%);
-		color: oklch(0.88 0.02 75);
+		border: 1px solid oklch(var(--ink) / 6%);
+		color: var(--foreground);
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
 		outline: none;

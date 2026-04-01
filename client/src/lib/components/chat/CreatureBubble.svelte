@@ -21,7 +21,7 @@
 		border: 1px solid oklch(0.78 0.12 75 / 12%);
 		font-family: var(--font-body);
 		font-size: 0.7rem;
-		color: oklch(0.88 0.02 75 / 55%);
+		color: var(--foreground);
 		line-height: 1.5;
 		display: flex;
 		align-items: flex-start;

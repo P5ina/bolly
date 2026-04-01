@@ -24,6 +24,17 @@
 
 	onDestroy(() => sceneStore.destroy());
 
+	// Sync theme class on <html> with active skin
+	const isMint = $derived(skinStore.skinId === 'mint');
+	$effect(() => {
+		const el = typeof document !== 'undefined' ? document.documentElement : null;
+		if (!el) return;
+		el.classList.toggle('dark', !isMint);
+		el.classList.toggle('mint', isMint);
+		const meta = document.querySelector('meta[name="theme-color"]');
+		if (meta) meta.setAttribute('content', isMint ? '#f0f7f4' : '#0d0b09');
+	});
+
 	let needsAuth = $state(false);
 
 	// Secret request state
@@ -147,16 +158,16 @@
 		min-width: 120px;
 		height: 32px;
 		border-radius: 50px;
-		background: oklch(0.03 0.01 260 / 92%);
+		background: var(--surface-overlay);
 		backdrop-filter: blur(40px) saturate(180%);
 		-webkit-backdrop-filter: blur(40px) saturate(180%);
-		border: 1px solid oklch(1 0 0 / 8%);
-		border-top-color: oklch(1 0 0 / 14%);
+		border: 1px solid oklch(var(--ink) / 8%);
+		border-top-color: oklch(var(--ink) / 14%);
 		box-shadow:
-			0 2px 20px oklch(0 0 0 / 40%),
-			0 8px 40px oklch(0 0 0 / 20%),
-			inset 0 1px 0 oklch(1 0 0 / 6%),
-			inset 0 -1px 0 oklch(0 0 0 / 10%);
+			0 2px 20px oklch(var(--shade) / 40%),
+			0 8px 40px oklch(var(--shade) / 20%),
+			inset 0 1px 0 oklch(var(--ink) / 6%),
+			inset 0 -1px 0 oklch(var(--shade) / 10%);
 		overflow: hidden;
 		animation: island-enter 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 		transition: min-width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
@@ -177,7 +188,7 @@
 		left: 15%;
 		right: 15%;
 		height: 1px;
-		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 18%), transparent);
+		background: linear-gradient(90deg, transparent, oklch(var(--ink) / 18%), transparent);
 		pointer-events: none;
 	}
 
@@ -189,7 +200,7 @@
 		left: 0;
 		right: 0;
 		height: 50%;
-		background: linear-gradient(180deg, oklch(1 0 0 / 3%) 0%, transparent 100%);
+		background: linear-gradient(180deg, oklch(var(--ink) / 3%) 0%, transparent 100%);
 		pointer-events: none;
 		border-radius: 50px 50px 0 0;
 	}

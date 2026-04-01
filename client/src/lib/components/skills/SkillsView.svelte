@@ -226,7 +226,7 @@
 	.skills-tabs {
 		display: flex;
 		gap: 0.125rem;
-		background: oklch(1 0 0 / 3%);
+		background: oklch(var(--ink) / 3%);
 		border-radius: 0.5rem;
 		padding: 0.15rem;
 	}

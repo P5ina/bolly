@@ -362,9 +362,9 @@
 		backdrop-filter: blur(16px) saturate(140%) brightness(1.04);
 		-webkit-backdrop-filter: blur(16px) saturate(140%) brightness(1.04);
 		box-shadow:
-			0 2px 16px oklch(0 0 0 / 20%),
+			0 2px 16px oklch(var(--shade) / 20%),
 			0 8px 32px oklch(0.3 0.06 220 / 6%),
-			inset 0 1px 0 oklch(1 0 0 / 5%);
+			inset 0 1px 0 oklch(var(--ink) / 5%);
 		display: flex;
 		flex-direction: column;
 		gap: 0.875rem;
@@ -434,9 +434,9 @@
 		backdrop-filter: blur(16px) saturate(140%) brightness(1.04);
 		-webkit-backdrop-filter: blur(16px) saturate(140%) brightness(1.04);
 		box-shadow:
-			0 2px 16px oklch(0 0 0 / 20%),
+			0 2px 16px oklch(var(--shade) / 20%),
 			0 8px 32px oklch(0.3 0.06 220 / 6%),
-			inset 0 1px 0 oklch(1 0 0 / 5%);
+			inset 0 1px 0 oklch(var(--ink) / 5%);
 		animation: card-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 		overflow: hidden;
 	}

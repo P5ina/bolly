@@ -202,11 +202,11 @@
 		font-family: var(--font-display);
 		font-style: italic;
 		font-size: 0.9rem;
-		color: oklch(1 0 0 / 30%);
+		color: oklch(var(--ink) / 30%);
 	}
 	.empty-sub {
 		font-size: 0.72rem;
-		color: oklch(1 0 0 / 18%);
+		color: oklch(var(--ink) / 18%);
 		max-width: 26ch;
 		text-align: center;
 		line-height: 1.5;
@@ -271,7 +271,7 @@
 	.thought-time {
 		font-family: var(--font-mono);
 		font-size: 0.6rem;
-		color: oklch(1 0 0 / 18%);
+		color: oklch(var(--ink) / 18%);
 		letter-spacing: 0.04em;
 	}
 
@@ -284,8 +284,8 @@
 		margin-bottom: 0.375rem;
 		padding: 0.125rem 0.4rem;
 		border-radius: 0.75rem;
-		background: oklch(1 0 0 / 3%);
-		color: oklch(1 0 0 / 35%);
+		background: oklch(var(--ink) / 3%);
+		color: oklch(var(--ink) / 35%);
 	}
 	.thought-action-reach { color: oklch(0.78 0.12 75 / 65%); background: oklch(0.78 0.12 75 / 5%); }
 	.thought-action-drop { color: oklch(0.78 0.16 310 / 65%); background: oklch(0.78 0.16 310 / 5%); }
@@ -297,7 +297,7 @@
 		font-family: var(--font-body);
 		font-size: 0.78rem;
 		line-height: 1.7;
-		color: oklch(1 0 0 / 42%);
+		color: oklch(var(--ink) / 42%);
 		white-space: pre-line;
 		cursor: default;
 	}
@@ -313,7 +313,7 @@
 	.thought-more {
 		font-family: var(--font-mono);
 		font-size: 0.58rem;
-		color: oklch(1 0 0 / 22%);
+		color: oklch(var(--ink) / 22%);
 		background: none;
 		border: none;
 		padding: 0;
@@ -322,7 +322,7 @@
 		letter-spacing: 0.05em;
 		transition: color 0.2s ease;
 	}
-	.thought-more:hover { color: oklch(1 0 0 / 45%); }
+	.thought-more:hover { color: oklch(var(--ink) / 45%); }
 
 @media (max-width: 640px) {
 		.thoughts-page { padding: 1.5rem 1rem; }

@@ -86,6 +86,103 @@
   --glass-border-top: oklch(1 0 0 / 18%);
   --glass-highlight: oklch(1 0 0 / 30%);
   --glass-blur: blur(20px) saturate(160%) brightness(1.06);
+
+  /* Ink/shade for component colors */
+  --ink: 1 0 0;           /* white components on dark bg */
+  --shade: 0 0 0;         /* black shadows on dark bg */
+  --accent-hue: 240;      /* blue accent */
+
+  /* Text */
+  --text-primary: oklch(0.92 0.04 75 / 95%);
+  --text-secondary: oklch(0.80 0.03 75 / 70%);
+  --text-muted: oklch(0.55 0.03 240 / 60%);
+  --text-faint: oklch(0.45 0.02 240 / 45%);
+  --text-placeholder: oklch(0.50 0.03 220 / 55%);
+  --text-link: oklch(0.7 0.1 190);
+  --text-timestamp: oklch(0.55 0.03 200 / 45%);
+
+  /* Surfaces */
+  --surface-input: oklch(0.14 0.01 230 / 90%);
+  --surface-input-focus: oklch(0.16 0.015 220 / 95%);
+  --surface-input-border: oklch(0.45 0.03 220 / 45%);
+  --surface-elevated: oklch(0.08 0.02 250 / 60%);
+  --surface-overlay: oklch(0.03 0.01 260 / 75%);
+  --surface-tab: oklch(0.08 0.02 250 / 40%);
+  --surface-tab-active: oklch(0.12 0.025 250 / 60%);
+}
+
+/* ── Mint light theme ── */
+.mint {
+  --background: oklch(0.97 0.01 155);
+  --foreground: oklch(0.20 0.03 160);
+  --card: oklch(1 0 0 / 70%);
+  --card-foreground: oklch(0.20 0.03 160);
+  --popover: oklch(0.98 0.01 155 / 90%);
+  --popover-foreground: oklch(0.20 0.03 160);
+  --primary: oklch(0.55 0.12 160);
+  --primary-foreground: oklch(0.98 0.01 155);
+  --secondary: oklch(0.94 0.03 155);
+  --secondary-foreground: oklch(0.25 0.04 160);
+  --muted: oklch(0.94 0.02 155);
+  --muted-foreground: oklch(0.45 0.04 160);
+  --accent: oklch(0.92 0.04 155);
+  --accent-foreground: oklch(0.25 0.04 160);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.30 0.06 160 / 12%);
+  --input: oklch(0.30 0.06 160 / 10%);
+  --ring: oklch(0.55 0.12 160 / 30%);
+  --chart-1: oklch(0.55 0.15 160);
+  --chart-2: oklch(0.60 0.12 200);
+  --chart-3: oklch(0.50 0.10 140);
+  --chart-4: oklch(0.65 0.14 120);
+  --chart-5: oklch(0.70 0.10 180);
+  --sidebar: oklch(0.96 0.02 155 / 80%);
+  --sidebar-foreground: oklch(0.25 0.04 160);
+  --sidebar-primary: oklch(0.55 0.12 160);
+  --sidebar-primary-foreground: oklch(0.98 0.01 155);
+  --sidebar-accent: oklch(0.92 0.04 155 / 60%);
+  --sidebar-accent-foreground: oklch(0.25 0.04 160);
+  --sidebar-border: oklch(0.30 0.06 160 / 10%);
+  --sidebar-ring: oklch(0.55 0.12 160 / 20%);
+
+  --warm: oklch(0.55 0.12 160);
+  --warm-foreground: oklch(0.98 0.01 155);
+  --warm-muted: oklch(0.55 0.12 160 / 12%);
+
+  /* Liquid Glass tokens — light mint */
+  --glass-bg: oklch(0.30 0.06 160 / 5%);
+  --glass-border: oklch(0.30 0.06 160 / 10%);
+  --glass-border-top: oklch(0.30 0.06 160 / 15%);
+  --glass-highlight: oklch(0.30 0.06 160 / 20%);
+  --glass-blur: blur(20px) saturate(140%) brightness(1.02);
+
+  /* Ink/shade for component colors */
+  --ink: 0.18 0.04 160;   /* dark mint components on light bg */
+  --shade: 0.18 0.04 160; /* dark mint shadows on light bg */
+  --accent-hue: 160;      /* mint accent */
+
+  /* Text */
+  --text-primary: oklch(0.18 0.03 160);
+  --text-secondary: oklch(0.35 0.03 160 / 80%);
+  --text-muted: oklch(0.45 0.04 160 / 60%);
+  --text-faint: oklch(0.55 0.03 160 / 45%);
+  --text-placeholder: oklch(0.50 0.04 160 / 50%);
+  --text-link: oklch(0.40 0.12 160);
+  --text-timestamp: oklch(0.45 0.04 160 / 50%);
+
+  /* Surfaces */
+  --surface-input: oklch(0.96 0.02 160 / 80%);
+  --surface-input-focus: oklch(0.98 0.01 160 / 90%);
+  --surface-input-border: oklch(0.30 0.06 160 / 20%);
+  --surface-elevated: oklch(1 0 0 / 60%);
+  --surface-overlay: oklch(0.96 0.02 160 / 75%);
+  --surface-tab: oklch(0.96 0.02 160 / 70%);
+  --surface-tab-active: oklch(0.92 0.04 160 / 80%);
+}
+
+/* ── Mint global overrides ── */
+.mint {
+  color-scheme: light;
 }
 
 @theme inline {
@@ -155,7 +252,7 @@ body::after {
   inset: 0;
   pointer-events: none;
   z-index: 9999;
-  opacity: 0.035;
+  opacity: 0.025;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-repeat: repeat;
   background-size: 256px 256px;

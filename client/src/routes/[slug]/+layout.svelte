@@ -186,7 +186,7 @@
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
-		background: oklch(0.55 0.08 240 / 40%);
+		background: oklch(0.55 0.08 var(--accent-hue) / 40%);
 		animation: waking 2s ease-in-out infinite;
 	}
 	@keyframes waking {
@@ -222,7 +222,7 @@
 		overflow-y: hidden;
 		scrollbar-width: none;
 		-webkit-overflow-scrolling: touch;
-		background: var(--glass-bg);
+		background: var(--surface-tab);
 		backdrop-filter: var(--glass-blur);
 		-webkit-backdrop-filter: var(--glass-blur);
 	}
@@ -240,7 +240,7 @@
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
 		letter-spacing: 0.04em;
-		color: oklch(0.62 0.03 240 / 72%);
+		color: var(--text-secondary);
 		background: none;
 		border: none;
 		padding: 0.6rem 1rem 0.7rem;
@@ -254,13 +254,13 @@
 	}
 
 	.instance-tab:hover {
-		color: oklch(0.82 0.03 240 / 90%);
-		background: oklch(1 0 0 / 5%);
+		color: var(--text-primary);
+		background: oklch(var(--ink) / 5%);
 	}
 
 	.instance-tab-active {
-		color: oklch(0.92 0.02 240);
-		background: oklch(1 0 0 / 6%);
+		color: var(--text-primary);
+		background: oklch(var(--ink) / 6%);
 	}
 
 	.instance-tab-active::after {
@@ -270,7 +270,7 @@
 		left: 0.75rem;
 		right: 0.75rem;
 		height: 1.5px;
-		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 50%), transparent);
+		background: linear-gradient(90deg, transparent, oklch(var(--ink) / 50%), transparent);
 	}
 
 	.instance-tab-home {
@@ -297,7 +297,7 @@
 		position: absolute;
 		inset: 0;
 		z-index: 0;
-		background: oklch(0.02 0.01 260 / 65%);
+		background: var(--surface-overlay);
 		backdrop-filter: blur(20px) saturate(120%);
 		-webkit-backdrop-filter: blur(20px) saturate(120%);
 		pointer-events: none;
@@ -330,7 +330,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: oklch(0.03 0.01 260 / 75%);
+		background: var(--surface-overlay);
 		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);
 		animation: fade-in 0.15s ease;
@@ -347,21 +347,21 @@
 		margin: 1rem;
 		padding: 1.75rem;
 		border-radius: 1.25rem;
-		border: 1px solid oklch(1 0 0 / 10%);
-		border-top-color: oklch(1 0 0 / 18%);
+		border: 1px solid oklch(var(--ink) / 10%);
+		border-top-color: oklch(var(--ink) / 18%);
 		background: linear-gradient(
 			155deg,
-			oklch(1 0 0 / 6%) 0%,
+			oklch(var(--ink) / 6%) 0%,
 			oklch(0.5 0.02 250 / 10%) 40%,
-			oklch(1 0 0 / 4%) 100%
+			oklch(var(--ink) / 4%) 100%
 		);
 		backdrop-filter: blur(28px) saturate(160%) brightness(1.06);
 		-webkit-backdrop-filter: blur(28px) saturate(160%) brightness(1.06);
 		box-shadow:
-			0 8px 40px oklch(0 0 0 / 30%),
-			0 24px 80px oklch(0 0 0 / 15%),
-			inset 0 1px 0 oklch(1 0 0 / 10%),
-			inset 0 -1px 0 oklch(0 0 0 / 5%);
+			0 8px 40px oklch(var(--shade) / 30%),
+			0 24px 80px oklch(var(--shade) / 15%),
+			inset 0 1px 0 oklch(var(--ink) / 10%),
+			inset 0 -1px 0 oklch(var(--shade) / 5%);
 		animation: modal-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 		overflow: hidden;
 	}
@@ -373,7 +373,7 @@
 		left: 12%;
 		right: 12%;
 		height: 1px;
-		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 25%), transparent);
+		background: linear-gradient(90deg, transparent, oklch(var(--ink) / 25%), transparent);
 		pointer-events: none;
 	}
 	@keyframes modal-enter {
@@ -397,7 +397,7 @@
 		font-family: var(--font-display);
 		font-size: 1.1rem;
 		font-weight: 500;
-		color: oklch(0.90 0.02 75 / 90%);
+		color: var(--foreground);
 		margin-bottom: 1rem;
 	}
 
@@ -409,7 +409,7 @@
 		font-family: var(--font-body);
 		font-size: 0.8rem;
 		line-height: 1.5;
-		color: oklch(0.88 0.02 75 / 55%);
+		color: var(--foreground);
 	}
 	.delete-modal-warning strong {
 		color: oklch(0.65 0.15 25 / 85%);
@@ -429,7 +429,7 @@
 		font-family: var(--font-body);
 		font-size: 0.75rem;
 		line-height: 1.8;
-		color: oklch(0.88 0.02 75 / 40%);
+		color: var(--foreground);
 		padding-left: 1rem;
 		position: relative;
 	}
@@ -452,11 +452,11 @@
 		display: block;
 		font-family: var(--font-body);
 		font-size: 0.75rem;
-		color: oklch(0.88 0.02 75 / 50%);
+		color: var(--foreground);
 		margin-bottom: 0.5rem;
 	}
 	.delete-modal-label strong {
-		color: oklch(0.88 0.02 75 / 80%);
+		color: var(--foreground);
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
 	}
@@ -464,8 +464,8 @@
 		width: 100%;
 		padding: 0.5rem 0.75rem;
 		border-radius: 0.5rem;
-		border: 1px solid oklch(1 0 0 / 8%);
-		background: oklch(1 0 0 / 3%);
+		border: 1px solid oklch(var(--ink) / 8%);
+		background: oklch(var(--ink) / 3%);
 		color: var(--foreground);
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
@@ -476,7 +476,7 @@
 		border-color: oklch(0.65 0.15 25 / 30%);
 	}
 	.delete-modal-input::placeholder {
-		color: oklch(1 0 0 / 12%);
+		color: oklch(var(--ink) / 12%);
 	}
 
 	.delete-modal-actions {
@@ -489,15 +489,15 @@
 		font-size: 0.8rem;
 		padding: 0.5rem 1rem;
 		border-radius: 0.5rem;
-		border: 1px solid oklch(1 0 0 / 8%);
+		border: 1px solid oklch(var(--ink) / 8%);
 		background: none;
-		color: oklch(0.88 0.02 75 / 50%);
+		color: var(--foreground);
 		cursor: pointer;
 		transition: all 0.2s ease;
 	}
 	.delete-modal-cancel:hover {
-		border-color: oklch(1 0 0 / 15%);
-		color: oklch(0.88 0.02 75 / 75%);
+		border-color: oklch(var(--ink) / 15%);
+		color: var(--foreground);
 	}
 	.delete-modal-destroy {
 		font-family: var(--font-body);

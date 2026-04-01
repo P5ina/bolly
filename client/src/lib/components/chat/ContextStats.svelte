@@ -136,7 +136,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: oklch(0 0 0 / 50%);
+		background: oklch(var(--shade) / 50%);
 		backdrop-filter: blur(6px);
 		animation: fade-in 0.15s ease;
 	}

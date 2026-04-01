@@ -101,7 +101,7 @@
 		width: 2.5rem;
 		height: 2px;
 		border-radius: 1px;
-		background: oklch(1 0 0 / 4%);
+		background: oklch(var(--ink) / 4%);
 		overflow: hidden;
 	}
 

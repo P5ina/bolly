@@ -234,9 +234,9 @@
 		-webkit-backdrop-filter: blur(40px) saturate(160%);
 		border: 1px solid oklch(0.5 0.06 200 / 12%);
 		box-shadow:
-			0 8px 40px oklch(0 0 0 / 30%),
+			0 8px 40px oklch(var(--shade) / 30%),
 			0 0 1px oklch(0.6 0.08 200 / 20%),
-			inset 0 1px 0 oklch(1 0 0 / 4%);
+			inset 0 1px 0 oklch(var(--ink) / 4%);
 	}
 
 	.present-bar-glow {

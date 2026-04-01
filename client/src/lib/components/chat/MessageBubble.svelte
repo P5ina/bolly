@@ -204,20 +204,20 @@
 		padding: 0.5rem 0;
 		animation: msg-enter 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
 		--msg-accent: oklch(0.6 0.1 190);
-		--msg-glass-bg: oklch(0.13 0.025 200 / 30%);
+		--msg-glass-bg: var(--surface-elevated);
 		--msg-glass-border: oklch(0.5 0.06 200 / 10%);
 	}
 
 	/* mood accents — teal-metallic spectrum */
 	.msg[data-mood="focused"] { --msg-accent: oklch(0.68 0.1 180); }
 	.msg[data-mood="playful"] { --msg-accent: oklch(0.72 0.12 160); }
-	.msg[data-mood="loving"] { --msg-accent: oklch(0.7 0.1 20); --msg-glass-bg: oklch(0.13 0.02 10 / 25%); }
-	.msg[data-mood="warm"] { --msg-accent: oklch(0.72 0.1 65); --msg-glass-bg: oklch(0.13 0.02 55 / 25%); }
-	.msg[data-mood="reflective"] { --msg-accent: oklch(0.6 0.08 280); --msg-glass-bg: oklch(0.13 0.02 270 / 25%); }
+	.msg[data-mood="loving"] { --msg-accent: oklch(0.7 0.1 20); }
+	.msg[data-mood="warm"] { --msg-accent: oklch(0.72 0.1 65); }
+	.msg[data-mood="reflective"] { --msg-accent: oklch(0.6 0.08 280); }
 	.msg[data-mood="excited"] { --msg-accent: oklch(0.75 0.12 85); }
 	.msg[data-mood="curious"] { --msg-accent: oklch(0.7 0.1 200); }
 	.msg[data-mood="creative"] { --msg-accent: oklch(0.72 0.12 155); }
-	.msg[data-mood="melancholy"] { --msg-accent: oklch(0.5 0.06 250); --msg-glass-bg: oklch(0.11 0.02 250 / 25%); }
+	.msg[data-mood="melancholy"] { --msg-accent: oklch(0.5 0.06 250); }
 	.msg[data-mood="sad"] { --msg-accent: oklch(0.45 0.05 245); }
 	.msg[data-mood="anxious"] { --msg-accent: oklch(0.6 0.1 30); }
 	.msg[data-mood="energetic"] { --msg-accent: oklch(0.75 0.14 100); }
@@ -267,26 +267,26 @@
 
 	.msg-content-user {
 		position: relative;
-		color: oklch(0.72 0.025 220 / 60%);
+		color: var(--text-muted);
 		font-family: var(--font-body);
 		font-size: 0.8125rem;
 		padding: 0.55rem 0.9rem;
 		background: linear-gradient(
 			160deg,
-			oklch(1 0 0 / 6%) 0%,
+			oklch(var(--ink) / 6%) 0%,
 			oklch(0.5 0.02 220 / 8%) 40%,
-			oklch(1 0 0 / 3%) 100%
+			oklch(var(--ink) / 3%) 100%
 		);
 		backdrop-filter: blur(20px) saturate(150%) brightness(1.05);
 		-webkit-backdrop-filter: blur(20px) saturate(150%) brightness(1.05);
-		border: 1px solid oklch(1 0 0 / 8%);
-		border-top-color: oklch(1 0 0 / 15%);
+		border: 1px solid oklch(var(--ink) / 8%);
+		border-top-color: oklch(var(--ink) / 15%);
 		border-radius: 14px 14px 4px 14px;
 		max-width: 65%;
 		box-shadow:
-			0 2px 8px oklch(0 0 0 / 12%),
-			inset 0 1px 0 oklch(1 0 0 / 8%),
-			inset 0 -1px 0 oklch(0 0 0 / 5%);
+			0 2px 8px oklch(var(--shade) / 12%),
+			inset 0 1px 0 oklch(var(--ink) / 8%),
+			inset 0 -1px 0 oklch(var(--shade) / 5%);
 		overflow: hidden;
 	}
 
@@ -298,7 +298,7 @@
 		left: 8%;
 		right: 8%;
 		height: 1px;
-		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 25%), transparent);
+		background: linear-gradient(90deg, transparent, oklch(var(--ink) / 25%), transparent);
 		pointer-events: none;
 	}
 
@@ -318,7 +318,7 @@
 		font-size: 0.6rem;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
-		color: oklch(0.55 0.05 200 / 40%);
+		color: var(--text-faint);
 		padding-right: 0.5rem;
 	}
 
@@ -334,28 +334,28 @@
 	/* Companion liquid glass card */
 	.msg-content-companion {
 		position: relative;
-		color: oklch(0.9 0.025 75 / 92%);
+		color: var(--text-primary);
 		font-family: var(--font-body);
 		padding: 0.7rem 1rem;
 		background: linear-gradient(
 			145deg,
-			oklch(1 0 0 / 7%) 0%,
+			oklch(var(--ink) / 7%) 0%,
 			var(--msg-glass-bg) 35%,
-			oklch(1 0 0 / 4%) 70%,
+			oklch(var(--ink) / 4%) 70%,
 			oklch(0.5 0.03 200 / 10%) 100%
 		);
 		backdrop-filter: blur(24px) saturate(170%) brightness(1.08);
 		-webkit-backdrop-filter: blur(24px) saturate(170%) brightness(1.08);
-		border: 1px solid oklch(1 0 0 / 10%);
-		border-top-color: oklch(1 0 0 / 20%);
-		border-bottom-color: oklch(0 0 0 / 8%);
+		border: 1px solid oklch(var(--ink) / 10%);
+		border-top-color: oklch(var(--ink) / 20%);
+		border-bottom-color: oklch(var(--shade) / 8%);
 		border-radius: 16px 16px 4px 16px;
 		max-width: 80%;
 		box-shadow:
-			0 2px 16px oklch(0 0 0 / 20%),
-			0 8px 32px oklch(0 0 0 / 8%),
-			inset 0 1px 0 oklch(1 0 0 / 10%),
-			inset 0 -1px 0 oklch(0 0 0 / 6%);
+			0 2px 16px oklch(var(--shade) / 20%),
+			0 8px 32px oklch(var(--shade) / 8%),
+			inset 0 1px 0 oklch(var(--ink) / 10%),
+			inset 0 -1px 0 oklch(var(--shade) / 6%);
 		transition: border-color 0.4s ease, box-shadow 0.4s ease;
 		overflow: hidden;
 	}
@@ -368,7 +368,7 @@
 		left: 10%;
 		right: 10%;
 		height: 1px;
-		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 35%), oklch(1 0 0 / 15%), transparent);
+		background: linear-gradient(90deg, transparent, oklch(var(--ink) / 35%), oklch(var(--ink) / 15%), transparent);
 		pointer-events: none;
 	}
 
@@ -382,7 +382,7 @@
 		height: 50%;
 		background: linear-gradient(
 			180deg,
-			oklch(1 0 0 / 4%) 0%,
+			oklch(var(--ink) / 4%) 0%,
 			transparent 100%
 		);
 		pointer-events: none;
@@ -390,13 +390,13 @@
 	}
 
 	.msg-active .msg-content-companion {
-		border-color: oklch(1 0 0 / 15%);
-		border-top-color: oklch(1 0 0 / 25%);
+		border-color: oklch(var(--ink) / 15%);
+		border-top-color: oklch(var(--ink) / 25%);
 		box-shadow:
-			0 4px 24px oklch(0 0 0 / 25%),
+			0 4px 24px oklch(var(--shade) / 25%),
 			0 0 30px oklch(0.6 0.08 200 / 8%),
-			inset 0 1px 0 oklch(1 0 0 / 12%),
-			inset 0 -1px 0 oklch(0 0 0 / 6%);
+			inset 0 1px 0 oklch(var(--ink) / 12%),
+			inset 0 -1px 0 oklch(var(--shade) / 6%);
 	}
 
 	/* --- Prose (markdown) --- */
@@ -415,7 +415,7 @@
 	.prose :global(h3),
 	.prose :global(h4) {
 		font-family: var(--font-display);
-		color: oklch(0.92 0.04 75 / 95%);
+		color: var(--text-primary);
 		margin: 0.75em 0 0.25em;
 		line-height: 1.3;
 		font-weight: 600;
@@ -424,15 +424,15 @@
 	.prose :global(h2) { font-size: 1.05em; }
 	.prose :global(h3) { font-size: 0.95em; }
 	.prose :global(strong) {
-		color: oklch(0.92 0.04 75);
+		color: var(--text-primary);
 		font-weight: 600;
 	}
 	.prose :global(em) {
 		font-style: italic;
-		color: oklch(0.85 0.05 75 / 80%);
+		color: var(--text-secondary);
 	}
 	.prose :global(a) {
-		color: oklch(0.7 0.1 190);
+		color: var(--text-link);
 		text-decoration: underline;
 		text-decoration-color: oklch(0.7 0.1 190 / 30%);
 		text-underline-offset: 2px;
@@ -444,10 +444,10 @@
 	.prose :global(code) {
 		font-family: var(--font-mono);
 		font-size: 0.8em;
-		background: oklch(0.1 0.015 200 / 50%);
+		background: oklch(var(--shade) / 8%);
 		padding: 0.15em 0.35em;
 		border-radius: 4px;
-		color: oklch(0.78 0.06 190);
+		color: var(--text-link);
 		border: 1px solid oklch(0.5 0.04 200 / 10%);
 	}
 	.prose :global(pre) {
@@ -465,7 +465,7 @@
 		background: none;
 		padding: 0;
 		font-size: 0.78em;
-		color: oklch(0.80 0.02 75 / 85%);
+		color: var(--text-secondary);
 		line-height: 1.5;
 		border: none;
 	}
@@ -484,7 +484,7 @@
 		border-left: 2px solid oklch(0.6 0.08 200 / 30%);
 		padding-left: 0.75em;
 		margin: 0.4em 0;
-		color: oklch(0.80 0.03 75 / 70%);
+		color: var(--text-secondary);
 		font-style: italic;
 	}
 	.prose :global(hr) {
@@ -506,7 +506,7 @@
 	}
 	.prose :global(th) {
 		background: oklch(0.1 0.02 200 / 35%);
-		color: oklch(0.90 0.04 75);
+		color: var(--text-primary);
 		font-weight: 600;
 	}
 
@@ -522,14 +522,14 @@
 	.msg-time {
 		display: block;
 		font-size: 0.5625rem;
-		color: oklch(0.55 0.03 200 / 45%);
+		color: var(--text-timestamp);
 		margin-top: 0.2rem;
 		font-family: var(--font-mono);
 		letter-spacing: 0.04em;
 		transition: color 0.3s ease;
 	}
 	.msg:hover .msg-time {
-		color: oklch(0.65 0.04 200 / 70%);
+		color: var(--text-muted);
 	}
 	.msg-time-right {
 		text-align: left;
@@ -627,7 +627,7 @@
 	/* --- Voice word reveal --- */
 	.msg-voice-reveal {
 		font-family: var(--font-body);
-		color: oklch(0.9 0.025 75 / 92%);
+		color: var(--text-primary);
 		padding: 0.7rem 1rem;
 		background: linear-gradient(135deg, var(--msg-glass-bg) 0%, oklch(0.1 0.018 220 / 20%) 100%);
 		backdrop-filter: blur(20px) saturate(140%);
@@ -635,7 +635,7 @@
 		border: 1px solid var(--msg-glass-border);
 		border-radius: 16px 16px 4px 16px;
 		max-width: 80%;
-		box-shadow: 0 2px 12px oklch(0 0 0 / 18%), inset 0 1px 0 oklch(1 0 0 / 3%);
+		box-shadow: 0 2px 12px oklch(var(--shade) / 18%), inset 0 1px 0 oklch(var(--ink) / 3%);
 	}
 
 	.voice-word {

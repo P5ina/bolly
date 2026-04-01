@@ -118,15 +118,15 @@
 		);
 		backdrop-filter: blur(40px) saturate(180%) brightness(1.05);
 		-webkit-backdrop-filter: blur(40px) saturate(180%) brightness(1.05);
-		border: 1px solid oklch(1 0 0 / 12%);
-		border-top-color: oklch(1 0 0 / 22%);
-		border-bottom-color: oklch(0 0 0 / 8%);
+		border: 1px solid oklch(var(--ink) / 12%);
+		border-top-color: oklch(var(--ink) / 22%);
+		border-bottom-color: oklch(var(--shade) / 8%);
 		border-radius: 20px;
 		box-shadow:
-			0 4px 24px oklch(0 0 0 / 25%),
-			0 12px 48px oklch(0 0 0 / 10%),
-			inset 0 1px 0 oklch(1 0 0 / 12%),
-			inset 0 -1px 0 oklch(0 0 0 / 6%);
+			0 4px 24px oklch(var(--shade) / 25%),
+			0 12px 48px oklch(var(--shade) / 10%),
+			inset 0 1px 0 oklch(var(--ink) / 12%),
+			inset 0 -1px 0 oklch(var(--shade) / 6%);
 		overflow: hidden;
 	}
 
@@ -138,7 +138,7 @@
 		left: 10%;
 		right: 10%;
 		height: 1px;
-		background: linear-gradient(90deg, transparent, oklch(1 0 0 / 40%), oklch(1 0 0 / 15%), transparent);
+		background: linear-gradient(90deg, transparent, oklch(var(--ink) / 40%), oklch(var(--ink) / 15%), transparent);
 		pointer-events: none;
 	}
 
@@ -150,7 +150,7 @@
 		left: 0;
 		right: 0;
 		height: 45%;
-		background: linear-gradient(180deg, oklch(1 0 0 / 5%) 0%, transparent 100%);
+		background: linear-gradient(180deg, oklch(var(--ink) / 5%) 0%, transparent 100%);
 		pointer-events: none;
 		border-radius: 20px 20px 0 0;
 	}
@@ -159,9 +159,9 @@
 		border-radius: 20px 20px 20px 4px;
 		background: linear-gradient(
 			160deg,
-			oklch(1 0 0 / 5%) 0%,
+			oklch(var(--ink) / 5%) 0%,
 			oklch(0.5 0.02 220 / 8%) 50%,
-			oklch(1 0 0 / 3%) 100%
+			oklch(var(--ink) / 3%) 100%
 		);
 	}
 
@@ -171,10 +171,10 @@
 
 	.pbubble-streaming .pbubble-glass {
 		box-shadow:
-			0 4px 24px oklch(0 0 0 / 25%),
+			0 4px 24px oklch(var(--shade) / 25%),
 			0 0 30px oklch(0.55 0.08 200 / 10%),
-			inset 0 1px 0 oklch(1 0 0 / 14%),
-			inset 0 -1px 0 oklch(0 0 0 / 6%);
+			inset 0 1px 0 oklch(var(--ink) / 14%),
+			inset 0 -1px 0 oklch(var(--shade) / 6%);
 	}
 
 	.pbubble-text {

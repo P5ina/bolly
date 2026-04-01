@@ -65,13 +65,11 @@
 		flex-direction: column;
 		gap: 0.75rem;
 		padding: 0.9rem 1rem;
-		border: 1px solid oklch(0.78 0.12 75 / 10%);
+		border: 1px solid oklch(var(--ink) / 8%);
 		border-radius: 16px;
-		background:
-			linear-gradient(180deg, oklch(0.12 0.02 280 / 42%), oklch(0.08 0.01 280 / 20%)),
-			radial-gradient(circle at top, oklch(0.78 0.12 75 / 7%), transparent 55%);
-		backdrop-filter: blur(16px);
-		box-shadow: inset 0 1px 0 oklch(0.95 0.01 75 / 4%);
+		background: var(--surface-elevated);
+		backdrop-filter: var(--glass-blur);
+		-webkit-backdrop-filter: var(--glass-blur);
 	}
 
 	.presence-shell[data-status="thinking"] {
@@ -107,7 +105,7 @@
 	}
 
 	.presence-led-live {
-		background: oklch(0.78 0.12 75 / 90%);
+		background: var(--warm);
 		box-shadow: 0 0 0 6px oklch(0.78 0.12 75 / 8%), 0 0 14px oklch(0.78 0.12 75 / 24%);
 	}
 
@@ -120,15 +118,15 @@
 		font-size: 0.72rem;
 		letter-spacing: 0.04em;
 		text-transform: lowercase;
-		color: oklch(0.84 0.03 75 / 88%);
+		color: var(--text-primary);
 	}
 
 	.presence-name {
-		color: oklch(0.92 0.04 75 / 96%);
+		color: var(--text-primary);
 	}
 
 	.presence-sep {
-		color: oklch(0.78 0.12 75 / 45%);
+		color: var(--text-muted);
 	}
 
 	.presence-metrics {
@@ -137,7 +135,7 @@
 		gap: 0.7rem;
 		font-family: var(--font-mono);
 		font-size: 0.67rem;
-		color: oklch(0.78 0.02 280 / 72%);
+		color: var(--text-secondary);
 	}
 
 	.status-waiting,
@@ -147,11 +145,11 @@
 	}
 
 	.status-waiting {
-		color: oklch(0.76 0.02 260 / 80%);
+		color: var(--text-secondary);
 	}
 
 	.status-thinking {
-		color: oklch(0.82 0.08 75 / 88%);
+		color: var(--text-primary);
 	}
 
 	.status-acting {
@@ -159,7 +157,7 @@
 	}
 
 	.presence-online {
-		color: oklch(0.82 0.08 75 / 88%);
+		color: var(--text-primary);
 	}
 
 	.presence-grid {
@@ -175,8 +173,8 @@
 		gap: 0.25rem;
 		padding: 0.75rem 0.85rem;
 		border-radius: 14px;
-		border: 1px solid oklch(0.78 0.12 75 / 8%);
-		background: linear-gradient(180deg, oklch(0.11 0.01 280 / 30%), oklch(0.08 0.01 280 / 18%));
+		border: 1px solid oklch(var(--ink) / 6%);
+		background: var(--surface-elevated);
 	}
 
 	.presence-focus-label {
@@ -184,7 +182,7 @@
 		font-size: 0.72rem;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		color: oklch(0.78 0.02 280 / 62%);
+		color: var(--text-muted);
 	}
 
 	.presence-focus p,
@@ -192,13 +190,13 @@
 		margin: 0;
 		font-size: 0.84rem;
 		line-height: 1.45;
-		color: oklch(0.86 0.03 75 / 84%);
+		color: var(--text-primary);
 	}
 
 	.presence-signal-card strong {
 		font-size: 0.82rem;
 		font-weight: 500;
-		color: oklch(0.92 0.04 75 / 94%);
+		color: var(--text-primary);
 	}
 
 	@media (max-width: 720px) {

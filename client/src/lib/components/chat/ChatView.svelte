@@ -910,7 +910,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		font-weight: 300;
 		font-style: italic;
 		letter-spacing: 0.06em;
-		color: oklch(1 0 0 / 45%);
+		color: oklch(var(--ink) / 45%);
 		white-space: nowrap;
 		animation: intro-name-in 1s cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
@@ -925,17 +925,17 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		pointer-events: auto;
 		padding: 0.4rem 1rem;
 		border-radius: 2rem;
-		background: oklch(1 0 0 / 5%);
+		background: oklch(var(--ink) / 5%);
 		backdrop-filter: blur(12px);
-		border: 1px solid oklch(1 0 0 / 10%);
-		color: oklch(1 0 0 / 35%);
+		border: 1px solid oklch(var(--ink) / 10%);
+		color: oklch(var(--ink) / 35%);
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
 		letter-spacing: 0.08em;
 		cursor: pointer;
 		transition: all 0.3s ease;
 	}
-	.intro-skip:hover { background: oklch(1 0 0 / 10%); color: oklch(1 0 0 / 60%); }
+	.intro-skip:hover { background: oklch(var(--ink) / 10%); color: oklch(var(--ink) / 60%); }
 
 	/* --- Perimeter ambient glow (Siri-style) --- */
 	.chat-space::before {
@@ -1000,10 +1000,10 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		justify-content: space-between;
 		padding: 0.5rem 1.25rem;
 		flex-shrink: 0;
-		background: oklch(0.08 0.015 210 / 40%);
-		backdrop-filter: blur(12px);
-		-webkit-backdrop-filter: blur(12px);
-		border-bottom: 1px solid oklch(0.5 0.06 200 / 6%);
+		background: var(--surface-tab);
+		backdrop-filter: var(--glass-blur);
+		-webkit-backdrop-filter: var(--glass-blur);
+		border-bottom: 1px solid var(--glass-border);
 	}
 
 	.bar-left {
@@ -1035,14 +1035,14 @@ import McpAppViewer from "./McpAppViewer.svelte";
 	}
 
 	.bar-name {
-		color: oklch(0.80 0.03 200 / 88%);
+		color: var(--text-primary);
 	}
 
 	.bar-mood {
 		font-family: var(--font-mono);
 		font-size: 0.62rem;
 		letter-spacing: 0.06em;
-		color: oklch(0.58 0.05 200 / 55%);
+		color: var(--text-muted);
 		transition: color 0.5s ease;
 	}
 	.bar-mood[data-mood="focused"] { color: oklch(0.65 0.1 180 / 72%); }
@@ -1085,18 +1085,18 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		justify-content: center;
 		width: 1.75rem;
 		height: 1.75rem;
-		color: oklch(0.55 0.04 200 / 55%);
+		color: var(--text-muted);
 		border-radius: 7px;
 		transition: all 0.2s ease;
 	}
 
 	.bar-btn-active {
-		color: oklch(0.65 0.06 200 / 78%);
+		color: var(--text-secondary);
 	}
 
 	.bar-btn:hover {
-		color: oklch(0.72 0.06 200 / 85%);
-		background: oklch(0.5 0.06 200 / 10%);
+		color: var(--text-primary);
+		background: oklch(var(--ink) / 8%);
 	}
 
 	/* --- columns --- */
@@ -1294,7 +1294,7 @@ import McpAppViewer from "./McpAppViewer.svelte";
 		border: 1px solid oklch(0.5 0.06 200 / 12%) !important;
 		border-radius: 16px !important;
 		padding: 1.5rem !important;
-		box-shadow: 0 20px 80px oklch(0 0 0 / 55%), inset 0 1px 0 oklch(1 0 0 / 3%) !important;
+		box-shadow: 0 20px 80px oklch(var(--shade) / 55%), inset 0 1px 0 oklch(var(--ink) / 3%) !important;
 	}
 
 	:global(.clear-dialog-title) {

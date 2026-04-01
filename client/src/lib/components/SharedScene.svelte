@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
-	import { getSkinStore, type ClipSource } from "$lib/stores/skin.svelte.js";
+	import { getSkinStore, clipSrc } from "$lib/stores/skin.svelte.js";
 
 	const store = getSceneStore();
 	const skinStore = getSkinStore();
@@ -86,15 +86,7 @@
 	let lastClipKey = '';
 
 	function applyClip(el: HTMLVideoElement, clip: ClipSource, loop: boolean) {
-		el.innerHTML = '';
-		const webm = document.createElement('source');
-		webm.src = clip.webm;
-		webm.type = 'video/webm; codecs="vp9"';
-		const mov = document.createElement('source');
-		mov.src = clip.mov;
-		mov.type = 'video/quicktime; codecs="hvc1"';
-		el.appendChild(webm);
-		el.appendChild(mov);
+		el.src = clipSrc(clip);
 		el.loop = loop;
 		el.load();
 		el.play().catch(() => {
@@ -354,13 +346,11 @@
 				<video
 					bind:this={videoRefs[orb.slug]}
 					autoplay muted playsinline
+					src={clipSrc(videoSrc)}
 					loop={isLooping}
 					class="orb-vid"
 					onended={handleVideoEnded}
-				>
-					<source src={videoSrc.webm} type='video/webm; codecs="vp9"' />
-					<source src={videoSrc.mov} type='video/quicktime; codecs="hvc1"' />
-				</video>
+				></video>
 			</button>
 		{/if}
 	{/each}

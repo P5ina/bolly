@@ -334,7 +334,7 @@
 		gap: 0.375rem;
 		padding: 0.25rem 0.5rem;
 		border-radius: 10px;
-		background: oklch(0.14 0.02 200 / 30%);
+		background: var(--surface-tab);
 		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);
 		border: 1px solid oklch(0.5 0.06 200 / 10%);
@@ -405,16 +405,16 @@
 		height: 2rem;
 		flex-shrink: 0;
 		border-radius: 50%;
-		color: oklch(0.65 0.04 220 / 80%);
-		background: oklch(0.20 0.01 220 / 50%);
-		border: 1px solid oklch(0.45 0.03 220 / 35%);
+		color: var(--text-muted);
+		background: oklch(var(--ink) / 8%);
+		border: 1px solid oklch(var(--ink) / 12%);
 		transition: all 0.3s ease;
 		margin-bottom: 0.375rem;
 	}
 	.whisper-attach:hover {
-		color: oklch(0.80 0.06 200);
-		background: oklch(0.25 0.02 220 / 60%);
-		border-color: oklch(0.50 0.04 220 / 50%);
+		color: var(--text-secondary);
+		background: oklch(var(--ink) / 14%);
+		border-color: oklch(var(--ink) / 20%);
 	}
 	.whisper-attach:disabled {
 		opacity: 0.2;
@@ -433,36 +433,36 @@
 		font-size: 0.6rem;
 		font-weight: 600;
 		letter-spacing: 0.05em;
-		color: oklch(0.58 0.05 200 / 62%);
-		background: oklch(0.14 0.02 200 / 35%);
+		color: var(--text-muted);
+		background: oklch(var(--ink) / 8%);
 		backdrop-filter: blur(8px);
 		-webkit-backdrop-filter: blur(8px);
-		border: 1px solid oklch(0.5 0.06 200 / 16%);
+		border: 1px solid oklch(var(--ink) / 12%);
 		cursor: pointer;
 		transition: all 0.2s;
 		margin-bottom: 0.75rem;
 	}
 	.mode-toggle:hover {
-		color: oklch(0.70 0.08 200 / 80%);
-		background: oklch(0.14 0.02 200 / 50%);
+		color: var(--text-secondary);
+		background: oklch(var(--ink) / 12%);
 	}
 	.mode-toggle-fast {
-		color: oklch(0.68 0.1 170 / 72%);
-		background: oklch(0.12 0.02 170 / 35%);
-		border-color: oklch(0.5 0.08 170 / 22%);
+		color: oklch(0.45 0.10 170);
+		background: oklch(0.45 0.10 170 / 10%);
+		border-color: oklch(0.45 0.10 170 / 18%);
 	}
 	.mode-toggle-fast:hover {
-		color: oklch(0.75 0.12 170 / 90%);
-		background: oklch(0.12 0.02 170 / 50%);
+		color: oklch(0.45 0.10 170);
+		background: oklch(0.45 0.10 170 / 18%);
 	}
 	.mode-toggle-heavy {
-		color: oklch(0.63 0.08 250 / 72%);
-		background: oklch(0.12 0.02 250 / 35%);
-		border-color: oklch(0.5 0.06 250 / 22%);
+		color: oklch(0.45 0.08 250);
+		background: oklch(0.45 0.08 250 / 10%);
+		border-color: oklch(0.45 0.08 250 / 18%);
 	}
 	.mode-toggle-heavy:hover {
-		color: oklch(0.72 0.1 250 / 90%);
-		background: oklch(0.12 0.02 250 / 50%);
+		color: oklch(0.45 0.08 250);
+		background: oklch(0.45 0.08 250 / 18%);
 	}
 
 	.whisper-input {
@@ -476,30 +476,30 @@
 		font-family: var(--font-body);
 		font-size: 1rem;
 		line-height: 1.6;
-		color: oklch(0.94 0.01 75);
-		background: oklch(0.14 0.01 230 / 90%);
-		border: 1px solid oklch(0.45 0.03 220 / 45%);
-		border-top-color: oklch(0.50 0.03 220 / 50%);
+		color: var(--text-primary);
+		background: var(--surface-input);
+		border: 1px solid var(--surface-input-border);
+		border-top-color: oklch(var(--ink) / 15%);
 		border-radius: 14px;
 		outline: none;
 		transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 		letter-spacing: 0.01em;
 		box-shadow:
-			0 2px 12px oklch(0 0 0 / 30%),
-			inset 0 1px 0 oklch(1 0 0 / 6%);
+			0 2px 12px oklch(var(--shade) / 30%),
+			inset 0 1px 0 oklch(var(--ink) / 6%);
 	}
 	.whisper-input::placeholder {
-		color: oklch(0.50 0.03 220 / 65%);
+		color: var(--text-placeholder);
 		font-style: italic;
 		font-family: var(--font-display);
 	}
 	.whisper-input:focus {
-		border-color: oklch(0.55 0.06 200 / 55%);
-		background: oklch(0.16 0.015 220 / 95%);
+		border-color: oklch(0.55 0.08 var(--accent-hue) / 55%);
+		background: var(--surface-input-focus);
 		box-shadow:
-			0 0 0 3px oklch(0.55 0.08 200 / 14%),
-			0 4px 20px oklch(0 0 0 / 35%),
-			inset 0 1px 0 oklch(1 0 0 / 6%);
+			0 0 0 3px oklch(0.55 0.08 var(--accent-hue) / 14%),
+			0 4px 20px oklch(var(--shade) / 35%),
+			inset 0 1px 0 oklch(var(--ink) / 6%);
 	}
 	.whisper-input:disabled {
 		opacity: 0.35;
@@ -513,7 +513,7 @@
 		height: 2rem;
 		flex-shrink: 0;
 		border-radius: 50%;
-		color: oklch(0.65 0.1 190 / 75%);
+		color: var(--text-link);
 		transition: all 0.3s ease;
 		animation: send-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 		margin-bottom: 0.375rem;

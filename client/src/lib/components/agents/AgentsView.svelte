@@ -479,11 +479,11 @@
 		font-family: var(--font-display);
 		font-style: italic;
 		font-size: 0.9rem;
-		color: oklch(1 0 0 / 30%);
+		color: oklch(var(--ink) / 30%);
 	}
 	.empty-sub {
 		font-size: 0.72rem;
-		color: oklch(1 0 0 / 18%);
+		color: oklch(var(--ink) / 18%);
 		max-width: 30ch;
 		text-align: center;
 		line-height: 1.5;
@@ -503,7 +503,7 @@
 	.agents-title {
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
-		color: oklch(1 0 0 / 35%);
+		color: oklch(var(--ink) / 35%);
 		letter-spacing: 0.04em;
 	}
 
@@ -515,7 +515,7 @@
 	.agents-hint {
 		font-family: var(--font-mono);
 		font-size: 0.62rem;
-		color: oklch(1 0 0 / 18%);
+		color: oklch(var(--ink) / 18%);
 		max-width: 600px;
 		margin: -0.5rem auto 1rem;
 		letter-spacing: 0.02em;
@@ -556,13 +556,13 @@
 		gap: 0.75rem;
 		padding: 0.875rem 1rem;
 		border-radius: 0.625rem;
-		background: oklch(1 0 0 / 2%);
-		border: 1px solid oklch(1 0 0 / 5%);
+		background: oklch(var(--ink) / 2%);
+		border: 1px solid oklch(var(--ink) / 5%);
 		transition: all 0.2s ease;
 	}
 	.agent-card:hover {
-		background: oklch(1 0 0 / 3.5%);
-		border-color: oklch(1 0 0 / 8%);
+		background: oklch(var(--ink) / 3.5%);
+		border-color: oklch(var(--ink) / 8%);
 	}
 
 	.agent-disabled {
@@ -599,7 +599,7 @@
 	.agent-name {
 		font-family: var(--font-mono);
 		font-size: 0.82rem;
-		color: oklch(1 0 0 / 70%);
+		color: oklch(var(--ink) / 70%);
 		letter-spacing: 0.02em;
 	}
 
@@ -614,13 +614,13 @@
 	.agent-interval {
 		font-family: var(--font-mono);
 		font-size: 0.6rem;
-		color: oklch(1 0 0 / 22%);
+		color: oklch(var(--ink) / 22%);
 		letter-spacing: 0.04em;
 	}
 
 	.agent-desc {
 		font-size: 0.72rem;
-		color: oklch(1 0 0 / 32%);
+		color: oklch(var(--ink) / 32%);
 		line-height: 1.5;
 		margin: 0;
 	}
@@ -635,7 +635,7 @@
 	.agent-last-run {
 		font-family: var(--font-mono);
 		font-size: 0.58rem;
-		color: oklch(1 0 0 / 20%);
+		color: oklch(var(--ink) / 20%);
 		letter-spacing: 0.04em;
 	}
 
@@ -655,8 +655,8 @@
 		letter-spacing: 0.06em;
 		padding: 0.1rem 0.35rem;
 		border-radius: 0.5rem;
-		background: oklch(1 0 0 / 5%);
-		color: oklch(1 0 0 / 25%);
+		background: oklch(var(--ink) / 5%);
+		color: oklch(var(--ink) / 25%);
 	}
 
 	/* Actions */
@@ -673,17 +673,17 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		border: 1px solid oklch(1 0 0 / 8%);
+		border: 1px solid oklch(var(--ink) / 8%);
 		border-radius: 0.375rem;
 		background: none;
-		color: oklch(1 0 0 / 28%);
+		color: oklch(var(--ink) / 28%);
 		cursor: pointer;
 		transition: all 0.2s ease;
 	}
 	.agent-btn:hover:not(:disabled) {
-		color: oklch(1 0 0 / 55%);
-		border-color: oklch(1 0 0 / 15%);
-		background: oklch(1 0 0 / 3%);
+		color: oklch(var(--ink) / 55%);
+		border-color: oklch(var(--ink) / 15%);
+		background: oklch(var(--ink) / 3%);
 	}
 	.agent-btn:disabled {
 		opacity: 0.3;
@@ -712,7 +712,7 @@
 	.agent-history {
 		margin-left: 1.5rem;
 		padding: 0.75rem 1rem;
-		border-left: 2px solid oklch(1 0 0 / 5%);
+		border-left: 2px solid oklch(var(--ink) / 5%);
 		display: flex;
 		flex-direction: column;
 		gap: 0.625rem;
@@ -727,7 +727,7 @@
 	.history-empty {
 		font-family: var(--font-mono);
 		font-size: 0.65rem;
-		color: oklch(1 0 0 / 20%);
+		color: oklch(var(--ink) / 20%);
 		margin: 0;
 	}
 
@@ -740,13 +740,13 @@
 	.history-time {
 		font-family: var(--font-mono);
 		font-size: 0.55rem;
-		color: oklch(1 0 0 / 18%);
+		color: oklch(var(--ink) / 18%);
 		letter-spacing: 0.04em;
 	}
 
 	.history-content {
 		font-size: 0.72rem;
-		color: oklch(1 0 0 / 35%);
+		color: oklch(var(--ink) / 35%);
 		line-height: 1.5;
 		margin: 0;
 		white-space: pre-line;
@@ -786,8 +786,8 @@
 		gap: 0.625rem;
 		padding: 0.625rem 0.875rem;
 		border-radius: 0.5rem;
-		background: oklch(1 0 0 / 1.5%);
-		border: 1px solid oklch(1 0 0 / 4%);
+		background: oklch(var(--ink) / 1.5%);
+		border: 1px solid oklch(var(--ink) / 4%);
 		transition: all 0.2s ease;
 		cursor: pointer;
 		text-align: left;
@@ -796,12 +796,12 @@
 		color: inherit;
 	}
 	.run-card:hover {
-		background: oklch(1 0 0 / 3%);
-		border-color: oklch(1 0 0 / 7%);
+		background: oklch(var(--ink) / 3%);
+		border-color: oklch(var(--ink) / 7%);
 	}
 	.run-card-expanded {
-		background: oklch(1 0 0 / 3%);
-		border-color: oklch(1 0 0 / 8%);
+		background: oklch(var(--ink) / 3%);
+		border-color: oklch(var(--ink) / 8%);
 		border-bottom-left-radius: 0;
 		border-bottom-right-radius: 0;
 	}
@@ -839,7 +839,7 @@
 	.run-trigger {
 		font-family: var(--font-mono);
 		font-size: 0.58rem;
-		color: oklch(1 0 0 / 20%);
+		color: oklch(var(--ink) / 20%);
 		letter-spacing: 0.04em;
 	}
 
@@ -855,13 +855,13 @@
 	.run-tokens {
 		font-family: var(--font-mono);
 		font-size: 0.55rem;
-		color: oklch(1 0 0 / 22%);
+		color: oklch(var(--ink) / 22%);
 		letter-spacing: 0.04em;
 	}
 
 	.run-sep {
 		font-size: 0.5rem;
-		color: oklch(1 0 0 / 12%);
+		color: oklch(var(--ink) / 12%);
 	}
 
 	.run-status {
@@ -876,7 +876,7 @@
 
 	.run-summary {
 		font-size: 0.65rem;
-		color: oklch(1 0 0 / 25%);
+		color: oklch(var(--ink) / 25%);
 		line-height: 1.4;
 		margin: 0.2rem 0 0;
 		overflow: hidden;
@@ -887,7 +887,7 @@
 	.run-chevron {
 		flex-shrink: 0;
 		margin-top: 0.25rem;
-		color: oklch(1 0 0 / 18%);
+		color: oklch(var(--ink) / 18%);
 		transition: transform 0.2s ease;
 	}
 	.run-chevron-open {
@@ -896,11 +896,11 @@
 
 	/* Trace view */
 	.run-trace {
-		border: 1px solid oklch(1 0 0 / 6%);
+		border: 1px solid oklch(var(--ink) / 6%);
 		border-top: none;
 		border-bottom-left-radius: 0.5rem;
 		border-bottom-right-radius: 0.5rem;
-		background: oklch(1 0 0 / 1%);
+		background: oklch(var(--ink) / 1%);
 		padding: 0.5rem;
 		margin-bottom: 0.375rem;
 	}
@@ -912,19 +912,19 @@
 		flex-direction: column;
 		gap: 0.375rem;
 		scrollbar-width: thin;
-		scrollbar-color: oklch(1 0 0 / 8%) transparent;
+		scrollbar-color: oklch(var(--ink) / 8%) transparent;
 	}
 
 	.trace-msg {
 		padding: 0.5rem 0.625rem;
 		border-radius: 0.375rem;
-		border: 1px solid oklch(1 0 0 / 3%);
+		border: 1px solid oklch(var(--ink) / 3%);
 	}
 	.trace-msg-user {
-		background: oklch(1 0 0 / 2.5%);
+		background: oklch(var(--ink) / 2.5%);
 	}
 	.trace-msg-assistant {
-		background: oklch(1 0 0 / 1%);
+		background: oklch(var(--ink) / 1%);
 	}
 
 	.trace-role {
@@ -932,21 +932,21 @@
 		font-size: 0.52rem;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		color: oklch(1 0 0 / 22%);
+		color: oklch(var(--ink) / 22%);
 		display: block;
 		margin-bottom: 0.25rem;
 	}
 
 	.trace-text {
 		font-size: 0.68rem;
-		color: oklch(1 0 0 / 55%);
+		color: oklch(var(--ink) / 55%);
 		line-height: 1.5;
 		margin: 0;
 		white-space: pre-wrap;
 		word-break: break-word;
 	}
 	.trace-msg-assistant .trace-text {
-		color: oklch(1 0 0 / 75%);
+		color: oklch(var(--ink) / 75%);
 	}
 
 	.trace-tool-use {
@@ -967,7 +967,7 @@
 	.trace-tool-input {
 		font-family: var(--font-mono);
 		font-size: 0.58rem;
-		color: oklch(1 0 0 / 28%);
+		color: oklch(var(--ink) / 28%);
 		margin: 0.15rem 0 0;
 		white-space: pre-wrap;
 		word-break: break-all;
@@ -978,14 +978,14 @@
 		margin-top: 0.25rem;
 		padding: 0.35rem 0.5rem;
 		border-radius: 0.25rem;
-		background: oklch(1 0 0 / 2%);
-		border: 1px solid oklch(1 0 0 / 4%);
+		background: oklch(var(--ink) / 2%);
+		border: 1px solid oklch(var(--ink) / 4%);
 	}
 
 	.trace-tool-output {
 		font-family: var(--font-mono);
 		font-size: 0.58rem;
-		color: oklch(1 0 0 / 30%);
+		color: oklch(var(--ink) / 30%);
 		margin: 0;
 		white-space: pre-wrap;
 		word-break: break-all;

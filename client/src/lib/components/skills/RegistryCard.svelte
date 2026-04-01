@@ -52,7 +52,7 @@
 		padding: 1rem 1.125rem;
 		border-radius: 0.75rem;
 		background: oklch(0.09 0.018 278 / 60%);
-		border: 1px solid oklch(1 0 0 / 4%);
+		border: 1px solid oklch(var(--ink) / 4%);
 		transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 		animation: registry-emerge 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
@@ -97,7 +97,7 @@
 		font-family: var(--font-display);
 		font-size: 0.85rem;
 		font-weight: 500;
-		color: oklch(0.88 0.02 75);
+		color: var(--foreground);
 	}
 
 	.registry-card-badge {
@@ -123,7 +123,7 @@
 		align-items: center;
 		gap: 0.5rem;
 		padding-top: 0.4rem;
-		border-top: 1px solid oklch(1 0 0 / 4%);
+		border-top: 1px solid oklch(var(--ink) / 4%);
 	}
 
 	.registry-card-author {
@@ -157,7 +157,7 @@
 	}
 
 	.registry-card-install:hover:not(:disabled) {
-		color: oklch(0.88 0.02 75);
+		color: var(--foreground);
 		background: oklch(0.78 0.12 75 / 35%);
 		border-color: oklch(0.78 0.12 75 / 30%);
 	}

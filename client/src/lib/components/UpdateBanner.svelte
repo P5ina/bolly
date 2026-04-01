@@ -2,7 +2,7 @@
 	import { onDestroy } from "svelte";
 	import { checkUpdate, applyUpdate, getUpdateChannel, setUpdateChannel, type UpdateCheck } from "$lib/api/client.js";
 	import { play } from "$lib/sounds.js";
-	import { getSkinStore } from "$lib/stores/skin.svelte.js";
+	import { getSkinStore, clipSrc } from "$lib/stores/skin.svelte.js";
 
 	let updateInfo = $state<UpdateCheck | null>(null);
 	let updating = $state(false);
@@ -99,10 +99,7 @@
 
 {#if showReborn}
 	<div class="reborn-overlay">
-		<video class="reborn-video" autoplay muted playsinline>
-			<source src={skinStore.skin.clips.reborn.webm} type='video/webm; codecs="vp9"' />
-			<source src={skinStore.skin.clips.reborn.mov} type='video/quicktime; codecs="hvc1"' />
-		</video>
+		<video class="reborn-video" src={clipSrc(skinStore.skin.clips.reborn)} autoplay muted playsinline></video>
 		<div class="reborn-text">meet the new me</div>
 	</div>
 {/if}

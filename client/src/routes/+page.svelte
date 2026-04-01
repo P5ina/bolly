@@ -272,7 +272,7 @@
 		font-family: var(--font-display); font-style: italic; font-weight: 300;
 		font-size: clamp(3rem, 10vw, 6rem);
 		letter-spacing: -0.03em; line-height: 1;
-		color: oklch(0.88 0.02 75 / 85%);
+		color: var(--foreground);
 		text-align: center;
 		margin-bottom: 0.5rem;
 		animation: empty-enter 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -325,7 +325,7 @@
 	.empty-hints {
 		display: flex; align-items: center; gap: 0.625rem;
 		font-family: var(--font-body); font-size: 0.72rem; letter-spacing: 0.04em;
-		color: oklch(0.88 0.02 75 / 12%);
+		color: var(--foreground);
 		margin-top: 3rem;
 		animation: empty-enter 1s cubic-bezier(0.16, 1, 0.3, 1) both;
 		animation-delay: 700ms;
@@ -353,7 +353,7 @@
 	.title {
 		font-family: var(--font-display); font-size: clamp(1.5rem, 4.5vw, 2.3rem);
 		font-weight: 300; line-height: 1.25; letter-spacing: -0.01em;
-		color: oklch(0.88 0.02 75 / 75%);
+		color: var(--foreground);
 		animation: enter-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; animation-delay: 150ms;
 	}
 	.title-accent { font-style: italic; font-weight: 400; color: oklch(0.50 0.06 240 / 70%); }
@@ -369,10 +369,10 @@
 		padding: 0.5rem 1.25rem; border-radius: 2rem;
 		background: var(--glass-bg); backdrop-filter: var(--glass-blur);
 		border: 1px solid var(--glass-border); border-top-color: var(--glass-border-top);
-		color: oklch(1 0 0 / 35%); font-family: var(--font-mono);
+		color: oklch(var(--ink) / 35%); font-family: var(--font-mono);
 		font-size: 0.72rem; letter-spacing: 0.05em; cursor: pointer; transition: all 0.3s ease;
 	}
-	.new-btn:hover { background: oklch(1 0 0 / 8%); color: oklch(1 0 0 / 55%); }
+	.new-btn:hover { background: oklch(var(--ink) / 8%); color: oklch(var(--ink) / 55%); }
 	.new-icon { width: 14px; height: 14px; }
 
 	.create-field { position: relative; animation: enter-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
@@ -384,7 +384,7 @@
 		font-size: 0.875rem; font-style: italic; outline: none; transition: all 0.4s ease;
 	}
 	.create-input::placeholder { color: oklch(0.50 0.05 240 / 30%); font-style: italic; }
-	.create-input:focus { border-color: oklch(1 0 0 / 16%); box-shadow: 0 0 0 4px oklch(0.40 0.06 240 / 8%); }
+	.create-input:focus { border-color: oklch(var(--ink) / 16%); box-shadow: 0 0 0 4px oklch(0.40 0.06 var(--accent-hue) / 8%); }
 	.create-go {
 		position: absolute; right: 0.375rem; top: 50%; transform: translateY(-50%);
 		display: flex; align-items: center; justify-content: center;
@@ -395,14 +395,14 @@
 
 	.hover-name {
 		font-family: var(--font-display); font-size: 0.85rem; font-weight: 300;
-		font-style: italic; letter-spacing: 0.04em; color: oklch(1 0 0 / 45%);
+		font-style: italic; letter-spacing: 0.04em; color: oklch(var(--ink) / 45%);
 		animation: enter-up 0.3s ease both;
 	}
 
 	.hints {
 		display: flex; align-items: center; gap: 0.625rem;
 		font-family: var(--font-body); font-size: 0.72rem; letter-spacing: 0.04em;
-		color: oklch(0.88 0.02 75 / 16%);
+		color: var(--foreground);
 	}
 	.sep { font-size: 0.5rem; color: oklch(0.50 0.06 240 / 12%); }
 	@media (max-width: 540px) { .hints { flex-direction: column; gap: 0.3rem; } .sep { display: none; } }
@@ -454,7 +454,7 @@
 		background: radial-gradient(
 			circle at 35% 35%,
 			oklch(0.55 0.10 220 / 30%) 0%,
-			oklch(0.40 0.06 240 / 15%) 60%,
+			oklch(0.40 0.06 var(--accent-hue) / 15%) 60%,
 			oklch(0.30 0.04 250 / 10%) 100%
 		);
 		border: 1px solid oklch(0.5 0.08 220 / 12%);
@@ -500,14 +500,14 @@
 		position: fixed; bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
 		left: 0; right: 0; text-align: center;
 		font-family: var(--font-body); font-size: 0.68rem; letter-spacing: 0.05em;
-		color: oklch(0.88 0.02 75 / 40%); cursor: pointer; z-index: 100;
+		color: var(--foreground); cursor: pointer; z-index: 100;
 		animation: enter-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; animation-delay: 1s;
 		display: flex; align-items: center; justify-content: center; gap: 0.375rem;
 		pointer-events: auto;
 		background: none; border: none; font: inherit;
 		transition: color 0.2s ease;
 	}
-	.version:hover { color: oklch(0.88 0.02 75 / 65%); }
+	.version:hover { color: var(--foreground); }
 	.version-dot {
 		width: 4px; height: 4px; border-radius: 50%;
 		background: oklch(0.78 0.12 75);
@@ -522,10 +522,10 @@
 		background: oklch(0.06 0.015 260 / 90%);
 		backdrop-filter: blur(32px) saturate(160%);
 		-webkit-backdrop-filter: blur(32px) saturate(160%);
-		border: 1px solid oklch(1 0 0 / 8%);
-		border-top-color: oklch(1 0 0 / 14%);
+		border: 1px solid oklch(var(--ink) / 8%);
+		border-top-color: oklch(var(--ink) / 14%);
 		border-radius: 1rem;
-		box-shadow: 0 8px 40px oklch(0 0 0 / 40%);
+		box-shadow: 0 8px 40px oklch(var(--shade) / 40%);
 		animation: changelog-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 		display: flex; flex-direction: column;
 	}
@@ -537,18 +537,18 @@
 	.changelog-header {
 		display: flex; align-items: center; justify-content: space-between;
 		padding: 0.875rem 1rem 0.5rem;
-		border-bottom: 1px solid oklch(1 0 0 / 6%);
+		border-bottom: 1px solid oklch(var(--ink) / 6%);
 	}
 	.changelog-title {
 		font-family: var(--font-display); font-style: italic;
-		font-size: 0.9rem; color: oklch(0.88 0.02 75 / 70%);
+		font-size: 0.9rem; color: var(--foreground);
 	}
 	.changelog-channel {
 		font-family: var(--font-mono);
 		font-size: 0.68rem;
-		color: oklch(1 0 0 / 35%);
+		color: oklch(var(--ink) / 35%);
 		background: none;
-		border: 1px solid oklch(1 0 0 / 8%);
+		border: 1px solid oklch(var(--ink) / 8%);
 		border-radius: 4px;
 		padding: 0.15rem 0.35rem;
 		cursor: pointer;
@@ -557,19 +557,19 @@
 		transition: all 0.2s ease;
 	}
 	.changelog-channel:hover {
-		border-color: oklch(1 0 0 / 15%);
-		color: oklch(1 0 0 / 55%);
+		border-color: oklch(var(--ink) / 15%);
+		color: oklch(var(--ink) / 55%);
 	}
 	.changelog-channel option {
 		background: oklch(0.1 0.01 240);
 		color: oklch(0.8 0.04 240);
 	}
 	.changelog-close {
-		color: oklch(1 0 0 / 30%); cursor: pointer;
+		color: oklch(var(--ink) / 30%); cursor: pointer;
 		background: none; border: none; padding: 0.25rem;
 		transition: color 0.2s ease;
 	}
-	.changelog-close:hover { color: oklch(1 0 0 / 60%); }
+	.changelog-close:hover { color: oklch(var(--ink) / 60%); }
 
 	.changelog-scroll {
 		overflow-y: auto; padding: 0.75rem 1rem; display: flex;
@@ -577,23 +577,23 @@
 	}
 	.changelog-entry {
 		padding: 0.625rem 0.75rem; border-radius: 0.5rem;
-		background: oklch(1 0 0 / 3%); border: 1px solid oklch(1 0 0 / 5%);
+		background: oklch(var(--ink) / 3%); border: 1px solid oklch(var(--ink) / 5%);
 	}
 	.changelog-version {
 		font-family: var(--font-mono); font-size: 0.68rem;
 		color: oklch(0.78 0.12 75 / 70%); margin-bottom: 0.25rem; letter-spacing: 0.03em;
 	}
 	.changelog-body {
-		font-size: 0.75rem; line-height: 1.55; color: oklch(0.88 0.02 75 / 45%);
+		font-size: 0.75rem; line-height: 1.55; color: var(--foreground);
 	}
 	.changelog-body :global(h2) {
-		font-size: 0.8rem; font-weight: 600; color: oklch(0.88 0.02 75 / 70%);
+		font-size: 0.8rem; font-weight: 600; color: var(--foreground);
 		margin: 0.75rem 0 0.35rem;
 	}
 	.changelog-body :global(h2:first-child) { margin-top: 0; }
 	.changelog-body :global(ul) { padding-left: 1.2rem; margin: 0.25rem 0; }
 	.changelog-body :global(li) { margin: 0.15rem 0; }
-	.changelog-body :global(strong) { color: oklch(0.88 0.02 75 / 65%); }
+	.changelog-body :global(strong) { color: var(--foreground); }
 	.changelog-body :global(img) {
 		max-width: 100%; border-radius: 0.5rem; margin: 0.5rem 0;
 	}

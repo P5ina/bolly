@@ -94,7 +94,7 @@
 		padding: 1rem 1.125rem;
 		border-radius: 0.75rem;
 		background: oklch(0.09 0.018 278 / 60%);
-		border: 1px solid oklch(1 0 0 / 4%);
+		border: 1px solid oklch(var(--ink) / 4%);
 		cursor: pointer;
 		transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 		text-align: left;
@@ -156,7 +156,7 @@
 		font-family: var(--font-display);
 		font-size: 0.875rem;
 		font-weight: 500;
-		color: oklch(0.88 0.02 75);
+		color: var(--foreground);
 		line-height: 1.35;
 	}
 
