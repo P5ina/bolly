@@ -478,7 +478,7 @@ pub struct LlmBackend {
 }
 
 const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com";
-const MERIDIAN_BASE_URL: &str = "http://127.0.0.1:3456";
+const BYOKEY_BASE_URL: &str = "http://127.0.0.1:8018";
 
 impl LlmBackend {
     pub fn from_config(config: &Config) -> Option<Self> {
@@ -491,12 +491,12 @@ impl LlmBackend {
                 Some(Self { http, api_key, model, base_url: ANTHROPIC_BASE_URL.to_string(), provider: crate::config::LlmProvider::Api })
             }
             crate::config::LlmProvider::ClaudeCli => {
-                // Meridian proxy: standard Anthropic API on localhost
+                // BYOKEY proxy: standard Anthropic API on localhost
                 Some(Self {
                     http,
-                    api_key: "meridian".to_string(), // dummy key, Meridian ignores it
+                    api_key: "byokey".to_string(), // dummy key, BYOKEY uses OAuth
                     model,
-                    base_url: MERIDIAN_BASE_URL.to_string(),
+                    base_url: BYOKEY_BASE_URL.to_string(),
                     provider: crate::config::LlmProvider::ClaudeCli,
                 })
             }
@@ -599,28 +599,12 @@ impl LlmBackend {
     }
 
     /// Chat with structured JSON output.
-    /// Uses Anthropic's output_config for direct API, falls back to
-    /// prompt-based JSON for Meridian proxy (which doesn't support output_config).
     pub async fn chat_json(
         &self,
         system_prompt: &str,
         prompt: &str,
         schema: serde_json::Value,
     ) -> anyhow::Result<(String, u64)> {
-        if self.is_cli() {
-            // Meridian doesn't support output_config — request JSON in the prompt
-            let json_prompt = format!(
-                "{prompt}\n\nIMPORTANT: You MUST respond with ONLY valid JSON matching this schema. No markdown, no explanation, no code fences — just raw JSON:\n{}",
-                serde_json::to_string(&schema).unwrap_or_default()
-            );
-            let (text, tokens) = self.chat(system_prompt, &json_prompt, vec![]).await?;
-            let cleaned = text.trim()
-                .trim_start_matches("```json").trim_start_matches("```")
-                .trim_end_matches("```")
-                .trim()
-                .to_string();
-            return Ok((cleaned, tokens));
-        }
         let backend = self.clone();
         let system = system_prompt.to_string();
         let prompt = prompt.to_string();
@@ -1863,37 +1847,6 @@ async fn stream_once(
     message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
 ) -> anyhow::Result<StreamOnceResult> {
-    // Meridian passthrough crashes in streaming mode (max turns 1).
-    // Use non-streaming + fake stream deltas instead.
-    if backend.is_cli() {
-        let (text, tool_uses, stop_reason, tokens_used) =
-            anthropic_complete(
-                &backend.http, &backend.api_key, &backend.model, system, tool_defs, messages,
-                16384, &backend.base_url,
-            ).await?;
-
-        // Fake-stream text to client
-        if !text.is_empty() {
-            for word in text.split_inclusive(char::is_whitespace) {
-                let _ = events.send(ServerEvent::ChatStreamDelta {
-                    instance_slug: instance_slug.to_string(),
-                    chat_id: chat_id.to_string(),
-                    message_id: message_id.to_string(),
-                    delta: word.to_string(),
-                });
-                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-            }
-        }
-
-        let ordered_content = if text.is_empty() {
-            vec![]
-        } else {
-            vec![ContentBlock::Text { text: text.clone() }]
-        };
-
-        return Ok(StreamOnceResult { text, tool_uses, stop_reason, tokens_used, ordered_content });
-    }
-
     let (text, tool_uses, stop_reason, tokens_used, ordered_content) =
         anthropic_stream(
             &backend.http, &backend.api_key, &backend.model, system, tool_defs, messages,

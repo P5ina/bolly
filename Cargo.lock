@@ -8115,7 +8115,6 @@ dependencies = [
  "imap",
  "lancedb",
  "lettre",
- "libc",
  "log",
  "native-tls",
  "portable-pty",

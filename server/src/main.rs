@@ -43,14 +43,14 @@ async fn main() {
 
     // Start Meridian proxy if using Claude subscription (child process — dies with us)
     let _meridian = if config.llm.provider == config::LlmProvider::ClaudeCli {
-        services::claude_cli::kill_meridian(); // kill stale process from previous run
-        if let Err(e) = services::claude_cli::ensure_meridian_installed().await {
-            log::error!("Failed to install Meridian: {e}");
+        services::claude_cli::kill_proxy(); // kill stale process from previous run
+        if let Err(e) = services::claude_cli::ensure_proxy_installed().await {
+            log::error!("Failed to install BYOKEY: {e}");
             None
         } else {
-            match services::claude_cli::start_meridian(&config::workspace_root()).await {
+            match services::claude_cli::start_proxy(&config::workspace_root()).await {
                 Ok(child) => Some(child),
-                Err(e) => { log::error!("Failed to start Meridian: {e}"); None }
+                Err(e) => { log::error!("Failed to start BYOKEY: {e}"); None }
             }
         }
     } else {

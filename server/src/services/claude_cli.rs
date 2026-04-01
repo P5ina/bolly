@@ -13,6 +13,9 @@ const CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const REDIRECT_URI: &str = "https://platform.claude.com/oauth/code/callback";
 const OAUTH_SCOPE: &str = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
 
+/// BYOKEY default port.
+pub const BYOKEY_PORT: u16 = 8018;
+
 // ── OAuth types ──
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -29,58 +32,11 @@ pub struct OAuthState {
     pub expires_at: u64,
 }
 
-// ── Claude CLI install ──
+// ── BYOKEY proxy ──
 
-/// Resolve the path to the `claude` binary.
-#[allow(dead_code)]
-fn resolve_claude_binary() -> String {
-    if let Some(home) = dirs::home_dir() {
-        let local = home.join(".local/bin/claude");
-        if local.exists() {
-            return local.to_string_lossy().to_string();
-        }
-    }
-    "claude".to_string()
-}
-
-/// Install Claude CLI using the official install script.
-async fn ensure_installed() -> anyhow::Result<()> {
-    // Check if binary exists at ~/.local/bin/claude (don't run it — avoids PATH issues)
-    if let Some(home) = dirs::home_dir() {
-        if home.join(".local/bin/claude").exists() {
-            return Ok(());
-        }
-    }
-
-    log::info!("Claude CLI not found, installing...");
-    let status = tokio::process::Command::new("bash")
-        .arg("-c")
-        .arg("curl -fsSL https://claude.ai/install.sh | bash")
-        .status()
-        .await?;
-
-    if !status.success() {
-        anyhow::bail!("failed to install claude CLI");
-    }
-
-    // Skip Claude Code's own onboarding wizard
-    if let Some(home) = dirs::home_dir() {
-        let claude_json = home.join(".claude.json");
-        if !claude_json.exists() {
-            let _ = std::fs::write(&claude_json, r#"{"hasCompletedOnboarding":true}"#);
-        }
-    }
-
-    log::info!("Claude CLI installed successfully");
-    Ok(())
-}
-
-// ── Meridian proxy (turns Claude subscription into standard Anthropic API) ──
-
-/// Install Meridian globally via npm.
-pub async fn ensure_meridian_installed() -> anyhow::Result<()> {
-    // Check if already available
-    let check = std::process::Command::new("meridian")
+/// Install BYOKEY via cargo install (if not already installed).
+pub async fn ensure_proxy_installed() -> anyhow::Result<()> {
+    let check = std::process::Command::new("byokey")
         .arg("--version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -88,143 +44,161 @@ pub async fn ensure_meridian_installed() -> anyhow::Result<()> {
     if check.map(|s| s.success()).unwrap_or(false) {
         return Ok(());
     }
-    log::info!("Installing Meridian proxy (triangle-int fork)...");
-    let status = tokio::process::Command::new("npm")
-        .args(["install", "-g", "github:triangle-int/meridian"])
+    // Check ~/.cargo/bin/byokey
+    if let Some(home) = dirs::home_dir() {
+        if home.join(".cargo/bin/byokey").exists() {
+            return Ok(());
+        }
+    }
+    log::info!("Installing BYOKEY proxy...");
+    let status = tokio::process::Command::new("cargo")
+        .args(["install", "byokey"])
         .status()
         .await?;
     if !status.success() {
-        anyhow::bail!("failed to install @rynfar/meridian");
+        anyhow::bail!("failed to install byokey");
     }
-    log::info!("Meridian installed successfully");
+    log::info!("BYOKEY installed successfully");
     Ok(())
 }
 
-/// Start Meridian as a detached background process.
-/// Listens on http://127.0.0.1:3456, proxying to Claude subscription.
-/// Writes OAuth credentials to ~/.claude/.credentials.json so the
-/// Claude Code SDK (used by Meridian) can authenticate.
-/// Start Meridian as a child process. Returns the handle — drop it to kill Meridian.
-pub async fn start_meridian(workspace_dir: &Path) -> anyhow::Result<tokio::process::Child> {
-    // Ensure Claude CLI is installed (Meridian needs it)
-    if let Err(e) = ensure_installed().await {
-        log::warn!("Claude CLI install failed: {e}");
+/// Import an OAuth token into BYOKEY's SQLite store.
+pub fn import_token_to_byokey(tokens: &OAuthTokens) {
+    let db_path = byokey_db_path();
+    if let Some(parent) = db_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
     }
 
-    // Find OAuth token from any instance and write to Claude credentials file
+    let token_json = serde_json::json!({
+        "access_token": tokens.access_token,
+        "refresh_token": tokens.refresh_token,
+        "expires_at": tokens.expires_at / 1000, // ms → seconds (BYOKEY uses seconds)
+        "token_type": "Bearer",
+    });
+
+    // Use sqlite3 CLI to avoid adding rusqlite as dependency
+    let sql = format!(
+        "CREATE TABLE IF NOT EXISTS accounts (provider TEXT, account_id TEXT, label TEXT, is_active INTEGER, token_json TEXT, created_at INTEGER, updated_at INTEGER, PRIMARY KEY (provider, account_id));\
+         INSERT OR REPLACE INTO accounts VALUES ('claude', 'default', NULL, 1, '{}', strftime('%s','now'), strftime('%s','now'));",
+        token_json.to_string().replace('\'', "''")
+    );
+
+    let result = std::process::Command::new("sqlite3")
+        .arg(&db_path)
+        .arg(&sql)
+        .output();
+
+    match result {
+        Ok(output) if output.status.success() => {
+            log::info!("Imported OAuth token into BYOKEY store");
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            log::warn!("Failed to import token to BYOKEY: {stderr}");
+        }
+        Err(e) => {
+            log::warn!("sqlite3 not found, writing BYOKEY DB manually: {e}");
+            // Fallback: write a Python one-liner if sqlite3 binary not available
+            let py = format!(
+                "import sqlite3,time; db=sqlite3.connect('{}'); db.execute('CREATE TABLE IF NOT EXISTS accounts (provider TEXT, account_id TEXT, label TEXT, is_active INTEGER, token_json TEXT, created_at INTEGER, updated_at INTEGER, PRIMARY KEY (provider, account_id))'); db.execute('INSERT OR REPLACE INTO accounts VALUES (?,?,?,?,?,?,?)', ('claude','default',None,1,'{}',int(time.time()),int(time.time()))); db.commit()",
+                db_path.display(),
+                token_json.to_string().replace('\'', "\\'")
+            );
+            let _ = std::process::Command::new("python3")
+                .args(["-c", &py])
+                .status();
+        }
+    }
+}
+
+fn byokey_db_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join(".byokey/tokens.db")
+}
+
+/// Start BYOKEY as a child process. Returns the handle.
+pub async fn start_proxy(workspace_dir: &Path) -> anyhow::Result<tokio::process::Child> {
+    // Find OAuth token from any instance and import into BYOKEY
     let instances_dir = workspace_dir.join("instances");
     if let Ok(entries) = std::fs::read_dir(&instances_dir) {
         for entry in entries.flatten() {
             let slug = entry.file_name().to_string_lossy().to_string();
             if let Some(token) = load_token(workspace_dir, &slug) {
-                write_claude_credentials(&token);
-                log::info!("Wrote Claude credentials from instance '{slug}' for Meridian");
+                import_token_to_byokey(&token);
                 break;
             }
         }
     }
 
-    log::info!("Starting Meridian proxy on port 3456...");
+    log::info!("Starting BYOKEY proxy on port {BYOKEY_PORT}...");
 
-    // Ensure ~/.local/bin is in PATH so Meridian can find `claude` binary
-    let path_env = {
-        let current = std::env::var("PATH").unwrap_or_default();
-        if let Some(home) = dirs::home_dir() {
-            let local_bin = home.join(".local/bin");
-            if local_bin.exists() && !current.contains(&local_bin.to_string_lossy().to_string()) {
-                format!("{}:{current}", local_bin.display())
-            } else {
-                current
-            }
-        } else {
-            current
-        }
-    };
+    // Resolve byokey binary (may be in ~/.cargo/bin)
+    let byokey_bin = resolve_byokey_binary();
 
-    // Claude Code SDK's bypassPermissions is blocked for root.
-    // If running as root, create a non-root user and run Meridian as that user,
-    // copying credentials to their home directory.
-    let is_root = unsafe { libc::getuid() } == 0;
-
-    // Setup user for root environments
-    if is_root {
-        let _ = std::process::Command::new("sh").arg("-c")
-            .arg("id bolly 2>/dev/null || useradd -m -s /bin/bash bolly")
-            .status();
-        let _ = std::process::Command::new("sh").arg("-c")
-            .arg("mkdir -p /home/bolly/.claude && cp -f /root/.claude/.credentials.json /home/bolly/.claude/ 2>/dev/null; cp -f /root/.claude.json /home/bolly/.claude.json 2>/dev/null; cp -f /root/.claude/claude.json /home/bolly/.claude/ 2>/dev/null; chown -R bolly:bolly /home/bolly/.claude /home/bolly/.claude.json 2>/dev/null")
-            .status();
-        log::info!("Running Meridian as user 'bolly' (bypassPermissions blocked for root)");
-    }
-
-    let mut cmd = if is_root {
-        let mut c = tokio::process::Command::new("sudo");
-        c.args(["-u", "bolly", "-H", "-E", "meridian"]);
-        c
-    } else {
-        tokio::process::Command::new("meridian")
-    };
-
-    cmd.env("PATH", &path_env);
-    cmd.env("MERIDIAN_PASSTHROUGH", "true");
-    cmd.stdout(std::process::Stdio::null())
+    let child = tokio::process::Command::new(&byokey_bin)
+        .args(["serve", "--port", &BYOKEY_PORT.to_string(), "--host", "127.0.0.1"])
+        .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
-        .stdin(std::process::Stdio::null());
+        .stdin(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("failed to start byokey: {e}"))?;
 
-    let child = cmd.spawn()
-        .map_err(|e| anyhow::anyhow!("failed to start meridian: {e}"))?;
+    log::info!("BYOKEY launched (pid={})", child.id().unwrap_or(0));
 
-    log::info!("Meridian launched (pid={})", child.id().unwrap_or(0));
-
-    // Wait until it's ready
+    // Wait until ready
     let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{BYOKEY_PORT}/health");
     for _ in 0..15 {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        if client.get("http://127.0.0.1:3456/")
+        if client.get(&url)
             .timeout(std::time::Duration::from_secs(2))
             .send().await.is_ok()
         {
-            log::info!("Meridian is ready on port 3456");
+            log::info!("BYOKEY is ready on port {BYOKEY_PORT}");
             return Ok(child);
         }
     }
 
-    log::warn!("Meridian launched but not responding after 15s");
+    log::warn!("BYOKEY launched but not responding after 15s");
     Ok(child)
 }
 
-
-/// Kill any running Meridian process.
-pub fn kill_meridian() {
-    // Find and kill meridian process
-    if let Ok(output) = std::process::Command::new("pkill")
-        .args(["-f", "meridian"])
-        .output()
-    {
-        if output.status.success() {
-            log::info!("Killed running Meridian process");
-        }
-    }
-    // Give it a moment to die
-    std::thread::sleep(std::time::Duration::from_millis(500));
-}
-
-/// Start Meridian and leak the handle (for use in request handlers where
-/// we can't store the child in AppState).
-pub async fn start_meridian_detached(workspace_dir: &Path) -> anyhow::Result<()> {
-    let child = start_meridian(workspace_dir).await?;
-    std::mem::forget(child); // keep alive, will be killed by kill_meridian()
+/// Start proxy and leak handle (for request handlers).
+pub async fn start_proxy_detached(workspace_dir: &Path) -> anyhow::Result<()> {
+    let child = start_proxy(workspace_dir).await?;
+    std::mem::forget(child);
     Ok(())
 }
 
-/// Check if Meridian is running.
-pub async fn is_meridian_running() -> bool {
+/// Kill any running BYOKEY/Meridian proxy process.
+pub fn kill_proxy() {
+    for name in ["byokey", "meridian"] {
+        let _ = std::process::Command::new("pkill")
+            .args(["-f", name])
+            .output();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(500));
+}
+
+/// Check if proxy is running.
+pub async fn is_proxy_running() -> bool {
     let client = reqwest::Client::new();
-    client.get("http://127.0.0.1:3456/")
+    client.get(&format!("http://127.0.0.1:{BYOKEY_PORT}/health"))
         .timeout(std::time::Duration::from_secs(2))
         .send()
         .await
         .is_ok()
+}
+
+fn resolve_byokey_binary() -> String {
+    if let Some(home) = dirs::home_dir() {
+        let cargo_bin = home.join(".cargo/bin/byokey");
+        if cargo_bin.exists() {
+            return cargo_bin.to_string_lossy().to_string();
+        }
+    }
+    "byokey".to_string()
 }
 
 // ── OAuth PKCE flow ──
@@ -362,41 +336,6 @@ pub fn has_valid_token(workspace_dir: &Path, instance_slug: &str) -> bool {
             t.expires_at > now
         }
         None => false,
-    }
-}
-
-/// Write OAuth tokens to ~/.claude/.credentials.json so Claude Code SDK
-/// (used by Meridian) can authenticate on headless/managed servers.
-pub fn write_claude_credentials(tokens: &OAuthTokens) {
-    let Some(home) = dirs::home_dir() else { return };
-    let claude_dir = home.join(".claude");
-    let _ = std::fs::create_dir_all(&claude_dir);
-
-    let creds = serde_json::json!({
-        "claudeAiOauth": {
-            "accessToken": tokens.access_token,
-            "refreshToken": tokens.refresh_token,
-            "expiresAt": tokens.expires_at,
-            "scopes": [
-                "org:create_api_key",
-                "user:profile",
-                "user:inference",
-                "user:sessions:claude_code",
-                "user:mcp_servers",
-                "user:file_upload"
-            ],
-        }
-    });
-
-    let path = claude_dir.join(".credentials.json");
-    if let Err(e) = std::fs::write(&path, serde_json::to_string_pretty(&creds).unwrap_or_default()) {
-        log::warn!("Failed to write Claude credentials: {e}");
-    }
-
-    // Also ensure onboarding is skipped
-    let claude_json = claude_dir.join("claude.json");
-    if !claude_json.exists() {
-        let _ = std::fs::write(&claude_json, r#"{"hasCompletedOnboarding":true}"#);
     }
 }
 

@@ -442,13 +442,13 @@ async fn update_provider(
 
     // Auto-install and start Meridian proxy when switching to Claude subscription
     if provider == config::LlmProvider::ClaudeCli {
-        if let Err(e) = crate::services::claude_cli::ensure_meridian_installed().await {
-            log::warn!("Meridian install failed: {e}");
+        if let Err(e) = crate::services::claude_cli::ensure_proxy_installed().await {
+            log::warn!("BYOKEY install failed: {e}");
             return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to install Meridian: {e}")));
         }
-        if !crate::services::claude_cli::is_meridian_running().await {
-            if let Err(e) = crate::services::claude_cli::start_meridian_detached(&state.workspace_dir).await {
-                log::warn!("Meridian start failed: {e}");
+        if !crate::services::claude_cli::is_proxy_running().await {
+            if let Err(e) = crate::services::claude_cli::start_proxy_detached(&state.workspace_dir).await {
+                log::warn!("BYOKEY start failed: {e}");
             }
         }
     }
@@ -485,7 +485,7 @@ async fn claude_cli_status(
 ) -> Json<serde_json::Value> {
     use crate::services::claude_cli;
 
-    let meridian_running = claude_cli::is_meridian_running().await;
+    let proxy_running = claude_cli::is_proxy_running().await;
 
     let authenticated = query.instance_slug
         .as_deref()
@@ -493,7 +493,7 @@ async fn claude_cli_status(
         .unwrap_or(false);
 
     Json(json!({
-        "meridian_running": meridian_running,
+        "proxy_running": proxy_running,
         "authenticated": authenticated,
     }))
 }
@@ -540,11 +540,11 @@ async fn claude_cli_oauth_exchange(
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid OAuth state: {e}")))?;
 
     // Install + start Meridian if needed
-    if let Err(e) = claude_cli::ensure_meridian_installed().await {
-        log::warn!("Meridian install failed during OAuth: {e}");
+    if let Err(e) = claude_cli::ensure_proxy_installed().await {
+        log::warn!("BYOKEY install failed during OAuth: {e}");
     }
-    if !claude_cli::is_meridian_running().await {
-        let _ = claude_cli::start_meridian_detached(&state.workspace_dir).await;
+    if !claude_cli::is_proxy_running().await {
+        let _ = claude_cli::start_proxy_detached(&state.workspace_dir).await;
     }
 
     // Exchange code for tokens
@@ -560,10 +560,10 @@ async fn claude_cli_oauth_exchange(
 
     // Write credentials for Claude Code SDK (used by Meridian)
     // and restart Meridian so it picks up the new credentials
-    claude_cli::write_claude_credentials(&tokens);
-    claude_cli::kill_meridian();
-    if let Err(e) = claude_cli::start_meridian_detached(&workspace).await {
-        log::warn!("Failed to restart Meridian after OAuth: {e}");
+    claude_cli::import_token_to_byokey(&tokens);
+    claude_cli::kill_proxy();
+    if let Err(e) = claude_cli::start_proxy_detached(&workspace).await {
+        log::warn!("Failed to restart BYOKEY after OAuth: {e}");
     }
 
     // Clean up state file
