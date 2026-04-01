@@ -143,12 +143,34 @@ pub async fn start_meridian(workspace_dir: &Path) -> anyhow::Result<()> {
         }
     };
 
-    let child = std::process::Command::new("meridian")
-        .env("PATH", &path_env)
-        .stdout(std::process::Stdio::null())
+    // Claude Code SDK's bypassPermissions is blocked for root.
+    // If running as root, create a non-root user and run Meridian as that user,
+    // copying credentials to their home directory.
+    let is_root = unsafe { libc::getuid() } == 0;
+
+    let mut cmd = if is_root {
+        // Create 'bolly' user if needed, copy credentials
+        let _ = std::process::Command::new("sh").arg("-c")
+            .arg("id bolly 2>/dev/null || useradd -m -s /bin/bash bolly")
+            .status();
+        // Copy Claude credentials to bolly user's home
+        let _ = std::process::Command::new("sh").arg("-c")
+            .arg("mkdir -p /home/bolly/.claude && cp -f /root/.claude/.credentials.json /home/bolly/.claude/ 2>/dev/null; cp -f /root/.claude.json /home/bolly/.claude.json 2>/dev/null; cp -f /root/.claude/claude.json /home/bolly/.claude/ 2>/dev/null; chown -R bolly:bolly /home/bolly/.claude /home/bolly/.claude.json 2>/dev/null")
+            .status();
+        log::info!("Running Meridian as user 'bolly' (bypassPermissions blocked for root)");
+        let mut c = std::process::Command::new("sudo");
+        c.args(["-u", "bolly", "-E", "meridian"]);
+        c
+    } else {
+        std::process::Command::new("meridian")
+    };
+
+    cmd.env("PATH", &path_env);
+    cmd.stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
-        .stdin(std::process::Stdio::null())
-        .spawn()
+        .stdin(std::process::Stdio::null());
+
+    let child = cmd.spawn()
         .map_err(|e| anyhow::anyhow!("failed to start meridian: {e}"))?;
 
     log::info!("Meridian launched (pid={})", child.id());
