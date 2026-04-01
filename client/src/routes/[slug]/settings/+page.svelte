@@ -2372,12 +2372,12 @@
 		margin-top: 1rem;
 		padding: 1rem;
 		border-radius: 12px;
-		background: oklch(0.18 0.01 75 / 40%);
-		border: 1px solid oklch(0.3 0.02 75 / 30%);
+		background: var(--surface-elevated);
+		border: 1px solid oklch(var(--ink) / 8%);
 	}
 	.cli-instruction {
 		font-size: 0.82rem;
-		color: oklch(0.7 0.02 75 / 80%);
+		color: var(--text-muted);
 		margin: 0 0 0.75rem;
 	}
 	.cli-oauth-row {
@@ -2387,15 +2387,15 @@
 	}
 	.cli-code-input {
 		flex: 1;
-		background: oklch(0.12 0.01 75 / 60%);
-		border: 1px solid oklch(0.3 0.02 75 / 40%);
+		background: var(--surface-input);
+		border: 1px solid var(--surface-input-border);
 		border-radius: 8px;
 		padding: 0.5rem 0.75rem;
 		font-size: 0.82rem;
-		color: oklch(0.85 0.02 75);
+		color: var(--foreground);
 		font-family: inherit;
 	}
-	.cli-code-input::placeholder { color: oklch(0.5 0.02 75 / 60%); }
+	.cli-code-input::placeholder { color: var(--text-muted); }
 	.cli-code-input:focus { outline: none; border-color: var(--color-warm); }
 
 	/* ── Server settings ── */
