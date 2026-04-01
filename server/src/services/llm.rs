@@ -1863,6 +1863,37 @@ async fn stream_once(
     message_id: &str,
     mcp_snapshot: Option<&super::mcp::McpAppSnapshot>,
 ) -> anyhow::Result<StreamOnceResult> {
+    // Meridian passthrough crashes in streaming mode (max turns 1).
+    // Use non-streaming + fake stream deltas instead.
+    if backend.is_cli() {
+        let (text, tool_uses, stop_reason, tokens_used) =
+            anthropic_complete(
+                &backend.http, &backend.api_key, &backend.model, system, tool_defs, messages,
+                16384, &backend.base_url,
+            ).await?;
+
+        // Fake-stream text to client
+        if !text.is_empty() {
+            for word in text.split_inclusive(char::is_whitespace) {
+                let _ = events.send(ServerEvent::ChatStreamDelta {
+                    instance_slug: instance_slug.to_string(),
+                    chat_id: chat_id.to_string(),
+                    message_id: message_id.to_string(),
+                    delta: word.to_string(),
+                });
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        }
+
+        let ordered_content = if text.is_empty() {
+            vec![]
+        } else {
+            vec![ContentBlock::Text { text: text.clone() }]
+        };
+
+        return Ok(StreamOnceResult { text, tool_uses, stop_reason, tokens_used, ordered_content });
+    }
+
     let (text, tool_uses, stop_reason, tokens_used, ordered_content) =
         anthropic_stream(
             &backend.http, &backend.api_key, &backend.model, system, tool_defs, messages,
