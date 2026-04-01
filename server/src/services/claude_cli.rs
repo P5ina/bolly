@@ -29,6 +29,55 @@ pub struct OAuthState {
     pub expires_at: u64,
 }
 
+// ── Claude CLI install ──
+
+/// Resolve the path to the `claude` binary.
+fn resolve_claude_binary() -> String {
+    if let Some(home) = dirs::home_dir() {
+        let local = home.join(".local/bin/claude");
+        if local.exists() {
+            return local.to_string_lossy().to_string();
+        }
+    }
+    "claude".to_string()
+}
+
+/// Install Claude CLI using the official install script.
+async fn ensure_installed() -> anyhow::Result<()> {
+    let bin = resolve_claude_binary();
+    if std::process::Command::new(&bin)
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok()
+    {
+        return Ok(());
+    }
+
+    log::info!("Claude CLI not found, installing...");
+    let status = tokio::process::Command::new("bash")
+        .arg("-c")
+        .arg("curl -fsSL https://claude.ai/install.sh | bash")
+        .status()
+        .await?;
+
+    if !status.success() {
+        anyhow::bail!("failed to install claude CLI");
+    }
+
+    // Skip Claude Code's own onboarding wizard
+    if let Some(home) = dirs::home_dir() {
+        let claude_json = home.join(".claude.json");
+        if !claude_json.exists() {
+            let _ = std::fs::write(&claude_json, r#"{"hasCompletedOnboarding":true}"#);
+        }
+    }
+
+    log::info!("Claude CLI installed successfully");
+    Ok(())
+}
+
 // ── Meridian proxy (turns Claude subscription into standard Anthropic API) ──
 
 /// Install Meridian globally via npm.
@@ -59,6 +108,11 @@ pub async fn ensure_meridian_installed() -> anyhow::Result<()> {
 /// Writes OAuth credentials to ~/.claude/.credentials.json so the
 /// Claude Code SDK (used by Meridian) can authenticate.
 pub async fn start_meridian(workspace_dir: &Path) -> anyhow::Result<()> {
+    // Ensure Claude CLI is installed (Meridian needs it)
+    if let Err(e) = ensure_installed().await {
+        log::warn!("Claude CLI install failed: {e}");
+    }
+
     // Find OAuth token from any instance and write to Claude credentials file
     let instances_dir = workspace_dir.join("instances");
     if let Ok(entries) = std::fs::read_dir(&instances_dir) {
@@ -74,7 +128,23 @@ pub async fn start_meridian(workspace_dir: &Path) -> anyhow::Result<()> {
 
     log::info!("Starting Meridian proxy on port 3456...");
 
+    // Ensure ~/.local/bin is in PATH so Meridian can find `claude` binary
+    let path_env = {
+        let current = std::env::var("PATH").unwrap_or_default();
+        if let Some(home) = dirs::home_dir() {
+            let local_bin = home.join(".local/bin");
+            if local_bin.exists() && !current.contains(&local_bin.to_string_lossy().to_string()) {
+                format!("{}:{current}", local_bin.display())
+            } else {
+                current
+            }
+        } else {
+            current
+        }
+    };
+
     let child = std::process::Command::new("meridian")
+        .env("PATH", &path_env)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .stdin(std::process::Stdio::null())
