@@ -664,8 +664,11 @@ impl LlmBackend {
                 let tokens = resp_json.pointer("/usage/input_tokens").and_then(|v| v.as_u64()).unwrap_or(0)
                     + resp_json.pointer("/usage/output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
 
-                let text = resp_json.pointer("/content/0/text")
-                    .and_then(|v| v.as_str())
+                // Find first text block (may be preceded by thinking blocks)
+                let text = resp_json.pointer("/content")
+                    .and_then(|v| v.as_array())
+                    .and_then(|arr| arr.iter().find(|b| b["type"].as_str() == Some("text")))
+                    .and_then(|b| b["text"].as_str())
                     .unwrap_or("")
                     .to_string();
 
@@ -1430,9 +1433,7 @@ fn build_anthropic_request(
         }));
 
     }
-    if stream {
-        req["stream"] = serde_json::json!(true);
-    }
+    req["stream"] = serde_json::json!(stream);
     req
 }
 
