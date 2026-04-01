@@ -9,6 +9,7 @@
 		updateLlmConfig,
 		startClaudeCliOAuth,
 		exchangeClaudeCliOAuth,
+		updateProvider,
 	} from "$lib/api/client.js";
 	import type { SoulTemplate } from "$lib/api/types.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
@@ -216,6 +217,24 @@
 		apiKeyInputEl?.focus();
 	}
 
+	async function pickProviderOpenai() {
+		stage = "intro";
+		await typewrite("got it. i'll need an openai api key.");
+		stage = "waiting-key";
+		await pause(100);
+		apiKeyInputEl?.focus();
+	}
+
+	async function pickProviderCodex() {
+		stage = "intro";
+		await typewrite("codex subscription — nice. you can set it up in settings after we're done.");
+		await pause(600);
+		// Set provider to codex, skip key input
+		try { await exchangeClaudeCliOAuth("", slug); } catch {}
+		await updateProvider("codex");
+		await askFirstMessage();
+	}
+
 	async function pickProviderClaude() {
 		stage = "intro";
 		await typewrite("let's connect your claude account.");
@@ -392,9 +411,13 @@
 							<span class="ob-pill-label">Claude Code</span>
 							<span class="ob-pill-note">Claude subscription</span>
 						</button>
-						<button onclick={pickProviderApi} class="ob-pill ob-pill-col ob-pill-soul">
+						<button onclick={pickProviderOpenai} class="ob-pill ob-pill-col ob-pill-soul">
 							<span class="ob-pill-label">OpenAI</span>
 							<span class="ob-pill-note">OpenAI API key</span>
+						</button>
+						<button onclick={pickProviderCodex} class="ob-pill ob-pill-col ob-pill-soul">
+							<span class="ob-pill-label">Codex</span>
+							<span class="ob-pill-note">ChatGPT subscription</span>
 						</button>
 					</div>
 				</div>
