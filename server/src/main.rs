@@ -42,7 +42,7 @@ async fn main() {
     };
 
     // Start Meridian proxy if using Claude subscription (child process — dies with us)
-    let _meridian = if config.llm.provider == config::LlmProvider::ClaudeCli {
+    let _meridian = if config.llm.provider.is_proxy() {
         services::claude_cli::kill_proxy(); // kill stale process from previous run
         if let Err(e) = services::claude_cli::ensure_proxy_installed().await {
             log::error!("Failed to install BYOKEY: {e}");
