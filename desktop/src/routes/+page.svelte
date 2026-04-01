@@ -206,6 +206,9 @@
             {/if}
           {:else}
             <p class="sign-in-desc">Connect to your own bolly server.</p>
+            {#if auth.error}
+              <p class="sh-error">{auth.error}</p>
+            {/if}
             <div class="sh-form">
               <input
                 class="paste-input"
@@ -567,6 +570,16 @@
   .mode-tab-active {
     background: oklch(1 0 0 / 8%);
     color: var(--foreground);
+  }
+
+  .sh-error {
+    font-size: 0.78rem;
+    color: oklch(0.65 0.15 25 / 80%);
+    margin: 0 0 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: oklch(0.65 0.15 25 / 8%);
+    border: 1px solid oklch(0.65 0.15 25 / 14%);
   }
 
   .sh-form {

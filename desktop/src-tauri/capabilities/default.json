@@ -10,7 +10,13 @@
     "store:default",
     {
       "identifier": "http:default",
-      "allow": [{ "url": "https://bollyai.dev/**" }]
+      "allow": [
+        { "url": "https://bollyai.dev/**" },
+        { "url": "http://**:*/**" },
+        { "url": "https://**:*/**" },
+        { "url": "http://**" },
+        { "url": "https://**" }
+      ]
     },
     "updater:default",
     "process:allow-restart"
