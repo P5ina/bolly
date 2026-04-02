@@ -257,7 +257,7 @@ pub struct LlmConfig {
     pub heavy_multiplier: f32,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct LlmTokens {
     #[serde(default, rename = "OPEN_AI", alias = "open_ai", alias = "openai")]
     pub open_ai: String,

@@ -178,10 +178,10 @@ async fn update_llm_key(
         save_config(&cfg)?;
     }
 
-    // Rebuild LLM backend if anthropic key changed
-    // Note: can't use reload_config() here — it compares disk config with
-    // in-memory config, but we just updated in-memory above, so it sees no diff.
-    if changes.contains(&"anthropic") || changes.contains(&"openai") {
+    // Rebuild LLM backend after any key change.
+    // Can't use reload_config() — it compares disk vs in-memory, but we
+    // already updated in-memory above, so it sees no diff.
+    if !changes.is_empty() {
         let cfg = state.config.read().await;
         let new_llm = crate::services::llm::LlmBackend::from_config(&cfg);
         drop(cfg);
