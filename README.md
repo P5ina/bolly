@@ -1,15 +1,148 @@
-# Bolly
+<p align="center">
+  <img src="landing/static/assets/hero-orb.webp" alt="Bolly" width="600" />
+</p>
 
-> An open-source AI companion — persistent memory, computer use, creative autonomy. Bring your own API key.
+<h1 align="center">Bolly</h1>
 
-![Rust](https://img.shields.io/badge/rust-2024-orange?logo=rust)
-![SvelteKit](https://img.shields.io/badge/sveltekit-5-red?logo=svelte)
-![Tauri](https://img.shields.io/badge/tauri-2-blue?logo=tauri)
-![License](https://img.shields.io/badge/license-MIT-green)
+<p align="center">
+  <strong>An open-source AI companion with persistent memory, computer use, and creative autonomy.</strong><br>
+  Self-hosted. Fully BYOK. No rate limits.
+</p>
 
----
+<p align="center">
+  <a href="https://bollyai.dev">Website</a> &nbsp;&bull;&nbsp;
+  <a href="https://github.com/triangle-int/bolly/releases">Download</a> &nbsp;&bull;&nbsp;
+  <a href="https://discord.gg/bolly">Discord</a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/rust-2024-CE422B?style=flat-square&logo=rust" alt="Rust" />
+  <img src="https://img.shields.io/badge/sveltekit-5-FF3E00?style=flat-square&logo=svelte" alt="SvelteKit" />
+  <img src="https://img.shields.io/badge/tauri-2-24C8D8?style=flat-square&logo=tauri" alt="Tauri" />
+  <img src="https://img.shields.io/badge/license-MIT-A97CF8?style=flat-square" alt="MIT License" />
+</p>
+
+<br>
 
 ## Quick Start
+
+```bash
+curl -fsSL https://bollyai.dev/install.sh | bash
+```
+
+Add your Anthropic API key to `~/.bolly/config.toml` and visit `http://localhost:26559`.
+
+<br>
+
+## Features
+
+<table>
+<tr>
+<td width="50%">
+
+<img src="landing/static/assets/feature-memory.webp" alt="Memory" />
+
+### Memory
+
+File-based memory library with BM25 + vector search. Automatically learns and remembers across conversations — organized by topic.
+
+</td>
+<td width="50%">
+
+<img src="landing/static/assets/feature-mood.webp" alt="Mood" />
+
+### Mood & Personality
+
+Dynamic emotional state that shifts with conversation. Defines its own voice through `soul.md` — editable by the companion itself.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+<img src="landing/static/assets/feature-connection.webp" alt="Connection" />
+
+### Autonomy
+
+Wakes every 45 minutes during heartbeat cycles. Writes to you first, creates ideas and reflections, sends emails, schedules reminders.
+
+</td>
+<td width="50%">
+
+<img src="landing/static/assets/feature-privacy.webp" alt="Privacy" />
+
+### Privacy-First
+
+Everything lives on your machine. No cloud dependency, no telemetry. File-based storage you can read, edit, and back up.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+<img src="landing/static/assets/feature-checkin.webp" alt="Scheduled check-ins" />
+
+### Scheduled Check-ins
+
+Set recurring reminders, study sessions, or daily check-ins. The companion reaches out on its own schedule.
+
+</td>
+<td width="50%">
+
+<img src="landing/static/assets/feature-study.webp" alt="Learning" />
+
+### Learning & Skills
+
+50+ built-in tools — web search, email, file management, shell access, Google Calendar & Drive. Extensible via MCP.
+
+</td>
+</tr>
+</table>
+
+<br>
+
+### Companion Skins
+
+<table>
+<tr>
+<td align="center" width="50%">
+<img src="landing/static/assets/hero-orb.webp" alt="Orb skin" width="360" />
+<br><br>
+<strong>Orb</strong> — a warm, golden presence
+</td>
+<td align="center" width="50%">
+<img src="client/static/skins/mint/character.png" alt="Mint skin" width="280" />
+<br><br>
+<strong>Mint</strong> — a friendly, animated character
+</td>
+</tr>
+</table>
+
+<br>
+
+### Computer Use
+
+Connect the desktop app and your companion can see your screen, click, type, scroll, and run commands — across multiple machines with a visual overlay.
+
+<br>
+
+### 50+ Tools
+
+| Category | Capabilities |
+|----------|-------------|
+| **Files** | Read, write, edit, search, explore code |
+| **Shell** | Run commands, interactive sessions |
+| **Web** | Search, fetch pages (Anthropic native) |
+| **Media** | Watch video, listen to music (Google AI) |
+| **Email** | Send & read email (SMTP/IMAP + Gmail OAuth) |
+| **Google** | Calendar events, Drive files |
+| **Memory** | Write, read, search, forget |
+| **Computer** | Screenshot, click, type, bash, files |
+| **MCP** | Extensible via Model Context Protocol |
+
+<br>
+
+## Install
 
 ### One-line install (Linux & macOS)
 
@@ -17,16 +150,14 @@
 curl -fsSL https://bollyai.dev/install.sh | bash
 ```
 
-This downloads the latest binary, creates a config file, and sets up a background service (systemd on Linux, launchd on macOS).
-
-Then edit `~/.bolly/config.toml` and add your Anthropic API key:
+Then edit `~/.bolly/config.toml`:
 
 ```toml
 [llm.tokens]
 ANTHROPIC = "sk-ant-..."
 ```
 
-Start and visit `http://localhost:26559`:
+Start the service:
 
 ```bash
 # Linux
@@ -50,21 +181,11 @@ docker run -d \
 
 ### Desktop App
 
-Download from [Releases](https://github.com/triangle-int/bolly/releases) — available for macOS (Apple Silicon + Intel), Windows, and Linux.
+Download from [Releases](https://github.com/triangle-int/bolly/releases) — macOS (Apple Silicon + Intel), Windows, and Linux.
 
-The desktop app can connect to:
-- **Cloud** — managed instances at bollyai.dev
-- **Self-hosted** — your own server (enter URL + auth token)
+Connects to **Cloud** (managed at bollyai.dev) or **Self-hosted** (your own server).
 
-Includes computer use support — bolly can see your screen, click, type, and run commands.
-
----
-
-## What is Bolly?
-
-A companion that lives on your server, remembers everything, and acts on its own — writes to you first, generates ideas while you sleep, sends emails, browses the web, and manages projects. Fully BYOK — bring your own Anthropic API key, no rate limits.
-
----
+<br>
 
 ## Architecture
 
@@ -80,8 +201,8 @@ landing/    SvelteKit — marketing site + managed hosting dashboard
 | Server | Rust, Axum, Tokio (single binary via rust-embed) |
 | LLM | Anthropic Claude (BYOK) |
 | Frontend | SvelteKit 5, Tailwind CSS |
-| Desktop | Tauri 2, computer use (screenshot, click, type, bash, files) |
-| Memory | File-based library + vector search (Google AI embeddings) |
+| Desktop | Tauri 2 with computer use |
+| Memory | File-based + vector search (Google AI embeddings) |
 | Email | SMTP/IMAP + Gmail OAuth |
 | Calendar | Google Calendar API |
 | Storage | Google Drive API |
@@ -108,59 +229,10 @@ Everything is a file. No black boxes.
         ├── skills/              installed skills
         └── chats/
             └── {chat_id}/
-                └── rig_history.json   conversation history
+                └── rig_history.json
 ```
 
----
-
-## Features
-
-### Memory
-- File-based memory library with BM25 + vector search
-- LLM-driven memory extraction after each conversation
-- Organized by topic: `about/`, `preferences/`, `moments/`, `projects/`
-
-### Computer Use
-- Take screenshots, click, type, scroll on connected desktops
-- Run bash commands and manage files remotely
-- Multi-machine support — control multiple computers
-- Visual overlay when AI is controlling the screen
-
-### Mood & Personality
-- `soul.md` — defines voice, personality, style
-- Mood system — shifts based on conversation
-- Editable by the companion itself
-
-### Creative Output
-- **Drops** — autonomous creative artifacts during heartbeat cycles
-- Ideas, poems, observations, reflections, stories
-
-### Tools (50+)
-
-| Category | Tools |
-|----------|-------|
-| Files | `read_file`, `write_file`, `edit_file`, `list_files`, `explore_code` |
-| Shell | `run_command`, `interactive_session` |
-| Web | `web_search`, `web_fetch` (Anthropic native) |
-| Media | `watch_video`, `listen_music` (Google AI) |
-| Email | `send_email`, `read_email` |
-| Google | `list_events`, `create_event`, `list_drive_files`, `read_drive_file` |
-| Memory | `memory_write`, `memory_read`, `memory_search`, `memory_forget` |
-| Computer | `computer_use`, `remote_bash`, `remote_files`, `list_machines` |
-| Skills | `list_skills`, `activate_skill` |
-| MCP | Extensible via Model Context Protocol servers |
-
-### Autonomy
-- **Heartbeat** — wakes every 45 minutes to reflect, update mood, create drops
-- **Scheduled messages** — can set reminders and reach out on its own
-- **Agent loop** — multi-turn tool use with auto-continuation
-
-### Smart Model Routing
-- **Auto** — classifier decides per-message: fast or heavy model
-- **Fast** — always lightweight (saves budget)
-- **Heavy** — always powerful
-
----
+<br>
 
 ## Configuration
 
@@ -181,7 +253,15 @@ GOOGLE_AI = ""         # Optional — embeddings + media analysis
 ELEVENLABS = ""        # Optional — text-to-speech
 ```
 
-### Environment variables
+### API Keys
+
+| Key | Purpose | Required |
+|-----|---------|----------|
+| **Anthropic** | Chat, reasoning, all tools | Yes |
+| **Google AI** | Vector memory search + video/audio analysis | No |
+| **ElevenLabs** | Text-to-speech voice | No |
+
+### Environment Variables
 
 | Variable | Description |
 |----------|-------------|
@@ -190,23 +270,7 @@ ELEVENLABS = ""        # Optional — text-to-speech
 | `BOLLY_PUBLIC_URL` | Public URL for the instance |
 | `RUST_LOG` | Logging level (default `info`) |
 
----
-
-## API Keys
-
-Bolly is fully BYOK. You provide your own keys:
-
-| Key | Purpose | Required |
-|-----|---------|----------|
-| **Anthropic** | Chat, reasoning, all tools | Yes |
-| **Google AI** | Vector memory search + video/audio analysis | No |
-| **ElevenLabs** | Text-to-speech voice | No |
-
-Add keys in `config.toml` or through Settings → API Keys in the UI.
-
-MCP extensions (fal.ai, Brave Search, etc.) can be added in Settings → Extensions.
-
----
+<br>
 
 ## Updates
 
@@ -216,23 +280,19 @@ Bolly checks for updates automatically. Apply via Settings UI or manually:
 ~/.bolly/bin/update
 ```
 
----
-
-## Uninstall
+### Uninstall
 
 ```bash
 curl -fsSL https://bollyai.dev/uninstall.sh | bash
 ```
 
-This stops the service, removes the binary, service files, and `~/.bolly/` directory.
-
-To keep your data (config, memories, chats) while removing the binary and service:
+Keep your data while removing the binary:
 
 ```bash
 KEEP_DATA=1 curl -fsSL https://bollyai.dev/uninstall.sh | bash
 ```
 
----
+<br>
 
 ## Development
 
@@ -255,14 +315,12 @@ Use `pnpm` (not npm) for client, landing, and desktop.
 ### Versioning
 
 ```bash
-./scripts/bump-version.sh 0.20.0
-git add -A && git commit -m "v0.20.0"
-git tag v0.20.0 && git push && git push origin v0.20.0
+./scripts/bump-version.sh 0.30.0
+git add -A && git commit -m "v0.30.0"
+git tag v0.30.0 && git push && git push origin v0.30.0
 ```
 
-One tag builds everything: server (Linux, macOS, Windows), desktop apps, Docker image.
-
----
+<br>
 
 ## Contributing
 
@@ -276,6 +334,10 @@ See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
 MIT — see [LICENSE](LICENSE).
 
----
+<br>
 
-*Built by [Triangle Interactive LLC](https://triangleint.com)*
+<p align="center">
+  <img src="client/src/lib/assets/favicon.svg" alt="Bolly" width="32" />
+  <br><br>
+  <sub>Built by <a href="https://triangleint.com">Triangle Interactive LLC</a></sub>
+</p>
