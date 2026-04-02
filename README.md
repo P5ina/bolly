@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="landing/static/assets/hero-orb.webp" alt="Bolly" width="600" />
+  <img src="landing/static/assets/plan-companion.png" alt="Bolly" width="200" />
 </p>
 
 <h1 align="center">Bolly</h1>
@@ -30,7 +30,7 @@
 curl -fsSL https://bollyai.dev/install.sh | bash
 ```
 
-Add your Anthropic API key to `~/.bolly/config.toml` and visit `http://localhost:26559`.
+Open `http://localhost:26559` — the onboarding walks you through everything.
 
 <br>
 
@@ -106,14 +106,14 @@ Set recurring reminders, study sessions, or daily check-ins. The companion reach
 <table>
 <tr>
 <td align="center" width="50%">
-<img src="landing/static/assets/hero-orb.webp" alt="Orb skin" width="360" />
+<img src="landing/static/assets/plan-companion.png" alt="Bolly skin" width="280" />
 <br><br>
-<strong>Orb</strong> — a warm, golden presence
+<strong>Bolly</strong> — a warm, golden presence
 </td>
 <td align="center" width="50%">
-<img src="client/static/skins/mint/character.png" alt="Mint skin" width="280" />
+<img src="client/static/skins/mint/character.png" alt="Minty skin" width="280" />
 <br><br>
-<strong>Mint</strong> — a friendly, animated character
+<strong>Minty</strong> — a friendly, animated character
 </td>
 </tr>
 </table>
@@ -150,22 +150,7 @@ Connect the desktop app and your companion can see your screen, click, type, scr
 curl -fsSL https://bollyai.dev/install.sh | bash
 ```
 
-Then edit `~/.bolly/config.toml`:
-
-```toml
-[llm.tokens]
-ANTHROPIC = "sk-ant-..."
-```
-
-Start the service:
-
-```bash
-# Linux
-sudo systemctl start bolly
-
-# macOS
-launchctl load ~/Library/LaunchAgents/dev.bollyai.bolly.plist
-```
+Open `http://localhost:26559` and follow the onboarding.
 
 ### Docker
 
@@ -236,34 +221,9 @@ Everything is a file. No black boxes.
 
 ## Configuration
 
-```toml
-# ~/.bolly/config.toml
+Everything is configured through the Settings UI. For advanced use, the config file is at `~/.bolly/config.toml`.
 
-host = "0.0.0.0"
-port = 26559
-auth_token = ""        # protect your API (leave empty for local)
-
-[llm]
-provider = "anthropic"
-model = "claude-sonnet-4-6"
-
-[llm.tokens]
-ANTHROPIC = ""         # Required — https://console.anthropic.com
-GOOGLE_AI = ""         # Optional — embeddings + media analysis
-ELEVENLABS = ""        # Optional — text-to-speech
-```
-
-### API Keys
-
-| Key | Purpose | Required |
-|-----|---------|----------|
-| **Anthropic** | Chat, reasoning, all tools | Yes |
-| **Google AI** | Vector memory search + video/audio analysis | No |
-| **ElevenLabs** | Text-to-speech voice | No |
-
-### Environment Variables
-
-| Variable | Description |
+| Environment Variable | Description |
 |----------|-------------|
 | `BOLLY_HOME` | Data directory (default `~/.bolly`) |
 | `BOLLY_AUTH_TOKEN` | Auth token override |

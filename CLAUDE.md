@@ -59,3 +59,22 @@ Skin clips need transparent video in two formats:
 - `ffprobe` shows `yuv420p` for all VP9 alpha webm files — this is misleading, alpha is there
 - Skin files go in `client/static/skins/{skin_name}/`
 - Test page: `client/static/video-test.html`
+
+## Uploading local files to fal.ai
+
+The fal.ai MCP `upload_file` tool doesn't support local file paths over HTTP. Use an ngrok tunnel:
+
+```sh
+# 1. Start a temporary HTTP server in the directory with the file
+python3 -m http.server 18923 --directory /path/to/dir &
+
+# 2. Expose it via ngrok
+ngrok http 18923 --log=stdout > /tmp/ngrok-fal.log 2>&1 &
+sleep 3
+
+# 3. Get the public URL
+curl -s http://127.0.0.1:4040/api/tunnels | python3 -c "import sys,json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])"
+
+# 4. Use the URL with fal.ai upload_file tool: {ngrok_url}/filename.png
+# 5. Kill both processes when done
+```
