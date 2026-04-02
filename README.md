@@ -11,8 +11,7 @@
 
 <p align="center">
   <a href="https://bollyai.dev">Website</a> &nbsp;&bull;&nbsp;
-  <a href="https://github.com/triangle-int/bolly/releases">Download</a> &nbsp;&bull;&nbsp;
-  <a href="https://discord.gg/bolly">Discord</a>
+  <a href="https://github.com/triangle-int/bolly/releases">Download</a>
 </p>
 
 <p align="center">
