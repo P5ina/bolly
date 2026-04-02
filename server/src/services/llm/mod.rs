@@ -8,7 +8,7 @@ use std::path::Path;
 
 use tokio::sync::broadcast;
 
-use crate::config::{Config, CHEAP_MODEL, CHEAP_OPENAI_MODEL, DEFAULT_FAST_MODEL, DEFAULT_MODEL, DEFAULT_OPENAI_MODEL};
+use crate::config::Config;
 use crate::domain::events::ServerEvent;
 use crate::services::tool::ToolDyn;
 
@@ -87,14 +87,14 @@ impl LlmBackend {
         matches!(self.provider, crate::config::LlmProvider::ClaudeCli)
     }
 
-    /// Create a variant using the fast/cheap model.
+    /// Create a variant using the fast model.
     pub fn fast_variant_with(&self, override_model: Option<&str>) -> Self {
         Self {
             http: self.http.clone(),
             api_key: self.api_key.clone(),
             model: override_model
                 .filter(|s| !s.is_empty())
-                .unwrap_or(DEFAULT_FAST_MODEL)
+                .unwrap_or(self.provider.fast_model())
                 .to_string(),
             base_url: self.base_url.clone(),
             provider: self.provider,
@@ -103,11 +103,10 @@ impl LlmBackend {
 
     /// Create a variant using the cheapest model for background tasks.
     pub fn cheap_variant(&self) -> Self {
-        let model = if self.provider.is_openai_format() { CHEAP_OPENAI_MODEL } else { CHEAP_MODEL };
         Self {
             http: self.http.clone(),
             api_key: self.api_key.clone(),
-            model: model.to_string(),
+            model: self.provider.cheap_model().to_string(),
             base_url: self.base_url.clone(),
             provider: self.provider,
         }
@@ -115,11 +114,10 @@ impl LlmBackend {
 
     /// Create a variant using the heavy model for deep reflection.
     pub fn heavy_variant(&self) -> Self {
-        let model = if self.provider.is_openai_format() { DEFAULT_OPENAI_MODEL } else { DEFAULT_MODEL };
         Self {
             http: self.http.clone(),
             api_key: self.api_key.clone(),
-            model: model.to_string(),
+            model: self.provider.heavy_model().to_string(),
             base_url: self.base_url.clone(),
             provider: self.provider,
         }

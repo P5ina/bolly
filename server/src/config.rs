@@ -190,16 +190,34 @@ pub struct McpServerConfig {
 }
 
 /// Default heavy model (Opus).
-pub const DEFAULT_MODEL: &str = "claude-opus-4-6";
-/// Default fast model (Sonnet).
-pub const DEFAULT_FAST_MODEL: &str = "claude-sonnet-4-6";
-/// Cheapest model for background tasks (Haiku).
-pub const CHEAP_MODEL: &str = "claude-haiku-4-5-20251001";
+impl LlmProvider {
+    /// Heavy model for complex tasks.
+    pub fn heavy_model(&self) -> &'static str {
+        match self {
+            Self::Api | Self::ClaudeCli => "claude-opus-4-6",
+            Self::Openai => "gpt-5.4",
+            Self::Codex => "codex/gpt-5.4",
+        }
+    }
 
-// OpenAI defaults
-pub const DEFAULT_OPENAI_MODEL: &str = "codex/gpt-5.4";
-pub const DEFAULT_OPENAI_FAST_MODEL: &str = "codex/gpt-5.4";
-pub const CHEAP_OPENAI_MODEL: &str = "codex/gpt-5.4-mini";
+    /// Fast model for casual tasks.
+    pub fn fast_model(&self) -> &'static str {
+        match self {
+            Self::Api | Self::ClaudeCli => "claude-sonnet-4-6",
+            Self::Openai => "gpt-5.4",
+            Self::Codex => "codex/gpt-5.4",
+        }
+    }
+
+    /// Cheapest model for background tasks (classification, extraction).
+    pub fn cheap_model(&self) -> &'static str {
+        match self {
+            Self::Api | Self::ClaudeCli => "claude-haiku-4-5-20251001",
+            Self::Openai => "gpt-5.4-mini",
+            Self::Codex => "codex/gpt-5.4-mini",
+        }
+    }
+}
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -306,12 +324,12 @@ impl Default for Config {
 impl LlmConfig {
     /// The heavy model for the current provider.
     pub fn model_name(&self) -> &'static str {
-        if self.provider.is_openai_format() { DEFAULT_OPENAI_MODEL } else { DEFAULT_MODEL }
+        self.provider.heavy_model()
     }
 
     /// The fast model for the current provider.
     pub fn fast_model_name(&self) -> &'static str {
-        if self.provider.is_openai_format() { DEFAULT_OPENAI_FAST_MODEL } else { DEFAULT_FAST_MODEL }
+        self.provider.fast_model()
     }
 
     /// The Anthropic API key, or None if not configured.

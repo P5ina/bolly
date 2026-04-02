@@ -11,7 +11,9 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
-use crate::config::{CHEAP_MODEL, DEFAULT_FAST_MODEL};
+// Memory import always uses Anthropic API directly (batch endpoint)
+const CHEAP_MODEL: &str = "claude-haiku-4-5-20251001";
+const FAST_MODEL: &str = "claude-sonnet-4-6";
 use crate::domain::events::ServerEvent;
 use crate::services::{embedding, memory, vector::VectorStore};
 
@@ -524,7 +526,7 @@ async fn organize_facts(
     let system = format!("{ORGANIZE_SYSTEM}{existing_catalog}");
 
     let req = serde_json::json!({
-        "model": DEFAULT_FAST_MODEL,
+        "model": FAST_MODEL,
         "max_tokens": 16384,
         "system": system,
         "messages": [{
