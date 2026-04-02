@@ -338,6 +338,10 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
                     "rate limited — try again in a moment"
                 } else if msg.contains("timed out") {
                     "request timed out"
+                } else if msg.contains("token_not_found") || msg.contains("authentication") || msg.contains("401") {
+                    "not authenticated — reconnect your account in Settings → Provider"
+                } else if msg.contains("no LLM") || msg.contains("not configured") {
+                    "no API key configured — add one in Settings"
                 } else {
                     "something went wrong"
                 };

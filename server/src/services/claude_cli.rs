@@ -109,16 +109,24 @@ pub fn import_token_to_byokey(tokens: &OAuthTokens) {
         "token_type": "Bearer",
     });
 
-    // Use sqlite3 CLI to avoid adding rusqlite as dependency
-    let sql = format!(
-        "CREATE TABLE IF NOT EXISTS accounts (provider TEXT, account_id TEXT, label TEXT, is_active INTEGER, token_json TEXT, created_at INTEGER, updated_at INTEGER, PRIMARY KEY (provider, account_id));\
-         INSERT OR REPLACE INTO accounts VALUES ('claude', 'default', NULL, 1, '{}', strftime('%s','now'), strftime('%s','now'));",
-        token_json.to_string().replace('\'', "''")
+    // Use python3 with parameterized query (no shell escaping issues)
+    let py_script = format!(
+        r#"
+import sqlite3, time, json, sys
+db = sqlite3.connect(sys.argv[1])
+db.execute('''CREATE TABLE IF NOT EXISTS accounts (
+    provider TEXT, account_id TEXT, label TEXT, is_active INTEGER,
+    token_json TEXT, created_at INTEGER, updated_at INTEGER,
+    PRIMARY KEY (provider, account_id))''')
+db.execute('INSERT OR REPLACE INTO accounts VALUES (?,?,?,?,?,?,?)',
+    ('claude', 'default', None, 1, sys.argv[2], int(time.time()), int(time.time())))
+db.commit()
+print('ok')
+"#
     );
 
-    let result = std::process::Command::new("sqlite3")
-        .arg(&db_path)
-        .arg(&sql)
+    let result = std::process::Command::new("python3")
+        .args(["-c", &py_script, &db_path.to_string_lossy(), &token_json.to_string()])
         .output();
 
     match result {
@@ -127,19 +135,10 @@ pub fn import_token_to_byokey(tokens: &OAuthTokens) {
         }
         Ok(output) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            log::warn!("Failed to import token to BYOKEY: {stderr}");
+            log::warn!("Failed to import token to BYOKEY via python3: {stderr}");
         }
         Err(e) => {
-            log::warn!("sqlite3 not found, writing BYOKEY DB manually: {e}");
-            // Fallback: write a Python one-liner if sqlite3 binary not available
-            let py = format!(
-                "import sqlite3,time; db=sqlite3.connect('{}'); db.execute('CREATE TABLE IF NOT EXISTS accounts (provider TEXT, account_id TEXT, label TEXT, is_active INTEGER, token_json TEXT, created_at INTEGER, updated_at INTEGER, PRIMARY KEY (provider, account_id))'); db.execute('INSERT OR REPLACE INTO accounts VALUES (?,?,?,?,?,?,?)', ('claude','default',None,1,'{}',int(time.time()),int(time.time()))); db.commit()",
-                db_path.display(),
-                token_json.to_string().replace('\'', "\\'")
-            );
-            let _ = std::process::Command::new("python3")
-                .args(["-c", &py])
-                .status();
+            log::warn!("python3 not available for BYOKEY token import: {e}");
         }
     }
 }
