@@ -118,7 +118,7 @@ pub(crate) async fn openai_complete(
 
     let mut body = serde_json::json!({
         "model": model,
-        "max_tokens": max_tokens,
+        "max_completion_tokens": max_tokens,
         "messages": oai_messages,
         "stream": false,
     });
@@ -191,7 +191,7 @@ pub(crate) async fn openai_stream(
 
     let mut body = serde_json::json!({
         "model": model,
-        "max_tokens": max_tokens,
+        "max_completion_tokens": max_tokens,
         "messages": oai_messages,
         "stream": true,
     });

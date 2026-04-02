@@ -230,7 +230,7 @@ impl LlmBackend {
                     )];
                     let req = serde_json::json!({
                         "model": &backend.model,
-                        "max_tokens": 16384,
+                        "max_completion_tokens": 16384,
                         "stream": false,
                         "messages": messages,
                         "response_format": { "type": "json_object" },
