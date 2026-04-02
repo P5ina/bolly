@@ -479,6 +479,39 @@ async fn upload_to_gemini_files(
         .ok_or_else(|| ToolExecError("no file URI in upload response".into()))?
         .to_string();
 
-    log::info!("[media] uploaded to Gemini: {file_uri}");
-    Ok(file_uri)
+    let file_name = result["file"]["name"]
+        .as_str()
+        .ok_or_else(|| ToolExecError("no file name in upload response".into()))?
+        .to_string();
+
+    log::info!("[media] uploaded to Gemini: {file_uri}, waiting for ACTIVE state...");
+
+    // Poll until the file is ACTIVE (video processing takes a few seconds)
+    let poll_url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/{}?key={}",
+        file_name, api_key
+    );
+    for attempt in 0..30 {
+        let poll_res = client.get(&poll_url).send().await
+            .map_err(|e| ToolExecError(format!("Gemini file poll failed: {e}")))?;
+        if poll_res.status().is_success() {
+            let info: serde_json::Value = poll_res.json().await.unwrap_or_default();
+            let state = info["state"].as_str().unwrap_or("");
+            match state {
+                "ACTIVE" => {
+                    log::info!("[media] file is ACTIVE after {attempt} polls");
+                    return Ok(file_uri);
+                }
+                "FAILED" => {
+                    return Err(ToolExecError("Gemini file processing failed".into()));
+                }
+                _ => {
+                    log::info!("[media] file state: {state}, polling... ({attempt}/30)");
+                }
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+
+    Err(ToolExecError("Gemini file did not become ACTIVE within 60s".into()))
 }
