@@ -3,9 +3,25 @@ mod computer_use_bridge;
 mod overlay;
 mod permissions;
 
+use std::sync::{Arc, Mutex};
+
 use tauri::{Emitter, Manager};
 use tauri::menu::{AboutMetadataBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+use tauri::webview::WebviewWindowBuilder;
 use tauri_plugin_deep_link::DeepLinkExt;
+use tauri_plugin_opener::OpenerExt;
+
+/// Tracks the host of the currently connected server so on_navigation can allow it.
+struct ServerOrigin(Arc<Mutex<Option<String>>>);
+
+/// Returns true if the URL is an internal app URL that should stay in the webview.
+fn is_internal_url(url: &url::Url) -> bool {
+    match url.scheme() {
+        "tauri" => true,
+        "http" | "https" => url.host_str() == Some("localhost"),
+        _ => false,
+    }
+}
 
 #[tauri::command]
 fn navigate(app: tauri::AppHandle, url: String) -> Result<(), String> {
@@ -13,14 +29,22 @@ fn navigate(app: tauri::AppHandle, url: String) -> Result<(), String> {
         .get_webview_window("main")
         .ok_or("main webview not found")?;
     let parsed: url::Url = url.parse().map_err(|e: url::ParseError| e.to_string())?;
+    // Register the server host so on_navigation allows subsequent navigations
+    if let Some(host) = parsed.host_str() {
+        let state = app.state::<ServerOrigin>();
+        *state.0.lock().unwrap() = Some(host.to_string());
+    }
     ww.navigate(parsed).map_err(|e| e.to_string())
 }
 
 fn navigate_home(app: &tauri::AppHandle) -> Result<(), String> {
+    // Clear the server origin — we're going back to the dashboard
+    let state = app.state::<ServerOrigin>();
+    *state.0.lock().unwrap() = None;
+
     let ww = app
         .get_webview_window("main")
         .ok_or("main webview not found")?;
-    // Use the dev URL in dev mode, tauri:// in production
     let url = if cfg!(debug_assertions) {
         "http://localhost:1420/"
     } else {
@@ -48,6 +72,7 @@ fn open_settings_window(app: &tauri::AppHandle) -> Result<(), String> {
     }
 
     let url = settings_url();
+    let nav_handle = app.clone();
     WebviewWindowBuilder::new(app, "settings", tauri::WebviewUrl::External(
         url.parse().map_err(|e: url::ParseError| e.to_string())?,
     ))
@@ -55,6 +80,13 @@ fn open_settings_window(app: &tauri::AppHandle) -> Result<(), String> {
     .inner_size(420.0, 480.0)
     .resizable(false)
     .center()
+    .on_navigation(move |url| {
+        if is_internal_url(url) {
+            return true;
+        }
+        let _ = nav_handle.opener().open_url(url.as_str(), None::<&str>);
+        false
+    })
     .build()
     .map_err(|e| e.to_string())?;
 
@@ -85,6 +117,10 @@ pub fn run() {
             permissions::open_permission_settings,
         ])
         .setup(|app| {
+            // Shared state: the host of the connected server (if any)
+            let origin: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+            app.manage(ServerOrigin(origin.clone()));
+
             // Single instance must be registered first in setup
             #[cfg(desktop)]
             {
@@ -159,6 +195,37 @@ pub fn run() {
                     let _ = open_settings_window(&handle);
                 }
             });
+
+            // Create main window programmatically so we can attach on_navigation
+            let nav_handle = app.handle().clone();
+            let origin_for_nav = origin.clone();
+            WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title("Bolly")
+            .inner_size(1024.0, 700.0)
+            .min_inner_size(480.0, 400.0)
+            .center()
+            .resizable(true)
+            .disable_drag_drop_handler()
+            .on_navigation(move |url| {
+                if is_internal_url(url) {
+                    return true;
+                }
+                // Allow navigation to the connected server
+                if let Some(host) = url.host_str() {
+                    if let Some(ref server) = *origin_for_nav.lock().unwrap() {
+                        if host == server {
+                            return true;
+                        }
+                    }
+                }
+                let _ = nav_handle.opener().open_url(url.as_str(), None::<&str>);
+                false
+            })
+            .build()?;
 
             // Handle deep links received while app is running
             let handle2 = app.handle().clone();

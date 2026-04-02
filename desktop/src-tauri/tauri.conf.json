@@ -10,20 +10,7 @@
     "frontendDist": "../build"
   },
   "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "Bolly",
-        "width": 1024,
-        "height": 700,
-        "minWidth": 480,
-        "minHeight": 400,
-        "center": true,
-        "decorations": true,
-        "resizable": true,
-        "dragDropEnabled": false
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     },

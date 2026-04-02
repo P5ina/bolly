@@ -12,6 +12,7 @@
 	import Toast from "$lib/components/layout/Toast.svelte";
 	import SecretDialog from "$lib/components/layout/SecretDialog.svelte";
 	import SharedScene from "$lib/components/SharedScene.svelte";
+	import FileViewer from "$lib/components/FileViewer.svelte";
 
 	let { children } = $props();
 
@@ -100,6 +101,7 @@
 	{/if}
 
 	<Toast />
+	<FileViewer />
 
 	{#if secretRequest}
 		<SecretDialog

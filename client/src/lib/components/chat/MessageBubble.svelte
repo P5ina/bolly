@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ChatMessage } from "$lib/api/types.js";
 	import { uploadFileUrl } from "$lib/api/client.js";
+	import { openFile } from "$lib/stores/fileviewer.svelte.js";
 	import { Marked } from "marked";
 
 	let {
@@ -128,17 +129,21 @@
 			<div class="msg-attachments" class:msg-attachments-right={isUser}>
 				{#each attachments as a (a.id)}
 					{#if a.isImage}
-						<a href={a.url} target="_blank" class="msg-img-link">
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<span class="msg-img-link" onclick={() => openFile(a.url, a.name)}>
 							<img src={a.url} alt={a.name} class="msg-img" loading="lazy" />
-						</a>
+						</span>
 					{:else}
-						<a href={a.url} target="_blank" class="msg-file-link" download={a.name}>
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<span class="msg-file-link" onclick={() => openFile(a.url, a.name)}>
 							<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
 								<path d="M4 1h5.5L13 4.5V14a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z" stroke-linejoin="round"/>
 								<path d="M9 1v4h4" stroke-linejoin="round"/>
 							</svg>
 							<span>{a.name}</span>
-						</a>
+						</span>
 					{/if}
 				{/each}
 			</div>
@@ -172,17 +177,21 @@
 				<div class="msg-attachments">
 					{#each attachments as a (a.id)}
 						{#if a.isImage}
-							<a href={a.url} target="_blank" class="msg-img-link">
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<!-- svelte-ignore a11y_click_events_have_key_events -->
+							<span class="msg-img-link" onclick={() => openFile(a.url, a.name)}>
 								<img src={a.url} alt={a.name} class="msg-img" loading="lazy" />
-							</a>
+							</span>
 						{:else}
-							<a href={a.url} target="_blank" class="msg-file-link" download={a.name}>
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
+							<!-- svelte-ignore a11y_click_events_have_key_events -->
+							<span class="msg-file-link" onclick={() => openFile(a.url, a.name)}>
 								<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="w-3 h-3">
 									<path d="M4 1h5.5L13 4.5V14a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z" stroke-linejoin="round"/>
 									<path d="M9 1v4h4" stroke-linejoin="round"/>
 								</svg>
 								<span>{a.name}</span>
-							</a>
+							</span>
 						{/if}
 					{/each}
 				</div>

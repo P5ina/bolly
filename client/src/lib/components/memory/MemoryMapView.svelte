@@ -3,6 +3,7 @@
 	import { Play, Music, FileText } from "@lucide/svelte";
 	import type { MemoryEntry, MemoryGraph } from "$lib/api/types.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
+	import { openFile } from "$lib/stores/fileviewer.svelte.js";
 
 	const toast = getToasts();
 
@@ -835,7 +836,8 @@ ttt<!-- svelte-ignore a11y_autofocus -->
 							style="--c: {isMedia ? '#d4a55a' : getHex(folder)}"
 							onclick={() => {
 								if (isMedia && result.media_url) {
-									window.open(result.media_url, '_blank');
+									const ext = result.source_type === "media_image" ? "image.jpg" : result.source_type === "media_video" ? "video.mp4" : "audio.mp3";
+									openFile(result.media_url, basePath || ext);
 								} else {
 									const entry = entries.find(e => e.path === basePath);
 									if (entry) openDocument(entry);
