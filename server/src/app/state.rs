@@ -120,7 +120,8 @@ impl AppState {
 
         let (llm_changed, mcp_changed) = {
             let old = self.config.read().await;
-            let tokens = old.llm.tokens.anthropic != new_config.llm.tokens.anthropic;
+            let tokens = old.llm.tokens.anthropic != new_config.llm.tokens.anthropic
+                || old.llm.tokens.open_ai != new_config.llm.tokens.open_ai;
             let provider = old.llm.provider != new_config.llm.provider;
             let llm = tokens || provider;
             let mcp = old.mcp_servers.len() != new_config.mcp_servers.len()
