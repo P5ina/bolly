@@ -35,68 +35,12 @@ Open `http://localhost:26559` — the onboarding walks you through everything.
 
 ## Features
 
-<table>
-<tr>
-<td width="50%">
-
-<img src="landing/static/assets/feature-memory.webp" alt="Memory" />
-
-### Memory
-
-File-based memory library with BM25 + vector search. Automatically learns and remembers across conversations — organized by topic.
-
-</td>
-<td width="50%">
-
-<img src="landing/static/assets/feature-mood.webp" alt="Mood" />
-
-### Mood & Personality
-
-Dynamic emotional state that shifts with conversation. Defines its own voice through `soul.md` — editable by the companion itself.
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-<img src="landing/static/assets/feature-connection.webp" alt="Connection" />
-
-### Autonomy
-
-Wakes every 45 minutes during heartbeat cycles. Writes to you first, creates ideas and reflections, sends emails, schedules reminders.
-
-</td>
-<td width="50%">
-
-<img src="landing/static/assets/feature-privacy.webp" alt="Privacy" />
-
-### Privacy-First
-
-Everything lives on your machine. No cloud dependency, no telemetry. File-based storage you can read, edit, and back up.
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-<img src="landing/static/assets/feature-checkin.webp" alt="Scheduled check-ins" />
-
-### Scheduled Check-ins
-
-Set recurring reminders, study sessions, or daily check-ins. The companion reaches out on its own schedule.
-
-</td>
-<td width="50%">
-
-<img src="landing/static/assets/feature-study.webp" alt="Learning" />
-
-### Learning & Skills
-
-50+ built-in tools — web search, email, file management, shell access, Google Calendar & Drive. Extensible via MCP.
-
-</td>
-</tr>
-</table>
+- **Memory** — File-based library with BM25 + vector search. Learns and remembers across conversations, organized by topic.
+- **Mood & Personality** — Dynamic emotional state that shifts with conversation. Defines its own voice through `soul.md` — editable by the companion itself.
+- **Autonomy** — Wakes every 45 minutes during heartbeat cycles. Writes to you first, creates ideas and reflections, sends emails, schedules reminders.
+- **Privacy-First** — Everything lives on your machine. No cloud dependency, no telemetry. File-based storage you can read, edit, and back up.
+- **Scheduled Check-ins** — Set recurring reminders, study sessions, or daily check-ins. The companion reaches out on its own schedule.
+- **Learning & Skills** — 50+ built-in tools — web search, email, file management, shell access, Google Calendar & Drive. Extensible via MCP.
 
 <br>
 
