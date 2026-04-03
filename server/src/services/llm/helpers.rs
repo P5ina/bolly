@@ -378,9 +378,7 @@ pub fn build_multimodal_prompt(
                 contents.push(ContentBlock::text(&format!("Image {image_idx} ({name}):")));
             }
             if !public_url.is_empty() {
-                let url = format!(
-                    "{public_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}"
-                );
+                let url = crate::services::tools::public_file_url(public_url, instance_slug, upload_id, auth_token);
                 contents.push(ContentBlock::Image {
                     source: ImageSource::Url { url: url.clone() },
                 });
@@ -391,9 +389,7 @@ pub fn build_multimodal_prompt(
             }
         } else if meta.mime_type == "application/pdf" {
             if !public_url.is_empty() {
-                let url = format!(
-                    "{public_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}"
-                );
+                let url = crate::services::tools::public_file_url(public_url, instance_slug, upload_id, auth_token);
                 contents.push(ContentBlock::Document {
                     source: DocumentSource::Url { url: url.clone() },
                 });

@@ -202,11 +202,11 @@ pub struct MemoryReadTool {
 }
 
 impl MemoryReadTool {
-    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+    pub fn new(workspace_dir: &Path, instance_slug: &str, public_url: &str) -> Self {
         Self {
             memory_dir: workspace_dir.join("instances").join(instance_slug).join("memory"),
             instance_slug: instance_slug.to_string(),
-            public_url: std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default(),
+            public_url: public_url.to_string(),
             auth_token: std::env::var("BOLLY_AUTH_TOKEN").unwrap_or_default(),
         }
     }
@@ -268,10 +268,7 @@ impl Tool for MemoryReadTool {
             let is_media = is_image || is_pdf || matches!(ext, "mp4" | "mov" | "mp3" | "wav");
 
             if (is_image || is_pdf) && !self.public_url.is_empty() {
-                let url = format!(
-                    "{}/public/memory/{}/{}?token={}",
-                    self.public_url, self.instance_slug, clean_path, self.auth_token,
-                );
+                let url = super::public_memory_url(&self.public_url, &self.instance_slug, &clean_path, &self.auth_token);
                 let block_type = if is_image { "image" } else { "document" };
                 let blocks = serde_json::json!([
                     {"type": "text", "text": format!("memory file: {clean_path}")},
@@ -469,14 +466,13 @@ pub struct MemorySearchTool {
 }
 
 impl MemorySearchTool {
-    pub fn new(_workspace_dir: &Path, instance_slug: &str, vector_store: Arc<VectorStore>, google_ai_key: &str) -> Self {
-        let public_url = std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default();
+    pub fn new(_workspace_dir: &Path, instance_slug: &str, vector_store: Arc<VectorStore>, google_ai_key: &str, public_url: &str) -> Self {
         let auth_token = std::env::var("BOLLY_AUTH_TOKEN").unwrap_or_default();
         Self {
             instance_slug: instance_slug.to_string(),
             vector_store,
             google_ai_key: google_ai_key.to_string(),
-            public_url,
+            public_url: public_url.to_string(),
             auth_token,
         }
     }
@@ -569,15 +565,9 @@ impl Tool for MemorySearchTool {
                     }
                     // Memory-originated images use /public/memory/, uploads use /public/files/
                     let url = if upload_id.contains('/') {
-                        format!(
-                            "{}/public/memory/{}/{upload_id}?token={}",
-                            self.public_url, self.instance_slug, self.auth_token,
-                        )
+                        super::public_memory_url(&self.public_url, &self.instance_slug, upload_id, &self.auth_token)
                     } else {
-                        format!(
-                            "{}/public/files/{}/{upload_id}?token={}",
-                            self.public_url, self.instance_slug, self.auth_token,
-                        )
+                        super::public_file_url(&self.public_url, &self.instance_slug, upload_id, &self.auth_token)
                     };
                     blocks.push(serde_json::json!({"type": "image", "source": {"type": "url", "url": url}}));
                 }

@@ -93,7 +93,7 @@ pub fn save_upload(
     fs::create_dir_all(&uploads_dir)?;
 
     let ts = unix_millis();
-    let id = format!("upload_{ts}");
+    let id = format!("upload_{ts}.{ext}");
     // Use _blob suffix to prevent collision with .json metadata sidecar
     // (e.g. uploading a .json file would overwrite its own metadata)
     let stored_name = format!("{id}_blob.{ext}");

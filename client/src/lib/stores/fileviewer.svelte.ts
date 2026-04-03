@@ -12,7 +12,9 @@ export interface ViewerFile {
 }
 
 export function detectFileType(name: string): FileType {
-	const ext = name.split(".").pop()?.toLowerCase() ?? "";
+	// Strip query params and hash before extracting extension
+	const clean = name.split("?")[0].split("#")[0];
+	const ext = clean.split(".").pop()?.toLowerCase() ?? "";
 	if (IMAGE_EXTS.includes(ext)) return "image";
 	if (VIDEO_EXTS.includes(ext)) return "video";
 	if (AUDIO_EXTS.includes(ext)) return "audio";
@@ -20,10 +22,29 @@ export function detectFileType(name: string): FileType {
 	return "other";
 }
 
+function detectFileTypeFromMime(mime: string): FileType {
+	if (mime.startsWith("image/")) return "image";
+	if (mime.startsWith("video/")) return "video";
+	if (mime.startsWith("audio/")) return "audio";
+	if (mime === "application/pdf") return "pdf";
+	return "other";
+}
+
 let current = $state<ViewerFile | null>(null);
 
-export function openFile(url: string, name: string) {
-	current = { url, name, type: detectFileType(name) };
+export async function openFile(url: string, name: string) {
+	let type = detectFileType(name);
+
+	// If extension-based detection fails, probe Content-Type via HEAD
+	if (type === "other") {
+		try {
+			const res = await fetch(url, { method: "HEAD" });
+			const ct = res.headers.get("content-type")?.split(";")[0]?.trim() ?? "";
+			type = detectFileTypeFromMime(ct);
+		} catch { /* fall through */ }
+	}
+
+	current = { url, name, type };
 }
 
 export function closeFile() {

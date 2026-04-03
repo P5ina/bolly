@@ -1,8 +1,34 @@
 <script lang="ts">
 	import type { ChatMessage } from "$lib/api/types.js";
 	import { uploadFileUrl } from "$lib/api/client.js";
-	import { openFile } from "$lib/stores/fileviewer.svelte.js";
+	import { openFile, detectFileType } from "$lib/stores/fileviewer.svelte.js";
 	import { Marked } from "marked";
+
+	const MEDIA_EXTS = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|webm|mov|ogg|mp3|wav|m4a|flac|aac|pdf)(\?|$)/i;
+
+	/** Intercept clicks on links and images inside prose to open in FileViewer. */
+	function handleProseClick(e: MouseEvent) {
+		// Click on <img> → open in viewer
+		const img = (e.target as HTMLElement).closest("img") as HTMLImageElement | null;
+		if (img?.src) {
+			e.preventDefault();
+			const name = img.alt || img.src.split("/").pop()?.split("?")[0] || "image";
+			openFile(img.src, name);
+			return;
+		}
+
+		// Click on <a> pointing to a media/upload file → open in viewer
+		const anchor = (e.target as HTMLElement).closest("a") as HTMLAnchorElement | null;
+		if (anchor?.href) {
+			const isUpload = anchor.href.includes("/uploads/") || anchor.href.includes("/public/files/");
+			const isMedia = MEDIA_EXTS.test(anchor.href);
+			if (isUpload || isMedia) {
+				e.preventDefault();
+				const name = anchor.textContent?.trim() || anchor.href.split("/").pop()?.split("?")[0] || "file";
+				openFile(anchor.href, name);
+			}
+		}
+	}
 
 	let {
 		message,
@@ -168,7 +194,9 @@
 						{/each}
 					</div>
 				{:else}
-					<div class="msg-content msg-content-companion prose" class:msg-streaming={streaming}>
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<div class="msg-content msg-content-companion prose" class:msg-streaming={streaming} onclick={handleProseClick}>
 						{@html html}
 					</div>
 				{/if}

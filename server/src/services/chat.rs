@@ -127,6 +127,7 @@ pub async fn run_single_turn(
     google_ai_key: &str,
     keyword_store: std::sync::Arc<crate::services::keyword_search::KeywordStore>,
     machine_registry: crate::services::machine_registry::MachineRegistry,
+    public_url: &str,
 ) -> io::Result<SingleTurnResult> {
     let instance_slug = sanitize_slug(instance_slug);
     let chat_id = sanitize_slug(chat_id);
@@ -264,12 +265,12 @@ pub async fn run_single_turn(
          use read_file or run_command to access them. use list_files on the uploads dir to find files.",
         uploads_path.display(), uploads_path.display(),
     ));
-    let public_url = std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default();
     if !public_url.is_empty() {
+        let token_suffix = if auth_token.is_empty() { String::new() } else { format!("?token={auth_token}") };
         system_prompt.push_str(&format!(
             "\npublic URLs (for external APIs like fal.ai):\n\
-             - uploads: {public_url}/public/files/{instance_slug}/{{upload_id}}?token={auth_token}\n\
-             - memory: {public_url}/public/memory/{instance_slug}/{{path}}?token={auth_token}"
+             - uploads: {public_url}/public/files/{instance_slug}/{{upload_id}}{token_suffix}\n\
+             - memory: {public_url}/public/memory/{instance_slug}/{{path}}{token_suffix}"
         ));
     }
 
@@ -452,7 +453,7 @@ pub async fn run_single_turn(
         .rev()
         .find(|m| m.role == ChatRole::User)
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "no user message to process"))?;
-    let public_url = std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default();
+    let public_url = public_url.to_string();
     let mut prompt_msg = llm::build_multimodal_prompt(
         &last_user.content,
         workspace_dir,
@@ -666,6 +667,7 @@ pub async fn run_single_turn(
         vector_store.clone(),
         google_ai_key,
         machine_registry,
+        &public_url,
     );
     tools::cache_tool_defs(&all_tools).await;
 

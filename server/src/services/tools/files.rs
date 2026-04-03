@@ -18,11 +18,11 @@ pub struct ReadFileTool {
 }
 
 impl ReadFileTool {
-    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+    pub fn new(workspace_dir: &Path, instance_slug: &str, public_url: &str) -> Self {
         Self {
             instance_dir: workspace_dir.join("instances").join(instance_slug),
             instance_slug: instance_slug.to_string(),
-            public_url: std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default(),
+            public_url: public_url.to_string(),
             auth_token: std::env::var("BOLLY_AUTH_TOKEN").unwrap_or_default(),
         }
     }
@@ -81,10 +81,7 @@ impl Tool for ReadFileTool {
             // Try URL if in uploads/
             if let Some(upload_id) = Self::extract_upload_id(&target) {
                 if !self.public_url.is_empty() {
-                    let url = format!(
-                        "{}/public/files/{}/{}?token={}",
-                        self.public_url, self.instance_slug, upload_id, self.auth_token,
-                    );
+                    let url = super::public_file_url(&self.public_url, &self.instance_slug, &upload_id, &self.auth_token);
                     return Ok(serde_json::to_string(&serde_json::json!([
                         {"type": "image", "source": {"type": "url", "url": url}}
                     ])).unwrap());
@@ -114,10 +111,7 @@ impl Tool for ReadFileTool {
             // Try URL
             if let Some(upload_id) = Self::extract_upload_id(&target) {
                 if !self.public_url.is_empty() {
-                    let url = format!(
-                        "{}/public/files/{}/{}?token={}",
-                        self.public_url, self.instance_slug, upload_id, self.auth_token,
-                    );
+                    let url = super::public_file_url(&self.public_url, &self.instance_slug, &upload_id, &self.auth_token);
                     return Ok(serde_json::to_string(&serde_json::json!([
                         {"type": "document", "source": {"type": "url", "url": url}}
                     ])).unwrap());
@@ -389,11 +383,11 @@ pub struct UploadFileTool {
 }
 
 impl UploadFileTool {
-    pub fn new(workspace_dir: &Path, instance_slug: &str) -> Self {
+    pub fn new(workspace_dir: &Path, instance_slug: &str, public_url: &str) -> Self {
         Self {
             workspace_dir: workspace_dir.to_path_buf(),
             instance_slug: instance_slug.to_string(),
-            public_url: std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default(),
+            public_url: public_url.to_string(),
             auth_token: std::env::var("BOLLY_AUTH_TOKEN").unwrap_or_default(),
         }
     }
@@ -448,10 +442,7 @@ impl Tool for UploadFileTool {
             return Ok(format!("uploaded as {} ({} bytes) but no public URL configured", meta.id, bytes.len()));
         }
 
-        let url = format!(
-            "{}/public/files/{}/{}?token={}",
-            self.public_url, self.instance_slug, meta.id, self.auth_token,
-        );
+        let url = super::public_file_url(&self.public_url, &self.instance_slug, &meta.id, &self.auth_token);
 
         let size_mb = bytes.len() as f64 / 1024.0 / 1024.0;
         Ok(format!("{url}\n\nuploaded: {name} ({size_mb:.1} MB)"))

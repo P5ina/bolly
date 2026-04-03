@@ -20,7 +20,7 @@ async fn main() {
         .filter_module("lancedb", log::LevelFilter::Warn)
         .init();
 
-    let config = config::load_config().unwrap_or_else(|err| {
+    let mut config = config::load_config().unwrap_or_else(|err| {
         panic!(
             "failed to load config from {}: {err}",
             config::config_path().display()
@@ -56,6 +56,17 @@ async fn main() {
     } else {
         None
     };
+
+    // Default public_url to localhost if not configured
+    if config.public_url.is_empty() {
+        config.public_url = format!("http://localhost:{port}");
+        log::warn!(
+            "public_url not set — defaulting to {}. \
+             If running on a remote server, set public_url in config.toml \
+             or BOLLY_PUBLIC_URL env var to your public address.",
+            config.public_url
+        );
+    }
 
     let state = app::state::AppState::new(config).await;
 

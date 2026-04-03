@@ -192,10 +192,7 @@ impl Tool for ComputerUseTool {
 
                 if let Some(meta) = saved {
                     // URL-based image — no base64 in context, no truncation, no context bloat
-                    let full_url = format!(
-                        "{}/public/files/{}/{}?token={}",
-                        self.public_url, self.instance_slug, meta.id, self.auth_token
-                    );
+                    let full_url = super::public_file_url(&self.public_url, &self.instance_slug, &meta.id, &self.auth_token);
                     let chat_url = format!(
                         "/api/instances/{}/uploads/{}/file",
                         self.instance_slug, meta.id

@@ -45,15 +45,16 @@ impl MediaContext {
         ).map_err(|e| ToolExecError(format!("failed to save upload: {e}")))?;
 
         if self.public_url.is_empty() {
-            return Err(ToolExecError(
-                "no public URL configured — set BOLLY_PUBLIC_URL env var".into()
-            ));
+            // No public URL — return local file path for direct Gemini upload
+            let path = self.workspace_dir
+                .join("instances")
+                .join(&self.instance_slug)
+                .join("uploads")
+                .join(&meta.stored_name);
+            return Ok(path.display().to_string());
         }
 
-        Ok(format!(
-            "{}/public/files/{}/{}?token={}",
-            self.public_url, self.instance_slug, meta.id, self.auth_token
-        ))
+        Ok(super::public_file_url(&self.public_url, &self.instance_slug, &meta.id, &self.auth_token))
     }
 
     /// Process input → reference for Gemini.

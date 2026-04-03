@@ -22,6 +22,8 @@ pub struct Config {
     #[serde(default = "default_registry_url")]
     pub registry_url: String,
     #[serde(default)]
+    pub public_url: String,
+    #[serde(default)]
     pub plan: String,
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
@@ -312,6 +314,7 @@ impl Default for Config {
             auth_token: String::new(),
             static_dir: String::new(),
             landing_url: String::new(),
+            public_url: String::new(),
             llm: LlmConfig::default(),
             registry_url: default_registry_url(),
             plan: String::new(),
@@ -439,6 +442,11 @@ pub fn load_config() -> anyhow::Result<Config> {
     if let Ok(url) = env::var("LANDING_URL") {
         if !url.is_empty() {
             config.landing_url = url;
+        }
+    }
+    if let Ok(url) = env::var("BOLLY_PUBLIC_URL") {
+        if !url.is_empty() {
+            config.public_url = url;
         }
     }
 

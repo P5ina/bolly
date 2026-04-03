@@ -579,8 +579,10 @@ async fn search_memory(
         .join(&instance_slug)
         .join("memory");
 
-    let auth_token = state.config.read().await.auth_token.clone();
-    let public_url = std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default();
+    let cfg = state.config.read().await;
+    let auth_token = cfg.auth_token.clone();
+    let public_url = cfg.public_url.clone();
+    drop(cfg);
 
     let json: Vec<serde_json::Value> = results
         .into_iter()
@@ -604,18 +606,16 @@ async fn search_memory(
             if is_media {
                 if let Some(upload_id) = &r.upload_id {
                     let url = if upload_id.contains('/') {
-                        // Memory-originated file
                         if public_url.is_empty() {
                             format!("/api/instances/{instance_slug}/memory/{upload_id}")
                         } else {
-                            format!("{public_url}/public/memory/{instance_slug}/{upload_id}?token={auth_token}")
+                            crate::services::tools::public_memory_url(&public_url, &instance_slug, upload_id, &auth_token)
                         }
                     } else {
-                        // Upload file
                         if public_url.is_empty() {
                             format!("/api/instances/{instance_slug}/uploads/{upload_id}/file")
                         } else {
-                            format!("{public_url}/public/files/{instance_slug}/{upload_id}?token={auth_token}")
+                            crate::services::tools::public_file_url(&public_url, &instance_slug, upload_id, &auth_token)
                         }
                     };
                     obj["media_url"] = serde_json::Value::String(url);

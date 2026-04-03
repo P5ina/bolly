@@ -15,6 +15,24 @@ use regex::Regex;
 
 use crate::domain::events::ServerEvent;
 
+/// Build a public file URL, omitting `?token=` when the token is empty.
+pub fn public_file_url(base: &str, instance_slug: &str, file_id: &str, token: &str) -> String {
+    if token.is_empty() {
+        format!("{base}/public/files/{instance_slug}/{file_id}")
+    } else {
+        format!("{base}/public/files/{instance_slug}/{file_id}?token={token}")
+    }
+}
+
+/// Build a public memory URL, omitting `?token=` when the token is empty.
+pub fn public_memory_url(base: &str, instance_slug: &str, path: &str, token: &str) -> String {
+    if token.is_empty() {
+        format!("{base}/public/memory/{instance_slug}/{path}")
+    } else {
+        format!("{base}/public/memory/{instance_slug}/{path}?token={token}")
+    }
+}
+
 // Sub-modules
 pub mod calendar;
 pub mod communication;
@@ -450,6 +468,7 @@ pub fn build_tools(
     vector_store: Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
     machine_registry: crate::services::machine_registry::MachineRegistry,
+    public_url: &str,
 ) -> (Vec<Box<dyn ToolDyn>>, SentFiles) {
     let snap = mcp_snapshot;
     let wrap = |tool: Box<dyn ToolDyn>| -> Box<dyn ToolDyn> {
@@ -465,16 +484,16 @@ pub fn build_tools(
 
     // ── Core ──
     let mut tools: Vec<Box<dyn ToolDyn>> = vec![
-        wrap(Box::new(ReadFileTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(ReadFileTool::new(workspace_dir, instance_slug, public_url))),
         wrap(Box::new(WriteFileTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(EditFileTool::new(workspace_dir, instance_slug))),
-        wrap(Box::new(UploadFileTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(UploadFileTool::new(workspace_dir, instance_slug, public_url))),
         wrap(Box::new(ListFilesTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(MemoryWriteTool::new(workspace_dir, instance_slug, vector_store.clone(), google_ai_key))),
-        wrap(Box::new(MemoryReadTool::new(workspace_dir, instance_slug))),
+        wrap(Box::new(MemoryReadTool::new(workspace_dir, instance_slug, public_url))),
         wrap(Box::new(MemoryListTool::new(workspace_dir, instance_slug))),
         wrap(Box::new(MemoryForgetTool::new(workspace_dir, instance_slug, vector_store.clone(), google_ai_key))),
-        wrap(Box::new(MemorySearchTool::new(workspace_dir, instance_slug, vector_store.clone(), google_ai_key))),
+        wrap(Box::new(MemorySearchTool::new(workspace_dir, instance_slug, vector_store.clone(), google_ai_key, public_url))),
         wrap(Box::new(MemoryConnectTool::new(workspace_dir, instance_slug))),
         // Mood is managed by background sentiment extraction + heartbeat, not tools.
         wrap(Box::new(EditSoulTool::new(workspace_dir, instance_slug))),
@@ -508,14 +527,13 @@ pub fn build_tools(
     // web_search and web_fetch are native Anthropic server tools (added in llm.rs)
     tools.push(wrap(Box::new(ViewImageTool)));
     {
-        let public_url = std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default();
         let cfg = crate::config::load_config().ok();
         let auth_token = cfg.as_ref().map(|c| c.auth_token.as_str()).unwrap_or("");
         tools.push(wrap(Box::new(WatchVideoTool::new(
-            google_ai_key, workspace_dir, instance_slug, &public_url, auth_token,
+            google_ai_key, workspace_dir, instance_slug, public_url, auth_token,
         ))));
         tools.push(wrap(Box::new(ListenMusicTool::new(
-            google_ai_key, workspace_dir, instance_slug, &public_url, auth_token,
+            google_ai_key, workspace_dir, instance_slug, public_url, auth_token,
         ))));
     }
     // ── Agents ──
@@ -558,11 +576,10 @@ pub fn build_tools(
     // ── Computer use (multi-machine routing) ──
     tools.push(wrap(Box::new(ListMachinesTool::new(machine_registry.clone()))));
     {
-        let public_url = std::env::var("BOLLY_PUBLIC_URL").unwrap_or_default();
         let cfg = crate::config::load_config().ok();
         let auth_token = cfg.as_ref().map(|c| c.auth_token.as_str()).unwrap_or("");
         tools.push(wrap(Box::new(ComputerUseTool::new(
-            machine_registry.clone(), workspace_dir, instance_slug, &public_url, auth_token,
+            machine_registry.clone(), workspace_dir, instance_slug, public_url, auth_token,
         ))));
     }
     tools.push(wrap(Box::new(RemoteBashTool::new(machine_registry.clone()))));

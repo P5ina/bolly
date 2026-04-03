@@ -237,11 +237,11 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
         iteration += 1;
 
         let config_path = config::config_path();
-        let (plan, heavy_multiplier, fast_model_name, google_ai_key) = {
+        let (plan, heavy_multiplier, fast_model_name, google_ai_key, public_url) = {
             let cfg = state.config.read().await;
             (cfg.plan.clone(),
              cfg.llm.heavy_multiplier, cfg.llm.fast_model_name().to_string(),
-             cfg.llm.tokens.google_ai.clone())
+             cfg.llm.tokens.google_ai.clone(), cfg.public_url.clone())
         };
 
         let llm_guard = state.llm.read().await;
@@ -281,6 +281,7 @@ pub async fn run_agent_loop(state: AppState, instance_slug: String, chat_id: Str
             &google_ai_key,
             state.keyword_store.clone(),
             state.machine_registry.clone(),
+            &public_url,
         );
 
         let result = tokio::select! {

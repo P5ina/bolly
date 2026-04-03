@@ -581,6 +581,7 @@ fn build_agent_tools(
 ) -> Vec<Box<dyn ToolDyn>> {
     let cfg = config::load_config().ok();
     let auth_token = cfg.as_ref().map(|c| c.auth_token.clone()).unwrap_or_default();
+    let public_url = cfg.as_ref().map(|c| c.public_url.clone()).unwrap_or_default();
     let landing_url = cfg.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
     let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
     let email_accounts = crate::config::EmailAccounts::load(workspace_dir, slug);
@@ -596,14 +597,14 @@ fn build_agent_tools(
 
     let mut raw_tools: Vec<Box<dyn ToolDyn>> = vec![
         Box::new(MemoryWriteTool::new(workspace_dir, slug, vector_store.clone(), google_ai_key)),
-        Box::new(MemoryReadTool::new(workspace_dir, slug)),
+        Box::new(MemoryReadTool::new(workspace_dir, slug, &public_url)),
         Box::new(MemoryListTool::new(workspace_dir, slug)),
         Box::new(MemoryForgetTool::new(workspace_dir, slug, vector_store.clone(), google_ai_key)),
-        Box::new(MemorySearchTool::new(workspace_dir, slug, vector_store.clone(), google_ai_key)),
+        Box::new(MemorySearchTool::new(workspace_dir, slug, vector_store.clone(), google_ai_key, &public_url)),
         Box::new(MemoryConnectTool::new(workspace_dir, slug)),
         Box::new(CreateDropTool::new(workspace_dir, slug, events.clone())),
         Box::new(ReachOutTool::new(workspace_dir, slug, events.clone())),
-        Box::new(ReadFileTool::new(workspace_dir, slug)),
+        Box::new(ReadFileTool::new(workspace_dir, slug, &public_url)),
         Box::new(WriteFileTool::new(workspace_dir, slug)),
         Box::new(EditFileTool::new(workspace_dir, slug)),
         Box::new(ListFilesTool::new(workspace_dir, slug)),
