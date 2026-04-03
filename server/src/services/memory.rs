@@ -563,7 +563,7 @@ pub async fn extract_and_store(
     };
 
     // Detect image attachments in messages
-    let attachment_re = regex::Regex::new(r"\[attached:\s*(.+?)\s*\((\w+)\)\]").unwrap();
+    let attachment_re = regex::Regex::new(r"\[attached:\s*(.+?)\s*\(([^)]+)\)\]").unwrap();
     let uploads_dir = workspace_dir
         .join("instances")
         .join(instance_slug)

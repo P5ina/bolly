@@ -328,7 +328,7 @@ pub fn build_multimodal_prompt(
     public_url: &str,
     auth_token: &str,
 ) -> Message {
-    let re = regex::Regex::new(r"\[attached:\s*(.+?)\s*\((\w+)\)\]").unwrap();
+    let re = regex::Regex::new(r"\[attached:\s*(.+?)\s*\(([^)]+)\)\]").unwrap();
 
     let mut contents: Vec<ContentBlock> = Vec::new();
 

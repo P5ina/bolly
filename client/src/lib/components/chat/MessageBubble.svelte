@@ -89,7 +89,7 @@
 		url: string;
 	}
 
-	const ATTACH_RE = /\[attached:\s*(.+?)\s*\((\w+)\)\]/g;
+	const ATTACH_RE = /\[attached:\s*(.+?)\s*\(([^)]+)\)\]/g;
 	const IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "webp", "svg"];
 
 	const attachments = $derived.by(() => {
