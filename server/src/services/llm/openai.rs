@@ -4,11 +4,59 @@ use tokio::sync::broadcast;
 use crate::domain::events::ServerEvent;
 use crate::services::tool::ToolDefinition;
 
-use super::types::{ContentBlock, Message, ToolUseBlock, StreamOnceResult};
+use super::types::{ContentBlock, ImageSource, Message, ToolUseBlock, StreamOnceResult};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OpenAI Chat Completions format
 // ═══════════════════════════════════════════════════════════════════════════
+
+/// Convert an Anthropic-format image source to an OpenAI `image_url` content part.
+fn image_source_to_openai(source: &ImageSource) -> serde_json::Value {
+    let url = match source {
+        ImageSource::Base64 { media_type, data } => {
+            format!("data:{media_type};base64,{data}")
+        }
+        ImageSource::Url { url } => url.clone(),
+    };
+    serde_json::json!({"type": "image_url", "image_url": {"url": url}})
+}
+
+/// Convert Anthropic tool_result content (may contain image blocks) to OpenAI-safe format.
+fn tool_result_content_to_openai(content: &serde_json::Value) -> serde_json::Value {
+    // If content is an array of Anthropic content blocks, convert image → image_url
+    if let Some(arr) = content.as_array() {
+        let mut parts: Vec<serde_json::Value> = Vec::new();
+        for block in arr {
+            match block.get("type").and_then(|t| t.as_str()) {
+                Some("image") => {
+                    // Convert Anthropic image block → OpenAI image_url
+                    if let Some(source) = block.get("source") {
+                        let url = if source.get("type").and_then(|t| t.as_str()) == Some("base64") {
+                            let media_type = source["media_type"].as_str().unwrap_or("image/png");
+                            let data = source["data"].as_str().unwrap_or("");
+                            format!("data:{media_type};base64,{data}")
+                        } else {
+                            source["url"].as_str().unwrap_or("").to_string()
+                        };
+                        parts.push(serde_json::json!({"type": "image_url", "image_url": {"url": url}}));
+                    }
+                }
+                Some("text") => {
+                    parts.push(serde_json::json!({"type": "text", "text": block["text"]}));
+                }
+                _ => {
+                    // Drop unsupported block types (document, etc.)
+                }
+            }
+        }
+        if parts.is_empty() {
+            return serde_json::Value::String(String::new());
+        }
+        return serde_json::Value::Array(parts);
+    }
+    // String or other scalar — pass through as-is
+    content.clone()
+}
 
 /// Convert our internal Message format to OpenAI chat messages.
 pub(crate) fn messages_to_openai(system: &[&str], messages: &[Message]) -> Vec<serde_json::Value> {
@@ -23,9 +71,8 @@ pub(crate) fn messages_to_openai(system: &[&str], messages: &[Message]) -> Vec<s
     for msg in messages {
         match msg {
             Message::User { content } => {
-                // Check for tool results
                 let mut tool_results = Vec::new();
-                let mut text_parts = Vec::new();
+                let mut content_parts: Vec<serde_json::Value> = Vec::new();
 
                 for block in content {
                     match block {
@@ -33,10 +80,18 @@ pub(crate) fn messages_to_openai(system: &[&str], messages: &[Message]) -> Vec<s
                             tool_results.push(serde_json::json!({
                                 "role": "tool",
                                 "tool_call_id": tool_use_id,
-                                "content": content,
+                                "content": tool_result_content_to_openai(content),
                             }));
                         }
-                        ContentBlock::Text { text } => text_parts.push(text.clone()),
+                        ContentBlock::Text { text } => {
+                            content_parts.push(serde_json::json!({"type": "text", "text": text}));
+                        }
+                        ContentBlock::Image { source } => {
+                            content_parts.push(image_source_to_openai(source));
+                        }
+                        ContentBlock::Document { .. } => {
+                            // OpenAI doesn't support document blocks — skip
+                        }
                         _ => {}
                     }
                 }
@@ -45,10 +100,17 @@ pub(crate) fn messages_to_openai(system: &[&str], messages: &[Message]) -> Vec<s
                 if has_tools {
                     out.extend(tool_results);
                 }
-                if !text_parts.is_empty() {
-                    out.push(serde_json::json!({"role": "user", "content": text_parts.join("\n")}));
-                }
-                if !has_tools && text_parts.is_empty() {
+                if !content_parts.is_empty() {
+                    // Use array format when there are images, plain string for text-only
+                    let content_val = if content_parts.len() == 1
+                        && content_parts[0].get("type").and_then(|t| t.as_str()) == Some("text")
+                    {
+                        content_parts[0]["text"].clone()
+                    } else {
+                        serde_json::Value::Array(content_parts)
+                    };
+                    out.push(serde_json::json!({"role": "user", "content": content_val}));
+                } else if !has_tools {
                     out.push(serde_json::json!({"role": "user", "content": ""}));
                 }
             }
