@@ -1,6 +1,6 @@
 [package]
 name = "server"
-version = "0.30.3"
+version = "0.30.4"
 edition = "2024"
 description = "Bolly — AI companion server"
 authors = ["Triangle Interactive LLC"]
