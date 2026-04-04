@@ -55,15 +55,16 @@ async fn handle_agent(mut socket: WebSocket, state: AppState) {
 
     log::info!("[machine-ws] agent '{machine_id}' connected");
 
-    // If the machine allows screen recording, start recording immediately
-    // and notify the companion agent about the connection.
-    if screen_recording_allowed {
+    // Always notify the companion agent when a desktop connects.
+    // Start screen recording only if both flags are on.
+    {
         let registry = state.machine_registry.clone();
         let mid = machine_id.clone();
         let machine_os = os.clone();
+        let rec_allowed = screen_recording_allowed;
         let bg_state = state.clone();
         tokio::spawn(async move {
-            on_machine_connected_with_recording(&bg_state, &registry, &mid, &machine_os).await;
+            on_machine_connected(&bg_state, &registry, &mid, &machine_os, rec_allowed).await;
         });
     }
 
@@ -189,50 +190,57 @@ async fn wait_for_registration(
     }
 }
 
-/// When a machine connects with screen_recording_allowed, start recording
-/// immediately and notify the companion agent.
-async fn on_machine_connected_with_recording(
+/// When any desktop machine connects, notify the companion agent.
+/// If screen recording is enabled on both sides, start recording too.
+async fn on_machine_connected(
     state: &AppState,
     registry: &crate::services::machine_registry::MachineRegistry,
     machine_id: &str,
     os: &str,
+    screen_recording_allowed: bool,
 ) {
-    // Check if any instance has screen_recording enabled
     let instances_dir = state.workspace_dir.join("instances");
     let entries = match std::fs::read_dir(&instances_dir) {
         Ok(e) => e,
         Err(_) => return,
     };
 
-    let enabled_slugs: Vec<String> = entries
+    let all_slugs: Vec<(String, bool)> = entries
         .filter_map(Result::ok)
         .filter(|e| e.path().is_dir() && e.path().join("soul.md").exists())
-        .filter_map(|e| {
+        .map(|e| {
             let slug = e.file_name().to_string_lossy().to_string();
-            if crate::config::InstanceConfig::load(&state.workspace_dir, &slug).screen_recording {
-                Some(slug)
-            } else {
-                None
-            }
+            let sr = crate::config::InstanceConfig::load(&state.workspace_dir, &slug).screen_recording;
+            (slug, sr)
         })
         .collect();
 
-    if enabled_slugs.is_empty() {
+    if all_slugs.is_empty() {
         return;
     }
 
-    // Start recording immediately
-    crate::services::heartbeat::start_recording_on_machine(registry, machine_id, os).await;
+    // Start recording if both the desktop and any instance have it enabled
+    let any_instance_recording = all_slugs.iter().any(|(_, sr)| *sr);
+    if screen_recording_allowed && any_instance_recording {
+        crate::services::heartbeat::start_recording_on_machine(registry, machine_id, os).await;
+    }
 
-    // Log a system message + trigger companion agent for each enabled instance
-    for slug in &enabled_slugs {
+    // Notify ALL instances about the connection
+    for (slug, instance_recording) in &all_slugs {
+        let recording_status = match (screen_recording_allowed, *instance_recording) {
+            (true, true) => "screen recording is active — recording started.",
+            (true, false) => "screen recording is off on the server (instance config). the user can ask you to enable it with update_config.",
+            (false, true) => "screen recording is on in config but the desktop has it turned off in Settings.",
+            (false, false) => "screen recording is off.",
+        };
+
         let msg = format!(
-            "[system] desktop '{}' connected with screen recording enabled. recording started.",
-            machine_id
+            "[system] desktop '{}' connected. {}",
+            machine_id, recording_status
         );
         let _ = crate::services::chat::save_system_message(&state.workspace_dir, slug, "default", &msg);
 
-        // Trigger the companion agent with context about the connection
+        // Trigger the companion agent
         let llm_guard = state.llm.read().await;
         if let Some(llm) = llm_guard.as_ref() {
             let instance_dir = state.workspace_dir.join("instances").join(slug);
@@ -244,11 +252,10 @@ async fn on_machine_connected_with_recording(
             let agents = crate::services::child_agents::load_agents(&state.workspace_dir, slug);
             if let Some(companion) = agents.iter().find(|a| a.name == "companion") {
                 let task = format!(
-                    "the user's desktop computer '{}' just connected with screen recording enabled. \
-                     you're now recording their screen and will analyze it every 15 minutes. \
-                     USE reach_out NOW to let the user know you see their computer connected and that screen observation is active. \
+                    "the user's desktop computer '{}' just connected. {}.\n\
+                     USE reach_out NOW to let the user know their computer is connected. \
                      keep it brief and friendly.",
-                    machine_id
+                    machine_id, recording_status
                 );
                 let ws = state.workspace_dir.clone();
                 let s = slug.clone();
