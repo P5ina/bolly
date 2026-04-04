@@ -26,6 +26,17 @@ pub async fn connect_computer_use(
     instance_url: String,
     auth_token: String,
 ) -> Result<(), String> {
+    // Stop any existing connection first
+    let was_active = {
+        let mut active = BRIDGE_ACTIVE.lock().map_err(|e| e.to_string())?;
+        let prev = *active;
+        *active = false;
+        prev
+    };
+    if was_active {
+        // Give the old loop time to see the flag and exit
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
     {
         let mut active = BRIDGE_ACTIVE.lock().map_err(|e| e.to_string())?;
         *active = true;
@@ -66,9 +77,12 @@ pub async fn connect_computer_use(
 }
 
 #[tauri::command]
-pub fn disconnect_computer_use() -> Result<(), String> {
+pub fn disconnect_computer_use(app: tauri::AppHandle) -> Result<(), String> {
     let mut active = BRIDGE_ACTIVE.lock().map_err(|e| e.to_string())?;
     *active = false;
+    drop(active);
+    // Hide overlay immediately
+    overlay::hide(&app);
     Ok(())
 }
 

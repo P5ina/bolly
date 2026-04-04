@@ -8,6 +8,15 @@
   let visible = $state(false);
   let actionQueue = $state<{ id: number; text: string; icon: string }[]>([]);
   let idCounter = 0;
+  let hideTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function resetHideTimer() {
+    if (hideTimer) clearTimeout(hideTimer);
+    // Hide overlay 10s after last action (unless recording)
+    hideTimer = setTimeout(() => {
+      if (!recording) visible = false;
+    }, 10000);
+  }
 
   const actionIcons: Record<string, string> = {
     screenshot: "\u{1F4F7}",
@@ -71,6 +80,7 @@
         visible = true;
         flashAction(e.payload, "");
       }
+      resetHideTimer();
     });
 
     const unlistenDone = listen("computer-use-idle", () => {
