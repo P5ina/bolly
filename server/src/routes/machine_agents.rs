@@ -8,6 +8,7 @@ use axum::{
     response::Response,
     routing::{get, post},
 };
+use base64::Engine;
 use serde::Deserialize;
 
 use crate::app::state::AppState;
@@ -97,6 +98,14 @@ enum AgentMessage {
     Heartbeat {
         machine_id: String,
     },
+    /// Screen frame from desktop (base64 JPEG).
+    ScreenFrame {
+        machine_id: String,
+        /// Base64-encoded JPEG image.
+        image: String,
+        width: u32,
+        height: u32,
+    },
 }
 
 async fn handle_agent(mut socket: WebSocket, state: AppState) {
@@ -144,6 +153,17 @@ async fn handle_agent(mut socket: WebSocket, state: AppState) {
                                 }
                                 AgentMessage::Register { .. } => {
                                     // Already registered, ignore duplicate
+                                }
+                                AgentMessage::ScreenFrame { machine_id: mid, image, width, height } => {
+                                    if let Ok(jpeg) = base64::engine::general_purpose::STANDARD.decode(&image) {
+                                        let frame = crate::services::machine_registry::ScreenFrame {
+                                            jpeg,
+                                            width,
+                                            height,
+                                            timestamp: chrono::Utc::now().timestamp(),
+                                        };
+                                        state.machine_registry.push_frame(&mid, frame).await;
+                                    }
                                 }
                             }
                         } else {

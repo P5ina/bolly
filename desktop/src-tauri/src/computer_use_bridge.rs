@@ -203,8 +203,12 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
     let cached_scale = std::sync::Arc::new(std::sync::Mutex::new(1.0f64));
 
     let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(20));
-    ping_interval.tick().await; // skip first immediate tick
+    ping_interval.tick().await;
     let mut last_pong = std::time::Instant::now();
+
+    // Frame streaming interval (1 fps when recording)
+    let mut frame_interval = tokio::time::interval(std::time::Duration::from_secs(1));
+    frame_interval.tick().await;
 
     // Main loop: receive toolcalls, execute, send results
     loop {
@@ -241,15 +245,32 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
                 }
             }
             _ = ping_interval.tick() => {
-                // Send ping
                 if write.send(Message::Ping(vec![].into())).await.is_err() {
                     eprintln!("[agent] ping send failed, reconnecting...");
                     break;
                 }
-                // Check if we got a pong recently (within 45s)
                 if last_pong.elapsed() > std::time::Duration::from_secs(45) {
                     eprintln!("[agent] no pong in 45s, reconnecting...");
                     break;
+                }
+                continue;
+            }
+            _ = frame_interval.tick() => {
+                // Stream latest frame to server if recording
+                if crate::screen_recorder::is_recording() {
+                    if let Some(jpeg) = crate::screen_recorder::get_last_frame() {
+                        let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
+                        let msg = serde_json::json!({
+                            "type": "screen_frame",
+                            "machine_id": machine_id,
+                            "image": b64,
+                            "width": 0,
+                            "height": 0,
+                        });
+                        if write.send(Message::Text(msg.to_string().into())).await.is_err() {
+                            break;
+                        }
+                    }
                 }
                 continue;
             }
