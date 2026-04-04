@@ -109,8 +109,8 @@ async fn trigger_agent(
         match child_agents::run_single_agent(
             &ws, &slug, &instance_dir, &llm_clone, &events, &vs, &google_ai_key, &agent, None, "manual", None,
         ).await {
-            Ok((tokens, run_id)) => {
-                log::info!("[agents-api] {slug}: manually triggered '{}' ({tokens} tokens, {run_id})", agent.name);
+            Ok(r) => {
+                log::info!("[agents-api] {slug}: manually triggered '{}' ({} tokens, {})", agent.name, r.tokens, r.run_id);
             }
             Err(e) => {
                 log::warn!("[agents-api] {slug}: manual trigger '{}' failed: {e}", agent.name);

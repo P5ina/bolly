@@ -186,7 +186,7 @@ async fn run_agent_tick(
         workspace_dir, slug, instance_dir, llm, events, vector_store, google_ai_key,
         agent, None, "heartbeat", Some(machine_registry),
     ).await {
-        Ok((tokens, _run_id)) => {
+        Ok(r) => {
             // Mark as run
             let marker = workspace_dir
                 .join("instances").join(slug).join("agents")
@@ -195,16 +195,16 @@ async fn run_agent_tick(
 
             let _ = chat::save_system_message(
                 workspace_dir, slug, "default",
-                &format!("[system] child agent '{}' ran ({tokens} tokens)", agent.name),
+                &format!("[system] child agent '{}' ran ({} tokens)", agent.name, r.tokens),
             );
 
-            log::info!("[heartbeat] {slug}/{}: done ({tokens} tokens)", agent.name);
+            log::info!("[heartbeat] {slug}/{}: done ({} tokens)", agent.name, r.tokens);
 
-            // Save thought
+            // Save thought with the agent's actual inner monologue
             let final_mood = load_mood_state(instance_dir).companion_mood;
             let thought = Thought {
                 id: format!("thought_{}", unix_millis()),
-                raw: format!("agent '{}' ran", agent.name),
+                raw: r.response,
                 actions: vec![format!("wake:{}", agent.name)],
                 mood: final_mood,
                 created_at: unix_millis().to_string(),

@@ -311,7 +311,7 @@ async fn on_machine_connected(
                         &ws, &s, &instance_dir, &llm_c, &events, &vs, &google_ai_key,
                         &agent, Some(&task), "machine_connected", None,
                     ).await {
-                        Ok((tokens, _)) => log::info!("[machine-connect] {s}: companion reach_out done ({tokens} tokens)"),
+                        Ok(r) => log::info!("[machine-connect] {s}: companion reach_out done ({} tokens)", r.tokens),
                         Err(e) => {
                             log::error!("[machine-connect] {s}: companion failed: {e}");
                             let err_msg = format!("[system] failed to notify companion about desktop connection: {e}");

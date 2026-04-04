@@ -1729,7 +1729,7 @@ impl Tool for CallAgentTool {
 
         log::info!("[call_agent] invoking '{}' with task: {task}", agent.name);
 
-        let (tokens, run_id) = crate::services::child_agents::run_single_agent(
+        let r = crate::services::child_agents::run_single_agent(
             &self.workspace_dir,
             &self.instance_slug,
             &instance_dir,
@@ -1745,12 +1745,8 @@ impl Tool for CallAgentTool {
         .await
         .map_err(|e| ToolExecError(format!("agent '{}' failed: {e}", agent.name)))?;
 
-        // Load the run to get the response
-        let run = crate::services::agent_runs::load_run(&self.workspace_dir, &self.instance_slug, &run_id)
-            .map_err(|e| ToolExecError(format!("failed to load run: {e}")))?;
-
-        log::info!("[call_agent] '{}' completed ({tokens} tokens, {run_id})", agent.name);
-        Ok(format!("{}\n\n[agent run: {run_id}]", run.summary))
+        log::info!("[call_agent] '{}' completed ({} tokens, {})", agent.name, r.tokens, r.run_id);
+        Ok(format!("{}\n\n[agent run: {}]", r.response, r.run_id))
     }
 }
 

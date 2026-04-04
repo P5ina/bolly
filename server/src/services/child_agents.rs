@@ -243,6 +243,14 @@ pub fn load_agents(workspace_dir: &Path, slug: &str) -> Vec<ChildAgentConfig> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Run a single child agent. Public for manual trigger via API.
+/// Result of running a child agent.
+pub struct AgentRunResult {
+    pub tokens: u64,
+    pub run_id: String,
+    /// The agent's response text (inner monologue).
+    pub response: String,
+}
+
 pub async fn run_single_agent(
     workspace_dir: &Path,
     slug: &str,
@@ -255,7 +263,7 @@ pub async fn run_single_agent(
     task_override: Option<&str>,
     trigger: &str,
     machine_registry: Option<&crate::services::machine_registry::MachineRegistry>,
-) -> anyhow::Result<(u64, String)> {
+) -> anyhow::Result<AgentRunResult> {
     let soul = fs::read_to_string(instance_dir.join("soul.md")).unwrap_or_default();
     let mood = load_mood_state(instance_dir);
 
@@ -399,7 +407,7 @@ pub async fn run_single_agent(
     );
     chat::append_to_rig_history(&history_path, &entry);
 
-    Ok((tokens, run_id))
+    Ok(AgentRunResult { tokens, run_id, response })
 }
 
 /// Build the tool set for child agents.
