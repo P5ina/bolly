@@ -235,6 +235,18 @@ async fn on_machine_connected(
             "[machine-connect] no matching instances for '{}' (bound_slug={:?}, instances_dir={})",
             machine_id, bound_slug, instances_dir.display()
         );
+        // Try to notify at least something — find any instance with soul.md
+        let fallback: Vec<String> = std::fs::read_dir(&instances_dir)
+            .into_iter().flatten().filter_map(Result::ok)
+            .filter(|e| e.path().is_dir() && e.path().join("soul.md").exists())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        for slug in &fallback {
+            let _ = crate::services::chat::save_system_message(
+                &state.workspace_dir, slug, "default",
+                &format!("[system] desktop '{}' connected but no matching instance found (bound_slug={:?}). check your instance config.", machine_id, bound_slug),
+            );
+        }
         return;
     }
 
@@ -246,6 +258,7 @@ async fn on_machine_connected(
     // Start recording if both the desktop and any instance have it enabled
     let any_instance_recording = all_slugs.iter().any(|(_, sr)| *sr);
     if screen_recording_allowed && any_instance_recording {
+        log::info!("[machine-connect] starting screen recording on '{}'", machine_id);
         crate::services::heartbeat::start_recording_on_machine(registry, machine_id, os).await;
     }
 
@@ -290,20 +303,47 @@ async fn on_machine_connected(
                 let vs = state.vector_store.clone();
                 let llm_c = llm.clone();
                 let agent = companion.clone();
+                let ws2 = ws.clone();
+                let s2 = s.clone();
+                let events2 = events.clone();
                 tokio::spawn(async move {
                     match crate::services::child_agents::run_single_agent(
                         &ws, &s, &instance_dir, &llm_c, &events, &vs, &google_ai_key,
                         &agent, Some(&task), "machine_connected",
                     ).await {
                         Ok((tokens, _)) => log::info!("[machine-connect] {s}: companion reach_out done ({tokens} tokens)"),
-                        Err(e) => log::error!("[machine-connect] {s}: companion failed: {e}"),
+                        Err(e) => {
+                            log::error!("[machine-connect] {s}: companion failed: {e}");
+                            let err_msg = format!("[system] failed to notify companion about desktop connection: {e}");
+                            let _ = crate::services::chat::save_system_message(&ws2, &s2, "default", &err_msg);
+                            let _ = events2.send(crate::domain::events::ServerEvent::ChatMessageCreated {
+                                instance_slug: s2.clone(),
+                                chat_id: "default".to_string(),
+                                message: crate::domain::chat::ChatMessage {
+                                    id: format!("err_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()),
+                                    role: crate::domain::chat::ChatRole::Assistant,
+                                    content: format!("could not process desktop connection notification: {e}"),
+                                    created_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis().to_string(),
+                                    kind: Default::default(),
+                                    tool_name: None, mcp_app_html: None, mcp_app_input: None, model: None,
+                                },
+                            });
+                        }
                     }
                 });
             } else {
                 log::warn!("[machine-connect] {slug}: no companion agent found");
+                let _ = crate::services::chat::save_system_message(
+                    &state.workspace_dir, slug, "default",
+                    &format!("[system] desktop '{}' connected, but companion agent not found — cannot send notification.", machine_id),
+                );
             }
         } else {
             log::error!("[machine-connect] {slug}: LLM not configured, cannot trigger companion");
+            let _ = crate::services::chat::save_system_message(
+                &state.workspace_dir, slug, "default",
+                &format!("[system] desktop '{}' connected, but LLM is not configured — cannot notify companion.", machine_id),
+            );
         }
     }
 }
