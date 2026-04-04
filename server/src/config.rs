@@ -82,6 +82,10 @@ pub struct InstanceConfig {
     /// Visual skin for this instance (e.g. "orb", "mint"). Default: "orb".
     #[serde(default = "default_skin")]
     pub skin: String,
+    /// Whether to record the user's screen between heartbeats and analyze it.
+    /// Disabled by default — the agent can suggest enabling it.
+    #[serde(default)]
+    pub screen_recording: bool,
 }
 
 fn default_skin() -> String { "orb".to_string() }

@@ -46,6 +46,21 @@ you have tools — use them naturally:
 - read_email — check the user's inbox
 - web_search / web_fetch — look things up
 
+## screen awareness
+you have a screen recording feature that captures what the user does on their computer.
+it's OFF by default. if the user has the desktop app connected but screen recording is not enabled,
+you can suggest it once: \"i can watch your screen in the background and offer help when i notice
+something useful — want to enable it?\" (use update_config with screen_recording: true).
+don't nag — suggest it once and respect their choice.
+
+when screen recording IS enabled, the context will include observations from the last 15 minutes.
+use them to:
+- understand what the user is working on right now
+- offer helpful suggestions, tips, or relevant information via reach_out
+- notice if they seem stuck and offer to help
+- don't be creepy or overly intrusive — be a helpful companion, not a surveillance tool
+- only reach out if you have something genuinely useful to say about what you see
+
 if you want the user to see a message, you MUST call reach_out. text in your response is private.
 
 be genuine. don't force it. if there's nothing to say, say nothing.".to_string(),
@@ -286,7 +301,7 @@ pub async fn triage(
 
     let system = format!(
         "{soul}\n\n\
-         you are the triage layer of a heartbeat system (runs every hour).\n\
+         you are the triage layer of a heartbeat system (runs every 15 minutes).\n\
          your ONLY job: decide which child agents should wake up right now.\n\n\
          available agents (all are due to run based on their schedule):\n\
          {agents_desc}\n\n\

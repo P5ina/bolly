@@ -17,21 +17,19 @@ use crate::domain::mood::MoodState;
 use crate::domain::thought::Thought;
 use crate::services::{chat, drops, llm::LlmBackend, memory, rhythm, thoughts};
 use crate::services::tools::load_mood_state;
+use crate::services::machine_registry::{AgentToolCall, MachineRegistry};
 
 
 /// Minimum minutes since last interaction before the companion considers reaching out.
 const MIN_SILENCE_MINS: i64 = 30;
 
-/// Seconds until the next full UTC hour.
-fn secs_until_next_hour() -> u64 {
+/// Seconds until the next quarter-hour boundary (00, 15, 30, 45).
+fn secs_until_next_quarter() -> u64 {
     let now = Utc::now();
-    let next_hour_secs = (now.hour() + 1) * 3600;
-    let now_secs = now.hour() * 3600 + now.minute() * 60 + now.second();
-    if next_hour_secs >= 24 * 3600 {
-        (24 * 3600 - now_secs) as u64
-    } else {
-        (next_hour_secs - now_secs) as u64
-    }
+    let total_secs = now.minute() * 60 + now.second();
+    let quarter_secs = 15 * 60; // 900 seconds
+    let into_quarter = total_secs % quarter_secs;
+    if into_quarter == 0 { quarter_secs as u64 } else { (quarter_secs - into_quarter) as u64 }
 }
 
 pub fn start(
@@ -40,6 +38,7 @@ pub fn start(
     events: broadcast::Sender<ServerEvent>,
     vector_store: Arc<crate::services::vector::VectorStore>,
     google_ai_key: String,
+    machine_registry: MachineRegistry,
 ) {
     // Ensure built-in child agents exist for all instances immediately (don't wait for first tick)
     let instances_dir = workspace_dir.join("instances");
@@ -54,21 +53,21 @@ pub fn start(
 
     let workspace = workspace_dir.to_path_buf();
     tokio::spawn(async move {
-        // Wait until the next full UTC hour before the first heartbeat
-        let initial_wait = secs_until_next_hour();
+        // Wait until the next quarter-hour boundary before the first heartbeat
+        let initial_wait = secs_until_next_quarter();
         log::info!("heartbeat: first tick in {}m", initial_wait / 60);
         tokio::time::sleep(Duration::from_secs(initial_wait)).await;
 
-        let mut interval = tokio::time::interval(Duration::from_secs(3600));
+        let mut interval = tokio::time::interval(Duration::from_secs(900));
         loop {
             interval.tick().await;
             let llm_guard = llm.read().await;
             if let Some(backend) = llm_guard.as_ref() {
-                run_heartbeat(&workspace, backend, &events, &vector_store, &google_ai_key).await;
+                run_heartbeat(&workspace, backend, &events, &vector_store, &google_ai_key, &machine_registry).await;
             }
         }
     });
-    log::info!("heartbeat started — companion wakes up every hour");
+    log::info!("heartbeat started — companion wakes up every 15 minutes");
 }
 
 async fn run_heartbeat(
@@ -77,6 +76,7 @@ async fn run_heartbeat(
     events: &broadcast::Sender<ServerEvent>,
     vector_store: &Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
+    machine_registry: &MachineRegistry,
 ) {
     let instances_dir = workspace_dir.join("instances");
     let entries = match fs::read_dir(&instances_dir) {
@@ -90,6 +90,19 @@ async fn run_heartbeat(
         .collect();
     instances.sort_by_key(|e| e.file_name());
 
+    // ── Screen recording lifecycle ──
+    // Only manage recording if any instance has screen_recording enabled.
+    let any_screen_enabled = instances.iter().any(|e| {
+        let slug = e.file_name().to_string_lossy().to_string();
+        crate::config::InstanceConfig::load(workspace_dir, &slug).screen_recording
+    });
+
+    let screen_context = if any_screen_enabled {
+        manage_screen_recording(machine_registry, google_ai_key).await
+    } else {
+        None
+    };
+
     for (i, entry) in instances.iter().enumerate() {
         // Stagger instances to avoid API burst on restart
         if i > 0 {
@@ -99,7 +112,18 @@ async fn run_heartbeat(
         let instance_dir = entry.path();
         let slug = entry.file_name().to_string_lossy().to_string();
 
-        if let Err(e) = heartbeat_instance(workspace_dir, &slug, &instance_dir, llm, events, vector_store, google_ai_key).await
+        // Only pass screen context to instances that have it enabled
+        let inst_cfg = crate::config::InstanceConfig::load(workspace_dir, &slug);
+        let inst_screen = if inst_cfg.screen_recording {
+            screen_context.as_deref()
+        } else {
+            None
+        };
+
+        if let Err(e) = heartbeat_instance(
+            workspace_dir, &slug, &instance_dir, llm, events, vector_store,
+            google_ai_key, inst_screen,
+        ).await
         {
             log::warn!("heartbeat failed for {slug}: {e}");
         }
@@ -114,6 +138,7 @@ async fn heartbeat_instance(
     events: &broadcast::Sender<ServerEvent>,
     vector_store: &Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
+    screen_context: Option<&str>,
 ) -> anyhow::Result<()> {
     let mood = load_mood_state(instance_dir);
     let now = Utc::now().timestamp();
@@ -177,6 +202,7 @@ async fn heartbeat_instance(
         instance_dir,
         hours_since_last_drop,
         hours_since_last_reach_out,
+        screen_context,
     );
 
     // ── Triage + run child agents ──
@@ -237,6 +263,7 @@ fn build_reflection_prompt(
     instance_dir: &std::path::Path,
     hours_since_last_drop: Option<i64>,
     hours_since_last_reach_out: Option<i64>,
+    screen_context: Option<&str>,
 ) -> String {
     let now = crate::routes::instances::format_instance_now(instance_dir);
     let mut prompt = format!("current time: {now}\n\n");
@@ -321,6 +348,14 @@ fn build_reflection_prompt(
         prompt.push('\n');
     }
 
+    // Screen observation — what was happening on the user's screen
+    if let Some(screen) = screen_context {
+        prompt.push_str("\n## what's on the user's screen (last 15 minutes)\n");
+        prompt.push_str(screen);
+        prompt.push_str("\n\nuse this to understand what the user is working on. \
+            if you notice something you can help with, use reach_out to offer a suggestion.\n");
+    }
+
     // Staleness signals — help the model decide what to do
     prompt.push_str("\n## activity staleness\n");
     match hours_since_last_drop {
@@ -395,7 +430,123 @@ fn load_recent_drops_context(workspace_dir: &Path, slug: &str) -> String {
         .join("\n")
 }
 
-// All heartbeat tools and execution moved to child_agents.rs
+// ═══════════════════════════════════════════════════════════════════════════
+// Screen recording management
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SCREEN_RECORDING_PATH: &str = "/tmp/bolly_screen.mp4";
+
+/// Stop any previous screen recording, analyze it with Gemini, then start a new one.
+/// Returns the Gemini analysis text if a recording was found and analyzed.
+async fn manage_screen_recording(
+    registry: &MachineRegistry,
+    google_ai_key: &str,
+) -> Option<String> {
+    if google_ai_key.is_empty() {
+        return None;
+    }
+
+    let machines = registry.list().await;
+    if machines.is_empty() {
+        return None;
+    }
+
+    // Find a machine that allows screen recording
+    let machine = match machines.iter().find(|m| m.screen_recording_allowed) {
+        Some(m) => m,
+        None => return None, // no machines allow recording
+    };
+    let machine_id = &machine.machine_id;
+
+    // 1. Stop any existing ffmpeg screen recording
+    let stop_cmd = AgentToolCall {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        action: "bash".into(),
+        params: serde_json::json!({
+            "command": "pkill -f 'ffmpeg.*bolly_screen' 2>/dev/null; sleep 2; echo stopped"
+        }),
+    };
+    if let Err(e) = registry.execute(machine_id, stop_cmd).await {
+        log::warn!("[heartbeat] failed to stop screen recording: {e}");
+    }
+
+    // 2. Check if recording exists and analyze it
+    let analysis = {
+        let path = std::path::Path::new(SCREEN_RECORDING_PATH);
+        if path.exists() {
+            let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+            if size > 50_000 {
+                // At least 50KB — not empty/corrupt
+                log::info!("[heartbeat] analyzing screen recording ({:.1} MB)", size as f64 / 1024.0 / 1024.0);
+                match analyze_screen_recording(SCREEN_RECORDING_PATH, google_ai_key).await {
+                    Ok(text) => {
+                        let _ = std::fs::remove_file(path);
+                        Some(text)
+                    }
+                    Err(e) => {
+                        log::warn!("[heartbeat] screen recording analysis failed: {e}");
+                        let _ = std::fs::remove_file(path);
+                        None
+                    }
+                }
+            } else {
+                let _ = std::fs::remove_file(path);
+                None
+            }
+        } else {
+            None
+        }
+    };
+
+    // 3. Start a new recording (16 min — slightly longer than heartbeat interval for safety)
+    let record_cmd = if machine.os.to_lowercase().contains("mac") || machine.os.to_lowercase().contains("darwin") {
+        format!(
+            "nohup ffmpeg -f avfoundation -capture_cursor 1 -framerate 1 \
+             -i \"Capture screen 0:none\" \
+             -t 960 -c:v libx264 -preset ultrafast -crf 35 \
+             -pix_fmt yuv420p -an -y {} > /dev/null 2>&1 &",
+            SCREEN_RECORDING_PATH
+        )
+    } else {
+        // Linux (X11)
+        format!(
+            "nohup ffmpeg -f x11grab -framerate 1 -i :0.0 \
+             -t 960 -c:v libx264 -preset ultrafast -crf 35 \
+             -pix_fmt yuv420p -an -y {} > /dev/null 2>&1 &",
+            SCREEN_RECORDING_PATH
+        )
+    };
+
+    let start_cmd = AgentToolCall {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        action: "bash".into(),
+        params: serde_json::json!({ "command": record_cmd }),
+    };
+    match registry.execute(machine_id, start_cmd).await {
+        Ok(_) => log::info!("[heartbeat] started screen recording on '{}'", machine_id),
+        Err(e) => log::warn!("[heartbeat] failed to start screen recording: {e}"),
+    }
+
+    analysis
+}
+
+/// Analyze a screen recording with Gemini.
+async fn analyze_screen_recording(path: &str, google_ai_key: &str) -> anyhow::Result<String> {
+    use crate::services::tools::media::{analyze_with_gemini, MediaType};
+
+    let prompt = "You are observing a screen recording of a user's computer over the last 15 minutes \
+        (captured at 1 fps). Describe what the user was doing:\n\
+        - What applications/websites were they using?\n\
+        - What were they working on? (coding, writing, browsing, etc.)\n\
+        - Any notable content visible on screen?\n\
+        - What might they need help with?\n\n\
+        Be concise but specific. Focus on actionable observations.";
+
+    let result = analyze_with_gemini(google_ai_key, path, prompt, MediaType::Video).await
+        .map_err(|e| anyhow::anyhow!("{}", e.0))?;
+
+    Ok(result)
+}
 
 fn unix_millis() -> u128 {
     SystemTime::now()

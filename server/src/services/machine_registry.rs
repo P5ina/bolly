@@ -12,6 +12,8 @@ pub struct MachineInfo {
     pub screen_width: u32,
     pub screen_height: u32,
     pub last_seen: i64,
+    /// Whether this machine allows screen recording for observation.
+    pub screen_recording_allowed: bool,
 }
 
 /// A pending computer use request waiting for an agent to respond.

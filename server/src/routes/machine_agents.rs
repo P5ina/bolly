@@ -31,6 +31,8 @@ enum AgentMessage {
         hostname: String,
         screen_width: u32,
         screen_height: u32,
+        #[serde(default)]
+        screen_recording_allowed: bool,
     },
     /// Agent sends back the result of a toolcall.
     ActionResult {
@@ -141,7 +143,7 @@ async fn wait_for_registration(
             incoming = socket.recv() => {
                 match incoming {
                     Some(Ok(Message::Text(text))) => {
-                        if let Ok(AgentMessage::Register { machine_id, os, hostname, screen_width, screen_height }) =
+                        if let Ok(AgentMessage::Register { machine_id, os, hostname, screen_width, screen_height, screen_recording_allowed }) =
                             serde_json::from_str::<AgentMessage>(&text)
                         {
                             let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -152,6 +154,7 @@ async fn wait_for_registration(
                                 screen_width,
                                 screen_height,
                                 last_seen: chrono::Utc::now().timestamp(),
+                                screen_recording_allowed,
                             };
                             state.machine_registry.register(info, tx).await;
 

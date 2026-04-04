@@ -113,6 +113,8 @@ pub fn run() {
             computer_use::computer_key,
             computer_use_bridge::connect_computer_use,
             computer_use_bridge::disconnect_computer_use,
+            computer_use_bridge::set_screen_recording_allowed,
+            computer_use_bridge::get_screen_recording_allowed,
             permissions::check_permissions,
             permissions::open_permission_settings,
         ])

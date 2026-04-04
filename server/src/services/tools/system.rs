@@ -926,6 +926,16 @@ impl Tool for GetSettingsTool {
                     lines.push("github: not connected".into());
                 }
 
+                // Screen recording
+                lines.push(format!(
+                    "screen recording: {}",
+                    if instance_cfg.screen_recording {
+                        "enabled — recording user's screen between heartbeats"
+                    } else {
+                        "disabled (off by default — enable via update_config to observe the user's screen and offer contextual help)"
+                    }
+                ));
+
                 // MCP servers
                 if config.mcp_servers.is_empty() {
                     lines.push("extensions (mcp): none".into());
@@ -1018,6 +1028,9 @@ pub struct UpdateConfigArgs {
     pub remove_email_account: Option<String>,
     /// Model routing mode: "auto" (classifier picks fast/heavy per message), "fast" (always cheap model), "heavy" (always powerful model). Leave null to keep current.
     pub model_mode: Option<String>,
+    /// Enable/disable screen recording observation. When true, the companion records the user's
+    /// screen between heartbeats and analyzes it to offer contextual suggestions. Default: false (off).
+    pub screen_recording: Option<bool>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -1180,6 +1193,14 @@ impl Tool for UpdateConfigTool {
             instance_cfg.save(&self.workspace_dir, &self.instance_slug)
                 .map_err(|e| ToolExecError(format!("failed to save instance config: {e}")))?;
             changes.push(if token.is_empty() { "github token removed".into() } else { "github token updated".into() });
+        }
+
+        if let Some(enabled) = args.screen_recording {
+            let mut instance_cfg = crate::config::InstanceConfig::load(&self.workspace_dir, &self.instance_slug);
+            instance_cfg.screen_recording = enabled;
+            instance_cfg.save(&self.workspace_dir, &self.instance_slug)
+                .map_err(|e| ToolExecError(format!("failed to save instance config: {e}")))?;
+            changes.push(format!("screen recording → {}", if enabled { "enabled" } else { "disabled" }));
         }
 
         // --- Email account management ---

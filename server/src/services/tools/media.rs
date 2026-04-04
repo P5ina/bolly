@@ -109,7 +109,7 @@ impl MediaContext {
 }
 
 #[derive(Clone, Copy)]
-pub enum MediaType {
+pub(crate) enum MediaType {
     Video,
     Audio,
 }
@@ -324,7 +324,7 @@ async fn compress_media(path: &Path, media_type: MediaType) -> Result<String, To
 }
 
 /// Analyze media with Gemini via Google AI API (direct, no OpenRouter).
-async fn analyze_with_gemini(
+pub(crate) async fn analyze_with_gemini(
     api_key: &str,
     media_ref: &str,
     prompt: &str,

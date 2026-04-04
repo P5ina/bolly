@@ -118,6 +118,7 @@ async fn main() {
             state.events.clone(),
             state.vector_store.clone(),
             google_ai_key.clone(),
+            state.machine_registry.clone(),
         );
 
         // Backfill existing memories into LanceDB (background, non-blocking)

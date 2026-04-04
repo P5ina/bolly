@@ -8,6 +8,9 @@ use crate::overlay;
 /// Whether the bridge is active.
 static BRIDGE_ACTIVE: Mutex<bool> = Mutex::new(false);
 
+/// Whether this machine allows screen recording for observation (off by default).
+static SCREEN_RECORDING_ALLOWED: Mutex<bool> = Mutex::new(false);
+
 /// Start the machine agent — connects to the server's machine WebSocket,
 /// registers this machine, then listens for toolcalls and executes them.
 #[tauri::command]
@@ -62,6 +65,19 @@ pub fn disconnect_computer_use() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn set_screen_recording_allowed(allowed: bool) -> Result<(), String> {
+    let mut val = SCREEN_RECORDING_ALLOWED.lock().map_err(|e| e.to_string())?;
+    *val = allowed;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_screen_recording_allowed() -> Result<bool, String> {
+    let val = SCREEN_RECORDING_ALLOWED.lock().map_err(|e| e.to_string())?;
+    Ok(*val)
+}
+
 async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str) -> Result<(), String> {
     let ws_proto = if instance_url.starts_with("https") {
         "wss"
@@ -99,6 +115,11 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
         })
         .unwrap_or((1920, 1080));
 
+    let screen_recording_allowed = SCREEN_RECORDING_ALLOWED
+        .lock()
+        .map(|v| *v)
+        .unwrap_or(false);
+
     let register = serde_json::json!({
         "type": "register",
         "machine_id": machine_id,
@@ -106,6 +127,7 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
         "hostname": machine_id,
         "screen_width": sw,
         "screen_height": sh,
+        "screen_recording_allowed": screen_recording_allowed,
     });
     write
         .send(Message::Text(register.to_string().into()))
