@@ -116,6 +116,7 @@ pub fn run() {
             computer_use_bridge::set_screen_recording_allowed,
             computer_use_bridge::get_screen_recording_allowed,
             computer_use_bridge::stop_screen_recording,
+            computer_use_bridge::set_instance_slug,
             permissions::check_permissions,
             permissions::open_permission_settings,
         ])

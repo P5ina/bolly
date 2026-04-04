@@ -15,6 +15,9 @@ static SCREEN_RECORDING_ALLOWED: Mutex<bool> = Mutex::new(false);
 /// Whether screen recording is currently active (for overlay indicator).
 static RECORDING_ACTIVE: Mutex<bool> = Mutex::new(false);
 
+/// Instance slug this machine is bound to (set from URL or explicitly).
+static INSTANCE_SLUG: Mutex<Option<String>> = Mutex::new(None);
+
 /// Start the machine agent — connects to the server's machine WebSocket,
 /// registers this machine, then listens for toolcalls and executes them.
 #[tauri::command]
@@ -82,6 +85,14 @@ pub fn get_screen_recording_allowed() -> Result<bool, String> {
     Ok(*val)
 }
 
+/// Set the instance slug this machine is bound to.
+#[tauri::command]
+pub fn set_instance_slug(slug: String) -> Result<(), String> {
+    let mut val = INSTANCE_SLUG.lock().map_err(|e| e.to_string())?;
+    *val = if slug.is_empty() { None } else { Some(slug) };
+    Ok(())
+}
+
 /// Stop any active screen recording (kill ffmpeg).
 #[tauri::command]
 pub fn stop_screen_recording(app: tauri::AppHandle) -> Result<(), String> {
@@ -138,6 +149,21 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
         .map(|v| *v)
         .unwrap_or(false);
 
+    // Resolve instance slug: explicit > parsed from cloud URL
+    let instance_slug = INSTANCE_SLUG
+        .lock()
+        .ok()
+        .and_then(|v| v.clone())
+        .or_else(|| {
+            // Parse from cloud URL: https://{slug}.bollyai.dev
+            let host = instance_url.trim_start_matches("https://").trim_start_matches("http://");
+            if host.ends_with(".bollyai.dev") {
+                host.split('.').next().map(|s| s.to_string())
+            } else {
+                None
+            }
+        });
+
     let register = serde_json::json!({
         "type": "register",
         "machine_id": machine_id,
@@ -146,6 +172,7 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
         "screen_width": sw,
         "screen_height": sh,
         "screen_recording_allowed": screen_recording_allowed,
+        "instance_slug": instance_slug,
     });
     write
         .send(Message::Text(register.to_string().into()))

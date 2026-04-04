@@ -14,6 +14,8 @@ pub struct MachineInfo {
     pub last_seen: i64,
     /// Whether this machine allows screen recording for observation.
     pub screen_recording_allowed: bool,
+    /// Instance this machine is bound to (if any).
+    pub instance_slug: Option<String>,
 }
 
 /// A pending computer use request waiting for an agent to respond.

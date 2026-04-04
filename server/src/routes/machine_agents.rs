@@ -33,6 +33,8 @@ enum AgentMessage {
         screen_height: u32,
         #[serde(default)]
         screen_recording_allowed: bool,
+        #[serde(default)]
+        instance_slug: Option<String>,
     },
     /// Agent sends back the result of a toolcall.
     ActionResult {
@@ -48,7 +50,7 @@ enum AgentMessage {
 
 async fn handle_agent(mut socket: WebSocket, state: AppState) {
     // The agent must send a Register message first.
-    let (machine_id, screen_recording_allowed, os, mut agent_rx) = match wait_for_registration(&mut socket, &state).await {
+    let (machine_id, screen_recording_allowed, os, instance_slug, mut agent_rx) = match wait_for_registration(&mut socket, &state).await {
         Some(v) => v,
         None => return,
     };
@@ -62,9 +64,10 @@ async fn handle_agent(mut socket: WebSocket, state: AppState) {
         let mid = machine_id.clone();
         let machine_os = os.clone();
         let rec_allowed = screen_recording_allowed;
+        let bound_slug = instance_slug;
         let bg_state = state.clone();
         tokio::spawn(async move {
-            on_machine_connected(&bg_state, &registry, &mid, &machine_os, rec_allowed).await;
+            on_machine_connected(&bg_state, &registry, &mid, &machine_os, rec_allowed, bound_slug.as_deref()).await;
         });
     }
 
@@ -139,11 +142,11 @@ async fn handle_agent(mut socket: WebSocket, state: AppState) {
 }
 
 /// Wait for the agent to send a Register message.
-/// Returns (machine_id, screen_recording_allowed, os, mpsc receiver for toolcalls).
+/// Returns (machine_id, screen_recording_allowed, os, instance_slug, mpsc receiver for toolcalls).
 async fn wait_for_registration(
     socket: &mut WebSocket,
     state: &AppState,
-) -> Option<(String, bool, String, tokio::sync::mpsc::UnboundedReceiver<String>)> {
+) -> Option<(String, bool, String, Option<String>, tokio::sync::mpsc::UnboundedReceiver<String>)> {
     // Give agent 10s to register
     let deadline = tokio::time::sleep(std::time::Duration::from_secs(10));
     tokio::pin!(deadline);
@@ -157,7 +160,7 @@ async fn wait_for_registration(
             incoming = socket.recv() => {
                 match incoming {
                     Some(Ok(Message::Text(text))) => {
-                        if let Ok(AgentMessage::Register { machine_id, os, hostname, screen_width, screen_height, screen_recording_allowed }) =
+                        if let Ok(AgentMessage::Register { machine_id, os, hostname, screen_width, screen_height, screen_recording_allowed, instance_slug }) =
                             serde_json::from_str::<AgentMessage>(&text)
                         {
                             let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -169,6 +172,7 @@ async fn wait_for_registration(
                                 screen_height,
                                 last_seen: chrono::Utc::now().timestamp(),
                                 screen_recording_allowed,
+                                instance_slug: instance_slug.clone(),
                             };
                             state.machine_registry.register(info, tx).await;
 
@@ -176,7 +180,7 @@ async fn wait_for_registration(
                             let ack = serde_json::json!({"type": "registered", "machine_id": machine_id});
                             let _ = socket.send(Message::Text(serde_json::to_string(&ack).unwrap().into())).await;
 
-                            return Some((machine_id, screen_recording_allowed, os, rx));
+                            return Some((machine_id, screen_recording_allowed, os, instance_slug, rx));
                         }
                     }
                     Some(Ok(Message::Ping(payload))) => {
@@ -192,12 +196,14 @@ async fn wait_for_registration(
 
 /// When any desktop machine connects, notify the companion agent.
 /// If screen recording is enabled on both sides, start recording too.
+/// If `bound_slug` is set, only notify that instance.
 async fn on_machine_connected(
     state: &AppState,
     registry: &crate::services::machine_registry::MachineRegistry,
     machine_id: &str,
     os: &str,
     screen_recording_allowed: bool,
+    bound_slug: Option<&str>,
 ) {
     let instances_dir = state.workspace_dir.join("instances");
     let entries = match std::fs::read_dir(&instances_dir) {
@@ -208,6 +214,13 @@ async fn on_machine_connected(
     let all_slugs: Vec<(String, bool)> = entries
         .filter_map(Result::ok)
         .filter(|e| e.path().is_dir() && e.path().join("soul.md").exists())
+        .filter(|e| {
+            // If bound to a specific instance, only include that one
+            match bound_slug {
+                Some(s) => e.file_name().to_string_lossy() == s,
+                None => true,
+            }
+        })
         .map(|e| {
             let slug = e.file_name().to_string_lossy().to_string();
             let sr = crate::config::InstanceConfig::load(&state.workspace_dir, &slug).screen_recording;
