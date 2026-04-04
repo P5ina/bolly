@@ -72,3 +72,17 @@ pub fn emit_action(app: &AppHandle, action: &str) {
 pub fn emit_idle(app: &AppHandle) {
     app.emit("computer-use-idle", ()).ok();
 }
+
+/// Temporarily hide the overlay (for screenshots) without destroying the window.
+pub fn set_visible(app: &AppHandle, visible: bool) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(win) = handle.get_webview_window("overlay") {
+            if visible {
+                let _ = win.show();
+            } else {
+                let _ = win.hide();
+            }
+        }
+    });
+}

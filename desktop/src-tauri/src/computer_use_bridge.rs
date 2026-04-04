@@ -255,9 +255,9 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
 
         eprintln!("[agent] toolcall: {action} (req={request_id})");
 
-        // Hide overlay before screenshot so it doesn't appear in the capture
+        // Temporarily hide overlay before screenshot so it doesn't appear in the capture
         if action == "screenshot" {
-            overlay::hide(app);
+            overlay::set_visible(app, false);
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
 
@@ -310,8 +310,11 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
             }
         }
 
-        // Show overlay after any action
+        // Show overlay after any action (restore if hidden for screenshot)
         overlay::show(app);
+        if action == "screenshot" {
+            overlay::set_visible(app, true);
+        }
         overlay::emit_action(app, &action);
 
         let response = match &result {
