@@ -341,6 +341,52 @@ pub async fn run_single_turn(
         }
     }
 
+    // Screen recording / computer observation
+    {
+        let machines = machine_registry.list().await;
+        let has_machines = !machines.is_empty();
+        let any_recording_allowed = machines.iter().any(|m| m.screen_recording_allowed);
+
+        if instance_cfg.screen_recording {
+            if has_machines && any_recording_allowed {
+                let machine_names: Vec<&str> = machines.iter()
+                    .filter(|m| m.screen_recording_allowed)
+                    .map(|m| m.hostname.as_str())
+                    .collect();
+                system_prompt.push_str(&format!(
+                    "\n\n## screen observation\n\
+                     screen recording is ENABLED. connected machines with recording: {}.\n\
+                     every 15 minutes, the screen is recorded and analyzed — you'll see the analysis in your heartbeat context.\n\
+                     the user can disable this in the desktop app settings or by asking you to run: \
+                     update_config with screen_recording: false.",
+                    machine_names.join(", ")
+                ));
+            } else if has_machines {
+                let machine_names: Vec<&str> = machines.iter().map(|m| m.hostname.as_str()).collect();
+                system_prompt.push_str(&format!(
+                    "\n\n## screen observation\n\
+                     screen recording is ENABLED on the server, but no connected desktop has it turned on.\n\
+                     connected machines: {}.\n\
+                     the user needs to enable \"Screen Observation\" in the desktop app Settings for it to work.",
+                    machine_names.join(", ")
+                ));
+            } else {
+                system_prompt.push_str(
+                    "\n\n## screen observation\n\
+                     screen recording is ENABLED but no desktop app is connected.\n\
+                     recording will start automatically when the user opens the desktop app."
+                );
+            }
+        } else if has_machines {
+            system_prompt.push_str(
+                "\n\n## screen observation\n\
+                 screen recording is DISABLED. the user's desktop is connected but screen observation is off.\n\
+                 you can suggest enabling it with update_config (screen_recording: true) if the user might benefit from contextual help. \
+                 suggest it once, don't nag."
+            );
+        }
+    }
+
     let autonomy_prompt = load_autonomy_prompt(workspace_dir, &instance_slug);
     system_prompt = format!("{system_prompt}\n\n{autonomy_prompt}");
 
