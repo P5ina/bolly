@@ -2,7 +2,6 @@
 	import Nav from '$lib/components/Nav.svelte';
 	import Hero from '$lib/components/Hero.svelte';
 	import Demo from '$lib/components/Demo.svelte';
-	import Transition from '$lib/components/Transition.svelte';
 	import Features from '$lib/components/Features.svelte';
 	import ComputerUse from '$lib/components/ComputerUse.svelte';
 	import HowItWorks from '$lib/components/HowItWorks.svelte';
@@ -44,7 +43,6 @@
 <main>
 	<Hero />
 	<Demo />
-	<Transition />
 	<Features />
 	<ComputerUse />
 	<HowItWorks />
