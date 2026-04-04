@@ -1,6 +1,6 @@
 [package]
 name = "bolly-desktop"
-version = "0.30.6"
+version = "0.31.0"
 description = "Bolly — AI companion desktop app"
 authors = ["Triangle Interactive LLC"]
 license = "MIT"
