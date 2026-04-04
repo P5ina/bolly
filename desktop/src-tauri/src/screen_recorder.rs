@@ -1,112 +1,123 @@
-use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, atomic::{AtomicBool, Ordering}};
+use std::time::Duration;
 
-use screencapturekit::prelude::*;
-use screencapturekit::cm::CMTime;
-use screencapturekit::recording_output::{
-    SCRecordingOutput, SCRecordingOutputCodec, SCRecordingOutputConfiguration,
-    SCRecordingOutputFileType,
+use scap::{
+    capturer::{Capturer, Options, Resolution},
+    frame::Frame,
 };
 
-const RECORDING_PATH: &str = "/tmp/bolly_screen.mp4";
+static STREAMING: AtomicBool = AtomicBool::new(false);
+static LAST_FRAME: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 
-struct RecorderState {
-    stream: SCStream,
-    recording: SCRecordingOutput,
-}
-
-static RECORDER: Mutex<Option<RecorderState>> = Mutex::new(None);
-
-/// Start screen recording using native ScreenCaptureKit.
+/// Start capturing frames in a background thread.
 pub fn start() -> Result<(), String> {
-    let mut guard = RECORDER.lock().map_err(|e| e.to_string())?;
-
-    if guard.is_some() {
-        return Ok(()); // already recording
+    if STREAMING.load(Ordering::Relaxed) {
+        return Ok(());
     }
 
-    // Get the main display
-    let content = SCShareableContent::get()
-        .map_err(|e| format!("failed to get shareable content: {e:?}"))?;
-    let display = content.displays().into_iter().next()
-        .ok_or("no display found")?;
+    if !scap::is_supported() {
+        return Err("platform not supported for screen capture".into());
+    }
 
-    let width = display.width() as u32;
-    let height = display.height() as u32;
+    if !scap::has_permission() {
+        if !scap::request_permission() {
+            return Err("screen recording permission denied".into());
+        }
+    }
 
-    // Capture entire display
-    let filter = SCContentFilter::create()
-        .with_display(&display)
-        .with_excluding_windows(&[])
-        .build();
+    STREAMING.store(true, Ordering::Relaxed);
 
-    // 1 fps, low res for small files
-    let stream_config = SCStreamConfiguration::new()
-        .with_width(width.min(1280))
-        .with_height(height.min(800))
-        .with_pixel_format(PixelFormat::BGRA)
-        .with_minimum_frame_interval(&CMTime {
-            value: 1,
-            timescale: 1,
-            flags: 0,
-            epoch: 0,
-        })
-        .with_shows_cursor(true);
+    std::thread::spawn(|| {
+        if let Err(e) = run_capture_loop() {
+            eprintln!("[recorder] capture error: {e}");
+        }
+        STREAMING.store(false, Ordering::Relaxed);
+    });
 
-    // Record to MP4
-    let output_path = PathBuf::from(RECORDING_PATH);
-    // Remove old file if exists
-    let _ = std::fs::remove_file(&output_path);
-
-    let recording_config = SCRecordingOutputConfiguration::new()
-        .with_output_url(&output_path)
-        .with_video_codec(SCRecordingOutputCodec::H264)
-        .with_output_file_type(SCRecordingOutputFileType::MP4);
-
-    let recording = SCRecordingOutput::new(&recording_config)
-        .ok_or("failed to create recording output (requires macOS 15+)")?;
-
-    let stream = SCStream::new(&filter, &stream_config);
-    stream.add_recording_output(&recording)
-        .map_err(|e| format!("failed to add recording output: {e:?}"))?;
-    stream.start_capture()
-        .map_err(|e| format!("failed to start capture: {e:?}"))?;
-
-    eprintln!("[recorder] started ({width}x{height} → {}x{}, 1fps, H264)",
-        width.min(1280), height.min(800));
-
-    *guard = Some(RecorderState { stream, recording });
+    eprintln!("[recorder] started (scap, 1fps)");
     Ok(())
 }
 
-/// Stop recording. Returns the path to the recorded file.
-pub fn stop() -> Result<String, String> {
-    let mut guard = RECORDER.lock().map_err(|e| e.to_string())?;
-
-    let state = guard.take()
-        .ok_or("not recording")?;
-
-    state.stream.stop_capture()
-        .map_err(|e| format!("failed to stop capture: {e:?}"))?;
-    state.stream.remove_recording_output(&state.recording)
-        .map_err(|e| format!("failed to remove recording output: {e:?}"))?;
-
-    let duration = state.recording.recorded_duration();
-    let file_size = state.recording.recorded_file_size();
-    eprintln!("[recorder] stopped ({}/{} secs, {} bytes)",
-        duration.value, duration.timescale, file_size);
-
-    // Give time for file to finalize
-    std::thread::sleep(std::time::Duration::from_millis(500));
-
-    if std::path::Path::new(RECORDING_PATH).exists() {
-        Ok(RECORDING_PATH.to_string())
-    } else {
-        Err("recording file not found after stop".into())
-    }
+/// Stop capturing.
+pub fn stop() -> Result<(), String> {
+    STREAMING.store(false, Ordering::Relaxed);
+    eprintln!("[recorder] stopped");
+    Ok(())
 }
 
-/// Check if currently recording.
+/// Get the last captured frame as JPEG bytes.
+pub fn get_last_frame() -> Option<Vec<u8>> {
+    LAST_FRAME.lock().ok()?.clone()
+}
+
+/// Check if currently streaming.
 pub fn is_recording() -> bool {
-    RECORDER.lock().map(|g| g.is_some()).unwrap_or(false)
+    STREAMING.load(Ordering::Relaxed)
+}
+
+fn run_capture_loop() -> Result<(), String> {
+    let options = Options {
+        fps: 1,
+        target: None, // primary display
+        show_cursor: true,
+        show_highlight: false,
+        excluded_targets: None,
+        output_type: scap::frame::FrameType::BGRAFrame,
+        output_resolution: Resolution::_720p,
+        crop_area: None,
+        ..Default::default()
+    };
+
+    let mut capturer = Capturer::build(options)
+        .map_err(|e| format!("failed to build capturer: {e}"))?;
+
+    capturer.start_capture();
+
+    while STREAMING.load(Ordering::Relaxed) {
+        match capturer.get_next_frame() {
+            Ok(Frame::BGRA(frame)) => {
+                match bgra_to_jpeg(&frame.data, frame.width as u32, frame.height as u32) {
+                    Ok(jpeg) => {
+                        if let Ok(mut guard) = LAST_FRAME.lock() {
+                            *guard = Some(jpeg);
+                        }
+                    }
+                    Err(e) => eprintln!("[recorder] jpeg error: {e}"),
+                }
+            }
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("[recorder] frame error: {e}");
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        }
+    }
+
+    capturer.stop_capture();
+    Ok(())
+}
+
+fn bgra_to_jpeg(data: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
+    use image::{RgbaImage, DynamicImage};
+    use std::io::Cursor;
+
+    // BGRA → RGBA
+    let mut rgba = Vec::with_capacity(data.len());
+    for chunk in data.chunks_exact(4) {
+        rgba.push(chunk[2]); // R
+        rgba.push(chunk[1]); // G
+        rgba.push(chunk[0]); // B
+        rgba.push(chunk[3]); // A
+    }
+
+    let img = RgbaImage::from_raw(width, height, rgba)
+        .ok_or("failed to create image")?;
+    let rgb = DynamicImage::ImageRgba8(img).to_rgb8();
+
+    let mut buf = Cursor::new(Vec::new());
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 60)
+        .encode(rgb.as_raw(), rgb.width(), rgb.height(), image::ExtendedColorType::Rgb8)
+        .map_err(|e| e.to_string())?;
+
+    Ok(buf.into_inner())
 }

@@ -1,4 +1,5 @@
 use std::sync::Mutex;
+use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
 use tauri::Emitter;
 use tokio_tungstenite::tungstenite::Message;
@@ -314,20 +315,16 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
             .unwrap_or_else(|e| Err(format!("task panic: {e}")))
         };
 
-        // Detect screen recording start/stop from bash commands
-        if action == "bash" {
-            let cmd = call.get("command").and_then(|v| v.as_str()).unwrap_or("");
-            if cmd.contains("pkill") && cmd.contains("bolly_screen") {
-                let mut rec = RECORDING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
-                *rec = false;
-                overlay::show(app); // ensure overlay exists to receive event
-                app.emit("screen-recording-state", false).ok();
-            } else if cmd.contains("ffmpeg") && cmd.contains("bolly_screen") && !cmd.contains("pkill") {
-                let mut rec = RECORDING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
-                *rec = true;
-                overlay::show(app); // ensure overlay exists to receive event
-                app.emit("screen-recording-state", true).ok();
-            }
+        // Detect screen recording start/stop
+        if action == "start_recording" && result.is_ok() {
+            let mut rec = RECORDING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
+            *rec = true;
+            overlay::show(app);
+            app.emit("screen-recording-state", true).ok();
+        } else if action == "stop_recording" {
+            let mut rec = RECORDING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
+            *rec = false;
+            app.emit("screen-recording-state", false).ok();
         }
 
         // Show overlay after any action (restore if hidden for screenshot)
@@ -498,16 +495,31 @@ fn execute_action(
             std::thread::sleep(std::time::Duration::from_millis(700));
             Ok(AgentResult::Action)
         }
-        // ── Native screen recording ──
+        // ── Native screen capture ──
         "start_recording" => {
             crate::screen_recorder::start()
-                .map(|_| AgentResult::Output("recording started".into()))
+                .map(|_| AgentResult::Output("streaming started".into()))
                 .map_err(|e| format!("start_recording: {e}"))
         }
         "stop_recording" => {
             crate::screen_recorder::stop()
-                .map(|path| AgentResult::Output(path))
+                .map(|_| AgentResult::Output("streaming stopped".into()))
                 .map_err(|e| format!("stop_recording: {e}"))
+        }
+        "get_frame" => {
+            // Get the latest captured frame as base64 JPEG
+            match crate::screen_recorder::get_last_frame() {
+                Some(jpeg) => {
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
+                    Ok(AgentResult::Screenshot {
+                        image: b64,
+                        width: 0,
+                        height: 0,
+                        scale: 1.0,
+                    })
+                }
+                None => Err("no frame captured yet".into()),
+            }
         }
         // ── Bash ──
         "bash" => {
