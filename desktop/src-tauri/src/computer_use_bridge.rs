@@ -101,8 +101,12 @@ pub fn set_screen_recording_allowed(allowed: bool) -> Result<(), String> {
     Ok(())
 }
 
-pub fn get_server_url() -> Option<String> {
-    SERVER_URL.lock().ok().and_then(|v| v.clone())
+#[tauri::command]
+pub fn get_server_url() -> Result<String, String> {
+    SERVER_URL.lock()
+        .map_err(|e| e.to_string())?
+        .clone()
+        .ok_or_else(|| "not connected".into())
 }
 
 #[tauri::command]

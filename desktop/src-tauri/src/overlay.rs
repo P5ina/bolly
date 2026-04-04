@@ -19,17 +19,8 @@ tauri_panel! {
     })
 }
 
-/// Get the overlay URL — served by the server, not locally.
-/// Falls back to local Tauri URL if no server is connected.
-fn overlay_url_str(slug: Option<&str>) -> String {
-    if let Some(server_url) = crate::computer_use_bridge::get_server_url() {
-        if let Some(s) = slug {
-            return format!("{server_url}/overlay/{s}");
-        }
-        // No slug — try any available instance
-        return format!("{server_url}/overlay/default");
-    }
-    // Fallback to local
+/// Overlay URL — always local Tauri page. Video loads from server via src attribute.
+fn overlay_url_str(_slug: Option<&str>) -> String {
     if cfg!(debug_assertions) {
         "http://localhost:1420/overlay/".to_string()
     } else {

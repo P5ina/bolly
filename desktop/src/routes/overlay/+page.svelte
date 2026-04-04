@@ -9,10 +9,11 @@
   let actionQueue = $state<{ id: number; text: string; icon: string }[]>([]);
   let idCounter = 0;
   let hideTimer: ReturnType<typeof setTimeout> | null = null;
+  let videoEl: HTMLVideoElement | undefined = $state();
 
-  // Derive iframe src for the animated avatar (served by the server)
-  const iframeSrc = $derived(
-    serverUrl ? `${serverUrl}/overlay/default` : ""
+  // Video source from server
+  const videoSrc = $derived(
+    serverUrl ? `${serverUrl}/skins/orb/orb-idle-loop.webm` : ""
   );
 
   function resetHideTimer() {
@@ -23,41 +24,21 @@
   }
 
   const actionIcons: Record<string, string> = {
-    screenshot: "\u{1F4F7}",
-    left_click: "\u{1F5B1}\uFE0F",
-    right_click: "\u{1F5B1}\uFE0F",
-    middle_click: "\u{1F5B1}\uFE0F",
-    double_click: "\u{1F5B1}\uFE0F\u{1F5B1}\uFE0F",
-    mouse_move: "\u2197\uFE0F",
-    scroll: "\u2195\uFE0F",
-    type: "\u2328\uFE0F",
-    key: "\u2318",
-    bash: "\u{1F4BB}",
-    switch_desktop: "\u{1F5A5}\uFE0F",
-    file_read: "\u{1F4C4}",
-    file_write: "\u{1F4DD}",
-    file_list: "\u{1F4C2}",
-    upload_file: "\u{1F4E4}",
-    collect_screen_recording: "\u{1F3AC}",
+    screenshot: "\u{1F4F7}", left_click: "\u{1F5B1}\uFE0F", right_click: "\u{1F5B1}\uFE0F",
+    middle_click: "\u{1F5B1}\uFE0F", double_click: "\u{1F5B1}\uFE0F\u{1F5B1}\uFE0F",
+    mouse_move: "\u2197\uFE0F", scroll: "\u2195\uFE0F", type: "\u2328\uFE0F", key: "\u2318",
+    bash: "\u{1F4BB}", switch_desktop: "\u{1F5A5}\uFE0F",
+    start_recording: "\u{1F534}", stop_recording: "\u{23F9}\uFE0F",
+    collect_screen_recording: "\u{1F3AC}", get_frame: "\u{1F4F8}",
   };
 
   const actionLabels: Record<string, string> = {
-    screenshot: "screenshot",
-    left_click: "click",
-    right_click: "right click",
-    middle_click: "middle click",
-    double_click: "double click",
-    mouse_move: "move",
-    scroll: "scroll",
-    type: "typing",
-    key: "key",
-    bash: "command",
-    switch_desktop: "switch space",
-    file_read: "read file",
-    file_write: "write file",
-    file_list: "list files",
-    upload_file: "uploading",
-    collect_screen_recording: "collecting recording",
+    screenshot: "screenshot", left_click: "click", right_click: "right click",
+    middle_click: "middle click", double_click: "double click", mouse_move: "move",
+    scroll: "scroll", type: "typing", key: "key", bash: "command",
+    switch_desktop: "switch space", start_recording: "recording started",
+    stop_recording: "recording stopped", collect_screen_recording: "collecting",
+    get_frame: "frame",
   };
 
   function flashAction(name: string, detail: string) {
@@ -66,15 +47,27 @@
     const label = actionLabels[name] ?? name;
     const text = detail ? `${label}: ${detail}` : label;
     actionQueue = [...actionQueue, { id, text, icon }];
-    setTimeout(() => {
-      actionQueue = actionQueue.filter(a => a.id !== id);
-    }, 3000);
+    setTimeout(() => { actionQueue = actionQueue.filter(a => a.id !== id); }, 3000);
   }
+
+  // Load video when src changes
+  $effect(() => {
+    if (videoEl && videoSrc) {
+      videoEl.src = videoSrc;
+      videoEl.load();
+      videoEl.play().catch(() => {});
+    }
+  });
 
   onMount(async () => {
     try {
       const isRec = await invoke<boolean>("get_screen_recording_allowed");
       if (isRec) recording = true;
+    } catch {}
+
+    // Get server URL for video source
+    try {
+      serverUrl = await invoke<string>("get_server_url");
     } catch {}
 
     const unlistenAction = listen<string>("computer-use-action", (e) => {
@@ -112,21 +105,22 @@
 </script>
 
 <div class="overlay" class:overlay-visible={visible || recording}>
-  <!-- Avatar pip — iframe from server for animated character -->
   <div class="pip" class:pip-recording={recording}>
     {#if recording}
       <div class="pip-ring"></div>
       <div class="pip-ring pip-ring-2"></div>
     {/if}
 
-    {#if iframeSrc}
-      <iframe
-        class="pip-iframe"
-        src={iframeSrc}
-        title="Bolly"
-        frameborder="0"
-        scrolling="no"
-      ></iframe>
+    {#if videoSrc}
+      <!-- svelte-ignore a11y_media_has_caption -->
+      <video
+        bind:this={videoEl}
+        class="pip-video"
+        muted
+        playsinline
+        autoplay
+        loop
+      ></video>
     {:else}
       <div class="pip-placeholder"></div>
     {/if}
@@ -138,7 +132,6 @@
     {/if}
   </div>
 
-  <!-- Action flashes -->
   <div class="flash-stack">
     {#each actionQueue as flash (flash.id)}
       <div class="flash">
@@ -165,12 +158,8 @@
     opacity: 0;
     transition: opacity 0.5s ease;
   }
+  .overlay-visible { opacity: 1; }
 
-  .overlay-visible {
-    opacity: 1;
-  }
-
-  /* ─── Avatar pip ────────────────────────────────────────── */
   .pip {
     position: absolute;
     bottom: 16px;
@@ -178,7 +167,6 @@
     width: 56px;
     height: 56px;
     border-radius: 50%;
-    overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -190,23 +178,22 @@
     to { opacity: 1; transform: scale(1) translateY(0); }
   }
 
-  .pip-iframe {
+  .pip-video {
     width: 100%;
     height: 100%;
-    border: none;
+    object-fit: cover;
     border-radius: 50%;
-    background: transparent;
-    pointer-events: none;
+    border: 2px solid oklch(0.78 0.12 75 / 30%);
   }
 
   .pip-placeholder {
     width: 100%;
     height: 100%;
     border-radius: 50%;
-    background: oklch(0.08 0.02 260 / 80%);
+    border: 2px solid oklch(0.78 0.12 75 / 20%);
   }
 
-  /* Recording ring pulse */
+  /* Recording rings */
   .pip-ring {
     position: absolute;
     inset: -4px;
@@ -215,21 +202,18 @@
     animation: ring-pulse 2s ease-in-out infinite;
     z-index: 2;
   }
-
   .pip-ring-2 {
     inset: -8px;
     border-color: oklch(0.65 0.22 25 / 25%);
     animation-delay: 0.5s;
   }
-
   @keyframes ring-pulse {
     0%, 100% { transform: scale(1); opacity: 0.6; }
     50% { transform: scale(1.08); opacity: 0.2; }
   }
 
-  .pip-recording {
-    border: 2px solid oklch(0.65 0.22 25 / 40%);
-    box-shadow: 0 0 20px oklch(0.65 0.22 25 / 15%);
+  .pip-recording .pip-video {
+    border-color: oklch(0.65 0.22 25 / 40%);
   }
 
   /* REC dot */
@@ -237,32 +221,25 @@
     position: absolute;
     top: -2px;
     right: -2px;
-    width: 14px;
-    height: 14px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
-    background: oklch(0.10 0.02 25 / 90%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 1px 4px oklch(0 0 0 / 40%);
     z-index: 3;
   }
-
   .pip-rec-dot {
-    width: 8px;
-    height: 8px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
     background: oklch(0.62 0.25 25);
-    box-shadow: 0 0 8px oklch(0.62 0.25 25 / 80%);
+    box-shadow: 0 0 10px oklch(0.62 0.25 25 / 90%);
     animation: rec-pulse 1.5s ease-in-out infinite;
   }
-
   @keyframes rec-pulse {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.4; transform: scale(0.85); }
   }
 
-  /* ─── Action flash stack ───────────────────────────────── */
+  /* Flashes */
   .flash-stack {
     position: absolute;
     bottom: 78px;
@@ -272,7 +249,6 @@
     gap: 6px;
     align-items: flex-end;
   }
-
   .flash {
     display: flex;
     align-items: center;
@@ -285,19 +261,13 @@
     animation: flash-in 3s ease both;
     white-space: nowrap;
   }
-
   @keyframes flash-in {
     0% { opacity: 0; transform: translateX(16px); }
     8% { opacity: 1; transform: translateX(0); }
-    80% { opacity: 1; transform: translateX(0); }
+    80% { opacity: 1; }
     100% { opacity: 0; transform: translateX(8px); }
   }
-
-  .flash-icon {
-    font-size: 13px;
-    line-height: 1;
-  }
-
+  .flash-icon { font-size: 13px; line-height: 1; }
   .flash-text {
     font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
     font-size: 11px;
