@@ -246,7 +246,8 @@ async fn on_machine_connected_with_recording(
                 let task = format!(
                     "the user's desktop computer '{}' just connected with screen recording enabled. \
                      you're now recording their screen and will analyze it every 15 minutes. \
-                     consider reaching out to greet them or acknowledge that you can see their screen now.",
+                     USE reach_out NOW to let the user know you see their computer connected and that screen observation is active. \
+                     keep it brief and friendly.",
                     machine_id
                 );
                 let ws = state.workspace_dir.clone();
