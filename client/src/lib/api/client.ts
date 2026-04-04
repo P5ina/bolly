@@ -456,7 +456,11 @@ export function fetchObservations(slug: string): Promise<import("./types.js").Sc
 }
 
 export function machineHello(slug: string): Promise<void> {
-	return fetch(`/api/instances/${encodeURIComponent(slug)}/machine-hello`, { method: "POST" }).then(() => {});
+	return authedFetch(`/api/instances/${encodeURIComponent(slug)}/machine-hello`, { method: "POST" }).then(() => {});
+}
+
+export function machineBye(slug: string): Promise<void> {
+	return authedFetch(`/api/instances/${encodeURIComponent(slug)}/machine-bye`, { method: "POST" }).then(() => {});
 }
 
 export function fetchAgents(slug: string): Promise<ChildAgent[]> {

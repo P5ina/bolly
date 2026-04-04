@@ -17,6 +17,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/agents/ws/machine", get(upgrade))
         .route("/api/instances/{instance_slug}/machine-hello", post(machine_hello))
+        .route("/api/instances/{instance_slug}/machine-bye", post(machine_bye))
 }
 
 /// Called by the client when the user enters an instance — notifies
@@ -43,6 +44,25 @@ async fn machine_hello(
             on_machine_connected(&bg_state, &registry, &mid, &machine_os, rec_allowed, Some(&slug)).await;
         }
     });
+
+    StatusCode::OK
+}
+
+/// Called when the user leaves an instance — logs disconnection.
+async fn machine_bye(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> StatusCode {
+    let machines = state.machine_registry.list().await;
+    if machines.is_empty() {
+        return StatusCode::OK;
+    }
+
+    let machine_id = &machines[0].machine_id;
+    let _ = crate::services::chat::save_system_message(
+        &state.workspace_dir, &instance_slug, "default",
+        &format!("[system] user left this instance. desktop '{}' still connected to server.", machine_id),
+    );
 
     StatusCode::OK
 }

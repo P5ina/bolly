@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from "$app/navigation";
 	import { page } from "$app/state";
-	import { deleteInstance, fetchMusicEnabled, machineHello } from "$lib/api/client.js";
+	import { deleteInstance, fetchMusicEnabled, machineHello, machineBye } from "$lib/api/client.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getPresentationState } from "$lib/stores/presentation.svelte.js";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
@@ -25,14 +25,19 @@
 	// Fetch instance settings and enter chat mode when ready
 	$effect(() => {
 		if (!checking && !isNew) {
+			const currentSlug = slug;
 			Promise.all([
-				fetchMusicEnabled(slug)
+				fetchMusicEnabled(currentSlug)
 					.then((res) => scene.setMusicEnabled(res.music_enabled))
 					.catch(() => {}),
-				voice.loadForInstance(slug),
-				skinStore.loadForInstance(slug),
-				machineHello(slug).catch(() => {}),
-			]).finally(() => scene.enterChat(slug));
+				voice.loadForInstance(currentSlug),
+				skinStore.loadForInstance(currentSlug),
+				machineHello(currentSlug).catch(() => {}),
+			]).finally(() => scene.enterChat(currentSlug));
+
+			return () => {
+				machineBye(currentSlug).catch(() => {});
+			};
 		}
 	});
 
