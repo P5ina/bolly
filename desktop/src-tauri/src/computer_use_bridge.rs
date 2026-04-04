@@ -149,20 +149,9 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
         .map(|v| *v)
         .unwrap_or(false);
 
-    // Resolve instance slug: explicit > parsed from cloud URL
-    let instance_slug = INSTANCE_SLUG
-        .lock()
-        .ok()
-        .and_then(|v| v.clone())
-        .or_else(|| {
-            // Parse from cloud URL: https://{slug}.bollyai.dev
-            let host = instance_url.trim_start_matches("https://").trim_start_matches("http://");
-            if host.ends_with(".bollyai.dev") {
-                host.split('.').next().map(|s| s.to_string())
-            } else {
-                None
-            }
-        });
+    // Instance slug: only set explicitly via set_instance_slug.
+    // URL parsing removed — tenant slug != instance directory name.
+    let instance_slug = INSTANCE_SLUG.lock().ok().and_then(|v| v.clone());
 
     let register = serde_json::json!({
         "type": "register",
