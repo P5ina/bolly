@@ -541,52 +541,71 @@ async fn manage_screen_recording(
         log::warn!("[heartbeat] failed to stop screen recording: {e}");
     }
 
-    // 2. Check if recording exists, save as upload, and analyze
+    // 2. Tell desktop to upload the recording file to the server via HTTP
     let result = {
-        let path = std::path::Path::new(SCREEN_RECORDING_PATH);
-        if path.exists() {
-            let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-            if size > 50_000 {
-                log::info!("[heartbeat] analyzing screen recording ({:.1} MB)", size as f64 / 1024.0 / 1024.0);
+        let cfg = crate::config::load_config().ok();
+        let public_url = cfg.as_ref().map(|c| c.public_url.as_str()).unwrap_or("");
+        let auth_token = cfg.as_ref().map(|c| c.auth_token.as_str()).unwrap_or("");
+        let upload_url = format!("{}/api/instances/{}/uploads", public_url, first_slug);
 
-                // Save the video as an upload so the user can view it
-                let upload_id = match std::fs::read(path) {
-                    Ok(bytes) => {
-                        match crate::services::uploads::save_upload(workspace_dir, first_slug, "screen_recording.mp4", &bytes) {
-                            Ok(meta) => Some(meta.id),
-                            Err(e) => { log::warn!("[heartbeat] failed to save recording upload: {e}"); None }
+        let upload_cmd = AgentToolCall {
+            request_id: uuid::Uuid::new_v4().to_string(),
+            action: "upload_file".into(),
+            params: serde_json::json!({
+                "path": SCREEN_RECORDING_PATH,
+                "upload_url": upload_url,
+                "auth_token": auth_token,
+            }),
+        };
+
+        let upload_result = registry.execute(machine_id, upload_cmd).await;
+
+        // Clean up the file on the desktop
+        let cleanup_cmd = AgentToolCall {
+            request_id: uuid::Uuid::new_v4().to_string(),
+            action: "bash".into(),
+            params: serde_json::json!({ "command": format!("rm -f {}", SCREEN_RECORDING_PATH) }),
+        };
+        let _ = registry.execute(machine_id, cleanup_cmd).await;
+
+        match upload_result {
+            Ok(action_result) => {
+                // upload_id is in the error field (reused for output text)
+                let upload_id = action_result.error.clone().unwrap_or_default();
+                if upload_id.is_empty() || !upload_id.starts_with("upload_") {
+                    log::warn!("[heartbeat] upload returned unexpected id: {upload_id:?}");
+                    None
+                } else {
+                    log::info!("[heartbeat] recording uploaded from '{}': {}", machine_id, upload_id);
+
+                    // Analyze the uploaded file via Gemini
+                    let file_path = workspace_dir
+                        .join("instances").join(first_slug)
+                        .join("uploads")
+                        .join(format!("{}_blob.mp4", upload_id.trim_end_matches(".mp4")));
+                    let analysis_path = file_path.display().to_string();
+
+                    let analysis = if file_path.exists() {
+                        match analyze_screen_recording(&analysis_path, google_ai_key).await {
+                            Ok(text) => Some(text),
+                            Err(e) => { log::warn!("[heartbeat] screen analysis failed: {e}"); Some("(analysis failed)".into()) }
                         }
-                    }
-                    Err(e) => { log::warn!("[heartbeat] failed to read recording: {e}"); None }
-                };
+                    } else {
+                        log::warn!("[heartbeat] uploaded file not found at {}", analysis_path);
+                        Some("(uploaded but file not found for analysis)".into())
+                    };
 
-                // Analyze with Gemini
-                let analysis = match analyze_screen_recording(SCREEN_RECORDING_PATH, google_ai_key).await {
-                    Ok(text) => Some(text),
-                    Err(e) => { log::warn!("[heartbeat] screen analysis failed: {e}"); None }
-                };
-
-                let _ = std::fs::remove_file(path);
-
-                match (upload_id, analysis) {
-                    (Some(uid), Some(text)) => Some(ScreenRecordingResult {
-                        analysis: text,
-                        upload_id: uid,
+                    Some(ScreenRecordingResult {
+                        analysis: analysis.unwrap_or_default(),
+                        upload_id,
                         machine_id: machine_id.clone(),
-                    }),
-                    (Some(uid), None) => Some(ScreenRecordingResult {
-                        analysis: "(analysis failed)".into(),
-                        upload_id: uid,
-                        machine_id: machine_id.clone(),
-                    }),
-                    _ => None,
+                    })
                 }
-            } else {
-                let _ = std::fs::remove_file(path);
+            }
+            Err(e) => {
+                log::warn!("[heartbeat] desktop upload failed: {e}");
                 None
             }
-        } else {
-            None
         }
     };
 

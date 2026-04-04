@@ -461,6 +461,13 @@ fn execute_action(
                 Err(e) => Err(format!("read {path}: {e}")),
             }
         }
+        "upload_file" => {
+            // Upload a local file to the server via HTTP POST multipart
+            let path = expand_path(call["path"].as_str().unwrap_or(""));
+            let upload_url = call["upload_url"].as_str().unwrap_or("").to_string();
+            let auth_token = call["auth_token"].as_str().unwrap_or("").to_string();
+            upload_file_to_server(&path, &upload_url, &auth_token)
+        }
         "file_write" => {
             let path = expand_path(call["path"].as_str().unwrap_or(""));
             let content = call["content"].as_str().unwrap_or("");
@@ -561,4 +568,35 @@ fn hostname() -> String {
     gethostname::gethostname()
         .to_string_lossy()
         .to_string()
+}
+
+/// Upload a local file to the server via curl.
+/// Returns the upload_id on success.
+fn upload_file_to_server(path: &str, upload_url: &str, auth_token: &str) -> Result<AgentResult, String> {
+    let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    eprintln!("[upload] uploading {path} ({:.1} MB) to {upload_url}", size as f64 / 1024.0 / 1024.0);
+
+    let output = std::process::Command::new("curl")
+        .args([
+            "-s", "-X", "POST",
+            "-H", &format!("Authorization: Bearer {auth_token}"),
+            "-F", &format!("file=@{path}"),
+            upload_url,
+        ])
+        .output()
+        .map_err(|e| format!("curl failed: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("upload failed: {stderr}"));
+    }
+
+    let response = String::from_utf8_lossy(&output.stdout).to_string();
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response) {
+        let upload_id = json["id"].as_str().unwrap_or("").to_string();
+        eprintln!("[upload] success: {upload_id}");
+        Ok(AgentResult::Output(upload_id))
+    } else {
+        Err(format!("unexpected response: {response}"))
+    }
 }
