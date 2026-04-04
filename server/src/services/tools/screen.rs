@@ -179,26 +179,75 @@ impl Tool for CollectScreenRecordingTool {
             .join("instances").join(&self.instance_slug)
             .join("uploads").join(&upload_meta.stored_name);
 
-        // Save observation
-        let obs = ScreenObservation {
-            id: format!("obs_{}", unix_millis()),
-            upload_id: upload_id.clone(),
-            machine_id: machine_id.clone(),
-            analysis: String::new(),
-            created_at: unix_millis().to_string(),
-        };
-        save_observation(&self.workspace_dir, &self.instance_slug, &obs);
-
         log::info!("[screen] stitched {} frames → {} ({} bytes)", frames.len(), upload_id, video_bytes.len());
 
         Ok(format!(
             "Screen recording collected ({} frames, {} seconds).\n\
              upload_id: {upload_id}\n\
-             observation_id: {}\n\n\
+             machine_id: {machine_id}\n\n\
              Now use watch_video to analyze what the user was doing.\n\
-             File path: {}",
+             File path: {}\n\n\
+             After watching, call save_screen_observation with the upload_id, machine_id, and your analysis.",
             frames.len(), frames.len(),
-            obs.id, file_path.display()
+            file_path.display()
         ))
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// save_screen_observation — save analysis after watch_video
+// ═══════════════════════════════════════════════════════════════════════════
+
+pub struct SaveScreenObservationTool {
+    workspace_dir: PathBuf,
+    instance_slug: String,
+}
+
+impl SaveScreenObservationTool {
+    pub fn new(workspace_dir: &std::path::Path, instance_slug: &str) -> Self {
+        Self {
+            workspace_dir: workspace_dir.to_path_buf(),
+            instance_slug: instance_slug.to_string(),
+        }
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct SaveScreenObservationArgs {
+    /// The upload_id from collect_screen_recording.
+    pub upload_id: String,
+    /// The machine_id from collect_screen_recording.
+    pub machine_id: String,
+    /// Your analysis of what the user was doing on screen.
+    pub analysis: String,
+}
+
+impl Tool for SaveScreenObservationTool {
+    const NAME: &'static str = "save_screen_observation";
+    type Error = ToolExecError;
+    type Args = SaveScreenObservationArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "save_screen_observation".into(),
+            description: "Save a screen observation with your analysis. Call this after \
+                watch_video to record what you observed on the user's screen."
+                .into(),
+            parameters: openai_schema::<SaveScreenObservationArgs>(),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let obs = ScreenObservation {
+            id: format!("obs_{}", unix_millis()),
+            upload_id: args.upload_id,
+            machine_id: args.machine_id,
+            analysis: args.analysis,
+            created_at: unix_millis().to_string(),
+        };
+        save_observation(&self.workspace_dir, &self.instance_slug, &obs);
+        log::info!("[screen] saved observation {}", obs.id);
+        Ok(format!("observation saved: {}", obs.id))
     }
 }

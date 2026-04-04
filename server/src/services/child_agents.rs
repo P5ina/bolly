@@ -178,10 +178,10 @@ fn builtin_observer() -> ChildAgentConfig {
         prompt: "\
 you are the screen observer. every time you wake up, follow this exact sequence:
 
-1. call collect_screen_recording — this stops the current recording, uploads it, and starts a new one. \
-   you'll get back an upload_id and a local file path.
+1. call collect_screen_recording — you'll get back an upload_id, machine_id, and a local file path.
 2. call watch_video with the local file path to analyze what the user was doing.
-3. based on the analysis, decide if you should reach_out to the user with a comment or suggestion.
+3. call save_screen_observation with the upload_id, machine_id, and your analysis text.
+4. based on the analysis, decide if you should reach_out to the user with a comment or suggestion.
 
 guidelines for reaching out:
 - if the user is coding, offer tips or catch potential bugs
@@ -528,6 +528,7 @@ fn build_agent_tools_for(
                 registry.clone(), workspace_dir, slug, &public_url, &auth_token,
             )));
         }
+        raw_tools.push(Box::new(tools::screen::SaveScreenObservationTool::new(workspace_dir, slug)));
     }
 
     // media
