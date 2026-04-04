@@ -64,9 +64,10 @@ pub fn hide(app: &AppHandle) {
     });
 }
 
-/// Notify the overlay of a computer-use action.
-pub fn emit_action(app: &AppHandle, action: &str) {
-    app.emit("computer-use-action", action.to_string()).ok();
+/// Notify the overlay of a computer-use action with full detail.
+pub fn emit_action_detail(app: &AppHandle, action: &str, detail: &str) {
+    let payload = serde_json::json!({ "action": action, "detail": detail });
+    app.emit("computer-use-action", payload.to_string()).ok();
 }
 
 /// Signal idle.

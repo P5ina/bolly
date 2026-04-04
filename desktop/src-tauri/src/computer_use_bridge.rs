@@ -307,7 +307,26 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
         if hide_for_screenshot {
             overlay::set_visible(app, true);
         }
-        overlay::emit_action(app, &action);
+
+        // Build human-readable detail for the overlay
+        let detail = match action.as_str() {
+            "key" => call.get("key").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            "type" => {
+                let t = call.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                if t.len() > 30 { format!("{}...", &t[..30]) } else { t.to_string() }
+            }
+            "left_click" | "right_click" | "double_click" | "middle_click" => {
+                let (x, y) = parse_coordinate(&call);
+                format!("{x}, {y}")
+            }
+            "scroll" => call.get("scroll_direction").and_then(|v| v.as_str()).unwrap_or("down").to_string(),
+            "bash" => {
+                let c = call.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                if c.len() > 40 { format!("{}...", &c[..40]) } else { c.to_string() }
+            }
+            _ => String::new(),
+        };
+        overlay::emit_action_detail(app, &action, &detail);
 
         let response = match &result {
             Ok(AgentResult::Screenshot {

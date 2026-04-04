@@ -43,28 +43,34 @@
     file_list: "list files",
   };
 
-  function flashAction(name: string) {
+  function flashAction(name: string, detail: string) {
     const id = ++idCounter;
     const icon = actionIcons[name] ?? "\u26A1";
-    const text = actionLabels[name] ?? name;
+    const label = actionLabels[name] ?? name;
+    const text = detail ? `${label}: ${detail}` : label;
     actionQueue = [...actionQueue, { id, text, icon }];
-    // Remove after animation
     setTimeout(() => {
       actionQueue = actionQueue.filter(a => a.id !== id);
-    }, 1200);
+    }, 3000);
   }
 
   onMount(async () => {
-    // Check if recording is already active (overlay may have been created after recording started)
     try {
       const isRec = await invoke<boolean>("get_screen_recording_allowed");
       if (isRec) recording = true;
     } catch {}
 
     const unlisten = listen<string>("computer-use-action", (e) => {
-      action = e.payload;
-      visible = true;
-      flashAction(e.payload);
+      try {
+        const data = JSON.parse(e.payload);
+        action = data.action ?? "";
+        visible = true;
+        flashAction(data.action ?? "", data.detail ?? "");
+      } catch {
+        action = e.payload;
+        visible = true;
+        flashAction(e.payload, "");
+      }
     });
 
     const unlistenDone = listen("computer-use-idle", () => {
@@ -245,29 +251,26 @@
     border: 1px solid oklch(1 0 0 / 10%);
     box-shadow: 0 4px 16px oklch(0 0 0 / 40%),
                 0 0 0 0.5px oklch(1 0 0 / 5%);
-    animation: flash-in 1.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: flash-in 3s ease both;
     white-space: nowrap;
   }
 
   @keyframes flash-in {
     0% {
       opacity: 0;
-      transform: translateX(20px) scale(0.8);
-      filter: blur(4px);
+      transform: translateX(16px);
     }
-    15% {
+    8% {
       opacity: 1;
-      transform: translateX(0) scale(1);
-      filter: blur(0);
+      transform: translateX(0);
     }
-    70% {
+    80% {
       opacity: 1;
-      transform: translateX(0) scale(1);
+      transform: translateX(0);
     }
     100% {
       opacity: 0;
-      transform: translateX(10px) scale(0.95);
-      filter: blur(2px);
+      transform: translateX(8px);
     }
   }
 
