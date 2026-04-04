@@ -341,8 +341,10 @@ pub async fn run_single_turn(
         }
     }
 
-    // Instance config — let the agent see all settings
+    // Instance config — serialize the whole struct so new fields are automatically visible
     {
+        let config_toml = toml::to_string_pretty(&instance_cfg).unwrap_or_default();
+
         let machines = machine_registry.list().await;
         let machine_lines: Vec<String> = machines.iter().map(|m| {
             format!("  - {} ({}, {}x{}, screen_recording: {})",
@@ -351,21 +353,11 @@ pub async fn run_single_turn(
         }).collect();
 
         system_prompt.push_str(&format!(
-            "\n\n## instance config\n\
-             music_enabled: {}\n\
-             voice_enabled: {}\n\
-             skin: {}\n\
-             screen_recording: {}\n\
-             elevenlabs_voice_id: {}\n\
+            "\n\n## instance config (instance.toml)\n\
+             ```toml\n{config_toml}```\n\
              connected desktops:\n{}\n\
              \n\
-             the user can change these via settings UI or by asking you to call update_config.\n\
-             screen_recording requires BOTH the server setting (above) AND the desktop toggle (\"Screen Observation\" in desktop Settings) to be on.",
-            instance_cfg.music_enabled,
-            instance_cfg.voice_enabled,
-            instance_cfg.skin,
-            instance_cfg.screen_recording,
-            if instance_cfg.elevenlabs_voice_id.is_empty() { "(not set)" } else { &instance_cfg.elevenlabs_voice_id },
+             the user can change these via settings UI or by asking you to call update_config.",
             if machine_lines.is_empty() { "  (none connected)".to_string() } else { machine_lines.join("\n") },
         ));
     }
