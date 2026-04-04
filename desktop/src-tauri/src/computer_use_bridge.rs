@@ -498,6 +498,17 @@ fn execute_action(
             std::thread::sleep(std::time::Duration::from_millis(700));
             Ok(AgentResult::Action)
         }
+        // ── Native screen recording ──
+        "start_recording" => {
+            crate::screen_recorder::start()
+                .map(|_| AgentResult::Output("recording started".into()))
+                .map_err(|e| format!("start_recording: {e}"))
+        }
+        "stop_recording" => {
+            crate::screen_recorder::stop()
+                .map(|path| AgentResult::Output(path))
+                .map_err(|e| format!("stop_recording: {e}"))
+        }
         // ── Bash ──
         "bash" => {
             let command = call["command"].as_str().unwrap_or("").to_string();
@@ -624,12 +635,20 @@ fn hostname() -> String {
 /// Upload a local file to the server via curl.
 /// Returns the upload_id on success.
 fn upload_file_to_server(path: &str, upload_url: &str, auth_token: &str) -> Result<AgentResult, String> {
-    let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    // Check file exists and has content
+    let size = match std::fs::metadata(path) {
+        Ok(m) => m.len(),
+        Err(e) => return Err(format!("file not found: {path} ({e})")),
+    };
+    if size < 1000 {
+        return Err(format!("file too small ({size} bytes), recording may not have started: {path}"));
+    }
+
     eprintln!("[upload] uploading {path} ({:.1} MB) to {upload_url}", size as f64 / 1024.0 / 1024.0);
 
     let output = std::process::Command::new("curl")
         .args([
-            "-s", "-X", "POST",
+            "-s", "-w", "\n%{http_code}", "-X", "POST",
             "-H", &format!("Authorization: Bearer {auth_token}"),
             "-F", &format!("file=@{path}"),
             upload_url,
@@ -637,17 +656,24 @@ fn upload_file_to_server(path: &str, upload_url: &str, auth_token: &str) -> Resu
         .output()
         .map_err(|e| format!("curl failed: {e}"))?;
 
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("upload failed: {stderr}"));
+        return Err(format!("curl exit {}: {stderr}", output.status.code().unwrap_or(-1)));
     }
 
-    let response = String::from_utf8_lossy(&output.stdout).to_string();
-    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&response) {
+    // stdout ends with \nHTTP_CODE, split it
+    let (body, _status) = stdout.rsplit_once('\n').unwrap_or((&stdout, ""));
+
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
         let upload_id = json["id"].as_str().unwrap_or("").to_string();
+        if upload_id.is_empty() {
+            return Err(format!("server returned no id: {body}"));
+        }
         eprintln!("[upload] success: {upload_id}");
         Ok(AgentResult::Output(upload_id))
     } else {
-        Err(format!("unexpected response: {response}"))
+        Err(format!("unexpected response: {body}"))
     }
 }

@@ -59,31 +59,14 @@ fn unix_millis() -> u128 {
 }
 
 /// Start screen recording on a specific machine.
-pub async fn start_recording_on_machine(registry: &MachineRegistry, machine_id: &str, os: &str) {
-    let record_cmd = if os.to_lowercase().contains("mac") || os.to_lowercase().contains("darwin") {
-        format!(
-            "nohup ffmpeg -f avfoundation -capture_cursor 1 -framerate 1 \
-             -i \"Capture screen 0:none\" \
-             -t 960 -c:v libx264 -preset ultrafast -crf 35 \
-             -pix_fmt yuv420p -an -y {} > /dev/null 2>&1 &",
-            SCREEN_RECORDING_PATH
-        )
-    } else {
-        format!(
-            "nohup ffmpeg -f x11grab -framerate 1 -i :0.0 \
-             -t 960 -c:v libx264 -preset ultrafast -crf 35 \
-             -pix_fmt yuv420p -an -y {} > /dev/null 2>&1 &",
-            SCREEN_RECORDING_PATH
-        )
-    };
-
+pub async fn start_recording_on_machine(registry: &MachineRegistry, machine_id: &str, _os: &str) {
     let start_cmd = AgentToolCall {
         request_id: uuid::Uuid::new_v4().to_string(),
-        action: "bash".into(),
-        params: serde_json::json!({ "command": record_cmd }),
+        action: "start_recording".into(),
+        params: serde_json::json!({}),
     };
     match registry.execute(machine_id, start_cmd).await {
-        Ok(_) => log::info!("[screen] started recording on '{}'", machine_id),
+        Ok(_) => log::info!("[screen] started native recording on '{}'", machine_id),
         Err(e) => log::warn!("[screen] failed to start recording: {e}"),
     }
 }
@@ -146,13 +129,11 @@ impl Tool for CollectScreenRecordingTool {
         let machine_id = machine.machine_id.clone();
         let machine_os = machine.os.clone();
 
-        // 1. Stop ffmpeg
+        // 1. Stop native recording
         let stop_cmd = AgentToolCall {
             request_id: uuid::Uuid::new_v4().to_string(),
-            action: "bash".into(),
-            params: serde_json::json!({
-                "command": "pkill -f 'ffmpeg.*bolly_screen' 2>/dev/null; sleep 2; echo stopped"
-            }),
+            action: "stop_recording".into(),
+            params: serde_json::json!({}),
         };
         self.registry.execute(&machine_id, stop_cmd).await
             .map_err(|e| ToolExecError(format!("failed to stop recording: {e}")))?;

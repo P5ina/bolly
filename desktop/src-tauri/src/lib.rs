@@ -2,6 +2,7 @@ mod computer_use;
 mod computer_use_bridge;
 mod overlay;
 mod permissions;
+mod screen_recorder;
 
 use std::sync::{Arc, Mutex};
 

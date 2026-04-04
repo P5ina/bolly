@@ -32,6 +32,7 @@ tauri-plugin-http = "2.5.7"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 enigo = "0.3"
+screencapturekit = { version = "1", features = ["macos_15_0"] }
 screenshots = "0.8.10"
 base64 = "0.22.1"
 image = "0.25.10"
