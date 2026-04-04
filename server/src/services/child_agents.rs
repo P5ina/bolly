@@ -336,7 +336,8 @@ pub async fn run_single_agent(
     }).collect::<Vec<_>>().join("\n");
 
     // Build the user prompt with context
-    let mut prompt = format!("current time: {now}\n\n");
+    let mut prompt = format!("current time: {now}\n");
+    prompt.push_str(&format!("triggered by: {trigger}\n"));
     prompt.push_str(&format!("your mood: {}\n\n", mood.companion_mood));
 
     if !archived.is_empty() || !live_msgs.is_empty() {
