@@ -5,7 +5,7 @@
 
   let action = $state("");
   let recording = $state(false);
-  let visible = $state(true);
+  let visible = $state(false);
   let actionQueue = $state<{ id: number; text: string; icon: string }[]>([]);
   let idCounter = 0;
 
