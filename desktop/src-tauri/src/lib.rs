@@ -18,7 +18,10 @@ struct ServerOrigin(Arc<Mutex<Option<String>>>);
 fn is_internal_url(url: &url::Url) -> bool {
     match url.scheme() {
         "tauri" => true,
-        "http" | "https" => url.host_str() == Some("localhost"),
+        "http" | "https" => {
+            let host = url.host_str().unwrap_or("");
+            host == "localhost" || host == "tauri.localhost"
+        }
         _ => false,
     }
 }
