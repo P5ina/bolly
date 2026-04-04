@@ -197,7 +197,7 @@ if collect_screen_recording fails (no desktop connected, no recording), just ski
         triage: false,
         tools: true,
         enabled: false, // disabled by default — enabled when screen_recording is on
-        tool_groups: vec!["communication", "computer", "media", "memory"].into_iter().map(String::from).collect(),
+        tool_groups: vec!["communication", "screen", "media", "memory"].into_iter().map(String::from).collect(),
     }
 }
 
@@ -518,6 +518,12 @@ fn build_agent_tools_for(
                 registry.clone(), workspace_dir, slug, &public_url, &auth_token,
             )));
             raw_tools.push(Box::new(tools::RemoteBashTool::new(registry.clone())));
+        }
+    }
+
+    // screen (collect_screen_recording only — no screenshot/click/bash)
+    if has("screen") {
+        if let Some(registry) = machine_registry {
             raw_tools.push(Box::new(tools::screen::CollectScreenRecordingTool::new(
                 registry.clone(), workspace_dir, slug, &public_url, &auth_token,
             )));
