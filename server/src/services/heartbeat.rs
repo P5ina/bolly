@@ -589,8 +589,15 @@ async fn manage_screen_recording(
         }
     };
 
-    // 3. Start a new recording (16 min — slightly longer than heartbeat interval for safety)
-    let record_cmd = if machine.os.to_lowercase().contains("mac") || machine.os.to_lowercase().contains("darwin") {
+    // 3. Start a new recording
+    start_recording_on_machine(registry, machine_id, &machine.os).await;
+
+    result
+}
+
+/// Start screen recording on a specific machine.
+pub async fn start_recording_on_machine(registry: &MachineRegistry, machine_id: &str, os: &str) {
+    let record_cmd = if os.to_lowercase().contains("mac") || os.to_lowercase().contains("darwin") {
         format!(
             "nohup ffmpeg -f avfoundation -capture_cursor 1 -framerate 1 \
              -i \"Capture screen 0:none\" \
@@ -599,7 +606,6 @@ async fn manage_screen_recording(
             SCREEN_RECORDING_PATH
         )
     } else {
-        // Linux (X11)
         format!(
             "nohup ffmpeg -f x11grab -framerate 1 -i :0.0 \
              -t 960 -c:v libx264 -preset ultrafast -crf 35 \
@@ -617,8 +623,6 @@ async fn manage_screen_recording(
         Ok(_) => log::info!("[heartbeat] started screen recording on '{}'", machine_id),
         Err(e) => log::warn!("[heartbeat] failed to start screen recording: {e}"),
     }
-
-    result
 }
 
 /// Analyze a screen recording with Gemini.

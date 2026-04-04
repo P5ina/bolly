@@ -48,12 +48,24 @@ enum AgentMessage {
 
 async fn handle_agent(mut socket: WebSocket, state: AppState) {
     // The agent must send a Register message first.
-    let (machine_id, mut agent_rx) = match wait_for_registration(&mut socket, &state).await {
+    let (machine_id, screen_recording_allowed, os, mut agent_rx) = match wait_for_registration(&mut socket, &state).await {
         Some(v) => v,
         None => return,
     };
 
     log::info!("[machine-ws] agent '{machine_id}' connected");
+
+    // If the machine allows screen recording, start recording immediately
+    // and notify the companion agent about the connection.
+    if screen_recording_allowed {
+        let registry = state.machine_registry.clone();
+        let mid = machine_id.clone();
+        let machine_os = os.clone();
+        let bg_state = state.clone();
+        tokio::spawn(async move {
+            on_machine_connected_with_recording(&bg_state, &registry, &mid, &machine_os).await;
+        });
+    }
 
     let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(15));
     ping_interval.tick().await; // skip first immediate tick
@@ -125,11 +137,12 @@ async fn handle_agent(mut socket: WebSocket, state: AppState) {
     state.machine_registry.unregister(&machine_id).await;
 }
 
-/// Wait for the agent to send a Register message. Returns (machine_id, mpsc receiver for toolcalls).
+/// Wait for the agent to send a Register message.
+/// Returns (machine_id, screen_recording_allowed, os, mpsc receiver for toolcalls).
 async fn wait_for_registration(
     socket: &mut WebSocket,
     state: &AppState,
-) -> Option<(String, tokio::sync::mpsc::UnboundedReceiver<String>)> {
+) -> Option<(String, bool, String, tokio::sync::mpsc::UnboundedReceiver<String>)> {
     // Give agent 10s to register
     let deadline = tokio::time::sleep(std::time::Duration::from_secs(10));
     tokio::pin!(deadline);
@@ -149,7 +162,7 @@ async fn wait_for_registration(
                             let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
                             let info = MachineInfo {
                                 machine_id: machine_id.clone(),
-                                os,
+                                os: os.clone(),
                                 hostname,
                                 screen_width,
                                 screen_height,
@@ -162,7 +175,7 @@ async fn wait_for_registration(
                             let ack = serde_json::json!({"type": "registered", "machine_id": machine_id});
                             let _ = socket.send(Message::Text(serde_json::to_string(&ack).unwrap().into())).await;
 
-                            return Some((machine_id, rx));
+                            return Some((machine_id, screen_recording_allowed, os, rx));
                         }
                     }
                     Some(Ok(Message::Ping(payload))) => {
@@ -171,6 +184,86 @@ async fn wait_for_registration(
                     Some(Ok(Message::Close(_))) | None => return None,
                     _ => {}
                 }
+            }
+        }
+    }
+}
+
+/// When a machine connects with screen_recording_allowed, start recording
+/// immediately and notify the companion agent.
+async fn on_machine_connected_with_recording(
+    state: &AppState,
+    registry: &crate::services::machine_registry::MachineRegistry,
+    machine_id: &str,
+    os: &str,
+) {
+    // Check if any instance has screen_recording enabled
+    let instances_dir = state.workspace_dir.join("instances");
+    let entries = match std::fs::read_dir(&instances_dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    let enabled_slugs: Vec<String> = entries
+        .filter_map(Result::ok)
+        .filter(|e| e.path().is_dir() && e.path().join("soul.md").exists())
+        .filter_map(|e| {
+            let slug = e.file_name().to_string_lossy().to_string();
+            if crate::config::InstanceConfig::load(&state.workspace_dir, &slug).screen_recording {
+                Some(slug)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if enabled_slugs.is_empty() {
+        return;
+    }
+
+    // Start recording immediately
+    crate::services::heartbeat::start_recording_on_machine(registry, machine_id, os).await;
+
+    // Log a system message + trigger companion agent for each enabled instance
+    for slug in &enabled_slugs {
+        let msg = format!(
+            "[system] desktop '{}' connected with screen recording enabled. recording started.",
+            machine_id
+        );
+        let _ = crate::services::chat::save_system_message(&state.workspace_dir, slug, "default", &msg);
+
+        // Trigger the companion agent with context about the connection
+        let llm_guard = state.llm.read().await;
+        if let Some(llm) = llm_guard.as_ref() {
+            let instance_dir = state.workspace_dir.join("instances").join(slug);
+            let google_ai_key = {
+                let cfg = state.config.read().await;
+                cfg.llm.tokens.google_ai.clone()
+            };
+
+            let agents = crate::services::child_agents::load_agents(&state.workspace_dir, slug);
+            if let Some(companion) = agents.iter().find(|a| a.name == "companion") {
+                let task = format!(
+                    "the user's desktop computer '{}' just connected with screen recording enabled. \
+                     you're now recording their screen and will analyze it every 15 minutes. \
+                     consider reaching out to greet them or acknowledge that you can see their screen now.",
+                    machine_id
+                );
+                let ws = state.workspace_dir.clone();
+                let s = slug.clone();
+                let events = state.events.clone();
+                let vs = state.vector_store.clone();
+                let llm_c = llm.clone();
+                let agent = companion.clone();
+                tokio::spawn(async move {
+                    match crate::services::child_agents::run_single_agent(
+                        &ws, &s, &instance_dir, &llm_c, &events, &vs, &google_ai_key,
+                        &agent, Some(&task), "machine_connected",
+                    ).await {
+                        Ok((tokens, _)) => log::info!("[machine-ws] companion notified about connection ({tokens} tokens)"),
+                        Err(e) => log::warn!("[machine-ws] companion notification failed: {e}"),
+                    }
+                });
             }
         }
     }
