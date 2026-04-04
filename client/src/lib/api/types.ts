@@ -122,6 +122,7 @@ export interface ChildAgent {
 	triage: boolean;
 	tools: boolean;
 	enabled: boolean;
+	tool_groups: string[];
 	last_run: number;
 	is_due: boolean;
 }

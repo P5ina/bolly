@@ -465,6 +465,20 @@ export function triggerAgent(slug: string, agentName: string): Promise<{ status:
 	});
 }
 
+export function updateAgent(slug: string, agentName: string, updates: Record<string, unknown>): Promise<ChildAgent> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/agents/${encodeURIComponent(agentName)}`, {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(updates),
+	});
+}
+
+export function resetAgent(slug: string, agentName: string): Promise<ChildAgent> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/agents/${encodeURIComponent(agentName)}/reset`, {
+		method: "POST",
+	});
+}
+
 export function fetchAgentHistory(slug: string, agentName: string): Promise<AgentHistoryEntry[]> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/agents/${encodeURIComponent(agentName)}/history`);
 }

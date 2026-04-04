@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -14,7 +14,9 @@ use crate::services::child_agents;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/instances/{instance_slug}/agents", get(list_agents))
+        .route("/api/instances/{instance_slug}/agents/{agent_name}", put(update_agent))
         .route("/api/instances/{instance_slug}/agents/{agent_name}/run", post(trigger_agent))
+        .route("/api/instances/{instance_slug}/agents/{agent_name}/reset", post(reset_agent))
         .route("/api/instances/{instance_slug}/agents/{agent_name}/history", get(agent_history))
         .route("/api/instances/{instance_slug}/agent-runs", get(list_runs))
         .route("/api/instances/{instance_slug}/agent-runs/{run_id}", get(get_run))
@@ -198,4 +200,71 @@ async fn get_run(
     let run = crate::services::agent_runs::load_run(&state.workspace_dir, &instance_slug, &run_id)
         .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
     Ok(Json(run))
+}
+
+/// Update an agent's config (partial — only provided fields change).
+#[derive(Deserialize)]
+struct UpdateAgentRequest {
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    prompt: Option<String>,
+    #[serde(default)]
+    interval_hours: Option<f64>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
+    tool_groups: Option<Vec<String>>,
+}
+
+async fn update_agent(
+    State(state): State<AppState>,
+    Path((instance_slug, agent_name)): Path<(String, String)>,
+    Json(req): Json<UpdateAgentRequest>,
+) -> Result<Json<ChildAgentConfig>, (StatusCode, String)> {
+    let agent_path = state.workspace_dir
+        .join("instances").join(&instance_slug)
+        .join("agents").join(format!("{agent_name}.toml"));
+
+    let raw = fs::read_to_string(&agent_path)
+        .map_err(|_| (StatusCode::NOT_FOUND, format!("agent '{agent_name}' not found")))?;
+    let mut agent: ChildAgentConfig = toml::from_str(&raw)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+
+    if let Some(v) = req.description { agent.description = v; }
+    if let Some(v) = req.prompt { agent.prompt = v; }
+    if let Some(v) = req.interval_hours { agent.interval_hours = v; }
+    if let Some(v) = req.model { agent.model = v; }
+    if let Some(v) = req.enabled { agent.enabled = v; }
+    if let Some(v) = req.tool_groups { agent.tool_groups = v; }
+
+    let toml_str = toml::to_string_pretty(&agent)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    fs::write(&agent_path, toml_str)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    log::info!("[agents-api] updated agent '{agent_name}' for {instance_slug}");
+    Ok(Json(agent))
+}
+
+async fn reset_agent(
+    State(state): State<AppState>,
+    Path((instance_slug, agent_name)): Path<(String, String)>,
+) -> Result<Json<ChildAgentConfig>, (StatusCode, String)> {
+    let default = child_agents::get_builtin_default(&agent_name)
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, format!("'{agent_name}' is not a built-in agent")))?;
+
+    let agent_path = state.workspace_dir
+        .join("instances").join(&instance_slug)
+        .join("agents").join(format!("{agent_name}.toml"));
+
+    let toml_str = toml::to_string_pretty(&default)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    fs::write(&agent_path, toml_str)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    log::info!("[agents-api] reset agent '{agent_name}' to defaults for {instance_slug}");
+    Ok(Json(default))
 }

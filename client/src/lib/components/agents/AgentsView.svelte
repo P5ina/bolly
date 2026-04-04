@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { fetchAgents, triggerAgent, fetchAgentHistory, fetchAgentRuns, fetchAgentRun } from "$lib/api/client.js";
+	import { fetchAgents, triggerAgent, updateAgent, resetAgent, fetchAgentHistory, fetchAgentRuns, fetchAgentRun } from "$lib/api/client.js";
 	import type { ChildAgent, AgentHistoryEntry, AgentRunSummary, AgentRun } from "$lib/api/types.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 	import { goto } from "$app/navigation";
@@ -10,6 +10,10 @@
 	let agents = $state<ChildAgent[]>([]);
 	let loading = $state(true);
 	let triggering = $state<string | null>(null);
+
+	// Config editing
+	let editingAgent = $state<string | null>(null);
+	let saving = $state(false);
 
 	// History panel
 	let selectedAgent = $state<string | null>(null);
@@ -78,6 +82,61 @@
 		} finally {
 			historyLoading = false;
 		}
+	}
+
+	const ALL_TOOL_GROUPS = ["memory", "creative", "communication", "files", "commands", "email", "computer", "media"];
+	const BUILTIN_NAMES = ["companion", "reflection", "night-maintenance", "observer", "explore-code", "deep-research"];
+	const MODEL_OPTIONS = [
+		{ value: "default", label: "default" },
+		{ value: "heavy", label: "opus" },
+		{ value: "fast", label: "sonnet" },
+		{ value: "cheap", label: "haiku" },
+	];
+
+	function isBuiltin(name: string): boolean {
+		return BUILTIN_NAMES.includes(name);
+	}
+
+	async function toggleEnabled(agent: ChildAgent) {
+		try {
+			await updateAgent(slug, agent.name, { enabled: !agent.enabled });
+			agent.enabled = !agent.enabled;
+			agents = [...agents]; // trigger reactivity
+			toast.success(`${agent.name} ${agent.enabled ? "enabled" : "disabled"}`);
+		} catch {
+			toast.error("failed to update agent");
+		}
+	}
+
+	async function saveAgentField(agentName: string, field: string, value: unknown) {
+		saving = true;
+		try {
+			const updated = await updateAgent(slug, agentName, { [field]: value });
+			agents = agents.map(a => a.name === agentName ? { ...a, ...updated } : a);
+			toast.success("saved");
+		} catch {
+			toast.error("failed to save");
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function handleReset(agentName: string) {
+		try {
+			const updated = await resetAgent(slug, agentName);
+			agents = agents.map(a => a.name === agentName ? { ...a, ...updated } : a);
+			toast.success(`${agentName} reset to defaults`);
+		} catch (e) {
+			toast.error("failed to reset");
+		}
+	}
+
+	function toggleToolGroup(agent: ChildAgent, group: string) {
+		const groups = agent.tool_groups ?? [];
+		const next = groups.includes(group)
+			? groups.filter(g => g !== group)
+			: [...groups, group];
+		saveAgentField(agent.name, "tool_groups", next);
 	}
 
 	function addAgent() {
@@ -300,6 +359,17 @@
 						<!-- Actions -->
 						<div class="agent-actions">
 							<button
+								class="agent-btn"
+								onclick={() => toggleEnabled(agent)}
+								title={agent.enabled ? "Disable" : "Enable"}
+							>
+								{#if agent.enabled}
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+								{:else}
+									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+								{/if}
+							</button>
+							<button
 								class="agent-btn agent-btn-run"
 								onclick={() => handleTrigger(agent.name)}
 								disabled={isRunning || !agent.enabled}
@@ -312,6 +382,14 @@
 								{/if}
 							</button>
 							<button
+								class="agent-btn"
+								onclick={() => editingAgent = editingAgent === agent.name ? null : agent.name}
+								class:agent-btn-active={editingAgent === agent.name}
+								title="Configure"
+							>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+							</button>
+							<button
 								class="agent-btn agent-btn-history"
 								onclick={() => showHistory(agent.name)}
 								class:agent-btn-active={isExpanded}
@@ -321,6 +399,54 @@
 							</button>
 						</div>
 					</div>
+
+					<!-- Config panel -->
+					{#if editingAgent === agent.name}
+						<div class="agent-config">
+							<div class="config-row">
+								<label class="config-label">interval</label>
+								<div class="config-field">
+									<input class="config-input config-input-sm" type="number" min="0" step="0.25"
+										value={agent.interval_hours}
+										onchange={(e) => saveAgentField(agent.name, "interval_hours", parseFloat((e.target as HTMLInputElement).value))}
+									/>
+									<span class="config-unit">hours</span>
+									<span class="config-hint">{agent.interval_hours === 0 ? "on-demand" : agent.interval_hours < 1 ? `= ${Math.round(agent.interval_hours * 60)}m` : `= ${agent.interval_hours}h`}</span>
+								</div>
+							</div>
+							<div class="config-row">
+								<label class="config-label">model</label>
+								<div class="config-field">
+									{#each MODEL_OPTIONS as opt (opt.value)}
+										<button class="config-chip" class:config-chip-active={agent.model === opt.value}
+											onclick={() => saveAgentField(agent.name, "model", opt.value)}
+										>{opt.label}</button>
+									{/each}
+								</div>
+							</div>
+							<div class="config-row">
+								<label class="config-label">tools</label>
+								<div class="config-field config-field-wrap">
+									{#each ALL_TOOL_GROUPS as group (group)}
+										<button class="config-chip" class:config-chip-active={(agent.tool_groups ?? []).includes(group)}
+											onclick={() => toggleToolGroup(agent, group)}
+										>{group}</button>
+									{/each}
+								</div>
+							</div>
+							<div class="config-row config-row-full">
+								<label class="config-label">prompt</label>
+								<textarea class="config-textarea" value={agent.prompt} rows="4"
+									onchange={(e) => saveAgentField(agent.name, "prompt", (e.target as HTMLTextAreaElement).value)}
+								></textarea>
+							</div>
+							{#if isBuiltin(agent.name)}
+								<div class="config-row config-row-actions">
+									<button class="config-reset" onclick={() => handleReset(agent.name)}>reset to defaults</button>
+								</div>
+							{/if}
+						</div>
+					{/if}
 
 					<!-- History panel -->
 					{#if isExpanded}
@@ -1006,7 +1132,131 @@
 		line-height: 1.4;
 	}
 
+	/* Config panel */
+	.agent-config {
+		padding: 0.75rem 1rem;
+		margin: -0.25rem 0 0;
+		border-top: 1px solid oklch(var(--ink) / 5%);
+		display: flex;
+		flex-direction: column;
+		gap: 0.625rem;
+	}
+
+	.config-row {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.config-row-full {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.config-row-actions {
+		justify-content: flex-end;
+		padding-top: 0.25rem;
+	}
+
+	.config-label {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: oklch(var(--ink) / 25%);
+		letter-spacing: 0.05em;
+		min-width: 50px;
+		flex-shrink: 0;
+	}
+
+	.config-field {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+	}
+
+	.config-field-wrap {
+		flex-wrap: wrap;
+	}
+
+	.config-input {
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		padding: 0.3rem 0.5rem;
+		border-radius: 0.375rem;
+		border: 1px solid oklch(var(--ink) / 8%);
+		background: oklch(var(--ink) / 3%);
+		color: var(--foreground);
+		outline: none;
+	}
+	.config-input:focus { border-color: oklch(0.78 0.12 75 / 30%); }
+	.config-input-sm { width: 70px; }
+
+	.config-unit {
+		font-family: var(--font-mono);
+		font-size: 0.58rem;
+		color: oklch(var(--ink) / 20%);
+	}
+
+	.config-hint {
+		font-family: var(--font-mono);
+		font-size: 0.55rem;
+		color: oklch(0.78 0.12 75 / 35%);
+	}
+
+	.config-chip {
+		font-family: var(--font-mono);
+		font-size: 0.58rem;
+		padding: 0.2rem 0.5rem;
+		border-radius: 0.375rem;
+		border: 1px solid oklch(var(--ink) / 8%);
+		background: oklch(var(--ink) / 2%);
+		color: oklch(var(--ink) / 30%);
+		cursor: pointer;
+		transition: all 0.15s ease;
+		letter-spacing: 0.03em;
+	}
+	.config-chip:hover { border-color: oklch(var(--ink) / 15%); color: oklch(var(--ink) / 50%); }
+	.config-chip-active {
+		background: oklch(0.78 0.12 75 / 8%);
+		border-color: oklch(0.78 0.12 75 / 20%);
+		color: oklch(0.78 0.12 75 / 65%);
+	}
+
+	.config-textarea {
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		line-height: 1.5;
+		padding: 0.5rem;
+		border-radius: 0.375rem;
+		border: 1px solid oklch(var(--ink) / 8%);
+		background: oklch(var(--ink) / 3%);
+		color: var(--foreground);
+		outline: none;
+		resize: vertical;
+		min-height: 80px;
+	}
+	.config-textarea:focus { border-color: oklch(0.78 0.12 75 / 30%); }
+
+	.config-reset {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: oklch(0.60 0.12 25 / 50%);
+		background: none;
+		border: 1px solid oklch(0.60 0.12 25 / 12%);
+		padding: 0.25rem 0.6rem;
+		border-radius: 0.375rem;
+		cursor: pointer;
+		letter-spacing: 0.04em;
+		transition: all 0.2s ease;
+	}
+	.config-reset:hover {
+		color: oklch(0.60 0.12 25 / 75%);
+		border-color: oklch(0.60 0.12 25 / 25%);
+		background: oklch(0.60 0.12 25 / 5%);
+	}
+
 	@media (max-width: 640px) {
 		.agents-page { padding: 1.5rem 1rem; }
+		.config-row { flex-direction: column; align-items: stretch; }
+		.config-label { min-width: unset; }
 	}
 </style>
