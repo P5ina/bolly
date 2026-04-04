@@ -137,7 +137,7 @@
 		width: 6px;
 		height: 6px;
 		border-radius: 50%;
-		background: oklch(0.78 0.12 75 / 30%);
+		background: var(--text-muted);
 		animation: pulse-alive 2s ease-in-out infinite;
 	}
 
@@ -154,19 +154,19 @@
 	.drops-empty-icon {
 		font-family: var(--font-mono);
 		font-size: 1.5rem;
-		color: oklch(0.78 0.12 75 / 28%);
+		color: var(--text-muted);
 		animation: pulse-alive 3s ease-in-out infinite;
 	}
 
 	.drops-empty-text {
 		font-family: var(--font-display);
 		font-size: 0.95rem;
-		color: oklch(0.78 0.12 75 / 50%);
+		color: var(--text-secondary);
 	}
 
 	.drops-empty-hint {
 		font-size: 0.75rem;
-		color: oklch(0.78 0.12 75 / 35%);
+		color: var(--text-muted);
 		max-width: 28ch;
 		line-height: 1.5;
 	}
@@ -178,7 +178,7 @@
 	.drops-count {
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 30%);
+		color: var(--text-muted);
 		letter-spacing: 0.05em;
 	}
 

@@ -93,8 +93,8 @@
 		gap: 0.5rem;
 		padding: 1rem 1.125rem;
 		border-radius: 0.75rem;
-		background: oklch(0.09 0.018 278 / 60%);
-		border: 1px solid oklch(var(--ink) / 4%);
+		background: oklch(var(--shade) / 8%);
+		border: 1px solid oklch(var(--shade) / 6%);
 		cursor: pointer;
 		transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 		text-align: left;
@@ -114,8 +114,8 @@
 	}
 
 	.drop-card:hover {
-		background: oklch(0.10 0.020 278 / 70%);
-		border-color: var(--accent, oklch(0.78 0.12 75)) / 15%;
+		background: oklch(var(--shade) / 12%);
+		border-color: color-mix(in oklch, var(--accent) 15%, transparent);
 		box-shadow: 0 0 20px color-mix(in oklch, var(--accent) 8%, transparent);
 	}
 
@@ -140,7 +140,7 @@
 	.drop-card-kind {
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
-		color: oklch(0.78 0.12 75 / 35%);
+		color: var(--text-muted);
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
 	}
@@ -149,7 +149,7 @@
 		margin-left: auto;
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 28%);
+		color: var(--text-muted);
 	}
 
 	.drop-card-title {
@@ -176,7 +176,7 @@
 
 	.drop-card-content {
 		font-size: 0.78rem;
-		color: oklch(0.78 0.12 75 / 50%);
+		color: var(--text-secondary);
 		line-height: 1.55;
 		overflow: hidden;
 		display: -webkit-box;
@@ -189,7 +189,7 @@
 	.drop-card-content-expanded {
 		-webkit-line-clamp: unset;
 		line-clamp: unset;
-		color: oklch(0.78 0.12 75 / 65%);
+		color: var(--foreground);
 	}
 
 	.drop-card-mood {
@@ -198,7 +198,7 @@
 		gap: 0.35rem;
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		color: oklch(0.78 0.12 75 / 35%);
+		color: var(--text-muted);
 		margin-top: 0.25rem;
 	}
 
@@ -213,7 +213,7 @@
 		align-self: flex-end;
 		font-family: var(--font-mono);
 		font-size: 0.7rem;
-		color: oklch(0.65 0.15 20 / 50%);
+		color: oklch(0.60 0.18 25 / 60%);
 		background: none;
 		border: none;
 		cursor: pointer;
@@ -223,7 +223,7 @@
 	}
 
 	.drop-card-delete:hover {
-		color: oklch(0.65 0.15 20 / 80%);
-		background: oklch(0.65 0.15 20 / 8%);
+		color: oklch(0.60 0.18 25 / 90%);
+		background: oklch(0.60 0.18 25 / 10%);
 	}
 </style>
