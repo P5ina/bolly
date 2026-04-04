@@ -208,14 +208,16 @@ async fn on_machine_connected(
     let instances_dir = state.workspace_dir.join("instances");
     let entries = match std::fs::read_dir(&instances_dir) {
         Ok(e) => e,
-        Err(_) => return,
+        Err(e) => {
+            log::error!("[machine-connect] failed to read instances dir: {e}");
+            return;
+        }
     };
 
     let all_slugs: Vec<(String, bool)> = entries
         .filter_map(Result::ok)
         .filter(|e| e.path().is_dir() && e.path().join("soul.md").exists())
         .filter(|e| {
-            // If bound to a specific instance, only include that one
             match bound_slug {
                 Some(s) => e.file_name().to_string_lossy() == s,
                 None => true,
@@ -229,8 +231,17 @@ async fn on_machine_connected(
         .collect();
 
     if all_slugs.is_empty() {
+        log::warn!(
+            "[machine-connect] no matching instances for '{}' (bound_slug={:?}, instances_dir={})",
+            machine_id, bound_slug, instances_dir.display()
+        );
         return;
     }
+
+    log::info!(
+        "[machine-connect] '{}' connected, notifying {} instance(s): {:?}",
+        machine_id, all_slugs.len(), all_slugs.iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>()
+    );
 
     // Start recording if both the desktop and any instance have it enabled
     let any_instance_recording = all_slugs.iter().any(|(_, sr)| *sr);
@@ -238,7 +249,7 @@ async fn on_machine_connected(
         crate::services::heartbeat::start_recording_on_machine(registry, machine_id, os).await;
     }
 
-    // Notify ALL instances about the connection
+    // Notify ALL matching instances about the connection
     for (slug, instance_recording) in &all_slugs {
         let recording_status = match (screen_recording_allowed, *instance_recording) {
             (true, true) => "screen recording is active — recording started.",
@@ -251,7 +262,9 @@ async fn on_machine_connected(
             "[system] desktop '{}' connected. {}",
             machine_id, recording_status
         );
-        let _ = crate::services::chat::save_system_message(&state.workspace_dir, slug, "default", &msg);
+        if let Err(e) = crate::services::chat::save_system_message(&state.workspace_dir, slug, "default", &msg) {
+            log::error!("[machine-connect] failed to save system message for {slug}: {e}");
+        }
 
         // Trigger the companion agent
         let llm_guard = state.llm.read().await;
@@ -270,6 +283,7 @@ async fn on_machine_connected(
                      keep it brief and friendly.",
                     machine_id, recording_status
                 );
+                log::info!("[machine-connect] triggering companion for {slug} (task: machine_connected)");
                 let ws = state.workspace_dir.clone();
                 let s = slug.clone();
                 let events = state.events.clone();
@@ -281,11 +295,15 @@ async fn on_machine_connected(
                         &ws, &s, &instance_dir, &llm_c, &events, &vs, &google_ai_key,
                         &agent, Some(&task), "machine_connected",
                     ).await {
-                        Ok((tokens, _)) => log::info!("[machine-ws] companion notified about connection ({tokens} tokens)"),
-                        Err(e) => log::warn!("[machine-ws] companion notification failed: {e}"),
+                        Ok((tokens, _)) => log::info!("[machine-connect] {s}: companion reach_out done ({tokens} tokens)"),
+                        Err(e) => log::error!("[machine-connect] {s}: companion failed: {e}"),
                     }
                 });
+            } else {
+                log::warn!("[machine-connect] {slug}: no companion agent found");
             }
+        } else {
+            log::error!("[machine-connect] {slug}: LLM not configured, cannot trigger companion");
         }
     }
 }
