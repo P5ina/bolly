@@ -19,7 +19,17 @@ tauri_panel! {
     })
 }
 
-fn overlay_url_str() -> String {
+/// Get the overlay URL — served by the server, not locally.
+/// Falls back to local Tauri URL if no server is connected.
+fn overlay_url_str(slug: Option<&str>) -> String {
+    if let Some(server_url) = crate::computer_use_bridge::get_server_url() {
+        if let Some(s) = slug {
+            return format!("{server_url}/overlay/{s}");
+        }
+        // No slug — try any available instance
+        return format!("{server_url}/overlay/default");
+    }
+    // Fallback to local
     if cfg!(debug_assertions) {
         "http://localhost:1420/overlay/".to_string()
     } else {
@@ -29,21 +39,30 @@ fn overlay_url_str() -> String {
 
 /// Show the overlay — NSPanel on macOS, regular window on other platforms.
 pub fn show(app: &AppHandle) {
+    show_with_slug(app, None);
+}
+
+/// Show the overlay for a specific instance slug.
+pub fn show_for_instance(app: &AppHandle, slug: &str) {
+    show_with_slug(app, Some(slug.to_string()));
+}
+
+fn show_with_slug(app: &AppHandle, slug: Option<String>) {
     let inner = app.clone();
     let _ = app.run_on_main_thread(move || {
         #[cfg(target_os = "macos")]
         {
-            show_macos(&inner);
+            show_macos(&inner, slug.as_deref());
         }
         #[cfg(not(target_os = "macos"))]
         {
-            show_fallback(&inner);
+            show_fallback(&inner, slug.as_deref());
         }
     });
 }
 
 #[cfg(target_os = "macos")]
-fn show_macos(app: &AppHandle) {
+fn show_macos(app: &AppHandle, slug: Option<&str>) {
     if let Ok(panel) = app.get_webview_panel("overlay") {
         if !panel.is_visible() {
             panel.show();
@@ -51,7 +70,7 @@ fn show_macos(app: &AppHandle) {
         return;
     }
 
-    let url: WebviewUrl = WebviewUrl::External(overlay_url_str().parse().unwrap());
+    let url: WebviewUrl = WebviewUrl::External(overlay_url_str(slug).parse().unwrap());
 
     match PanelBuilder::<_, OverlayPanel>::new(app, "overlay")
         .url(url)
@@ -91,12 +110,12 @@ fn show_macos(app: &AppHandle) {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn show_fallback(app: &AppHandle) {
+fn show_fallback(app: &AppHandle, slug: Option<&str>) {
     if app.get_webview_window("overlay").is_some() {
         return;
     }
 
-    let parsed: url::Url = match overlay_url_str().parse() {
+    let parsed: url::Url = match overlay_url_str(slug).parse() {
         Ok(u) => u,
         Err(e) => { eprintln!("[overlay] bad URL: {e}"); return; }
     };

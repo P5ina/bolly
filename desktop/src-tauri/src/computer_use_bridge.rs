@@ -18,6 +18,9 @@ static RECORDING_ACTIVE: Mutex<bool> = Mutex::new(false);
 /// Instance slug this machine is bound to (set from URL or explicitly).
 static INSTANCE_SLUG: Mutex<Option<String>> = Mutex::new(None);
 
+/// Server URL for overlay (set on connect).
+static SERVER_URL: Mutex<Option<String>> = Mutex::new(None);
+
 /// Start the machine agent — connects to the server's machine WebSocket,
 /// registers this machine, then listens for toolcalls and executes them.
 #[tauri::command]
@@ -40,6 +43,10 @@ pub async fn connect_computer_use(
     {
         let mut active = BRIDGE_ACTIVE.lock().map_err(|e| e.to_string())?;
         *active = true;
+    }
+    {
+        let mut url = SERVER_URL.lock().map_err(|e| e.to_string())?;
+        *url = Some(instance_url.clone());
     }
 
     tokio::spawn(async move {
@@ -91,6 +98,10 @@ pub fn set_screen_recording_allowed(allowed: bool) -> Result<(), String> {
     let mut val = SCREEN_RECORDING_ALLOWED.lock().map_err(|e| e.to_string())?;
     *val = allowed;
     Ok(())
+}
+
+pub fn get_server_url() -> Option<String> {
+    SERVER_URL.lock().ok().and_then(|v| v.clone())
 }
 
 #[tauri::command]

@@ -6,8 +6,16 @@
   let action = $state("");
   let recording = $state(false);
   let visible = $state(false);
+  let skin = $state("orb");
   let actionQueue = $state<{ id: number; text: string; icon: string }[]>([]);
   let idCounter = 0;
+
+  const skinAvatars: Record<string, string> = {
+    orb: "/bolly-avatar-orb.webp",
+    mint: "/bolly-avatar-mint.png",
+  };
+
+  const avatarSrc = $derived(skinAvatars[skin] ?? skinAvatars.orb);
   let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
   function resetHideTimer() {
@@ -90,6 +98,10 @@
     const unlistenRec = listen<boolean>("screen-recording-state", (e) => {
       recording = e.payload;
       if (e.payload) visible = true;
+    });
+
+    const unlistenSkin = listen<string>("overlay-skin", (e) => {
+      skin = e.payload;
     });
 
     return () => {
