@@ -36,6 +36,7 @@ pub fn show(app: &AppHandle) {
         .transparent(true)
         .shadow(false)
         .always_on_top(true)
+        .visible_on_all_workspaces(true)
         .skip_taskbar(true)
         .focused(false)
         .resizable(false)
