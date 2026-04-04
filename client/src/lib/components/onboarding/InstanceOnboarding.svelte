@@ -402,7 +402,7 @@
 
 			{#if stage === "picking-provider"}
 				<div class="ob-enter">
-					<div class="ob-pills">
+					<div class="ob-pills ob-pills-soul">
 						<button onclick={pickProviderApi} class="ob-pill ob-pill-col ob-pill-soul">
 							<span class="ob-pill-label">API key</span>
 							<span class="ob-pill-note">pay-per-use</span>

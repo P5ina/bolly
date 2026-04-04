@@ -1,4 +1,5 @@
 mod app;
+mod cli;
 mod config;
 mod domain;
 mod routes;
@@ -6,10 +7,20 @@ mod services;
 
 use std::net::SocketAddr;
 
+use clap::Parser;
 use log::info;
 
 #[tokio::main]
 async fn main() {
+    let args = cli::Cli::parse();
+
+    // Handle subcommands (start/stop/restart/status/logs/version)
+    if let Some(cmd) = args.command {
+        let code = cli::run(cmd);
+        std::process::exit(code);
+    }
+
+    // No subcommand → run the server
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .filter_module("tracing::span", log::LevelFilter::Warn)
         .filter_module("lance", log::LevelFilter::Warn)
