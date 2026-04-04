@@ -46,27 +46,9 @@ you have tools — use them naturally:
 - read_email — check the user's inbox
 - web_search / web_fetch — look things up
 
-## screen awareness
-you have a screen recording feature that captures what the user does on their computer.
-it's OFF by default. if the user has the desktop app connected but screen recording is not enabled,
-you can suggest it once: \"i can watch your screen in the background and offer help when i notice
-something useful — want to enable it?\" (use update_config with screen_recording: true).
-don't nag — suggest it once and respect their choice.
-
-when screen recording IS enabled, look for [system] screen observation messages in recent chat history.
-these contain what the user was doing on their screen. USE this context to:
-- understand what the user is working on right now
-- offer helpful suggestions, tips, or relevant information via reach_out
-- notice if they seem stuck and offer to help
-- comment on what they're doing — show that you're paying attention
-- don't be creepy or overly intrusive — be a helpful companion, not a surveillance tool
-
-when you see a screen observation, you SHOULD reach_out with a brief, relevant comment.
-the user enabled screen recording specifically so you would engage with what they're doing.
-
 if you want the user to see a message, you MUST call reach_out. text in your response is private.
 
-be genuine. don't force it.".to_string(),
+be genuine. don't force it. if there's nothing to say, say nothing.".to_string(),
         interval_hours: 1.0,
         model: "default".to_string(),
         triage: true,
@@ -183,11 +165,42 @@ keep your answer focused and under 3000 chars.".to_string(),
     }
 }
 
+fn builtin_observer() -> ChildAgentConfig {
+    ChildAgentConfig {
+        name: "observer".to_string(),
+        description: "Screen observer — watches the user's screen and offers contextual help".to_string(),
+        prompt: "\
+you are the screen observer. you watch the user's desktop screen and help them.
+
+look at [system] screen observation messages in recent chat history.
+these describe what the user was doing on their screen over the last recording cycle.
+
+based on what you see:
+- if the user is coding, you can offer tips, catch bugs, or suggest improvements
+- if they're browsing, you can comment on what they're reading
+- if they're stuck, offer help
+- if they're doing something interesting, acknowledge it
+- if they're writing, you can offer suggestions
+
+USE reach_out to send your comment. keep it brief and natural — one or two sentences.
+don't repeat yourself. if you already commented on the same activity, skip it.
+don't be creepy. be a helpful colleague who glances at your screen, not a surveillance system.
+
+if there's no new screen observation or nothing useful to say, just write your thoughts and move on.".to_string(),
+        interval_hours: 0.25, // every 15 min
+        model: "default".to_string(),
+        triage: false,
+        tools: true,
+        enabled: false, // disabled by default — enabled when screen_recording is on
+    }
+}
+
 fn builtins() -> Vec<ChildAgentConfig> {
     vec![
         builtin_companion(),
         builtin_reflection(),
         builtin_night_maintenance(),
+        builtin_observer(),
         builtin_explore_code(),
         builtin_deep_research(),
     ]
@@ -366,7 +379,7 @@ pub async fn run_single_agent(
     let start_ms = unix_millis();
 
     let (response, tokens, trace) = if agent.tools {
-        let agent_tools = if machine_registry.is_some() && agent.name == "companion" {
+        let agent_tools = if machine_registry.is_some() && (agent.name == "companion" || agent.name == "observer") {
             build_agent_tools_with_computer(
                 workspace_dir, slug, events.clone(), &model_llm, vector_store.clone(),
                 google_ai_key, machine_registry.unwrap(),

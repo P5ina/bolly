@@ -1036,6 +1036,17 @@ pub struct UpdateConfigArgs {
     /// Enable/disable screen recording observation. When true, the companion records the user's
     /// screen between heartbeats and analyzes it to offer contextual suggestions. Default: false (off).
     pub screen_recording: Option<bool>,
+    /// Update a child agent's interval. Provide as {"agent_name": "companion", "interval_hours": 0.5}.
+    /// Set interval_hours to 0 to make it on-demand only. Changes take effect on next server restart.
+    pub agent_interval: Option<AgentIntervalArg>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct AgentIntervalArg {
+    /// Name of the child agent to update.
+    pub agent_name: String,
+    /// New interval in hours. 0 = on-demand only, 0.25 = every 15 min, 1 = every hour, etc.
+    pub interval_hours: f64,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -1207,6 +1218,20 @@ impl Tool for UpdateConfigTool {
                 .map_err(|e| ToolExecError(format!("failed to save instance config: {e}")))?;
             changes.push(format!("screen recording → {}", if enabled { "enabled" } else { "disabled" }));
 
+            // Enable/disable the observer agent
+            let observer_path = self.workspace_dir
+                .join("instances").join(&self.instance_slug)
+                .join("agents").join("observer.toml");
+            if let Ok(raw) = std::fs::read_to_string(&observer_path) {
+                if let Ok(mut agent) = toml::from_str::<crate::domain::child_agent::ChildAgentConfig>(&raw) {
+                    agent.enabled = enabled;
+                    if let Ok(toml_str) = toml::to_string_pretty(&agent) {
+                        let _ = std::fs::write(&observer_path, toml_str);
+                        changes.push(format!("observer agent → {}", if enabled { "enabled" } else { "disabled" }));
+                    }
+                }
+            }
+
             // Immediately start or stop recording on connected machines
             let registry = self.machine_registry.clone();
             tokio::spawn(async move {
@@ -1227,6 +1252,29 @@ impl Tool for UpdateConfigTool {
                     }
                 }
             });
+        }
+
+        // --- Agent interval ---
+        if let Some(ref ai) = args.agent_interval {
+            let agent_path = self.workspace_dir
+                .join("instances").join(&self.instance_slug)
+                .join("agents").join(format!("{}.toml", ai.agent_name));
+            if !agent_path.exists() {
+                return Err(ToolExecError(format!("agent '{}' not found", ai.agent_name)));
+            }
+            let raw = std::fs::read_to_string(&agent_path)
+                .map_err(|e| ToolExecError(format!("failed to read agent config: {e}")))?;
+            let mut agent: crate::domain::child_agent::ChildAgentConfig = toml::from_str(&raw)
+                .map_err(|e| ToolExecError(format!("failed to parse agent config: {e}")))?;
+            agent.interval_hours = ai.interval_hours;
+            let toml_str = toml::to_string_pretty(&agent)
+                .map_err(|e| ToolExecError(format!("failed to serialize: {e}")))?;
+            std::fs::write(&agent_path, toml_str)
+                .map_err(|e| ToolExecError(format!("failed to write agent config: {e}")))?;
+            changes.push(format!(
+                "agent '{}' interval → {}h (takes effect on restart)",
+                ai.agent_name, ai.interval_hours
+            ));
         }
 
         // --- Email account management ---
