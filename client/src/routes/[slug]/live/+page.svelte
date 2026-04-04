@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from "$app/stores";
 	import { onMount } from "svelte";
+	import { getAuthToken } from "$lib/api/client.js";
 
 	const slug = $derived($page.params.slug!);
 
@@ -14,7 +15,9 @@
 		async function poll() {
 			while (active) {
 				try {
-					const res = await fetch(`/api/instances/${slug}/live-frame`);
+					const token = getAuthToken();
+					const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+					const res = await fetch(`/api/instances/${slug}/live-frame`, { headers });
 					if (res.ok && res.headers.get("content-type")?.includes("image/jpeg")) {
 						const blob = await res.blob();
 						const url = URL.createObjectURL(blob);
