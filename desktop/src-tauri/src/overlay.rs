@@ -126,7 +126,7 @@ fn show_fallback(app: &AppHandle) {
     }
 }
 
-/// Hide the overlay.
+/// Hide the overlay (don't destroy — reuse on next show).
 pub fn hide(app: &AppHandle) {
     let inner = app.clone();
     let _ = app.run_on_main_thread(move || {
@@ -134,13 +134,14 @@ pub fn hide(app: &AppHandle) {
         {
             if let Ok(panel) = inner.get_webview_panel("overlay") {
                 panel.hide();
+                eprintln!("[overlay] hidden (panel)");
+                return;
             }
-            let _: Option<_> = inner.remove_webview_panel("overlay");
         }
         if let Some(win) = inner.get_webview_window("overlay") {
-            let _ = win.close();
+            let _ = win.hide();
+            eprintln!("[overlay] hidden (window)");
         }
-        eprintln!("[overlay] hidden");
     });
 }
 
