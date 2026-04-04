@@ -1,10 +1,11 @@
 <script lang="ts">
   import { listen } from "@tauri-apps/api/event";
+  import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
 
   let action = $state("");
   let recording = $state(false);
-  let visible = $state(false);
+  let visible = $state(true);
   let actionQueue = $state<{ id: number; text: string; icon: string }[]>([]);
   let idCounter = 0;
 
@@ -53,7 +54,13 @@
     }, 1200);
   }
 
-  onMount(() => {
+  onMount(async () => {
+    // Check if recording is already active (overlay may have been created after recording started)
+    try {
+      const isRec = await invoke<boolean>("get_screen_recording_allowed");
+      if (isRec) recording = true;
+    } catch {}
+
     const unlisten = listen<string>("computer-use-action", (e) => {
       action = e.payload;
       visible = true;

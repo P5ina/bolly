@@ -256,7 +256,10 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
         eprintln!("[agent] toolcall: {action} (req={request_id})");
 
         // Temporarily hide overlay before screenshot so it doesn't appear in the capture
-        if action == "screenshot" {
+        // But never hide when recording — the REC indicator must stay visible
+        let hide_for_screenshot = action == "screenshot"
+            && !RECORDING_ACTIVE.lock().map(|v| *v).unwrap_or(false);
+        if hide_for_screenshot {
             overlay::set_visible(app, false);
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
@@ -312,7 +315,7 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
 
         // Show overlay after any action (restore if hidden for screenshot)
         overlay::show(app);
-        if action == "screenshot" {
+        if hide_for_screenshot {
             overlay::set_visible(app, true);
         }
         overlay::emit_action(app, &action);
