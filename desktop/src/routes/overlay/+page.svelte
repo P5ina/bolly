@@ -3,24 +3,70 @@
   import { onMount } from "svelte";
 
   let action = $state("");
-  let active = $state(true);
   let recording = $state(false);
-  let fadeTimer: ReturnType<typeof setTimeout> | null = null;
+  let visible = $state(false);
+  let actionQueue = $state<{ id: number; text: string; icon: string }[]>([]);
+  let idCounter = 0;
+
+  const actionIcons: Record<string, string> = {
+    screenshot: "\u{1F4F7}",
+    left_click: "\u{1F5B1}\uFE0F",
+    right_click: "\u{1F5B1}\uFE0F",
+    middle_click: "\u{1F5B1}\uFE0F",
+    double_click: "\u{1F5B1}\uFE0F\u{1F5B1}\uFE0F",
+    mouse_move: "\u2197\uFE0F",
+    scroll: "\u2195\uFE0F",
+    type: "\u2328\uFE0F",
+    key: "\u2318",
+    bash: "\u{1F4BB}",
+    switch_desktop: "\u{1F5A5}\uFE0F",
+    file_read: "\u{1F4C4}",
+    file_write: "\u{1F4DD}",
+    file_list: "\u{1F4C2}",
+  };
+
+  const actionLabels: Record<string, string> = {
+    screenshot: "screenshot",
+    left_click: "click",
+    right_click: "right click",
+    middle_click: "middle click",
+    double_click: "double click",
+    mouse_move: "move",
+    scroll: "scroll",
+    type: "typing",
+    key: "key",
+    bash: "command",
+    switch_desktop: "switch space",
+    file_read: "read file",
+    file_write: "write file",
+    file_list: "list files",
+  };
+
+  function flashAction(name: string) {
+    const id = ++idCounter;
+    const icon = actionIcons[name] ?? "\u26A1";
+    const text = actionLabels[name] ?? name;
+    actionQueue = [...actionQueue, { id, text, icon }];
+    // Remove after animation
+    setTimeout(() => {
+      actionQueue = actionQueue.filter(a => a.id !== id);
+    }, 1200);
+  }
 
   onMount(() => {
     const unlisten = listen<string>("computer-use-action", (e) => {
       action = e.payload;
-      active = true;
-      if (fadeTimer) clearTimeout(fadeTimer);
-      fadeTimer = setTimeout(() => { action = ""; }, 2000);
+      visible = true;
+      flashAction(e.payload);
     });
 
     const unlistenDone = listen("computer-use-idle", () => {
-      active = false;
+      if (!recording) visible = false;
     });
 
     const unlistenRec = listen<boolean>("screen-recording-state", (e) => {
       recording = e.payload;
+      if (e.payload) visible = true;
     });
 
     return () => {
@@ -31,30 +77,30 @@
   });
 </script>
 
-<div class="overlay" class:overlay-active={active} class:overlay-recording={recording && !active}>
-  <div class="border-top"></div>
-  <div class="border-right"></div>
-  <div class="border-bottom"></div>
-  <div class="border-left"></div>
+<div class="overlay" class:overlay-visible={visible || recording}>
+  <!-- Avatar pip -->
+  <div class="pip" class:pip-recording={recording}>
+    {#if recording}
+      <div class="pip-ring"></div>
+      <div class="pip-ring pip-ring-2"></div>
+    {/if}
+    <img class="pip-avatar" src="/bolly-avatar.png" alt="Bolly" />
+    {#if recording}
+      <div class="pip-rec">
+        <div class="pip-rec-dot"></div>
+      </div>
+    {/if}
+  </div>
 
-  {#if action}
-    <div class="action-badge">
-      <div class="action-dot"></div>
-      <span class="action-text">{action}</span>
-    </div>
-  {/if}
-
-  <div class="corner corner-tl"></div>
-  <div class="corner corner-tr"></div>
-  <div class="corner corner-bl"></div>
-  <div class="corner corner-br"></div>
-
-  {#if recording}
-    <div class="rec-badge">
-      <div class="rec-dot"></div>
-      <span class="rec-text">REC</span>
-    </div>
-  {/if}
+  <!-- Action flashes — stack above the pip -->
+  <div class="flash-stack">
+    {#each actionQueue as flash (flash.id)}
+      <div class="flash">
+        <span class="flash-icon">{flash.icon}</span>
+        <span class="flash-text">{flash.text}</span>
+      </div>
+    {/each}
+  </div>
 </div>
 
 <style>
@@ -70,181 +116,164 @@
     inset: 0;
     pointer-events: none;
     z-index: 99999;
-    transition: opacity 0.4s ease;
-  }
-
-  .overlay:not(.overlay-active):not(.overlay-recording) {
     opacity: 0;
+    transition: opacity 0.5s ease;
   }
 
-  .overlay.overlay-recording .border-top,
-  .overlay.overlay-recording .border-bottom,
-  .overlay.overlay-recording .border-left,
-  .overlay.overlay-recording .border-right,
-  .overlay.overlay-recording .corner,
-  .overlay.overlay-recording .action-badge {
-    display: none;
+  .overlay-visible {
+    opacity: 1;
   }
 
-  /* ─── Glowing borders ───────────────────────────────────── */
-  .border-top, .border-bottom, .border-left, .border-right {
+  /* ─── Avatar pip ────────────────────────────────────────── */
+  .pip {
     position: absolute;
-    background: linear-gradient(90deg,
-      transparent,
-      oklch(0.78 0.12 75 / 50%),
-      oklch(0.65 0.15 45 / 60%),
-      oklch(0.78 0.12 75 / 50%),
-      transparent
-    );
-    background-size: 200% 100%;
-    animation: shimmer 3s ease-in-out infinite;
-  }
-
-  .border-top {
-    top: 0; left: 0; right: 0;
-    height: 2px;
-    box-shadow: 0 0 12px 2px oklch(0.78 0.12 75 / 30%),
-                0 0 30px 4px oklch(0.78 0.12 75 / 12%);
-  }
-
-  .border-bottom {
-    bottom: 0; left: 0; right: 0;
-    height: 2px;
-    box-shadow: 0 0 12px 2px oklch(0.78 0.12 75 / 30%),
-                0 0 30px 4px oklch(0.78 0.12 75 / 12%);
-  }
-
-  .border-left {
-    top: 0; bottom: 0; left: 0;
-    width: 2px;
-    background: linear-gradient(180deg,
-      transparent,
-      oklch(0.78 0.12 75 / 50%),
-      oklch(0.65 0.15 45 / 60%),
-      oklch(0.78 0.12 75 / 50%),
-      transparent
-    );
-    background-size: 100% 200%;
-    animation: shimmer-v 3s ease-in-out infinite;
-    box-shadow: 0 0 12px 2px oklch(0.78 0.12 75 / 30%),
-                0 0 30px 4px oklch(0.78 0.12 75 / 12%);
-  }
-
-  .border-right {
-    top: 0; bottom: 0; right: 0;
-    width: 2px;
-    background: linear-gradient(180deg,
-      transparent,
-      oklch(0.78 0.12 75 / 50%),
-      oklch(0.65 0.15 45 / 60%),
-      oklch(0.78 0.12 75 / 50%),
-      transparent
-    );
-    background-size: 100% 200%;
-    animation: shimmer-v 3s ease-in-out infinite;
-    box-shadow: 0 0 12px 2px oklch(0.78 0.12 75 / 30%),
-                0 0 30px 4px oklch(0.78 0.12 75 / 12%);
-  }
-
-  @keyframes shimmer {
-    0%, 100% { background-position: 0% 0; }
-    50% { background-position: 100% 0; }
-  }
-
-  @keyframes shimmer-v {
-    0%, 100% { background-position: 0 0%; }
-    50% { background-position: 0 100%; }
-  }
-
-  /* ─── Corner accents ────────────────────────────────────── */
-  .corner {
-    position: absolute;
-    width: 16px;
-    height: 16px;
-    border-color: oklch(0.78 0.12 75 / 70%);
-    border-style: solid;
-    border-width: 0;
-  }
-
-  .corner-tl { top: 0; left: 0; border-top-width: 3px; border-left-width: 3px; border-radius: 2px 0 0 0; }
-  .corner-tr { top: 0; right: 0; border-top-width: 3px; border-right-width: 3px; border-radius: 0 2px 0 0; }
-  .corner-bl { bottom: 0; left: 0; border-bottom-width: 3px; border-left-width: 3px; border-radius: 0 0 0 2px; }
-  .corner-br { bottom: 0; right: 0; border-bottom-width: 3px; border-right-width: 3px; border-radius: 0 0 2px 0; }
-
-  /* ─── Action badge ──────────────────────────────────────── */
-  .action-badge {
-    position: absolute;
-    top: 8px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 12px;
-    border-radius: 20px;
-    background: oklch(0.06 0.015 260 / 85%);
-    backdrop-filter: blur(12px);
-    border: 1px solid oklch(0.78 0.12 75 / 25%);
-    animation: badge-in 0.3s ease both;
-  }
-
-  .action-dot {
-    width: 6px;
-    height: 6px;
+    bottom: 20px;
+    right: 20px;
+    width: 52px;
+    height: 52px;
     border-radius: 50%;
-    background: oklch(0.78 0.12 75);
-    box-shadow: 0 0 8px oklch(0.78 0.12 75 / 60%);
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-
-  .action-text {
-    font-family: system-ui, sans-serif;
-    font-size: 11px;
-    color: oklch(0.78 0.12 75 / 80%);
-    letter-spacing: 0.03em;
-  }
-
-  @keyframes badge-in {
-    from { opacity: 0; transform: translateX(-50%) translateY(-6px); }
-    to { opacity: 1; transform: translateX(-50%) translateY(0); }
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
-
-  /* ─── Recording indicator ──────────────────────────────── */
-  .rec-badge {
-    position: absolute;
-    bottom: 16px;
-    right: 16px;
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 14px;
-    border-radius: 16px;
-    background: oklch(0.12 0.02 25 / 90%);
-    backdrop-filter: blur(16px);
-    border: 1px solid oklch(0.65 0.22 25 / 40%);
-    box-shadow: 0 0 20px oklch(0.60 0.22 25 / 25%),
-                0 2px 8px oklch(0 0 0 / 40%);
+    justify-content: center;
+    animation: pip-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
   }
 
-  .rec-dot {
+  @keyframes pip-in {
+    from { opacity: 0; transform: scale(0.5) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .pip-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: center 15%;
+    background: oklch(0.08 0.02 160 / 90%);
+    border: 2px solid oklch(0.75 0.12 160 / 50%);
+    box-shadow: 0 2px 12px oklch(0 0 0 / 50%),
+                0 0 20px oklch(0.70 0.12 160 / 15%);
+    animation: breathe 4s ease-in-out infinite;
+  }
+
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.03); }
+  }
+
+  /* Recording ring pulse */
+  .pip-ring {
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid oklch(0.65 0.22 25 / 60%);
+    animation: ring-pulse 2s ease-in-out infinite;
+  }
+
+  .pip-ring-2 {
+    inset: -8px;
+    border-color: oklch(0.65 0.22 25 / 25%);
+    animation-delay: 0.5s;
+  }
+
+  @keyframes ring-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(1.08); opacity: 0.2; }
+  }
+
+  .pip-recording .pip-avatar {
+    border-color: oklch(0.65 0.22 25 / 60%);
+    box-shadow: 0 2px 12px oklch(0 0 0 / 50%),
+                0 0 24px oklch(0.65 0.22 25 / 20%);
+  }
+
+  /* REC dot */
+  .pip-rec {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: oklch(0.10 0.02 25 / 90%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 4px oklch(0 0 0 / 40%);
+  }
+
+  .pip-rec-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: oklch(0.65 0.25 25);
-    box-shadow: 0 0 12px oklch(0.65 0.25 25 / 80%);
-    animation: pulse 1.5s ease-in-out infinite;
+    background: oklch(0.62 0.25 25);
+    box-shadow: 0 0 8px oklch(0.62 0.25 25 / 80%);
+    animation: rec-pulse 1.5s ease-in-out infinite;
   }
 
-  .rec-text {
-    font-family: system-ui, sans-serif;
+  @keyframes rec-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.85); }
+  }
+
+  /* ─── Action flash stack ───────────────────────────────── */
+  .flash-stack {
+    position: absolute;
+    bottom: 78px;
+    right: 12px;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 6px;
+    align-items: flex-end;
+  }
+
+  .flash {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 12px;
+    background: oklch(0.10 0.02 260 / 88%);
+    backdrop-filter: blur(16px) saturate(120%);
+    border: 1px solid oklch(1 0 0 / 10%);
+    box-shadow: 0 4px 16px oklch(0 0 0 / 40%),
+                0 0 0 0.5px oklch(1 0 0 / 5%);
+    animation: flash-in 1.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+    white-space: nowrap;
+  }
+
+  @keyframes flash-in {
+    0% {
+      opacity: 0;
+      transform: translateX(20px) scale(0.8);
+      filter: blur(4px);
+    }
+    15% {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+      filter: blur(0);
+    }
+    70% {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translateX(10px) scale(0.95);
+      filter: blur(2px);
+    }
+  }
+
+  .flash-icon {
+    font-size: 13px;
+    line-height: 1;
+  }
+
+  .flash-text {
+    font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
     font-size: 11px;
-    font-weight: 700;
-    color: oklch(0.75 0.20 25);
-    letter-spacing: 0.1em;
+    font-weight: 500;
+    color: oklch(0.85 0.03 75);
+    letter-spacing: 0.02em;
   }
 </style>
