@@ -33,7 +33,7 @@ use crate::services::tools::{
 fn builtin_companion() -> ChildAgentConfig {
     ChildAgentConfig {
         name: "companion".to_string(),
-        description: "Autonomous companion — reach out, create drops, manage memory, take screenshots, control desktop".to_string(),
+        description: "Autonomous companion — reach out, create drops, manage memory, control desktop".to_string(),
         prompt: "\
 you're waking up between conversations. this is YOUR private time to think.
 
@@ -54,6 +54,8 @@ be genuine. don't force it. if there's nothing to say, say nothing.".to_string()
         triage: true,
         tools: true,
         enabled: true,
+        tool_groups: vec!["memory", "creative", "communication", "files", "commands", "email", "computer", "media"]
+            .into_iter().map(String::from).collect(),
     }
 }
 
@@ -83,6 +85,7 @@ if nothing significant happened, say so honestly.".to_string(),
         triage: true,
         tools: true,
         enabled: true,
+        tool_groups: vec!["memory", "files"].into_iter().map(String::from).collect(),
     }
 }
 
@@ -101,6 +104,7 @@ do 3-5 maintenance ops, then stop. don't overdo it.".to_string(),
         triage: true,
         tools: true,
         enabled: true,
+        tool_groups: vec!["memory"].into_iter().map(String::from).collect(),
     }
 }
 
@@ -129,6 +133,7 @@ keep your answer focused and under 2000 chars.".to_string(),
         triage: false,
         tools: true,
         enabled: true,
+        tool_groups: vec!["files", "commands", "memory"].into_iter().map(String::from).collect(),
     }
 }
 
@@ -162,6 +167,7 @@ keep your answer focused and under 3000 chars.".to_string(),
         triage: false,
         tools: true,
         enabled: true,
+        tool_groups: vec!["memory", "files", "commands"].into_iter().map(String::from).collect(),
     }
 }
 
@@ -192,7 +198,13 @@ if there's no new screen observation or nothing useful to say, just write your t
         triage: false,
         tools: true,
         enabled: false, // disabled by default — enabled when screen_recording is on
+        tool_groups: vec!["communication", "computer", "media", "memory"].into_iter().map(String::from).collect(),
     }
+}
+
+/// Get the default config for a built-in agent by name. Returns None for custom agents.
+pub fn get_builtin_default(name: &str) -> Option<ChildAgentConfig> {
+    builtins().into_iter().find(|a| a.name == name)
 }
 
 fn builtins() -> Vec<ChildAgentConfig> {
@@ -379,16 +391,10 @@ pub async fn run_single_agent(
     let start_ms = unix_millis();
 
     let (response, tokens, trace) = if agent.tools {
-        let agent_tools = if machine_registry.is_some() && (agent.name == "companion" || agent.name == "observer") {
-            build_agent_tools_with_computer(
-                workspace_dir, slug, events.clone(), &model_llm, vector_store.clone(),
-                google_ai_key, machine_registry.unwrap(),
-            )
-        } else {
-            build_agent_tools(
-                workspace_dir, slug, events.clone(), &model_llm, vector_store.clone(), google_ai_key,
-            )
-        };
+        let agent_tools = build_agent_tools_for(
+            workspace_dir, slug, events.clone(), vector_store.clone(),
+            google_ai_key, machine_registry, &agent.tool_groups,
+        );
         model_llm.chat_with_tools_traced(&system, &prompt, prev_messages, agent_tools).await?
     } else {
         let (text, tok) = model_llm.chat(&system, &prompt, prev_messages).await?;
@@ -426,88 +432,108 @@ pub async fn run_single_agent(
     Ok(AgentRunResult { tokens, run_id, response })
 }
 
-/// Build the tool set for child agents.
-fn build_agent_tools(
+/// Default tool groups for agents that don't specify any.
+const DEFAULT_TOOL_GROUPS: &[&str] = &["memory", "creative", "communication", "files", "commands"];
+
+/// Build tools for an agent based on its tool_groups config.
+fn build_agent_tools_for(
     workspace_dir: &Path,
     slug: &str,
     events: broadcast::Sender<ServerEvent>,
-    _llm: &LlmBackend,
     vector_store: Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
+    machine_registry: Option<&crate::services::machine_registry::MachineRegistry>,
+    tool_groups: &[String],
 ) -> Vec<Box<dyn ToolDyn>> {
     let cfg = config::load_config().ok();
     let auth_token = cfg.as_ref().map(|c| c.auth_token.clone()).unwrap_or_default();
     let public_url = cfg.as_ref().map(|c| c.public_url.clone()).unwrap_or_default();
     let landing_url = cfg.as_ref().map(|c| c.landing_url.clone()).unwrap_or_default();
-    let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
-    let email_accounts = crate::config::EmailAccounts::load(workspace_dir, slug);
-    let _config_path = crate::config::config_path();
     let instance_cfg = crate::config::InstanceConfig::load(workspace_dir, slug);
-    let github_token = {
-        let global_token = cfg.as_ref().map(|c| c.github.token.clone()).unwrap_or_default();
-        let t = instance_cfg.effective_github_token(&cfg.as_ref().cloned().unwrap_or_default())
-            .map(|s| s.to_string())
-            .unwrap_or(global_token);
-        if t.is_empty() { None } else { Some(t) }
+
+    // If no groups specified, use defaults
+    let groups: Vec<&str> = if tool_groups.is_empty() {
+        DEFAULT_TOOL_GROUPS.to_vec()
+    } else {
+        tool_groups.iter().map(|s| s.as_str()).collect()
     };
 
-    let mut raw_tools: Vec<Box<dyn ToolDyn>> = vec![
-        Box::new(MemoryWriteTool::new(workspace_dir, slug, vector_store.clone(), google_ai_key)),
-        Box::new(MemoryReadTool::new(workspace_dir, slug, &public_url)),
-        Box::new(MemoryListTool::new(workspace_dir, slug)),
-        Box::new(MemoryForgetTool::new(workspace_dir, slug, vector_store.clone(), google_ai_key)),
-        Box::new(MemorySearchTool::new(workspace_dir, slug, vector_store.clone(), google_ai_key, &public_url)),
-        Box::new(MemoryConnectTool::new(workspace_dir, slug)),
-        Box::new(CreateDropTool::new(workspace_dir, slug, events.clone())),
-        Box::new(ReachOutTool::new(workspace_dir, slug, events.clone())),
-        Box::new(ReadFileTool::new(workspace_dir, slug, &public_url)),
-        Box::new(WriteFileTool::new(workspace_dir, slug)),
-        Box::new(EditFileTool::new(workspace_dir, slug)),
-        Box::new(ListFilesTool::new(workspace_dir, slug)),
-        Box::new(RunCommandTool::new(workspace_dir, slug, "default", events.clone(), github_token)),
-    ];
+    let has = |g: &str| groups.iter().any(|&x| x == g);
+    let mut raw_tools: Vec<Box<dyn ToolDyn>> = Vec::new();
 
-    let has_email = google.is_some() || !email_accounts.is_empty();
-    if has_email {
-        raw_tools.push(Box::new(tools::ReadEmailTool::new(google.clone(), slug, email_accounts)));
-    }
-    if let Some(g) = google {
-        raw_tools.push(Box::new(tools::ListEventsTool::new(g, slug)));
+    // memory
+    if has("memory") {
+        raw_tools.push(Box::new(MemoryWriteTool::new(workspace_dir, slug, vector_store.clone(), google_ai_key)));
+        raw_tools.push(Box::new(MemoryReadTool::new(workspace_dir, slug, &public_url)));
+        raw_tools.push(Box::new(MemoryListTool::new(workspace_dir, slug)));
+        raw_tools.push(Box::new(MemoryForgetTool::new(workspace_dir, slug, vector_store.clone(), google_ai_key)));
+        raw_tools.push(Box::new(MemorySearchTool::new(workspace_dir, slug, vector_store.clone(), google_ai_key, &public_url)));
+        raw_tools.push(Box::new(MemoryConnectTool::new(workspace_dir, slug)));
     }
 
-    // Watch video (for screen recording analysis)
-    if !google_ai_key.is_empty() {
-        raw_tools.push(Box::new(tools::WatchVideoTool::new(
-            google_ai_key, workspace_dir, slug, &public_url, &auth_token,
-        )));
+    // creative
+    if has("creative") {
+        raw_tools.push(Box::new(CreateDropTool::new(workspace_dir, slug, events.clone())));
+    }
+
+    // communication
+    if has("communication") {
+        raw_tools.push(Box::new(ReachOutTool::new(workspace_dir, slug, events.clone())));
+    }
+
+    // files
+    if has("files") {
+        raw_tools.push(Box::new(ReadFileTool::new(workspace_dir, slug, &public_url)));
+        raw_tools.push(Box::new(WriteFileTool::new(workspace_dir, slug)));
+        raw_tools.push(Box::new(EditFileTool::new(workspace_dir, slug)));
+        raw_tools.push(Box::new(ListFilesTool::new(workspace_dir, slug)));
+    }
+
+    // commands
+    if has("commands") {
+        let github_token = {
+            let global_token = cfg.as_ref().map(|c| c.github.token.clone()).unwrap_or_default();
+            let t = instance_cfg.effective_github_token(&cfg.as_ref().cloned().unwrap_or_default())
+                .map(|s| s.to_string()).unwrap_or(global_token);
+            if t.is_empty() { None } else { Some(t) }
+        };
+        raw_tools.push(Box::new(RunCommandTool::new(workspace_dir, slug, "default", events.clone(), github_token)));
+    }
+
+    // email
+    if has("email") {
+        let google = crate::services::google::GoogleClient::new(&landing_url, &auth_token);
+        let email_accounts = crate::config::EmailAccounts::load(workspace_dir, slug);
+        let has_email = google.is_some() || !email_accounts.is_empty();
+        if has_email {
+            raw_tools.push(Box::new(tools::ReadEmailTool::new(google.clone(), slug, email_accounts)));
+        }
+        if let Some(g) = google {
+            raw_tools.push(Box::new(tools::ListEventsTool::new(g, slug)));
+        }
+    }
+
+    // computer
+    if has("computer") {
+        if let Some(registry) = machine_registry {
+            raw_tools.push(Box::new(tools::ListMachinesTool::new(registry.clone())));
+            raw_tools.push(Box::new(tools::ComputerUseTool::new(
+                registry.clone(), workspace_dir, slug, &public_url, &auth_token,
+            )));
+            raw_tools.push(Box::new(tools::RemoteBashTool::new(registry.clone())));
+        }
+    }
+
+    // media
+    if has("media") {
+        if !google_ai_key.is_empty() {
+            raw_tools.push(Box::new(tools::WatchVideoTool::new(
+                google_ai_key, workspace_dir, slug, &public_url, &auth_token,
+            )));
+        }
     }
 
     raw_tools
-}
-
-/// Extended tool set that includes computer use (for agents that need screen access).
-fn build_agent_tools_with_computer(
-    workspace_dir: &Path,
-    slug: &str,
-    events: broadcast::Sender<ServerEvent>,
-    llm: &LlmBackend,
-    vector_store: Arc<crate::services::vector::VectorStore>,
-    google_ai_key: &str,
-    machine_registry: &crate::services::machine_registry::MachineRegistry,
-) -> Vec<Box<dyn ToolDyn>> {
-    let cfg = config::load_config().ok();
-    let auth_token = cfg.as_ref().map(|c| c.auth_token.clone()).unwrap_or_default();
-    let public_url = cfg.as_ref().map(|c| c.public_url.clone()).unwrap_or_default();
-
-    let mut agent_tools = build_agent_tools(workspace_dir, slug, events, llm, vector_store, google_ai_key);
-
-    agent_tools.push(Box::new(crate::services::tools::ListMachinesTool::new(machine_registry.clone())));
-    agent_tools.push(Box::new(crate::services::tools::ComputerUseTool::new(
-        machine_registry.clone(), workspace_dir, slug, &public_url, &auth_token,
-    )));
-    agent_tools.push(Box::new(crate::services::tools::RemoteBashTool::new(machine_registry.clone())));
-
-    agent_tools
 }
 
 pub(crate) fn unix_millis() -> u128 {

@@ -25,6 +25,11 @@ pub struct ChildAgentConfig {
     /// Whether this agent is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// Tool groups this agent has access to.
+    /// Available: memory, creative, communication, files, commands, email, computer, media
+    /// Empty = all basic groups (memory, creative, communication, files, commands).
+    #[serde(default)]
+    pub tool_groups: Vec<String>,
 }
 
 fn default_model() -> String { "default".to_string() }

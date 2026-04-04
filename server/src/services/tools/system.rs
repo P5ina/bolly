@@ -1039,6 +1039,9 @@ pub struct UpdateConfigArgs {
     /// Update a child agent's interval. Provide as {"agent_name": "companion", "interval_hours": 0.5}.
     /// Set interval_hours to 0 to make it on-demand only. Changes take effect on next server restart.
     pub agent_interval: Option<AgentIntervalArg>,
+    /// Reset a built-in agent to its default config. Provide the agent name (e.g. "companion", "reflection", "observer").
+    /// Only works for built-in agents, not custom ones.
+    pub reset_agent: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -1275,6 +1278,27 @@ impl Tool for UpdateConfigTool {
                 "agent '{}' interval → {}h (takes effect on restart)",
                 ai.agent_name, ai.interval_hours
             ));
+        }
+
+        // --- Reset agent to defaults ---
+        if let Some(ref name) = args.reset_agent {
+            match crate::services::child_agents::get_builtin_default(name) {
+                Some(default_config) => {
+                    let agent_path = self.workspace_dir
+                        .join("instances").join(&self.instance_slug)
+                        .join("agents").join(format!("{name}.toml"));
+                    let toml_str = toml::to_string_pretty(&default_config)
+                        .map_err(|e| ToolExecError(format!("failed to serialize: {e}")))?;
+                    std::fs::write(&agent_path, toml_str)
+                        .map_err(|e| ToolExecError(format!("failed to write: {e}")))?;
+                    changes.push(format!("agent '{name}' reset to defaults"));
+                }
+                None => {
+                    return Err(ToolExecError(format!(
+                        "'{name}' is not a built-in agent. built-ins: companion, reflection, night-maintenance, observer, explore-code, deep-research"
+                    )));
+                }
+            }
         }
 
         // --- Email account management ---
