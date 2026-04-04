@@ -171,13 +171,6 @@ impl Tool for ReachOutTool {
         let instance_dir = self.workspace_dir.join("instances").join(&self.instance_slug);
         let mood = load_mood_state(&instance_dir);
         let now_ts = chrono::Utc::now().timestamp();
-        if mood.last_reach_out > 0 {
-            let hours_since = (now_ts - mood.last_reach_out) / 3600;
-            if hours_since < 2 {
-                log::info!("[reach_out] {} suppressed (last was {}h ago, min 2h)", self.instance_slug, hours_since);
-                return Ok("message suppressed — you reached out less than 2 hours ago. wait before reaching out again.".into());
-            }
-        }
 
         let mut mood = mood;
         mood.last_reach_out = now_ts;
