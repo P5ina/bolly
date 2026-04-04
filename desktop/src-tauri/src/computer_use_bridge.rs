@@ -82,6 +82,18 @@ pub fn get_screen_recording_allowed() -> Result<bool, String> {
     Ok(*val)
 }
 
+/// Stop any active screen recording (kill ffmpeg).
+#[tauri::command]
+pub fn stop_screen_recording() -> Result<(), String> {
+    let mut rec = RECORDING_ACTIVE.lock().map_err(|e| e.to_string())?;
+    *rec = false;
+    std::process::Command::new("sh")
+        .args(["-c", "pkill -f 'ffmpeg.*bolly_screen' 2>/dev/null"])
+        .spawn()
+        .ok();
+    Ok(())
+}
+
 async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str) -> Result<(), String> {
     let ws_proto = if instance_url.starts_with("https") {
         "wss"

@@ -508,7 +508,7 @@ pub fn build_tools(
     // send_file removed — images from tool results are auto-attached (see llm.rs)
     tools.push(wrap(Box::new(GetTimeTool::new(workspace_dir, instance_slug))));
     tools.push(wrap(Box::new(GetSettingsTool::new(config_path, workspace_dir, instance_slug, google.clone()))));
-    tools.push(wrap(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug))));
+    tools.push(wrap(Box::new(UpdateConfigTool::new(config_path, workspace_dir, instance_slug, machine_registry.clone()))));
     if let Some(ps) = pending_secrets {
         tools.push(wrap(Box::new(RequestSecretTool::new(
             workspace_dir, instance_slug, config_path, events.clone(), ps,

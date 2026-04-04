@@ -990,15 +990,20 @@ pub struct UpdateConfigTool {
     workspace_dir: PathBuf,
     instance_slug: String,
     instance_dir: PathBuf,
+    machine_registry: crate::services::machine_registry::MachineRegistry,
 }
 
 impl UpdateConfigTool {
-    pub fn new(config_path: &Path, workspace_dir: &Path, instance_slug: &str) -> Self {
+    pub fn new(
+        config_path: &Path, workspace_dir: &Path, instance_slug: &str,
+        machine_registry: crate::services::machine_registry::MachineRegistry,
+    ) -> Self {
         Self {
             config_path: config_path.to_path_buf(),
             workspace_dir: workspace_dir.to_path_buf(),
             instance_slug: instance_slug.to_string(),
             instance_dir: workspace_dir.join("instances").join(instance_slug),
+            machine_registry,
         }
     }
 }
@@ -1201,6 +1206,27 @@ impl Tool for UpdateConfigTool {
             instance_cfg.save(&self.workspace_dir, &self.instance_slug)
                 .map_err(|e| ToolExecError(format!("failed to save instance config: {e}")))?;
             changes.push(format!("screen recording → {}", if enabled { "enabled" } else { "disabled" }));
+
+            // Immediately start or stop recording on connected machines
+            let registry = self.machine_registry.clone();
+            tokio::spawn(async move {
+                let machines = registry.list().await;
+                for m in &machines {
+                    if !m.screen_recording_allowed { continue; }
+                    if enabled {
+                        crate::services::heartbeat::start_recording_on_machine(&registry, &m.machine_id, &m.os).await;
+                    } else {
+                        let stop = crate::services::machine_registry::AgentToolCall {
+                            request_id: uuid::Uuid::new_v4().to_string(),
+                            action: "bash".into(),
+                            params: serde_json::json!({
+                                "command": "pkill -f 'ffmpeg.*bolly_screen' 2>/dev/null; echo stopped"
+                            }),
+                        };
+                        let _ = registry.execute(&m.machine_id, stop).await;
+                    }
+                }
+            });
         }
 
         // --- Email account management ---

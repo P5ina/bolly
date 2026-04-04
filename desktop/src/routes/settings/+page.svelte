@@ -59,6 +59,10 @@
       await invoke("set_screen_recording_allowed", { allowed: screenRecording });
       const s = await getStore();
       await s.set(SCREEN_REC_KEY, screenRecording);
+      // Stop recording immediately when turning off
+      if (!screenRecording) {
+        await invoke("stop_screen_recording");
+      }
     } catch (e) {
       console.error("set_screen_recording_allowed failed", e);
       screenRecording = !screenRecording;
