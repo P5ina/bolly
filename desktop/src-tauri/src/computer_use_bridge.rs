@@ -313,7 +313,8 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
             "key" => call.get("key").and_then(|v| v.as_str()).unwrap_or("").to_string(),
             "type" => {
                 let t = call.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                if t.len() > 30 { format!("{}...", &t[..30]) } else { t.to_string() }
+                let preview: String = t.chars().take(30).collect();
+                if t.chars().count() > 30 { format!("{preview}...") } else { preview }
             }
             "left_click" | "right_click" | "double_click" | "middle_click" => {
                 let (x, y) = parse_coordinate(&call);
@@ -322,7 +323,8 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
             "scroll" => call.get("scroll_direction").and_then(|v| v.as_str()).unwrap_or("down").to_string(),
             "bash" => {
                 let c = call.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                if c.len() > 40 { format!("{}...", &c[..40]) } else { c.to_string() }
+                let preview: String = c.chars().take(40).collect();
+                if c.chars().count() > 40 { format!("{preview}...") } else { preview }
             }
             _ => String::new(),
         };
