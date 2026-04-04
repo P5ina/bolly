@@ -22,9 +22,11 @@ pub fn router() -> Router<AppState> {
         .route("/api/instances/{instance_slug}/live-frame", get(live_frame))
 }
 
-/// Get the latest screen frame from a connected desktop as JPEG.
+/// Called by the client when the user enters an instance — notifies
+/// Get the latest screen frame as JPEG.
 async fn live_frame(
     State(state): State<AppState>,
+    Path(_instance_slug): Path<String>,
 ) -> axum::response::Response {
     use axum::http::header;
     use axum::body::Body;
@@ -58,7 +60,6 @@ async fn live_frame(
     }
 }
 
-/// Called by the client when the user enters an instance — notifies
 /// the companion that a desktop is connected (if any machines are online).
 async fn machine_hello(
     State(state): State<AppState>,
