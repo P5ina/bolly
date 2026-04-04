@@ -195,6 +195,9 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
 
     eprintln!("[agent] registered as '{machine_id}' ({os}, {sw}x{sh})");
 
+    // Emit server URL so overlay can build iframe src
+    app.emit("server-url", instance_url.to_string()).ok();
+
     // Scale cache from last screenshot (shared with spawn_blocking tasks)
     let cached_scale = std::sync::Arc::new(std::sync::Mutex::new(1.0f64));
 

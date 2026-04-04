@@ -3,24 +3,20 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
 
-  let action = $state("");
   let recording = $state(false);
   let visible = $state(false);
-  let skin = $state("orb");
+  let serverUrl = $state("");
   let actionQueue = $state<{ id: number; text: string; icon: string }[]>([]);
   let idCounter = 0;
-
-  const skinAvatars: Record<string, string> = {
-    orb: "/bolly-avatar-orb.webp",
-    mint: "/bolly-avatar-mint.png",
-  };
-
-  const avatarSrc = $derived(skinAvatars[skin] ?? skinAvatars.orb);
   let hideTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Derive iframe src for the animated avatar (served by the server)
+  const iframeSrc = $derived(
+    serverUrl ? `${serverUrl}/overlay/default` : ""
+  );
 
   function resetHideTimer() {
     if (hideTimer) clearTimeout(hideTimer);
-    // Hide overlay 10s after last action (unless recording)
     hideTimer = setTimeout(() => {
       if (!recording) visible = false;
     }, 10000);
@@ -41,6 +37,8 @@
     file_read: "\u{1F4C4}",
     file_write: "\u{1F4DD}",
     file_list: "\u{1F4C2}",
+    upload_file: "\u{1F4E4}",
+    collect_screen_recording: "\u{1F3AC}",
   };
 
   const actionLabels: Record<string, string> = {
@@ -58,6 +56,8 @@
     file_read: "read file",
     file_write: "write file",
     file_list: "list files",
+    upload_file: "uploading",
+    collect_screen_recording: "collecting recording",
   };
 
   function flashAction(name: string, detail: string) {
@@ -77,14 +77,12 @@
       if (isRec) recording = true;
     } catch {}
 
-    const unlisten = listen<string>("computer-use-action", (e) => {
+    const unlistenAction = listen<string>("computer-use-action", (e) => {
       try {
         const data = JSON.parse(e.payload);
-        action = data.action ?? "";
         visible = true;
         flashAction(data.action ?? "", data.detail ?? "");
       } catch {
-        action = e.payload;
         visible = true;
         flashAction(e.payload, "");
       }
@@ -100,26 +98,39 @@
       if (e.payload) visible = true;
     });
 
-    const unlistenSkin = listen<string>("overlay-skin", (e) => {
-      skin = e.payload;
+    const unlistenUrl = listen<string>("server-url", (e) => {
+      serverUrl = e.payload;
     });
 
     return () => {
-      unlisten.then(fn => fn());
+      unlistenAction.then(fn => fn());
       unlistenDone.then(fn => fn());
       unlistenRec.then(fn => fn());
+      unlistenUrl.then(fn => fn());
     };
   });
 </script>
 
 <div class="overlay" class:overlay-visible={visible || recording}>
-  <!-- Avatar pip -->
+  <!-- Avatar pip — iframe from server for animated character -->
   <div class="pip" class:pip-recording={recording}>
     {#if recording}
       <div class="pip-ring"></div>
       <div class="pip-ring pip-ring-2"></div>
     {/if}
-    <img class="pip-avatar" src="/bolly-avatar.png" alt="Bolly" />
+
+    {#if iframeSrc}
+      <iframe
+        class="pip-iframe"
+        src={iframeSrc}
+        title="Bolly"
+        frameborder="0"
+        scrolling="no"
+      ></iframe>
+    {:else}
+      <div class="pip-placeholder"></div>
+    {/if}
+
     {#if recording}
       <div class="pip-rec">
         <div class="pip-rec-dot"></div>
@@ -127,7 +138,7 @@
     {/if}
   </div>
 
-  <!-- Action flashes — stack above the pip -->
+  <!-- Action flashes -->
   <div class="flash-stack">
     {#each actionQueue as flash (flash.id)}
       <div class="flash">
@@ -162,11 +173,12 @@
   /* ─── Avatar pip ────────────────────────────────────────── */
   .pip {
     position: absolute;
-    bottom: 20px;
-    right: 20px;
-    width: 52px;
-    height: 52px;
+    bottom: 16px;
+    right: 16px;
+    width: 56px;
+    height: 56px;
     border-radius: 50%;
+    overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -178,22 +190,20 @@
     to { opacity: 1; transform: scale(1) translateY(0); }
   }
 
-  .pip-avatar {
-    width: 44px;
-    height: 44px;
+  .pip-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
     border-radius: 50%;
-    object-fit: cover;
-    object-position: center 15%;
-    background: oklch(0.08 0.02 160 / 90%);
-    border: 2px solid oklch(0.75 0.12 160 / 50%);
-    box-shadow: 0 2px 12px oklch(0 0 0 / 50%),
-                0 0 20px oklch(0.70 0.12 160 / 15%);
-    animation: breathe 4s ease-in-out infinite;
+    background: transparent;
+    pointer-events: none;
   }
 
-  @keyframes breathe {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.03); }
+  .pip-placeholder {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: oklch(0.08 0.02 260 / 80%);
   }
 
   /* Recording ring pulse */
@@ -203,6 +213,7 @@
     border-radius: 50%;
     border: 2px solid oklch(0.65 0.22 25 / 60%);
     animation: ring-pulse 2s ease-in-out infinite;
+    z-index: 2;
   }
 
   .pip-ring-2 {
@@ -216,10 +227,9 @@
     50% { transform: scale(1.08); opacity: 0.2; }
   }
 
-  .pip-recording .pip-avatar {
-    border-color: oklch(0.65 0.22 25 / 60%);
-    box-shadow: 0 2px 12px oklch(0 0 0 / 50%),
-                0 0 24px oklch(0.65 0.22 25 / 20%);
+  .pip-recording {
+    border: 2px solid oklch(0.65 0.22 25 / 40%);
+    box-shadow: 0 0 20px oklch(0.65 0.22 25 / 15%);
   }
 
   /* REC dot */
@@ -235,6 +245,7 @@
     align-items: center;
     justify-content: center;
     box-shadow: 0 1px 4px oklch(0 0 0 / 40%);
+    z-index: 3;
   }
 
   .pip-rec-dot {
@@ -269,31 +280,17 @@
     padding: 5px 12px;
     border-radius: 12px;
     background: oklch(0.10 0.02 260 / 88%);
-    backdrop-filter: blur(16px) saturate(120%);
     border: 1px solid oklch(1 0 0 / 10%);
-    box-shadow: 0 4px 16px oklch(0 0 0 / 40%),
-                0 0 0 0.5px oklch(1 0 0 / 5%);
+    box-shadow: 0 4px 16px oklch(0 0 0 / 40%);
     animation: flash-in 3s ease both;
     white-space: nowrap;
   }
 
   @keyframes flash-in {
-    0% {
-      opacity: 0;
-      transform: translateX(16px);
-    }
-    8% {
-      opacity: 1;
-      transform: translateX(0);
-    }
-    80% {
-      opacity: 1;
-      transform: translateX(0);
-    }
-    100% {
-      opacity: 0;
-      transform: translateX(8px);
-    }
+    0% { opacity: 0; transform: translateX(16px); }
+    8% { opacity: 1; transform: translateX(0); }
+    80% { opacity: 1; transform: translateX(0); }
+    100% { opacity: 0; transform: translateX(8px); }
   }
 
   .flash-icon {
