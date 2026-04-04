@@ -53,7 +53,7 @@ pub fn start(
         let agents = crate::services::child_agents::load_agents(workspace_dir, &slug);
 
         for agent in agents {
-            if agent.interval_hours <= 0.0 || !agent.enabled {
+            if agent.interval_hours <= 0.0 {
                 continue; // skip on-demand agents
             }
 
@@ -120,6 +120,22 @@ async fn run_agent_loop(
         if !instance_dir.join("soul.md").exists() {
             log::info!("[heartbeat] {slug}/{}: soul.md gone, stopping", agent.name);
             break;
+        }
+
+        // Re-read agent config each tick to pick up enabled/disabled changes
+        let current_config = {
+            let path = workspace_dir.join("instances").join(slug)
+                .join("agents").join(format!("{}.toml", agent.name));
+            std::fs::read_to_string(&path).ok()
+                .and_then(|raw| toml::from_str::<ChildAgentConfig>(&raw).ok())
+        };
+
+        let is_enabled = current_config.as_ref().map(|c| c.enabled).unwrap_or(agent.enabled);
+
+        if !is_enabled {
+            // Agent disabled — skip this tick but keep the loop alive
+            interval.tick().await;
+            continue;
         }
 
         let llm_guard = llm.read().await;
