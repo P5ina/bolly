@@ -212,45 +212,36 @@ pub async fn run_single_turn(
         ));
     }
 
-    // Child agents
+    // Child agents — load actual configs to show intervals and status
     let agents_dir = workspace_dir
         .join("instances")
         .join(&instance_slug)
         .join("agents");
-    let agent_names: Vec<String> = std::fs::read_dir(&agents_dir)
-        .into_iter()
-        .flatten()
-        .filter_map(Result::ok)
-        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("toml"))
-        .filter_map(|e| {
-            e.path()
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-        })
-        .collect();
-    let agents_list = if agent_names.is_empty() {
-        "none yet (built-ins: reflection, night-maintenance — created on first heartbeat)"
-            .to_string()
+    let child_agents = crate::services::child_agents::load_agents(workspace_dir, &instance_slug);
+    let agents_info: String = if child_agents.is_empty() {
+        "  (none yet — built-ins created on first heartbeat)".to_string()
     } else {
-        agent_names.join(", ")
+        child_agents.iter().map(|a| {
+            let interval = if a.interval_hours <= 0.0 {
+                "on-demand".to_string()
+            } else if a.interval_hours < 1.0 {
+                format!("every {}m", (a.interval_hours * 60.0) as i32)
+            } else {
+                format!("every {}h", a.interval_hours)
+            };
+            let status = if a.enabled { "" } else { " (disabled)" };
+            let tools = if a.tool_groups.is_empty() { "default".to_string() } else { a.tool_groups.join(", ") };
+            format!("  - {} — {} | {} | model: {} | tools: [{}]{}", a.name, a.description, interval, a.model, tools, status)
+        }).collect::<Vec<_>>().join("\n")
     };
     system_prompt.push_str(&format!(
         "\n\n## child agents\n\
-         you have autonomous child agents that run on their own schedules during heartbeat.\n\
-         active agents: {agents_list}\n\
-         configs are TOML files in: {}\n\n\
-         to create a new child agent, use write_file to create agents/{{name}}.toml:\n\
-         ```toml\n\
-         name = \"agent-name\"\n\
-         description = \"what this agent does\"\n\
-         prompt = \"task instructions for the agent\"\n\
-         interval_hours = 6\n\
-         model = \"cheap\"  # heavy (Opus) / default / fast (Sonnet) / cheap (Haiku)\n\
-         tools = true\n\
-         enabled = true\n\
-         ```\n\
-         built-in agents: reflection (72h, Opus — self-reflection), night-maintenance (24h — memory cleanup).\n\
-         each agent gets its own history, context from recent conversations/drops/memory, and runs independently.",
+         autonomous agents running on their own schedules:\n\
+         {agents_info}\n\n\
+         configs: {}\n\
+         use update_config with agent_interval to change schedules.\n\
+         use update_config with reset_agent to restore built-in defaults.\n\
+         available tool groups: memory, creative, communication, files, commands, email, computer, media",
         agents_dir.display(),
     ));
 
