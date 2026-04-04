@@ -101,7 +101,7 @@ enum AgentMessage {
 
 async fn handle_agent(mut socket: WebSocket, state: AppState) {
     // The agent must send a Register message first.
-    let (machine_id, screen_recording_allowed, os, instance_slug, mut agent_rx) = match wait_for_registration(&mut socket, &state).await {
+    let (machine_id, screen_recording_allowed, os, _instance_slug, mut agent_rx) = match wait_for_registration(&mut socket, &state).await {
         Some(v) => v,
         None => return,
     };
@@ -308,7 +308,7 @@ async fn on_machine_connected(
     let any_instance_recording = all_slugs.iter().any(|(_, sr)| *sr);
     if screen_recording_allowed && any_instance_recording {
         log::info!("[machine-connect] starting screen recording on '{}'", machine_id);
-        crate::services::heartbeat::start_recording_on_machine(registry, machine_id, os).await;
+        crate::services::tools::screen::start_recording_on_machine(registry, machine_id, os).await;
     }
 
     // Notify ALL matching instances about the connection
@@ -413,6 +413,6 @@ async fn start_recording_if_enabled(
         });
 
     if any_enabled {
-        crate::services::heartbeat::start_recording_on_machine(registry, machine_id, os).await;
+        crate::services::tools::screen::start_recording_on_machine(registry, machine_id, os).await;
     }
 }

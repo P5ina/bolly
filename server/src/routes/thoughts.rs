@@ -8,7 +8,7 @@ use axum::{
 use crate::{
     app::state::AppState,
     domain::thought::Thought,
-    services::{thoughts, heartbeat},
+    services::thoughts,
 };
 
 pub fn router() -> Router<AppState> {
@@ -29,6 +29,6 @@ async fn list_thoughts(
 async fn list_observations(
     State(state): State<AppState>,
     Path(instance_slug): Path<String>,
-) -> Json<Vec<heartbeat::ScreenObservation>> {
-    Json(heartbeat::list_observations(&state.workspace_dir, &instance_slug))
+) -> Json<Vec<crate::services::tools::screen::ScreenObservation>> {
+    Json(crate::services::tools::screen::list_observations(&state.workspace_dir, &instance_slug))
 }

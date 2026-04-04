@@ -1242,7 +1242,7 @@ impl Tool for UpdateConfigTool {
                 for m in &machines {
                     if !m.screen_recording_allowed { continue; }
                     if enabled {
-                        crate::services::heartbeat::start_recording_on_machine(&registry, &m.machine_id, &m.os).await;
+                        crate::services::tools::screen::start_recording_on_machine(&registry, &m.machine_id, &m.os).await;
                     } else {
                         let stop = crate::services::machine_registry::AgentToolCall {
                             request_id: uuid::Uuid::new_v4().to_string(),

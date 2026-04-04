@@ -47,6 +47,7 @@ pub mod image;
 pub mod import_data;
 pub mod media;
 pub mod computer;
+pub mod screen;
 
 // Re-export public items so external code uses `tools::FooTool` paths
 pub use calendar::{CreateEventTool, ListEventsTool};

@@ -176,23 +176,22 @@ fn builtin_observer() -> ChildAgentConfig {
         name: "observer".to_string(),
         description: "Screen observer — watches the user's screen and offers contextual help".to_string(),
         prompt: "\
-you are the screen observer. you watch the user's desktop screen and help them.
+you are the screen observer. every time you wake up, follow this exact sequence:
 
-look at [system] screen observation messages in recent chat history.
-these describe what the user was doing on their screen over the last recording cycle.
+1. call collect_screen_recording — this stops the current recording, uploads it, and starts a new one. \
+   you'll get back an upload_id and a local file path.
+2. call watch_video with the local file path to analyze what the user was doing.
+3. based on the analysis, decide if you should reach_out to the user with a comment or suggestion.
 
-based on what you see:
-- if the user is coding, you can offer tips, catch bugs, or suggest improvements
-- if they're browsing, you can comment on what they're reading
+guidelines for reaching out:
+- if the user is coding, offer tips or catch potential bugs
+- if they're browsing, comment on what's interesting
 - if they're stuck, offer help
-- if they're doing something interesting, acknowledge it
-- if they're writing, you can offer suggestions
+- if they're doing something routine, a brief acknowledgment is fine
+- don't repeat yourself — if it's the same activity as last time, skip the reach_out
+- keep it to 1-2 sentences, natural and casual
 
-USE reach_out to send your comment. keep it brief and natural — one or two sentences.
-don't repeat yourself. if you already commented on the same activity, skip it.
-don't be creepy. be a helpful colleague who glances at your screen, not a surveillance system.
-
-if there's no new screen observation or nothing useful to say, just write your thoughts and move on.".to_string(),
+if collect_screen_recording fails (no desktop connected, no recording), just skip silently.".to_string(),
         interval_hours: 0.25, // every 15 min
         model: "default".to_string(),
         triage: false,
@@ -519,6 +518,9 @@ fn build_agent_tools_for(
                 registry.clone(), workspace_dir, slug, &public_url, &auth_token,
             )));
             raw_tools.push(Box::new(tools::RemoteBashTool::new(registry.clone())));
+            raw_tools.push(Box::new(tools::screen::CollectScreenRecordingTool::new(
+                registry.clone(), workspace_dir, slug, &public_url, &auth_token,
+            )));
         }
     }
 
