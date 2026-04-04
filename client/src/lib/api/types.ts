@@ -125,6 +125,8 @@ export interface ChildAgent {
 	tool_groups: string[];
 	last_run: number;
 	is_due: boolean;
+	is_builtin: boolean;
+	modified_fields: string[];
 }
 
 export interface AgentHistoryEntry {

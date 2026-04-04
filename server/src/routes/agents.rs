@@ -30,6 +30,10 @@ struct AgentInfo {
     last_run: i64,
     /// Whether the agent is currently due to run.
     is_due: bool,
+    /// Whether this is a built-in agent.
+    is_builtin: bool,
+    /// Fields that differ from the built-in default (empty if not built-in or identical).
+    modified_fields: Vec<String>,
 }
 
 async fn list_agents(
@@ -67,7 +71,22 @@ async fn list_agents(
         let interval_secs = (config.interval_hours * 3600.0) as i64;
         let is_due = now - last_run >= interval_secs;
 
-        result.push(AgentInfo { config, last_run, is_due });
+        let builtin = child_agents::get_builtin_default(&config.name);
+        let is_builtin = builtin.is_some();
+        let modified_fields = if let Some(ref def) = builtin {
+            let mut mods = Vec::new();
+            if config.description != def.description { mods.push("description".into()); }
+            if config.prompt != def.prompt { mods.push("prompt".into()); }
+            if (config.interval_hours - def.interval_hours).abs() > 0.001 { mods.push("interval_hours".into()); }
+            if config.model != def.model { mods.push("model".into()); }
+            if config.enabled != def.enabled { mods.push("enabled".into()); }
+            if config.tool_groups != def.tool_groups { mods.push("tool_groups".into()); }
+            mods
+        } else {
+            vec![]
+        };
+
+        result.push(AgentInfo { config, last_run, is_due, is_builtin, modified_fields });
     }
 
     result.sort_by(|a, b| a.config.name.cmp(&b.config.name));

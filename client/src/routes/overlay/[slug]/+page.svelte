@@ -1,101 +1,104 @@
 <script lang="ts">
 	import { page } from "$app/stores";
 	import { onMount } from "svelte";
-	import { getSkinStore, clipSrc } from "$lib/stores/skin.svelte.js";
-	import { getSceneStore } from "$lib/stores/scene.svelte.js";
-	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
-	import type { ServerEvent } from "$lib/api/types.js";
+	import { fetchSkin } from "$lib/api/client.js";
 
 	const slug = $derived($page.params.slug!);
-	const skinStore = getSkinStore();
-	const store = getSceneStore();
-	const ws = getWebSocket();
 
+	/** Skin clip definitions (duplicated from skin store to avoid context dependency) */
+	interface ClipSource { webm: string; mov: string; }
+	interface SkinClips {
+		idle: ClipSource;
+		thinking: ClipSource[];
+	}
+
+	const skinClips: Record<string, SkinClips> = {
+		orb: {
+			idle: { webm: "/skins/orb/orb-idle-loop.webm", mov: "/skins/orb/orb-idle-loop.mov" },
+			thinking: [
+				{ webm: "/skins/orb/morph-cube.webm", mov: "/skins/orb/morph-cube.mov" },
+				{ webm: "/skins/orb/morph-tesseract.webm", mov: "/skins/orb/morph-tesseract.mov" },
+				{ webm: "/skins/orb/morph-prism.webm", mov: "/skins/orb/morph-prism.mov" },
+			],
+		},
+		mint: {
+			idle: { webm: "/skins/mint/idle-loop.webm", mov: "/skins/mint/idle-loop.mov" },
+			thinking: [
+				{ webm: "/skins/mint/reading.webm", mov: "/skins/mint/reading.mov" },
+				{ webm: "/skins/mint/typing.webm", mov: "/skins/mint/typing.mov" },
+			],
+		},
+	};
+
+	const useHEVC = typeof document !== "undefined" &&
+		document.createElement("video").canPlayType('video/mp4; codecs="hvc1.2.4.L123.B0"') !== "";
+
+	function src(clip: ClipSource): string { return useHEVC ? clip.mov : clip.webm; }
+
+	let skinId = $state("orb");
+	let thinking = $state(false);
 	let recording = $state(false);
-	let actionQueue = $state<{ id: number; text: string }[]>([]);
-	let idCounter = 0;
-
-	onMount(() => {
-		skinStore.loadForInstance(slug);
-		store.enterChat(slug);
-
-		const unsub = ws.subscribe((event: ServerEvent) => {
-			if (event.type === "tool_started" && event.instance_slug === slug) {
-				const id = ++idCounter;
-				actionQueue = [...actionQueue, { id, text: event.tool_name ?? "action" }];
-				setTimeout(() => {
-					actionQueue = actionQueue.filter(a => a.id !== id);
-				}, 3000);
-			}
-		});
-
-		return unsub;
-	});
-
-	let videoPhase = $derived(store.thinking ? 'thinking' : 'idle');
-	let thinkingIdx = $state(0);
-
-	let videoSrc = $derived.by(() => {
-		const clips = skinStore.skin.clips;
-		if (videoPhase === 'thinking') {
-			return clips.thinking[thinkingIdx] ?? clips.idle;
-		}
-		return clips.idle;
-	});
-
-	let isLooping = $derived(videoPhase === 'idle');
-
-	$effect(() => {
-		if (store.thinking) {
-			const clips = skinStore.skin.clips.thinking;
-			thinkingIdx = Math.floor(Math.random() * clips.length);
-		}
-	});
-
 	let videoEl: HTMLVideoElement | undefined = $state();
 
+	const clips = $derived(skinClips[skinId] ?? skinClips.orb);
+	let thinkingIdx = $state(0);
+	const currentClip = $derived(thinking ? (clips.thinking[thinkingIdx] ?? clips.idle) : clips.idle);
+	const currentSrc = $derived(src(currentClip));
+	const isLooping = $derived(!thinking);
+
+	// Apply video source
 	$effect(() => {
-		if (videoEl) {
-			const src = clipSrc(videoSrc);
-			if (videoEl.src !== src) {
-				videoEl.src = src;
-				videoEl.loop = isLooping;
-				videoEl.play().catch(() => {});
-			}
+		if (videoEl && currentSrc) {
+			videoEl.src = currentSrc;
+			videoEl.loop = isLooping;
+			videoEl.play().catch(() => {});
 		}
 	});
 
-	function handleVideoEnded() {
-		if (videoPhase === 'thinking') {
-			const clips = skinStore.skin.clips.thinking;
-			thinkingIdx = Math.floor(Math.random() * clips.length);
+	function handleEnded() {
+		if (thinking) {
+			thinkingIdx = Math.floor(Math.random() * clips.thinking.length);
 		}
 	}
+
+	onMount(async () => {
+		// Fetch skin from server
+		try {
+			const res = await fetchSkin(slug);
+			if (res.skin && skinClips[res.skin]) skinId = res.skin;
+		} catch {}
+
+		// Listen for SSE/WebSocket events for thinking state
+		// For now, poll the agent_running status
+		const poll = setInterval(async () => {
+			try {
+				const res = await fetch(`/api/instances/${slug}/chat/default`);
+				if (res.ok) {
+					const data = await res.json();
+					thinking = data.agent_running ?? false;
+				}
+			} catch {}
+		}, 2000);
+
+		return () => clearInterval(poll);
+	});
 </script>
 
 <div class="overlay">
-	<div class="character">
+	<div class="pip">
 		<!-- svelte-ignore a11y_media_has_caption -->
 		<video
 			bind:this={videoEl}
-			class="character-video"
+			class="pip-video"
 			muted
 			playsinline
 			autoplay
-			onended={handleVideoEnded}
+			onended={handleEnded}
 		></video>
 		{#if recording}
-			<div class="rec-dot"></div>
+			<div class="pip-rec"></div>
 		{/if}
 	</div>
-
-	{#if actionQueue.length > 0}
-		<div class="flash-stack">
-			{#each actionQueue as flash (flash.id)}
-				<div class="flash">{flash.text}</div>
-			{/each}
-		</div>
-	{/if}
 </div>
 
 <style>
@@ -112,73 +115,47 @@
 		pointer-events: none;
 	}
 
-	.character {
+	.pip {
 		position: absolute;
-		bottom: 12px;
-		right: 12px;
-		width: 64px;
-		height: 64px;
+		bottom: 16px;
+		right: 16px;
+		width: 56px;
+		height: 56px;
 		border-radius: 50%;
 		overflow: hidden;
-		background: oklch(0.08 0.02 160 / 80%);
-		border: 2px solid oklch(0.75 0.12 160 / 40%);
-		box-shadow: 0 2px 16px oklch(0 0 0 / 50%);
+		background: oklch(0.06 0.02 260 / 90%);
+		border: 2px solid oklch(0.78 0.12 75 / 30%);
+		box-shadow: 0 2px 16px oklch(0 0 0 / 60%),
+		            0 0 24px oklch(0.78 0.12 75 / 8%);
 		animation: breathe 4s ease-in-out infinite;
 	}
 
 	@keyframes breathe {
 		0%, 100% { transform: scale(1); }
-		50% { transform: scale(1.02); }
+		50% { transform: scale(1.03); }
 	}
 
-	.character-video {
+	.pip-video {
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
 	}
 
-	.rec-dot {
+	.pip-rec {
 		position: absolute;
-		top: 0;
-		right: 0;
+		top: -1px;
+		right: -1px;
 		width: 12px;
 		height: 12px;
 		border-radius: 50%;
 		background: oklch(0.62 0.25 25);
 		box-shadow: 0 0 8px oklch(0.62 0.25 25 / 80%);
 		animation: rec-pulse 1.5s ease-in-out infinite;
+		border: 2px solid oklch(0.06 0.02 260);
 	}
 
 	@keyframes rec-pulse {
 		0%, 100% { opacity: 1; }
 		50% { opacity: 0.4; }
-	}
-
-	.flash-stack {
-		position: absolute;
-		bottom: 84px;
-		right: 12px;
-		display: flex;
-		flex-direction: column-reverse;
-		gap: 4px;
-		align-items: flex-end;
-	}
-
-	.flash {
-		font-family: "SF Mono", ui-monospace, monospace;
-		font-size: 11px;
-		padding: 4px 10px;
-		border-radius: 8px;
-		background: oklch(0.10 0.02 260 / 85%);
-		color: oklch(0.85 0.03 75);
-		border: 1px solid oklch(1 0 0 / 8%);
-		animation: flash-in 3s ease both;
-	}
-
-	@keyframes flash-in {
-		0% { opacity: 0; transform: translateX(12px); }
-		8% { opacity: 1; transform: translateX(0); }
-		80% { opacity: 1; }
-		100% { opacity: 0; transform: translateX(6px); }
 	}
 </style>

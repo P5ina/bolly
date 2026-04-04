@@ -353,6 +353,9 @@
 								{#if !agent.enabled}
 									<span class="agent-paused-badge">paused</span>
 								{/if}
+								{#if agent.modified_fields?.length > 0}
+									<span class="agent-modified-badge" title="Modified: {agent.modified_fields.join(', ')}">modified</span>
+								{/if}
 							</div>
 						</div>
 
@@ -783,6 +786,17 @@
 		border-radius: 0.5rem;
 		background: oklch(var(--ink) / 5%);
 		color: oklch(var(--ink) / 25%);
+	}
+
+	.agent-modified-badge {
+		font-family: var(--font-mono);
+		font-size: 0.55rem;
+		letter-spacing: 0.06em;
+		padding: 0.1rem 0.35rem;
+		border-radius: 0.5rem;
+		background: oklch(0.75 0.12 200 / 8%);
+		color: oklch(0.75 0.12 200 / 55%);
+		cursor: help;
 	}
 
 	/* Actions */
