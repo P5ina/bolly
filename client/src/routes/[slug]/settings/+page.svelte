@@ -402,6 +402,8 @@
 	let configuredKeys = $state<string[]>([]);
 	let keySaving = $state("");
 	let keyError = $state("");
+	let keyEditing = $state("");
+	let keyEditValue = $state("");
 
 	// Claude CLI OAuth state
 	let cliConnected = $state(false);
@@ -1097,14 +1099,36 @@
 						<span class="key-hint">{key.hint}</span>
 					</div>
 					<div class="key-action">
-						{#if configured}
-							<span class="key-badge key-badge-ok">connected</span>
+						{#if keyEditing === key.id}
+							<input
+								class="key-input"
+								type="password"
+								placeholder="{key.name} key..."
+								bind:value={keyEditValue}
+								onkeydown={(e) => {
+									if (e.key === "Enter" && keyEditValue.trim()) {
+										saveKey(key.id, keyEditValue);
+										keyEditing = "";
+										keyEditValue = "";
+									}
+									if (e.key === "Escape") { keyEditing = ""; keyEditValue = ""; }
+								}}
+							/>
 							<button
 								class="key-change"
 								onclick={() => {
-									const val = prompt(`New ${key.name} key:`);
-									if (val) saveKey(key.id, val);
+									if (keyEditValue.trim()) saveKey(key.id, keyEditValue);
+									keyEditing = "";
+									keyEditValue = "";
 								}}
+								disabled={keySaving === key.id}
+							>{keySaving === key.id ? "saving..." : "save"}</button>
+							<button class="key-change" onclick={() => { keyEditing = ""; keyEditValue = ""; }}>cancel</button>
+						{:else if configured}
+							<span class="key-badge key-badge-ok">connected</span>
+							<button
+								class="key-change"
+								onclick={() => { keyEditing = key.id; keyEditValue = ""; }}
 								disabled={keySaving === key.id}
 							>change</button>
 							<button
@@ -1115,10 +1139,7 @@
 						{:else}
 							<button
 								class="key-change key-change-add"
-								onclick={() => {
-									const val = prompt(`${key.name} API key:`);
-									if (val) saveKey(key.id, val);
-								}}
+								onclick={() => { keyEditing = key.id; keyEditValue = ""; }}
 								disabled={keySaving === key.id}
 							>{keySaving === key.id ? "saving..." : "add key"}</button>
 						{/if}
@@ -2360,6 +2381,18 @@
 	.key-change-add:hover { color: oklch(0.88 0.14 75); }
 	.key-change-remove { color: oklch(0.55 0.08 25 / 60%); }
 	.key-change-remove:hover { color: oklch(0.65 0.15 25); }
+	.key-input {
+		font-size: 0.72rem;
+		font-family: var(--font-mono, monospace);
+		padding: 4px 8px;
+		border-radius: 6px;
+		border: 1px solid var(--border, oklch(1 0 0 / 10%));
+		background: var(--surface-input, oklch(1 0 0 / 5%));
+		color: var(--foreground);
+		outline: none;
+		min-width: 160px;
+	}
+	.key-input:focus { border-color: var(--color-warm, oklch(0.78 0.12 75)); }
 	.key-error { margin-top: 8px; font-size: 0.72rem; color: oklch(0.65 0.15 25 / 70%); font-style: italic; }
 
 	/* --- Claude CLI OAuth --- */
