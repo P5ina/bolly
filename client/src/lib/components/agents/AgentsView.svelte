@@ -545,14 +545,14 @@
 													<p class="trace-text">{text.slice(0, 800)}{text.length > 800 ? '...' : ''}</p>
 												{/if}
 
-												{#each toolUses as tu (tu.name + tu.input.slice(0, 20))}
+												{#each toolUses as tu, ti (ti)}
 													<div class="trace-tool-use">
 														<span class="trace-tool-name">{tu.name}</span>
 														<pre class="trace-tool-input">{tu.input}</pre>
 													</div>
 												{/each}
 
-												{#each toolResults as tr (tr.content.slice(0, 30))}
+												{#each toolResults as tr, tri (tri)}
 													<div class="trace-tool-result">
 														<pre class="trace-tool-output">{tr.content}</pre>
 													</div>
