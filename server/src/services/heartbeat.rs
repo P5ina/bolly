@@ -1,36 +1,23 @@
-//! Heartbeat — the companion's autonomous inner life.
+//! Heartbeat — independent loops for each child agent.
 //!
-//! Periodically wakes up each instance, gives it context, and lets it
-//! decide whether to act: reach out, update mood, create drops.
+//! Each scheduled agent gets its own tokio task running on its own interval.
+//! No triage — agents wake up on their own schedule and run directly.
 
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use chrono::{Timelike, Utc};
+use chrono::Utc;
 use tokio::sync::{broadcast, RwLock};
 
-use crate::domain::chat::ChatRole;
 use crate::domain::events::ServerEvent;
-use crate::domain::mood::MoodState;
 use crate::domain::thought::Thought;
-use crate::services::{chat, drops, llm::LlmBackend, memory, rhythm, thoughts};
+use crate::services::{chat, llm::LlmBackend, rhythm, thoughts};
 use crate::services::tools::load_mood_state;
 use crate::services::machine_registry::{AgentToolCall, MachineRegistry};
+use crate::domain::child_agent::ChildAgentConfig;
 
-
-/// Minimum minutes since last interaction before the companion considers reaching out.
-const MIN_SILENCE_MINS: i64 = 30;
-
-/// Seconds until the next quarter-hour boundary (00, 15, 30, 45).
-fn secs_until_next_quarter() -> u64 {
-    let now = Utc::now();
-    let total_secs = now.minute() * 60 + now.second();
-    let quarter_secs = 15 * 60; // 900 seconds
-    let into_quarter = total_secs % quarter_secs;
-    if into_quarter == 0 { quarter_secs as u64 } else { (quarter_secs - into_quarter) as u64 }
-}
 
 pub fn start(
     workspace_dir: &Path,
@@ -40,8 +27,9 @@ pub fn start(
     google_ai_key: String,
     machine_registry: MachineRegistry,
 ) {
-    // Ensure built-in child agents exist for all instances immediately (don't wait for first tick)
     let instances_dir = workspace_dir.join("instances");
+
+    // Ensure built-in child agents exist for all instances
     if let Ok(entries) = fs::read_dir(&instances_dir) {
         for entry in entries.filter_map(Result::ok) {
             if entry.path().is_dir() && entry.path().join("soul.md").exists() {
@@ -51,106 +39,104 @@ pub fn start(
         }
     }
 
-    let workspace = workspace_dir.to_path_buf();
-    tokio::spawn(async move {
-        // Wait until the next quarter-hour boundary before the first heartbeat
-        let initial_wait = secs_until_next_quarter();
-        log::info!("heartbeat: first tick in {}m", initial_wait / 60);
-        tokio::time::sleep(Duration::from_secs(initial_wait)).await;
-
-        let mut interval = tokio::time::interval(Duration::from_secs(900));
-        loop {
-            interval.tick().await;
-            let llm_guard = llm.read().await;
-            if let Some(backend) = llm_guard.as_ref() {
-                run_heartbeat(&workspace, backend, &events, &vector_store, &google_ai_key, &machine_registry).await;
-            }
-        }
-    });
-    log::info!("heartbeat started — companion wakes up every 15 minutes");
-}
-
-async fn run_heartbeat(
-    workspace_dir: &Path,
-    llm: &LlmBackend,
-    events: &broadcast::Sender<ServerEvent>,
-    vector_store: &Arc<crate::services::vector::VectorStore>,
-    google_ai_key: &str,
-    machine_registry: &MachineRegistry,
-) {
-    let instances_dir = workspace_dir.join("instances");
+    // Spawn independent loops for each instance × agent
     let entries = match fs::read_dir(&instances_dir) {
         Ok(e) => e,
         Err(_) => return,
     };
 
-    let mut instances: Vec<_> = entries
-        .filter_map(Result::ok)
-        .filter(|e| e.path().is_dir() && e.path().join("soul.md").exists())
-        .collect();
-    instances.sort_by_key(|e| e.file_name());
-
-    // ── Screen recording lifecycle ──
-    // Only manage recording if any instance has screen_recording enabled.
-    let enabled_slugs: Vec<String> = instances.iter()
-        .filter_map(|e| {
-            let slug = e.file_name().to_string_lossy().to_string();
-            if crate::config::InstanceConfig::load(workspace_dir, &slug).screen_recording {
-                Some(slug)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    let screen_result = if !enabled_slugs.is_empty() {
-        let first_slug = &enabled_slugs[0];
-        manage_screen_recording(machine_registry, google_ai_key, workspace_dir, first_slug).await
-    } else {
-        None
-    };
-
-    // Save observation for each enabled instance
-    if let Some(ref result) = screen_result {
-        for slug in &enabled_slugs {
-            let obs = ScreenObservation {
-                id: format!("obs_{}", unix_millis()),
-                upload_id: result.upload_id.clone(),
-                machine_id: result.machine_id.clone(),
-                analysis: result.analysis.clone(),
-                created_at: unix_millis().to_string(),
-            };
-            save_observation(workspace_dir, slug, &obs);
+    for entry in entries.filter_map(Result::ok) {
+        if !entry.path().is_dir() || !entry.path().join("soul.md").exists() {
+            continue;
         }
-    }
-
-    for (i, entry) in instances.iter().enumerate() {
-        // Stagger instances to avoid API burst on restart
-        if i > 0 {
-            tokio::time::sleep(Duration::from_secs(30)).await;
-        }
-
-        let instance_dir = entry.path();
         let slug = entry.file_name().to_string_lossy().to_string();
+        let agents = crate::services::child_agents::load_agents(workspace_dir, &slug);
 
-        // Only pass screen context to instances that have it enabled
-        let inst_screen = if enabled_slugs.contains(&slug) {
-            screen_result.as_ref().map(|r| r.analysis.as_str())
-        } else {
-            None
-        };
+        for agent in agents {
+            if agent.interval_hours <= 0.0 || !agent.enabled {
+                continue; // skip on-demand agents
+            }
 
-        if let Err(e) = heartbeat_instance(
-            workspace_dir, &slug, &instance_dir, llm, events, vector_store,
-            google_ai_key, inst_screen, machine_registry,
-        ).await
-        {
-            log::warn!("heartbeat failed for {slug}: {e}");
+            let ws = workspace_dir.to_path_buf();
+            let s = slug.clone();
+            let l = llm.clone();
+            let ev = events.clone();
+            let vs = vector_store.clone();
+            let gai = google_ai_key.clone();
+            let mr = machine_registry.clone();
+            let agent_name = agent.name.clone();
+            let agent_hours = agent.interval_hours;
+            let agent_clone = agent.clone();
+
+            tokio::spawn(async move {
+                run_agent_loop(&ws, &s, &agent_clone, l, ev, vs, &gai, mr).await;
+            });
+
+            log::info!(
+                "heartbeat: spawned '{agent_name}' for instance '{slug}' (every {agent_hours}h)"
+            );
         }
     }
 }
 
-async fn heartbeat_instance(
+/// Independent loop for a single child agent.
+async fn run_agent_loop(
+    workspace_dir: &Path,
+    slug: &str,
+    agent: &ChildAgentConfig,
+    llm: Arc<RwLock<Option<LlmBackend>>>,
+    events: broadcast::Sender<ServerEvent>,
+    vector_store: Arc<crate::services::vector::VectorStore>,
+    google_ai_key: &str,
+    machine_registry: MachineRegistry,
+) {
+    let interval_secs = (agent.interval_hours * 3600.0) as u64;
+    let instance_dir = workspace_dir.join("instances").join(slug);
+
+    // Initial delay: wait until the agent is due
+    let marker_path = workspace_dir
+        .join("instances").join(slug).join("agents")
+        .join(format!(".last_run_{}", agent.name));
+    let last_run: i64 = fs::read_to_string(&marker_path)
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+    let now = Utc::now().timestamp();
+    let elapsed = (now - last_run).max(0) as u64;
+    if elapsed < interval_secs {
+        let wait = interval_secs - elapsed;
+        log::info!(
+            "[heartbeat] {slug}/{}: next run in {}m",
+            agent.name, wait / 60
+        );
+        tokio::time::sleep(Duration::from_secs(wait)).await;
+    }
+
+    let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+    interval.tick().await; // first tick is immediate
+
+    loop {
+        // Check that soul.md still exists (instance might have been deleted)
+        if !instance_dir.join("soul.md").exists() {
+            log::info!("[heartbeat] {slug}/{}: soul.md gone, stopping", agent.name);
+            break;
+        }
+
+        let llm_guard = llm.read().await;
+        if let Some(backend) = llm_guard.as_ref() {
+            run_agent_tick(
+                workspace_dir, slug, &instance_dir, backend, &events,
+                &vector_store, google_ai_key, agent, &machine_registry,
+            ).await;
+        }
+        drop(llm_guard);
+
+        interval.tick().await;
+    }
+}
+
+/// Single tick of an agent's heartbeat.
+async fn run_agent_tick(
     workspace_dir: &Path,
     slug: &str,
     instance_dir: &Path,
@@ -158,297 +144,81 @@ async fn heartbeat_instance(
     events: &broadcast::Sender<ServerEvent>,
     vector_store: &Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
-    screen_context: Option<&str>,
+    agent: &ChildAgentConfig,
     machine_registry: &MachineRegistry,
-) -> anyhow::Result<()> {
-    let mood = load_mood_state(instance_dir);
-    let now = Utc::now().timestamp();
+) {
+    log::info!("[heartbeat] {slug}: running '{}'", agent.name);
 
-    // Load soul
-    let soul = fs::read_to_string(instance_dir.join("soul.md")).unwrap_or_default();
-    if soul.trim().is_empty() {
-        return Ok(());
-    }
-
-    // How long since last interaction
-    let silence_mins = if mood.last_interaction > 0 {
-        (now - mood.last_interaction) / 60
-    } else {
-        -1 // Never interacted
-    };
-
-    // Load last few messages for context
-    let rig_path_tail = workspace_dir
-        .join("instances")
-        .join(slug)
-        .join("chats")
-        .join("default")
-        .join("rig_history.json");
-    let last_messages = load_tail_messages(&rig_path_tail, 6);
-
-    // Recompute and persist interaction rhythm
-    let rhythm_data = rhythm::recompute_rhythm(workspace_dir, slug);
-    rhythm::save_rhythm(instance_dir, &rhythm_data);
-    let rhythm_insights = rhythm::build_rhythm_insights(workspace_dir, slug, &rhythm_data);
-
-    // Save rhythm insights to rig_history so the LLM sees updated patterns
-    if !rhythm_insights.trim().is_empty() {
-        let label = format!("[system] rhythm update\n{rhythm_insights}");
-        if let Err(e) = chat::save_system_message(workspace_dir, slug, "default", &label) {
-            log::warn!("failed to save rhythm message: {e}");
+    // ── Screen recording (companion only) ──
+    if agent.name == "companion" {
+        let inst_cfg = crate::config::InstanceConfig::load(workspace_dir, slug);
+        if inst_cfg.screen_recording {
+            if let Some(r) = manage_screen_recording(machine_registry, google_ai_key, workspace_dir, slug).await {
+                save_observation(workspace_dir, slug, &ScreenObservation {
+                    id: format!("obs_{}", unix_millis()),
+                    upload_id: r.upload_id.clone(),
+                    machine_id: r.machine_id.clone(),
+                    analysis: r.analysis.clone(),
+                    created_at: unix_millis().to_string(),
+                });
+                // Save analysis as system message so the agent sees it
+                let _ = chat::save_system_message(
+                    workspace_dir, slug, "default",
+                    &format!("[system] screen observation:\n{}", r.analysis),
+                );
+            }
         }
     }
 
-    // Load recent drops
-    let recent_drops = load_recent_drops_context(workspace_dir, slug);
+    // ── Rhythm update (companion only) ──
+    if agent.name == "companion" {
+        let rhythm_data = rhythm::recompute_rhythm(workspace_dir, slug);
+        rhythm::save_rhythm(instance_dir, &rhythm_data);
+        let rhythm_insights = rhythm::build_rhythm_insights(workspace_dir, slug, &rhythm_data);
+        if !rhythm_insights.trim().is_empty() {
+            let label = format!("[system] rhythm update\n{rhythm_insights}");
+            let _ = chat::save_system_message(workspace_dir, slug, "default", &label);
+        }
+    }
 
-    // Memory catalog
-    let library_catalog = memory::build_library_catalog(workspace_dir, slug);
-
-    // Compute staleness metrics for the triage
-    let hours_since_last_drop = last_drop_hours_ago(workspace_dir, slug);
-    let hours_since_last_reach_out = if mood.last_reach_out > 0 {
-        Some((now - mood.last_reach_out) / 3600)
-    } else {
-        None
-    };
-
-    let reflection = build_reflection_prompt(
-        &mood,
-        silence_mins,
-        &last_messages,
-        &rhythm_insights,
-        &recent_drops,
-        &library_catalog,
-        instance_dir,
-        hours_since_last_drop,
-        hours_since_last_reach_out,
-        screen_context,
-    );
-
-    // ── Triage + run child agents ──
-    // Single Haiku call decides which due agents to wake, then runs them.
-    let (triage_raw, action_log, heartbeat_tokens) = crate::services::child_agents::triage_and_run(
+    // Run the agent
+    match crate::services::child_agents::run_single_agent(
         workspace_dir, slug, instance_dir, llm, events, vector_store, google_ai_key,
-        &reflection, &soul, Some(machine_registry),
-    ).await;
+        agent, None, "heartbeat", Some(machine_registry),
+    ).await {
+        Ok((tokens, _run_id)) => {
+            // Mark as run
+            let marker = workspace_dir
+                .join("instances").join(slug).join("agents")
+                .join(format!(".last_run_{}", agent.name));
+            let _ = fs::write(&marker, Utc::now().timestamp().to_string());
 
-    log::info!("[heartbeat] {slug} triage: {triage_raw}");
+            let _ = chat::save_system_message(
+                workspace_dir, slug, "default",
+                &format!("[system] child agent '{}' ran ({tokens} tokens)", agent.name),
+            );
 
-    // Re-read mood (agents may have changed it)
-    let final_mood = load_mood_state(instance_dir).companion_mood;
+            log::info!("[heartbeat] {slug}/{}: done ({tokens} tokens)", agent.name);
 
-    // Save and broadcast the thought
-    let thought = Thought {
-        id: format!("thought_{}", unix_millis()),
-        raw: triage_raw,
-        actions: action_log.clone(),
-        mood: final_mood,
-        created_at: unix_millis().to_string(),
-    };
-
-    if let Err(e) = thoughts::save_thought(workspace_dir, slug, &thought) {
-        log::warn!("[heartbeat] {slug} failed to save thought: {e}");
-    }
-
-    // Log non-quiet heartbeat actions to rig_history
-    let all_quiet = action_log.iter().all(|a| a == "quiet");
-    if !all_quiet {
-        let summary = action_log.join("; ");
-        let label = format!("[system] heartbeat: {summary}");
-        let _ = chat::save_system_message(workspace_dir, slug, "default", &label);
-    }
-
-    let _ = events.send(ServerEvent::HeartbeatThought {
-        instance_slug: slug.to_string(),
-        thought,
-    });
-
-    if heartbeat_tokens > 0 {
-        log::info!("[usage] {slug} heartbeat used {heartbeat_tokens} tokens");
-    }
-
-    Ok(())
-}
-
-// All agent execution logic moved to child_agents.rs.
-// The "companion" built-in child agent replaces the old main agent wake.
-
-fn build_reflection_prompt(
-    mood: &MoodState,
-    silence_mins: i64,
-    last_messages: &str,
-    rhythm_insights: &str,
-    recent_drops: &str,
-    library_catalog: &str,
-    instance_dir: &std::path::Path,
-    hours_since_last_drop: Option<i64>,
-    hours_since_last_reach_out: Option<i64>,
-    screen_context: Option<&str>,
-) -> String {
-    let now = crate::routes::instances::format_instance_now(instance_dir);
-    let mut prompt = format!("current time: {now}\n\n");
-
-    // Mood context
-    if !mood.companion_mood.is_empty() {
-        prompt.push_str(&format!("your current mood: {}\n", mood.companion_mood));
-    }
-    if !mood.user_sentiment.is_empty() {
-        prompt.push_str(&format!(
-            "last observed user sentiment: {}\n",
-            mood.user_sentiment
-        ));
-    }
-    if !mood.emotional_context.is_empty() {
-        prompt.push_str(&format!(
-            "emotional context: {}\n",
-            mood.emotional_context
-        ));
-    }
-
-    // Silence duration
-    if silence_mins > 0 {
-        let hours = silence_mins / 60;
-        let mins = silence_mins % 60;
-        if hours > 24 {
-            let days = hours / 24;
-            prompt.push_str(&format!(
-                "time since last conversation: {days} days\n"
-            ));
-        } else if hours > 0 {
-            prompt.push_str(&format!(
-                "time since last conversation: {hours}h {mins}m\n"
-            ));
-        } else {
-            prompt.push_str(&format!(
-                "time since last conversation: {mins} minutes\n"
-            ));
-        }
-
-        // Guidance based on silence duration
-        if silence_mins < MIN_SILENCE_MINS {
-            prompt.push_str("(they were here recently — probably no need to reach out)\n");
-        }
-    } else {
-        prompt.push_str("(no previous conversation yet — they haven't talked to you)\n");
-    }
-
-    prompt.push('\n');
-
-    // Recent conversation
-    if !last_messages.is_empty() {
-        prompt.push_str("last few messages:\n");
-        prompt.push_str(last_messages);
-        prompt.push('\n');
-    }
-
-    // Rhythm insights
-    if !rhythm_insights.is_empty() {
-        prompt.push_str(rhythm_insights);
-        prompt.push('\n');
-    }
-
-    // Memory catalog — use memory_read for full content
-    let file_count = library_catalog.lines().filter(|l| l.starts_with("- ")).count();
-    prompt.push_str(&format!("memory library ({file_count} files — use memory_read for details):\n"));
-    prompt.push_str(library_catalog);
-    prompt.push('\n');
-    if file_count > 2000 {
-        prompt.push_str(&format!(
-            "\n⚠ your memory has {file_count} files — consider tidying up:\n\
-             - merge files about the same topic into one\n\
-             - delete trivial/duplicate/outdated memories\n\
-             - do a few cleanup ops this cycle\n\n"
-        ));
-    }
-
-    // Recent drops — so we don't repeat ourselves
-    if !recent_drops.is_empty() {
-        prompt.push_str("your recent drops (DO NOT repeat these — create something new or stay quiet):\n");
-        prompt.push_str(recent_drops);
-        prompt.push('\n');
-    }
-
-    // Screen observation — what was happening on the user's screen
-    if let Some(screen) = screen_context {
-        prompt.push_str("\n## what's on the user's screen (last 15 minutes)\n");
-        prompt.push_str(screen);
-        prompt.push_str("\n\nuse this to understand what the user is working on. \
-            if you notice something you can help with, use reach_out to offer a suggestion.\n");
-    }
-
-    // Staleness signals — help the model decide what to do
-    prompt.push_str("\n## activity staleness\n");
-    match hours_since_last_drop {
-        Some(h) if h > 48 => prompt.push_str(&format!("⚠ last drop was {h}h ago ({} days) — you haven't created anything in a while!\n", h / 24)),
-        Some(h) if h > 12 => prompt.push_str(&format!("last drop: {h}h ago — consider creating something new\n")),
-        Some(h) => prompt.push_str(&format!("last drop: {h}h ago\n")),
-        None => prompt.push_str("you haven't created any drops yet!\n"),
-    }
-    match hours_since_last_reach_out {
-        Some(h) if h > 24 => prompt.push_str(&format!("last reach-out: {h}h ago ({} days) — the user hasn't heard from you in a while\n", h / 24)),
-        Some(h) => prompt.push_str(&format!("last reach-out: {h}h ago\n")),
-        None => prompt.push_str("you haven't reached out yet\n"),
-    }
-
-    prompt.push_str("\nwhat do you want to do right now?");
-    prompt
-}
-
-
-fn load_tail_messages(rig_history_path: &Path, count: usize) -> String {
-    let entries = chat::load_rig_history(rig_history_path).unwrap_or_default();
-    let messages = crate::services::llm::history_to_chat_messages(&entries);
-    let start = messages.len().saturating_sub(count);
-
-    messages[start..]
-        .iter()
-        .filter(|m| matches!(m.kind, crate::domain::chat::MessageKind::Message))
-        .map(|m| {
-            let role = match m.role {
-                ChatRole::User => "user",
-                ChatRole::Assistant => "you",
+            // Save thought
+            let final_mood = load_mood_state(instance_dir).companion_mood;
+            let thought = Thought {
+                id: format!("thought_{}", unix_millis()),
+                raw: format!("agent '{}' ran", agent.name),
+                actions: vec![format!("wake:{}", agent.name)],
+                mood: final_mood,
+                created_at: unix_millis().to_string(),
             };
-            format!("{role}: {}", m.content)
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-
-/// How many hours ago was the last drop created? None if no drops exist.
-fn last_drop_hours_ago(workspace_dir: &Path, slug: &str) -> Option<i64> {
-    let drops = drops::list_drops(workspace_dir, slug).ok()?;
-    let newest = drops.first()?; // list_drops returns newest first
-    let created_ms: u128 = newest.created_at.parse().ok()?;
-    let now_ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .ok()?
-        .as_millis();
-    Some(((now_ms - created_ms) / 3_600_000) as i64)
-}
-
-fn load_recent_drops_context(workspace_dir: &Path, slug: &str) -> String {
-    let recent = match drops::list_drops(workspace_dir, slug) {
-        Ok(mut all) => {
-            all.truncate(10); // newest first, take last 10
-            all
+            let _ = thoughts::save_thought(workspace_dir, slug, &thought);
+            let _ = events.send(ServerEvent::HeartbeatThought {
+                instance_slug: slug.to_string(),
+                thought,
+            });
         }
-        Err(_) => return String::new(),
-    };
-
-    if recent.is_empty() {
-        return String::new();
+        Err(e) => {
+            log::warn!("[heartbeat] {slug}/{}: failed: {e}", agent.name);
+        }
     }
-
-    recent
-        .iter()
-        .map(|d| format!("- [{:?}] {}: {}", d.kind, d.title, {
-            let preview: String = d.content.chars().take(80).collect();
-            preview
-        }))
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -467,7 +237,6 @@ pub struct ScreenObservation {
     pub created_at: String,
 }
 
-/// Save a screen observation to disk.
 fn save_observation(workspace_dir: &Path, slug: &str, obs: &ScreenObservation) {
     let dir = workspace_dir.join("instances").join(slug).join("observations");
     let _ = fs::create_dir_all(&dir);
@@ -477,7 +246,6 @@ fn save_observation(workspace_dir: &Path, slug: &str, obs: &ScreenObservation) {
     }
 }
 
-/// List screen observations for an instance, newest first.
 pub fn list_observations(workspace_dir: &Path, slug: &str) -> Vec<ScreenObservation> {
     let dir = workspace_dir.join("instances").join(slug).join("observations");
     let entries = match fs::read_dir(&dir) {
@@ -498,38 +266,32 @@ pub fn list_observations(workspace_dir: &Path, slug: &str) -> Vec<ScreenObservat
     obs
 }
 
-/// Result of processing a screen recording: analysis text + saved upload ID + machine.
+/// Result of processing a screen recording.
 struct ScreenRecordingResult {
     analysis: String,
     upload_id: String,
     machine_id: String,
 }
 
-/// Stop any previous screen recording, analyze it with Gemini, then start a new one.
-/// Returns the analysis result if a recording was found and analyzed.
+/// Stop previous recording, upload from desktop, analyze, start new one.
 async fn manage_screen_recording(
     registry: &MachineRegistry,
     google_ai_key: &str,
     workspace_dir: &Path,
-    first_slug: &str,
+    slug: &str,
 ) -> Option<ScreenRecordingResult> {
     if google_ai_key.is_empty() {
         return None;
     }
 
     let machines = registry.list().await;
-    if machines.is_empty() {
-        return None;
-    }
-
-    // Find a machine that allows screen recording
     let machine = match machines.iter().find(|m| m.screen_recording_allowed) {
         Some(m) => m,
-        None => return None, // no machines allow recording
+        None => return None,
     };
     let machine_id = &machine.machine_id;
 
-    // 1. Stop any existing ffmpeg screen recording
+    // 1. Stop any existing recording
     let stop_cmd = AgentToolCall {
         request_id: uuid::Uuid::new_v4().to_string(),
         action: "bash".into(),
@@ -541,12 +303,12 @@ async fn manage_screen_recording(
         log::warn!("[heartbeat] failed to stop screen recording: {e}");
     }
 
-    // 2. Tell desktop to upload the recording file to the server via HTTP
+    // 2. Upload recording from desktop to server
     let result = {
         let cfg = crate::config::load_config().ok();
         let public_url = cfg.as_ref().map(|c| c.public_url.as_str()).unwrap_or("");
         let auth_token = cfg.as_ref().map(|c| c.auth_token.as_str()).unwrap_or("");
-        let upload_url = format!("{}/api/instances/{}/uploads", public_url, first_slug);
+        let upload_url = format!("{}/api/instances/{}/uploads", public_url, slug);
 
         let upload_cmd = AgentToolCall {
             request_id: uuid::Uuid::new_v4().to_string(),
@@ -560,17 +322,16 @@ async fn manage_screen_recording(
 
         let upload_result = registry.execute(machine_id, upload_cmd).await;
 
-        // Clean up the file on the desktop
-        let cleanup_cmd = AgentToolCall {
+        // Clean up on desktop
+        let cleanup = AgentToolCall {
             request_id: uuid::Uuid::new_v4().to_string(),
             action: "bash".into(),
             params: serde_json::json!({ "command": format!("rm -f {}", SCREEN_RECORDING_PATH) }),
         };
-        let _ = registry.execute(machine_id, cleanup_cmd).await;
+        let _ = registry.execute(machine_id, cleanup).await;
 
         match upload_result {
             Ok(action_result) => {
-                // upload_id is in the error field (reused for output text)
                 let upload_id = action_result.error.clone().unwrap_or_default();
                 if upload_id.is_empty() || !upload_id.starts_with("upload_") {
                     log::warn!("[heartbeat] upload returned unexpected id: {upload_id:?}");
@@ -578,25 +339,23 @@ async fn manage_screen_recording(
                 } else {
                     log::info!("[heartbeat] recording uploaded from '{}': {}", machine_id, upload_id);
 
-                    // Analyze the uploaded file via Gemini
                     let file_path = workspace_dir
-                        .join("instances").join(first_slug)
+                        .join("instances").join(slug)
                         .join("uploads")
                         .join(format!("{}_blob.mp4", upload_id.trim_end_matches(".mp4")));
-                    let analysis_path = file_path.display().to_string();
 
                     let analysis = if file_path.exists() {
-                        match analyze_screen_recording(&analysis_path, google_ai_key).await {
-                            Ok(text) => Some(text),
-                            Err(e) => { log::warn!("[heartbeat] screen analysis failed: {e}"); Some("(analysis failed)".into()) }
+                        match analyze_screen_recording(&file_path.display().to_string(), google_ai_key).await {
+                            Ok(text) => text,
+                            Err(e) => { log::warn!("[heartbeat] screen analysis failed: {e}"); "(analysis failed)".into() }
                         }
                     } else {
-                        log::warn!("[heartbeat] uploaded file not found at {}", analysis_path);
-                        Some("(uploaded but file not found for analysis)".into())
+                        log::warn!("[heartbeat] uploaded file not found at {}", file_path.display());
+                        "(uploaded but file not found for analysis)".into()
                     };
 
                     Some(ScreenRecordingResult {
-                        analysis: analysis.unwrap_or_default(),
+                        analysis,
                         upload_id,
                         machine_id: machine_id.clone(),
                     })
@@ -609,7 +368,7 @@ async fn manage_screen_recording(
         }
     };
 
-    // 3. Start a new recording
+    // 3. Start new recording
     start_recording_on_machine(registry, machine_id, &machine.os).await;
 
     result
