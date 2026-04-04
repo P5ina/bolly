@@ -217,32 +217,34 @@
   /* ─── Recording indicator ──────────────────────────────── */
   .rec-badge {
     position: absolute;
-    bottom: 12px;
-    right: 12px;
+    bottom: 16px;
+    right: 16px;
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 3px 10px;
-    border-radius: 14px;
-    background: oklch(0.06 0.015 260 / 75%);
-    backdrop-filter: blur(12px);
-    border: 1px solid oklch(0.60 0.20 25 / 25%);
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: 16px;
+    background: oklch(0.12 0.02 25 / 90%);
+    backdrop-filter: blur(16px);
+    border: 1px solid oklch(0.65 0.22 25 / 40%);
+    box-shadow: 0 0 20px oklch(0.60 0.22 25 / 25%),
+                0 2px 8px oklch(0 0 0 / 40%);
   }
 
   .rec-dot {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: oklch(0.60 0.20 25);
-    box-shadow: 0 0 8px oklch(0.60 0.20 25 / 70%);
+    background: oklch(0.65 0.25 25);
+    box-shadow: 0 0 12px oklch(0.65 0.25 25 / 80%);
     animation: pulse 1.5s ease-in-out infinite;
   }
 
   .rec-text {
     font-family: system-ui, sans-serif;
-    font-size: 10px;
-    font-weight: 600;
-    color: oklch(0.60 0.20 25 / 90%);
-    letter-spacing: 0.08em;
+    font-size: 11px;
+    font-weight: 700;
+    color: oklch(0.75 0.20 25);
+    letter-spacing: 0.1em;
   }
 </style>

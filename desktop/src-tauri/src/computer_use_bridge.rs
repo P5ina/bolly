@@ -84,13 +84,15 @@ pub fn get_screen_recording_allowed() -> Result<bool, String> {
 
 /// Stop any active screen recording (kill ffmpeg).
 #[tauri::command]
-pub fn stop_screen_recording() -> Result<(), String> {
+pub fn stop_screen_recording(app: tauri::AppHandle) -> Result<(), String> {
     let mut rec = RECORDING_ACTIVE.lock().map_err(|e| e.to_string())?;
     *rec = false;
     std::process::Command::new("sh")
         .args(["-c", "pkill -f 'ffmpeg.*bolly_screen' 2>/dev/null"])
         .spawn()
         .ok();
+    app.emit("screen-recording-state", false).ok();
+    overlay::hide(&app);
     Ok(())
 }
 
@@ -271,10 +273,12 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
             if cmd.contains("pkill") && cmd.contains("bolly_screen") {
                 let mut rec = RECORDING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
                 *rec = false;
+                overlay::show(app); // ensure overlay exists to receive event
                 app.emit("screen-recording-state", false).ok();
             } else if cmd.contains("ffmpeg") && cmd.contains("bolly_screen") && !cmd.contains("pkill") {
                 let mut rec = RECORDING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
                 *rec = true;
+                overlay::show(app); // ensure overlay exists to receive event
                 app.emit("screen-recording-state", true).ok();
             }
         }
@@ -331,7 +335,11 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
     }
 
     overlay::emit_idle(app);
-    overlay::hide(app);
+    // Only hide overlay if not recording — recording indicator should persist
+    let is_recording = RECORDING_ACTIVE.lock().map(|v| *v).unwrap_or(false);
+    if !is_recording {
+        overlay::hide(app);
+    }
 
     Ok(())
 }
