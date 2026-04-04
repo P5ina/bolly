@@ -142,7 +142,7 @@ async fn run_heartbeat(
 
         if let Err(e) = heartbeat_instance(
             workspace_dir, &slug, &instance_dir, llm, events, vector_store,
-            google_ai_key, inst_screen,
+            google_ai_key, inst_screen, machine_registry,
         ).await
         {
             log::warn!("heartbeat failed for {slug}: {e}");
@@ -159,6 +159,7 @@ async fn heartbeat_instance(
     vector_store: &Arc<crate::services::vector::VectorStore>,
     google_ai_key: &str,
     screen_context: Option<&str>,
+    machine_registry: &MachineRegistry,
 ) -> anyhow::Result<()> {
     let mood = load_mood_state(instance_dir);
     let now = Utc::now().timestamp();
@@ -229,7 +230,7 @@ async fn heartbeat_instance(
     // Single Haiku call decides which due agents to wake, then runs them.
     let (triage_raw, action_log, heartbeat_tokens) = crate::services::child_agents::triage_and_run(
         workspace_dir, slug, instance_dir, llm, events, vector_store, google_ai_key,
-        &reflection, &soul,
+        &reflection, &soul, Some(machine_registry),
     ).await;
 
     log::info!("[heartbeat] {slug} triage: {triage_raw}");

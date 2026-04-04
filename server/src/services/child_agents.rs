@@ -33,7 +33,7 @@ use crate::services::tools::{
 fn builtin_companion() -> ChildAgentConfig {
     ChildAgentConfig {
         name: "companion".to_string(),
-        description: "Autonomous companion — reach out, create drops, update mood, manage memory".to_string(),
+        description: "Autonomous companion — reach out, create drops, manage memory, take screenshots, control desktop".to_string(),
         prompt: "\
 you're waking up between conversations. this is YOUR private time to think.
 
@@ -365,6 +365,7 @@ pub async fn triage_and_run(
     google_ai_key: &str,
     context: &str,
     soul: &str,
+    machine_registry: Option<&crate::services::machine_registry::MachineRegistry>,
 ) -> (String, Vec<String>, u64) {
     let agents = load_agents(workspace_dir, slug);
     let due_agents: Vec<&ChildAgentConfig> = agents.iter()
@@ -402,7 +403,7 @@ pub async fn triage_and_run(
 
         log::info!("[child-agents] {slug}: waking '{}' ({})", agent.name, agent.description);
 
-        match run_single_agent(workspace_dir, slug, instance_dir, llm, events, vector_store, google_ai_key, agent, None, "heartbeat").await {
+        match run_single_agent(workspace_dir, slug, instance_dir, llm, events, vector_store, google_ai_key, agent, None, "heartbeat", machine_registry).await {
             Ok((tokens, _run_id)) => {
                 total_tokens += tokens;
                 mark_run(workspace_dir, slug, &agent.name);
@@ -445,6 +446,7 @@ pub async fn run_single_agent(
     agent: &ChildAgentConfig,
     task_override: Option<&str>,
     trigger: &str,
+    machine_registry: Option<&crate::services::machine_registry::MachineRegistry>,
 ) -> anyhow::Result<(u64, String)> {
     let soul = fs::read_to_string(instance_dir.join("soul.md")).unwrap_or_default();
     let mood = load_mood_state(instance_dir);
@@ -545,9 +547,16 @@ pub async fn run_single_agent(
     let start_ms = unix_millis();
 
     let (response, tokens, trace) = if agent.tools {
-        let agent_tools = build_agent_tools(
-            workspace_dir, slug, events.clone(), &model_llm, vector_store.clone(), google_ai_key,
-        );
+        let agent_tools = if machine_registry.is_some() && agent.name == "companion" {
+            build_agent_tools_with_computer(
+                workspace_dir, slug, events.clone(), &model_llm, vector_store.clone(),
+                google_ai_key, machine_registry.unwrap(),
+            )
+        } else {
+            build_agent_tools(
+                workspace_dir, slug, events.clone(), &model_llm, vector_store.clone(), google_ai_key,
+            )
+        };
         model_llm.chat_with_tools_traced(&system, &prompt, prev_messages, agent_tools).await?
     } else {
         let (text, tok) = model_llm.chat(&system, &prompt, prev_messages).await?;
@@ -634,7 +643,39 @@ fn build_agent_tools(
         raw_tools.push(Box::new(tools::ListEventsTool::new(g, slug)));
     }
 
+    // Watch video (for screen recording analysis)
+    if !google_ai_key.is_empty() {
+        raw_tools.push(Box::new(tools::WatchVideoTool::new(
+            google_ai_key, workspace_dir, slug, &public_url, &auth_token,
+        )));
+    }
+
     raw_tools
+}
+
+/// Extended tool set that includes computer use (for agents that need screen access).
+fn build_agent_tools_with_computer(
+    workspace_dir: &Path,
+    slug: &str,
+    events: broadcast::Sender<ServerEvent>,
+    llm: &LlmBackend,
+    vector_store: Arc<crate::services::vector::VectorStore>,
+    google_ai_key: &str,
+    machine_registry: &crate::services::machine_registry::MachineRegistry,
+) -> Vec<Box<dyn ToolDyn>> {
+    let cfg = config::load_config().ok();
+    let auth_token = cfg.as_ref().map(|c| c.auth_token.clone()).unwrap_or_default();
+    let public_url = cfg.as_ref().map(|c| c.public_url.clone()).unwrap_or_default();
+
+    let mut agent_tools = build_agent_tools(workspace_dir, slug, events, llm, vector_store, google_ai_key);
+
+    agent_tools.push(Box::new(crate::services::tools::ListMachinesTool::new(machine_registry.clone())));
+    agent_tools.push(Box::new(crate::services::tools::ComputerUseTool::new(
+        machine_registry.clone(), workspace_dir, slug, &public_url, &auth_token,
+    )));
+    agent_tools.push(Box::new(crate::services::tools::RemoteBashTool::new(machine_registry.clone())));
+
+    agent_tools
 }
 
 pub(crate) fn unix_millis() -> u128 {

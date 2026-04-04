@@ -107,7 +107,7 @@ async fn trigger_agent(
 
     tokio::spawn(async move {
         match child_agents::run_single_agent(
-            &ws, &slug, &instance_dir, &llm_clone, &events, &vs, &google_ai_key, &agent, None, "manual",
+            &ws, &slug, &instance_dir, &llm_clone, &events, &vs, &google_ai_key, &agent, None, "manual", None,
         ).await {
             Ok((tokens, run_id)) => {
                 log::info!("[agents-api] {slug}: manually triggered '{}' ({tokens} tokens, {run_id})", agent.name);
