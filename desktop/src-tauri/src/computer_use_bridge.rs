@@ -375,12 +375,14 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
         }
     }
 
-    overlay::emit_idle(app);
-    // Only hide overlay if not recording — recording indicator should persist
-    let is_recording = RECORDING_ACTIVE.lock().map(|v| *v).unwrap_or(false);
-    if !is_recording {
-        overlay::hide(app);
+    // Connection lost — reset everything and hide overlay
+    {
+        let mut rec = RECORDING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
+        *rec = false;
     }
+    overlay::emit_idle(app);
+    app.emit("screen-recording-state", false).ok();
+    overlay::hide(app);
 
     Ok(())
 }
