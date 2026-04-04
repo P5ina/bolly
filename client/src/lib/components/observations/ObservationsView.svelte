@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { fetchObservations } from "$lib/api/client.js";
+	import { fetchObservations, mediaUrl } from "$lib/api/client.js";
 	import type { ScreenObservation } from "$lib/api/types.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 
@@ -107,7 +107,7 @@
 
 						<video
 							class="obs-detail-video"
-							src="/api/instances/{slug}/uploads/{selected.upload_id}/file"
+							src={mediaUrl(slug, selected.upload_id)}
 							controls
 							preload="metadata"
 						></video>

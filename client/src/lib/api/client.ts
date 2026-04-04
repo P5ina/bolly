@@ -53,6 +53,14 @@ export function getAuthToken(): string | null {
 	return localStorage.getItem(TOKEN_KEY) ?? getCookie(TOKEN_COOKIE);
 }
 
+/** Build a public URL for media (video/image) that includes auth token in query string.
+ *  Use this for <video src> and <img src> since they can't send Authorization headers. */
+export function mediaUrl(slug: string, uploadId: string): string {
+	const token = getAuthToken();
+	const q = token ? `?token=${encodeURIComponent(token)}` : "";
+	return `${BASE}/public/files/${encodeURIComponent(slug)}/${encodeURIComponent(uploadId)}${q}`;
+}
+
 export function setAuthToken(token: string) {
 	if (typeof localStorage !== "undefined") {
 		localStorage.setItem(TOKEN_KEY, token);
