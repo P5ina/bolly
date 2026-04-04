@@ -90,7 +90,13 @@ async fn run_agent_loop(
     google_ai_key: &str,
     machine_registry: MachineRegistry,
 ) {
-    let interval_secs = (agent.interval_hours * 3600.0) as u64;
+    // Companion runs every 15 min when screen recording is enabled, otherwise normal interval
+    let interval_secs = if agent.name == "companion" {
+        let inst_cfg = crate::config::InstanceConfig::load(workspace_dir, slug);
+        if inst_cfg.screen_recording { 900 } else { (agent.interval_hours * 3600.0) as u64 }
+    } else {
+        (agent.interval_hours * 3600.0) as u64
+    };
     let instance_dir = workspace_dir.join("instances").join(slug);
 
     // Initial delay: wait until the agent is due
