@@ -8,6 +8,7 @@
     selfHostedConnectUrl, type Tenant, type SelfHostedConfig,
   } from "$lib/auth.svelte";
   import { updater, checkForUpdates, installUpdate, dismissUpdate } from "$lib/updater.svelte";
+  import { load as loadStore } from "@tauri-apps/plugin-store";
 
   const AUTH_URL = "https://bollyai.dev/desktop-auth";
 
@@ -19,9 +20,20 @@
   let shUrl = $state("");
   let shToken = $state("");
 
+  async function restoreScreenRecordingPref() {
+    try {
+      const s = await loadStore("settings.json", { autoSave: true });
+      const saved = await s.get<boolean>("screen_recording_allowed");
+      if (saved === true) {
+        await invoke("set_screen_recording_allowed", { allowed: true });
+      }
+    } catch {}
+  }
+
   onMount(() => {
     init();
     checkForUpdates();
+    restoreScreenRecordingPref();
 
     const unlisten = listen<string>("deep-link", (event) => {
       try {
