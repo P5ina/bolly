@@ -364,14 +364,9 @@ pub async fn run_single_agent(
     prompt.push_str(&library_catalog);
     prompt.push_str("\n\n");
 
-    // Previous output from this agent (for continuity)
-    let history_path = agents_dir(workspace_dir, slug)
-        .join(format!("{}_history.json", agent.name));
-    let prev_entries = chat::load_rig_history(&history_path).unwrap_or_default();
-    let prev_messages: Vec<crate::services::llm::Message> = prev_entries
-        .iter().rev().take(10).rev()
-        .map(|e| e.message.clone())
-        .collect();
+    // Each heartbeat starts fresh — no conversation history.
+    // All context is in the prompt (recent conversations, drops, memory, mood).
+    let prev_messages: Vec<crate::services::llm::Message> = vec![];
 
     // Select model
     let model_llm = match agent.model.as_str() {
@@ -422,7 +417,9 @@ pub async fn run_single_agent(
     };
     crate::services::agent_runs::save_run(workspace_dir, slug, &run).ok();
 
-    // Save to agent history (for context in future runs)
+    // Save to agent history (for logs/UI, not used as LLM context)
+    let history_path = agents_dir(workspace_dir, slug)
+        .join(format!("{}_history.json", agent.name));
     let entry = crate::services::llm::HistoryEntry::new(
         crate::services::llm::Message::assistant(&response),
         unix_millis().to_string(),
