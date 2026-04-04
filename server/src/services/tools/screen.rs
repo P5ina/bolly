@@ -9,7 +9,8 @@ use crate::services::machine_registry::{AgentToolCall, MachineRegistry};
 use crate::services::tool::{Tool, ToolDefinition};
 use super::{openai_schema, ToolExecError};
 
-pub const SCREEN_RECORDING_PATH: &str = "/tmp/bolly_screen.mp4";
+// Screen recording path no longer used — frames are streamed via WebSocket
+// and stitched on the server from the ring buffer.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Observations — saved screen recording + analysis
@@ -79,8 +80,6 @@ pub struct CollectScreenRecordingTool {
     registry: MachineRegistry,
     workspace_dir: PathBuf,
     instance_slug: String,
-    public_url: String,
-    auth_token: String,
 }
 
 impl CollectScreenRecordingTool {
@@ -88,15 +87,13 @@ impl CollectScreenRecordingTool {
         registry: MachineRegistry,
         workspace_dir: &std::path::Path,
         instance_slug: &str,
-        public_url: &str,
-        auth_token: &str,
+        _public_url: &str,
+        _auth_token: &str,
     ) -> Self {
         Self {
             registry,
             workspace_dir: workspace_dir.to_path_buf(),
             instance_slug: instance_slug.to_string(),
-            public_url: public_url.to_string(),
-            auth_token: auth_token.to_string(),
         }
     }
 }
@@ -127,77 +124,81 @@ impl Tool for CollectScreenRecordingTool {
         let machine = machines.iter().find(|m| m.screen_recording_allowed)
             .ok_or_else(|| ToolExecError("no desktop with screen recording enabled".into()))?;
         let machine_id = machine.machine_id.clone();
-        let machine_os = machine.os.clone();
 
-        // 1. Stop native recording
-        let stop_cmd = AgentToolCall {
-            request_id: uuid::Uuid::new_v4().to_string(),
-            action: "stop_recording".into(),
-            params: serde_json::json!({}),
-        };
-        self.registry.execute(&machine_id, stop_cmd).await
-            .map_err(|e| ToolExecError(format!("failed to stop recording: {e}")))?;
-
-        // 2. Desktop uploads the file to server
-        let upload_url = format!("{}/api/instances/{}/uploads", self.public_url, self.instance_slug);
-        let upload_cmd = AgentToolCall {
-            request_id: uuid::Uuid::new_v4().to_string(),
-            action: "upload_file".into(),
-            params: serde_json::json!({
-                "path": SCREEN_RECORDING_PATH,
-                "upload_url": upload_url,
-                "auth_token": self.auth_token,
-            }),
-        };
-
-        let upload_result = self.registry.execute(&machine_id, upload_cmd).await
-            .map_err(|e| ToolExecError(format!("failed to upload recording: {e}")))?;
-
-        let upload_id = upload_result.error.clone().unwrap_or_default();
-
-        // 3. Clean up on desktop
-        let cleanup = AgentToolCall {
-            request_id: uuid::Uuid::new_v4().to_string(),
-            action: "bash".into(),
-            params: serde_json::json!({ "command": format!("rm -f {SCREEN_RECORDING_PATH}") }),
-        };
-        let _ = self.registry.execute(&machine_id, cleanup).await;
-
-        // 4. Start new recording
-        start_recording_on_machine(&self.registry, &machine_id, &machine_os).await;
-
-        if upload_id.is_empty() || !upload_id.starts_with("upload_") {
-            return Err(ToolExecError(format!("upload failed or no recording found (got: {upload_id})")));
+        // 1. Take all buffered frames from the server's ring buffer
+        let frames = self.registry.take_frames(&machine_id).await;
+        if frames.is_empty() {
+            return Err(ToolExecError("no frames captured yet — recording may not have started".into()));
         }
 
-        // Build the video URL for the agent to use with watch_video
-        let video_url = format!(
-            "/api/instances/{}/uploads/{}/file",
-            self.instance_slug, upload_id
-        );
+        log::info!("[screen] stitching {} frames from '{}'", frames.len(), machine_id);
 
-        // Save observation stub (analysis will be added after watch_video)
+        // 2. Write frames to temp dir
+        let tmp_dir = format!("/tmp/bolly_frames_{}", std::process::id());
+        let _ = std::fs::create_dir_all(&tmp_dir);
+
+        for (i, frame) in frames.iter().enumerate() {
+            let path = format!("{tmp_dir}/frame_{i:05}.jpg");
+            if let Err(e) = std::fs::write(&path, &frame.jpeg) {
+                log::warn!("[screen] failed to write frame {i}: {e}");
+            }
+        }
+
+        // 3. Stitch into MP4 with ffmpeg
+        let output_path = format!("{tmp_dir}/recording.mp4");
+        let ffmpeg = tokio::process::Command::new("ffmpeg")
+            .args([
+                "-y", "-framerate", "1",
+                "-i", &format!("{tmp_dir}/frame_%05d.jpg"),
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+                "-pix_fmt", "yuv420p", "-an",
+                &output_path,
+            ])
+            .output()
+            .await
+            .map_err(|e| ToolExecError(format!("ffmpeg failed: {e}")))?;
+
+        if !ffmpeg.status.success() {
+            let stderr = String::from_utf8_lossy(&ffmpeg.stderr);
+            let _ = std::fs::remove_dir_all(&tmp_dir);
+            return Err(ToolExecError(format!("ffmpeg stitch failed: {}", &stderr[..stderr.len().min(300)])));
+        }
+
+        // 4. Save as upload
+        let video_bytes = std::fs::read(&output_path)
+            .map_err(|e| ToolExecError(format!("failed to read stitched video: {e}")))?;
+        let upload_meta = crate::services::uploads::save_upload(
+            &self.workspace_dir, &self.instance_slug, "screen_recording.mp4", &video_bytes,
+        ).map_err(|e| ToolExecError(format!("failed to save upload: {e}")))?;
+
+        // 5. Clean up temp dir
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+
+        let upload_id = upload_meta.id.clone();
+        let file_path = self.workspace_dir
+            .join("instances").join(&self.instance_slug)
+            .join("uploads").join(&upload_meta.stored_name);
+
+        // Save observation
         let obs = ScreenObservation {
             id: format!("obs_{}", unix_millis()),
             upload_id: upload_id.clone(),
             machine_id: machine_id.clone(),
-            analysis: String::new(), // filled by agent after watch_video
+            analysis: String::new(),
             created_at: unix_millis().to_string(),
         };
         save_observation(&self.workspace_dir, &self.instance_slug, &obs);
 
-        log::info!("[screen] collected recording from '{}': {}", machine_id, upload_id);
+        log::info!("[screen] stitched {} frames → {} ({} bytes)", frames.len(), upload_id, video_bytes.len());
 
         Ok(format!(
-            "Recording collected and uploaded.\n\
+            "Screen recording collected ({} frames, {} seconds).\n\
              upload_id: {upload_id}\n\
-             video_url: {video_url}\n\
              observation_id: {}\n\n\
-             Now use watch_video with the local file path to analyze what the user was doing.\n\
-             File path: {}/instances/{}/uploads/{}_blob.mp4",
-            obs.id,
-            self.workspace_dir.display(), self.instance_slug,
-            upload_id.trim_end_matches(".mp4")
+             Now use watch_video to analyze what the user was doing.\n\
+             File path: {}",
+            frames.len(), frames.len(),
+            obs.id, file_path.display()
         ))
     }
 }

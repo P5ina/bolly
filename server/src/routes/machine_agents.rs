@@ -19,6 +19,43 @@ pub fn router() -> Router<AppState> {
         .route("/api/agents/ws/machine", get(upgrade))
         .route("/api/instances/{instance_slug}/machine-hello", post(machine_hello))
         .route("/api/instances/{instance_slug}/machine-bye", post(machine_bye))
+        .route("/api/instances/{instance_slug}/live-frame", get(live_frame))
+}
+
+/// Get the latest screen frame from a connected desktop as JPEG.
+async fn live_frame(
+    State(state): State<AppState>,
+) -> axum::response::Response {
+    use axum::http::header;
+    use axum::body::Body;
+
+    let machines = state.machine_registry.list().await;
+    let machine_id = match machines.first() {
+        Some(m) => m.machine_id.clone(),
+        None => {
+            return axum::response::Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::from("no desktop connected"))
+                .unwrap();
+        }
+    };
+
+    match state.machine_registry.get_latest_frame(&machine_id).await {
+        Some(frame) => {
+            axum::response::Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "image/jpeg")
+                .header(header::CACHE_CONTROL, "no-cache, no-store")
+                .body(Body::from(frame.jpeg))
+                .unwrap()
+        }
+        None => {
+            axum::response::Response::builder()
+                .status(StatusCode::NO_CONTENT)
+                .body(Body::empty())
+                .unwrap()
+        }
+    }
 }
 
 /// Called by the client when the user enters an instance — notifies
