@@ -101,24 +101,15 @@ enum AgentMessage {
 
 async fn handle_agent(mut socket: WebSocket, state: AppState) {
     // The agent must send a Register message first.
-    let (machine_id, screen_recording_allowed, os, _instance_slug, mut agent_rx) = match wait_for_registration(&mut socket, &state).await {
+    let (machine_id, _screen_recording_allowed, _os, _instance_slug, mut agent_rx) = match wait_for_registration(&mut socket, &state).await {
         Some(v) => v,
         None => return,
     };
 
     log::info!("[machine-ws] agent '{machine_id}' connected");
 
-    // Start screen recording if enabled (don't notify agents yet —
-    // that happens when the user enters a specific instance via machine-hello).
-    if screen_recording_allowed {
-        let registry = state.machine_registry.clone();
-        let mid = machine_id.clone();
-        let machine_os = os.clone();
-        let bg_state = state.clone();
-        tokio::spawn(async move {
-            start_recording_if_enabled(&bg_state, &registry, &mid, &machine_os).await;
-        });
-    }
+    // Recording starts when user enters a profile (machine-hello),
+    // not on WebSocket connect.
 
     let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(15));
     ping_interval.tick().await; // skip first immediate tick
@@ -397,22 +388,3 @@ async fn on_machine_connected(
     }
 }
 
-/// Start screen recording on connect (no agent notifications).
-async fn start_recording_if_enabled(
-    state: &AppState,
-    registry: &crate::services::machine_registry::MachineRegistry,
-    machine_id: &str,
-    os: &str,
-) {
-    let instances_dir = state.workspace_dir.join("instances");
-    let any_enabled = std::fs::read_dir(&instances_dir)
-        .into_iter().flatten().filter_map(Result::ok)
-        .any(|e| {
-            let slug = e.file_name().to_string_lossy().to_string();
-            crate::config::InstanceConfig::load(&state.workspace_dir, &slug).screen_recording
-        });
-
-    if any_enabled {
-        crate::services::tools::screen::start_recording_on_machine(registry, machine_id, os).await;
-    }
-}
