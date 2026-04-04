@@ -455,6 +455,10 @@ export function fetchObservations(slug: string): Promise<import("./types.js").Sc
 	return json(`/api/instances/${encodeURIComponent(slug)}/observations`);
 }
 
+export function machineHello(slug: string): Promise<void> {
+	return fetch(`/api/instances/${encodeURIComponent(slug)}/machine-hello`, { method: "POST" }).then(() => {});
+}
+
 export function fetchAgents(slug: string): Promise<ChildAgent[]> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/agents`);
 }

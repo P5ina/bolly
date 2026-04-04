@@ -1,11 +1,12 @@
 use axum::{
     Router,
     extract::{
-        State,
+        Path, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
+    http::StatusCode,
     response::Response,
-    routing::get,
+    routing::{get, post},
 };
 use serde::Deserialize;
 
@@ -13,7 +14,37 @@ use crate::app::state::AppState;
 use crate::services::machine_registry::{ActionResult, MachineInfo};
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/api/agents/ws/machine", get(upgrade))
+    Router::new()
+        .route("/api/agents/ws/machine", get(upgrade))
+        .route("/api/instances/{instance_slug}/machine-hello", post(machine_hello))
+}
+
+/// Called by the client when the user enters an instance — notifies
+/// the companion that a desktop is connected (if any machines are online).
+async fn machine_hello(
+    State(state): State<AppState>,
+    Path(instance_slug): Path<String>,
+) -> StatusCode {
+    let machines = state.machine_registry.list().await;
+    if machines.is_empty() {
+        return StatusCode::OK;
+    }
+
+    let machine = &machines[0];
+    let mid = machine.machine_id.clone();
+    let machine_os = machine.os.clone();
+    let rec_allowed = machine.screen_recording_allowed;
+
+    tokio::spawn({
+        let bg_state = state.clone();
+        let registry = state.machine_registry.clone();
+        let slug = instance_slug.clone();
+        async move {
+            on_machine_connected(&bg_state, &registry, &mid, &machine_os, rec_allowed, Some(&slug)).await;
+        }
+    });
+
+    StatusCode::OK
 }
 
 async fn upgrade(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
@@ -57,17 +88,15 @@ async fn handle_agent(mut socket: WebSocket, state: AppState) {
 
     log::info!("[machine-ws] agent '{machine_id}' connected");
 
-    // Always notify the companion agent when a desktop connects.
-    // Start screen recording only if both flags are on.
-    {
+    // Start screen recording if enabled (don't notify agents yet —
+    // that happens when the user enters a specific instance via machine-hello).
+    if screen_recording_allowed {
         let registry = state.machine_registry.clone();
         let mid = machine_id.clone();
         let machine_os = os.clone();
-        let rec_allowed = screen_recording_allowed;
-        let bound_slug = instance_slug;
         let bg_state = state.clone();
         tokio::spawn(async move {
-            on_machine_connected(&bg_state, &registry, &mid, &machine_os, rec_allowed, bound_slug.as_deref()).await;
+            start_recording_if_enabled(&bg_state, &registry, &mid, &machine_os).await;
         });
     }
 
@@ -345,5 +374,25 @@ async fn on_machine_connected(
                 &format!("[system] desktop '{}' connected, but LLM is not configured — cannot notify companion.", machine_id),
             );
         }
+    }
+}
+
+/// Start screen recording on connect (no agent notifications).
+async fn start_recording_if_enabled(
+    state: &AppState,
+    registry: &crate::services::machine_registry::MachineRegistry,
+    machine_id: &str,
+    os: &str,
+) {
+    let instances_dir = state.workspace_dir.join("instances");
+    let any_enabled = std::fs::read_dir(&instances_dir)
+        .into_iter().flatten().filter_map(Result::ok)
+        .any(|e| {
+            let slug = e.file_name().to_string_lossy().to_string();
+            crate::config::InstanceConfig::load(&state.workspace_dir, &slug).screen_recording
+        });
+
+    if any_enabled {
+        crate::services::heartbeat::start_recording_on_machine(registry, machine_id, os).await;
     }
 }

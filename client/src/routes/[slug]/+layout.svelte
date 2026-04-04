@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from "$app/navigation";
 	import { page } from "$app/state";
-	import { deleteInstance, fetchMusicEnabled } from "$lib/api/client.js";
+	import { deleteInstance, fetchMusicEnabled, machineHello } from "$lib/api/client.js";
 	import { getInstances } from "$lib/stores/instances.svelte.js";
 	import { getPresentationState } from "$lib/stores/presentation.svelte.js";
 	import { getSceneStore } from "$lib/stores/scene.svelte.js";
@@ -31,6 +31,7 @@
 					.catch(() => {}),
 				voice.loadForInstance(slug),
 				skinStore.loadForInstance(slug),
+				machineHello(slug).catch(() => {}),
 			]).finally(() => scene.enterChat(slug));
 		}
 	});
