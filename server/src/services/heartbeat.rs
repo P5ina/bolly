@@ -92,16 +92,37 @@ async fn run_heartbeat(
 
     // ── Screen recording lifecycle ──
     // Only manage recording if any instance has screen_recording enabled.
-    let any_screen_enabled = instances.iter().any(|e| {
-        let slug = e.file_name().to_string_lossy().to_string();
-        crate::config::InstanceConfig::load(workspace_dir, &slug).screen_recording
-    });
+    let enabled_slugs: Vec<String> = instances.iter()
+        .filter_map(|e| {
+            let slug = e.file_name().to_string_lossy().to_string();
+            if crate::config::InstanceConfig::load(workspace_dir, &slug).screen_recording {
+                Some(slug)
+            } else {
+                None
+            }
+        })
+        .collect();
 
-    let screen_context = if any_screen_enabled {
-        manage_screen_recording(machine_registry, google_ai_key).await
+    let screen_result = if !enabled_slugs.is_empty() {
+        let first_slug = &enabled_slugs[0];
+        manage_screen_recording(machine_registry, google_ai_key, workspace_dir, first_slug).await
     } else {
         None
     };
+
+    // Save observation for each enabled instance
+    if let Some(ref result) = screen_result {
+        for slug in &enabled_slugs {
+            let obs = ScreenObservation {
+                id: format!("obs_{}", unix_millis()),
+                upload_id: result.upload_id.clone(),
+                machine_id: result.machine_id.clone(),
+                analysis: result.analysis.clone(),
+                created_at: unix_millis().to_string(),
+            };
+            save_observation(workspace_dir, slug, &obs);
+        }
+    }
 
     for (i, entry) in instances.iter().enumerate() {
         // Stagger instances to avoid API burst on restart
@@ -113,9 +134,8 @@ async fn run_heartbeat(
         let slug = entry.file_name().to_string_lossy().to_string();
 
         // Only pass screen context to instances that have it enabled
-        let inst_cfg = crate::config::InstanceConfig::load(workspace_dir, &slug);
-        let inst_screen = if inst_cfg.screen_recording {
-            screen_context.as_deref()
+        let inst_screen = if enabled_slugs.contains(&slug) {
+            screen_result.as_ref().map(|r| r.analysis.as_str())
         } else {
             None
         };
@@ -436,12 +456,62 @@ fn load_recent_drops_context(workspace_dir: &Path, slug: &str) -> String {
 
 const SCREEN_RECORDING_PATH: &str = "/tmp/bolly_screen.mp4";
 
+/// A saved screen observation — video + analysis.
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct ScreenObservation {
+    pub id: String,
+    pub upload_id: String,
+    pub machine_id: String,
+    pub analysis: String,
+    pub created_at: String,
+}
+
+/// Save a screen observation to disk.
+fn save_observation(workspace_dir: &Path, slug: &str, obs: &ScreenObservation) {
+    let dir = workspace_dir.join("instances").join(slug).join("observations");
+    let _ = fs::create_dir_all(&dir);
+    let path = dir.join(format!("{}.json", obs.id));
+    if let Ok(json) = serde_json::to_string_pretty(obs) {
+        let _ = fs::write(path, json);
+    }
+}
+
+/// List screen observations for an instance, newest first.
+pub fn list_observations(workspace_dir: &Path, slug: &str) -> Vec<ScreenObservation> {
+    let dir = workspace_dir.join("instances").join(slug).join("observations");
+    let entries = match fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(_) => return vec![],
+    };
+
+    let mut obs: Vec<ScreenObservation> = entries
+        .filter_map(Result::ok)
+        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("json"))
+        .filter_map(|e| {
+            let content = fs::read_to_string(e.path()).ok()?;
+            serde_json::from_str(&content).ok()
+        })
+        .collect();
+
+    obs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    obs
+}
+
+/// Result of processing a screen recording: analysis text + saved upload ID + machine.
+struct ScreenRecordingResult {
+    analysis: String,
+    upload_id: String,
+    machine_id: String,
+}
+
 /// Stop any previous screen recording, analyze it with Gemini, then start a new one.
-/// Returns the Gemini analysis text if a recording was found and analyzed.
+/// Returns the analysis result if a recording was found and analyzed.
 async fn manage_screen_recording(
     registry: &MachineRegistry,
     google_ai_key: &str,
-) -> Option<String> {
+    workspace_dir: &Path,
+    first_slug: &str,
+) -> Option<ScreenRecordingResult> {
     if google_ai_key.is_empty() {
         return None;
     }
@@ -470,24 +540,45 @@ async fn manage_screen_recording(
         log::warn!("[heartbeat] failed to stop screen recording: {e}");
     }
 
-    // 2. Check if recording exists and analyze it
-    let analysis = {
+    // 2. Check if recording exists, save as upload, and analyze
+    let result = {
         let path = std::path::Path::new(SCREEN_RECORDING_PATH);
         if path.exists() {
             let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
             if size > 50_000 {
-                // At least 50KB — not empty/corrupt
                 log::info!("[heartbeat] analyzing screen recording ({:.1} MB)", size as f64 / 1024.0 / 1024.0);
-                match analyze_screen_recording(SCREEN_RECORDING_PATH, google_ai_key).await {
-                    Ok(text) => {
-                        let _ = std::fs::remove_file(path);
-                        Some(text)
+
+                // Save the video as an upload so the user can view it
+                let upload_id = match std::fs::read(path) {
+                    Ok(bytes) => {
+                        match crate::services::uploads::save_upload(workspace_dir, first_slug, "screen_recording.mp4", &bytes) {
+                            Ok(meta) => Some(meta.id),
+                            Err(e) => { log::warn!("[heartbeat] failed to save recording upload: {e}"); None }
+                        }
                     }
-                    Err(e) => {
-                        log::warn!("[heartbeat] screen recording analysis failed: {e}");
-                        let _ = std::fs::remove_file(path);
-                        None
-                    }
+                    Err(e) => { log::warn!("[heartbeat] failed to read recording: {e}"); None }
+                };
+
+                // Analyze with Gemini
+                let analysis = match analyze_screen_recording(SCREEN_RECORDING_PATH, google_ai_key).await {
+                    Ok(text) => Some(text),
+                    Err(e) => { log::warn!("[heartbeat] screen analysis failed: {e}"); None }
+                };
+
+                let _ = std::fs::remove_file(path);
+
+                match (upload_id, analysis) {
+                    (Some(uid), Some(text)) => Some(ScreenRecordingResult {
+                        analysis: text,
+                        upload_id: uid,
+                        machine_id: machine_id.clone(),
+                    }),
+                    (Some(uid), None) => Some(ScreenRecordingResult {
+                        analysis: "(analysis failed)".into(),
+                        upload_id: uid,
+                        machine_id: machine_id.clone(),
+                    }),
+                    _ => None,
                 }
             } else {
                 let _ = std::fs::remove_file(path);
@@ -527,7 +618,7 @@ async fn manage_screen_recording(
         Err(e) => log::warn!("[heartbeat] failed to start screen recording: {e}"),
     }
 
-    analysis
+    result
 }
 
 /// Analyze a screen recording with Gemini.

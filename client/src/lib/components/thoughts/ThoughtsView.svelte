@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { fetchThoughts } from "$lib/api/client.js";
-	import type { Thought, ServerEvent } from "$lib/api/types.js";
+	import { fetchThoughts, fetchObservations } from "$lib/api/client.js";
+	import type { Thought, ServerEvent, ScreenObservation } from "$lib/api/types.js";
 	import { getWebSocket } from "$lib/stores/websocket.svelte.js";
 	import { getToasts } from "$lib/stores/toast.svelte.js";
 
@@ -8,8 +8,10 @@
 	let { slug }: { slug: string } = $props();
 
 	let thoughts = $state<Thought[]>([]);
+	let observations = $state<ScreenObservation[]>([]);
 	let loading = $state(true);
 	let expandedIds = $state<Set<string>>(new Set());
+	let expandedObsIds = $state<Set<string>>(new Set());
 
 	const ws = getWebSocket();
 
@@ -29,9 +31,21 @@
 
 	async function load() {
 		loading = true;
-		try { thoughts = await fetchThoughts(slug); }
-		catch { toast.error("failed to load thoughts"); }
-		finally { loading = false; }
+		try {
+			const [t, o] = await Promise.all([fetchThoughts(slug), fetchObservations(slug)]);
+			thoughts = t;
+			observations = o;
+		} catch {
+			toast.error("failed to load thoughts");
+		} finally {
+			loading = false;
+		}
+	}
+
+	function toggleObs(id: string) {
+		const next = new Set(expandedObsIds);
+		if (next.has(id)) next.delete(id); else next.add(id);
+		expandedObsIds = next;
 	}
 
 	$effect(() => {
@@ -112,6 +126,40 @@
 			<p class="empty-sub">thoughts appear when your companion reflects on their own</p>
 		</div>
 	{:else}
+		{#if observations.length > 0}
+			<div class="obs-section">
+				<div class="obs-header">
+					<span class="obs-title">screen observations</span>
+					<span class="obs-count">{observations.length}</span>
+				</div>
+				{#each observations as obs (obs.id)}
+					{@const isExpanded = expandedObsIds.has(obs.id)}
+					<div class="obs-card">
+						<div class="obs-meta">
+							<span class="obs-machine">{obs.machine_id}</span>
+							<span class="obs-time">{formatTime(obs.created_at)}</span>
+						</div>
+						<video
+							class="obs-video"
+							class:obs-video-expanded={isExpanded}
+							src="/api/instances/{slug}/uploads/{obs.upload_id}/file"
+							controls
+							preload="metadata"
+						></video>
+						<div
+							class="obs-analysis"
+							class:obs-analysis-collapsed={!isExpanded}
+						>
+							{obs.analysis}
+						</div>
+						<button class="obs-toggle" onclick={() => toggleObs(obs.id)}>
+							{isExpanded ? "less" : "more"}
+						</button>
+					</div>
+				{/each}
+			</div>
+		{/if}
+
 		<div class="thoughts-flow">
 			{#each visibleThoughts as thought, i (thought.id)}
 				{@const mood = thought.actions.find(a => a.startsWith("mood:"))?.substring(5).trim() ?? thought.mood}
@@ -324,7 +372,104 @@
 	}
 	.thought-more:hover { color: oklch(var(--ink) / 45%); }
 
-@media (max-width: 640px) {
+	/* ── Observations ── */
+	.obs-section {
+		max-width: 480px;
+		margin: 0 auto 2rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.obs-header {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+	}
+
+	.obs-title {
+		font-family: var(--font-display);
+		font-style: italic;
+		font-size: 0.78rem;
+		color: var(--text-secondary, oklch(var(--ink) / 50%));
+	}
+
+	.obs-count {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: var(--text-muted, oklch(var(--ink) / 25%));
+	}
+
+	.obs-card {
+		padding: 0.75rem;
+		border-radius: 0.5rem;
+		background: oklch(var(--shade) / 4%);
+		border: 1px solid oklch(var(--shade) / 6%);
+	}
+
+	.obs-meta {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		margin-bottom: 0.5rem;
+	}
+
+	.obs-machine {
+		font-family: var(--font-mono);
+		font-size: 0.62rem;
+		color: var(--text-muted, oklch(var(--ink) / 25%));
+		letter-spacing: 0.03em;
+	}
+
+	.obs-time {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: oklch(var(--ink) / 18%);
+	}
+
+	.obs-video {
+		width: 100%;
+		border-radius: 0.375rem;
+		max-height: 160px;
+		object-fit: cover;
+		background: oklch(var(--shade) / 8%);
+		margin-bottom: 0.5rem;
+	}
+
+	.obs-video-expanded {
+		max-height: none;
+	}
+
+	.obs-analysis {
+		font-size: 0.75rem;
+		line-height: 1.6;
+		color: var(--text-secondary, oklch(var(--ink) / 42%));
+		white-space: pre-line;
+	}
+
+	.obs-analysis-collapsed {
+		max-height: 3.2em;
+		overflow: hidden;
+		mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+		-webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+	}
+
+	.obs-toggle {
+		font-family: var(--font-mono);
+		font-size: 0.58rem;
+		color: oklch(var(--ink) / 22%);
+		background: none;
+		border: none;
+		padding: 0;
+		margin-top: 0.25rem;
+		cursor: pointer;
+		letter-spacing: 0.05em;
+		transition: color 0.2s ease;
+	}
+
+	.obs-toggle:hover { color: oklch(var(--ink) / 45%); }
+
+	@media (max-width: 640px) {
 		.thoughts-page { padding: 1.5rem 1rem; }
 	}
 </style>

@@ -451,6 +451,10 @@ export function fetchThoughts(slug: string): Promise<Thought[]> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/thoughts`);
 }
 
+export function fetchObservations(slug: string): Promise<import("./types.js").ScreenObservation[]> {
+	return json(`/api/instances/${encodeURIComponent(slug)}/observations`);
+}
+
 export function fetchAgents(slug: string): Promise<ChildAgent[]> {
 	return json(`/api/instances/${encodeURIComponent(slug)}/agents`);
 }

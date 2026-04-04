@@ -4,6 +4,7 @@
 
   let action = $state("");
   let active = $state(true);
+  let recording = $state(false);
   let fadeTimer: ReturnType<typeof setTimeout> | null = null;
 
   onMount(() => {
@@ -18,14 +19,19 @@
       active = false;
     });
 
+    const unlistenRec = listen<boolean>("screen-recording-state", (e) => {
+      recording = e.payload;
+    });
+
     return () => {
       unlisten.then(fn => fn());
       unlistenDone.then(fn => fn());
+      unlistenRec.then(fn => fn());
     };
   });
 </script>
 
-<div class="overlay" class:overlay-active={active}>
+<div class="overlay" class:overlay-active={active} class:overlay-recording={recording && !active}>
   <div class="border-top"></div>
   <div class="border-right"></div>
   <div class="border-bottom"></div>
@@ -42,6 +48,13 @@
   <div class="corner corner-tr"></div>
   <div class="corner corner-bl"></div>
   <div class="corner corner-br"></div>
+
+  {#if recording}
+    <div class="rec-badge">
+      <div class="rec-dot"></div>
+      <span class="rec-text">REC</span>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -60,8 +73,17 @@
     transition: opacity 0.4s ease;
   }
 
-  .overlay:not(.overlay-active) {
+  .overlay:not(.overlay-active):not(.overlay-recording) {
     opacity: 0;
+  }
+
+  .overlay.overlay-recording .border-top,
+  .overlay.overlay-recording .border-bottom,
+  .overlay.overlay-recording .border-left,
+  .overlay.overlay-recording .border-right,
+  .overlay.overlay-recording .corner,
+  .overlay.overlay-recording .action-badge {
+    display: none;
   }
 
   /* ─── Glowing borders ───────────────────────────────────── */
@@ -190,5 +212,37 @@
   @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
+  }
+
+  /* ─── Recording indicator ──────────────────────────────── */
+  .rec-badge {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 14px;
+    background: oklch(0.06 0.015 260 / 75%);
+    backdrop-filter: blur(12px);
+    border: 1px solid oklch(0.60 0.20 25 / 25%);
+  }
+
+  .rec-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: oklch(0.60 0.20 25);
+    box-shadow: 0 0 8px oklch(0.60 0.20 25 / 70%);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  .rec-text {
+    font-family: system-ui, sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    color: oklch(0.60 0.20 25 / 90%);
+    letter-spacing: 0.08em;
   }
 </style>

@@ -1,5 +1,6 @@
 use std::sync::Mutex;
 use futures_util::{SinkExt, StreamExt};
+use tauri::Emitter;
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::computer_use;
@@ -10,6 +11,9 @@ static BRIDGE_ACTIVE: Mutex<bool> = Mutex::new(false);
 
 /// Whether this machine allows screen recording for observation (off by default).
 static SCREEN_RECORDING_ALLOWED: Mutex<bool> = Mutex::new(false);
+
+/// Whether screen recording is currently active (for overlay indicator).
+static RECORDING_ACTIVE: Mutex<bool> = Mutex::new(false);
 
 /// Start the machine agent — connects to the server's machine WebSocket,
 /// registers this machine, then listens for toolcalls and executes them.
@@ -248,6 +252,20 @@ async fn run_agent(app: &tauri::AppHandle, instance_url: &str, auth_token: &str)
             .await
             .unwrap_or_else(|e| Err(format!("task panic: {e}")))
         };
+
+        // Detect screen recording start/stop from bash commands
+        if action == "bash" {
+            let cmd = call.get("command").and_then(|v| v.as_str()).unwrap_or("");
+            if cmd.contains("pkill") && cmd.contains("bolly_screen") {
+                let mut rec = RECORDING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
+                *rec = false;
+                app.emit("screen-recording-state", false).ok();
+            } else if cmd.contains("ffmpeg") && cmd.contains("bolly_screen") && !cmd.contains("pkill") {
+                let mut rec = RECORDING_ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
+                *rec = true;
+                app.emit("screen-recording-state", true).ok();
+            }
+        }
 
         // Show overlay after any action
         overlay::show(app);
