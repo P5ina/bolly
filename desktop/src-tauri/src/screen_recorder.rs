@@ -1,4 +1,10 @@
 use std::sync::{Mutex, atomic::{AtomicBool, Ordering}};
+use std::time::Duration;
+
+use scap::{
+    capturer::{Capturer, Options, Resolution},
+    frame::Frame,
+};
 
 static STREAMING: AtomicBool = AtomicBool::new(false);
 static LAST_FRAME: Mutex<Option<Vec<u8>>> = Mutex::new(None);
@@ -9,32 +15,27 @@ pub fn start() -> Result<(), String> {
         return Ok(());
     }
 
-    #[cfg(target_os = "windows")]
-    return Err("screen recording not yet supported on Windows".into());
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        if !scap::is_supported() {
-            return Err("platform not supported for screen capture".into());
-        }
-        if !scap::has_permission() {
-            if !scap::request_permission() {
-                return Err("screen recording permission denied".into());
-            }
-        }
-
-        STREAMING.store(true, Ordering::Relaxed);
-
-        std::thread::spawn(|| {
-            if let Err(e) = run_capture_loop() {
-                eprintln!("[recorder] capture error: {e}");
-            }
-            STREAMING.store(false, Ordering::Relaxed);
-        });
-
-        eprintln!("[recorder] started (scap, 1fps)");
-        Ok(())
+    if !scap::is_supported() {
+        return Err("platform not supported for screen capture".into());
     }
+
+    if !scap::has_permission() {
+        if !scap::request_permission() {
+            return Err("screen recording permission denied".into());
+        }
+    }
+
+    STREAMING.store(true, Ordering::Relaxed);
+
+    std::thread::spawn(|| {
+        if let Err(e) = run_capture_loop() {
+            eprintln!("[recorder] capture error: {e}");
+        }
+        STREAMING.store(false, Ordering::Relaxed);
+    });
+
+    eprintln!("[recorder] started (scap, 1fps)");
+    Ok(())
 }
 
 /// Stop capturing.
@@ -54,14 +55,7 @@ pub fn is_recording() -> bool {
     STREAMING.load(Ordering::Relaxed)
 }
 
-#[cfg(not(target_os = "windows"))]
 fn run_capture_loop() -> Result<(), String> {
-    use std::time::Duration;
-    use scap::{
-        capturer::{Capturer, Options, Resolution},
-        frame::Frame,
-    };
-
     let options = Options {
         fps: 1,
         target: None,
@@ -81,7 +75,7 @@ fn run_capture_loop() -> Result<(), String> {
 
     while STREAMING.load(Ordering::Relaxed) {
         match capturer.get_next_frame() {
-            Ok(Frame::BGRA(frame)) => {
+            Ok(Frame::Video(scap::frame::VideoFrame::BGRA(frame))) => {
                 match bgra_to_jpeg(&frame.data, frame.width as u32, frame.height as u32) {
                     Ok(jpeg) => {
                         if let Ok(mut guard) = LAST_FRAME.lock() {
@@ -103,7 +97,6 @@ fn run_capture_loop() -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(target_os = "windows"))]
 fn bgra_to_jpeg(data: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
     use image::{RgbaImage, DynamicImage};
     use std::io::Cursor;
