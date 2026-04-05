@@ -1,120 +1,86 @@
+//! Screen capture via the `screenshots` crate (cross-platform).
+//! Takes a screenshot every second and stores it as JPEG in memory.
+
 use std::sync::{Mutex, atomic::{AtomicBool, Ordering}};
 use std::time::Duration;
-
-use scap::{
-    capturer::{Capturer, Options, Resolution},
-    frame::Frame,
-};
 
 static STREAMING: AtomicBool = AtomicBool::new(false);
 static LAST_FRAME: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 
-/// Start capturing frames in a background thread.
 pub fn start() -> Result<(), String> {
     if STREAMING.load(Ordering::Relaxed) {
         return Ok(());
     }
 
-    if !scap::is_supported() {
-        return Err("platform not supported for screen capture".into());
-    }
-
-    if !scap::has_permission() {
-        if !scap::request_permission() {
-            return Err("screen recording permission denied".into());
-        }
-    }
+    // Quick check that we can capture
+    screenshots::Screen::all().map_err(|e| format!("no screens: {e}"))?;
 
     STREAMING.store(true, Ordering::Relaxed);
-
     std::thread::spawn(|| {
-        if let Err(e) = run_capture_loop() {
-            eprintln!("[recorder] capture error: {e}");
+        if let Err(e) = capture_loop() {
+            eprintln!("[recorder] error: {e}");
         }
         STREAMING.store(false, Ordering::Relaxed);
     });
-
-    eprintln!("[recorder] started (scap, 1fps)");
+    eprintln!("[recorder] started (screenshots, 1fps)");
     Ok(())
 }
 
-/// Stop capturing.
 pub fn stop() -> Result<(), String> {
     STREAMING.store(false, Ordering::Relaxed);
     eprintln!("[recorder] stopped");
     Ok(())
 }
 
-/// Get the last captured frame as JPEG bytes.
 pub fn get_last_frame() -> Option<Vec<u8>> {
     LAST_FRAME.lock().ok()?.clone()
 }
 
-/// Check if currently streaming.
 pub fn is_recording() -> bool {
     STREAMING.load(Ordering::Relaxed)
 }
 
-fn run_capture_loop() -> Result<(), String> {
-    let options = Options {
-        fps: 1,
-        target: None,
-        show_cursor: true,
-        show_highlight: false,
-        excluded_targets: None,
-        output_type: scap::frame::FrameType::BGRAFrame,
-        output_resolution: Resolution::_720p,
-        crop_area: None,
-        ..Default::default()
-    };
-
-    let mut capturer = Capturer::build(options)
-        .map_err(|e| format!("failed to build capturer: {e}"))?;
-
-    capturer.start_capture();
-
+fn capture_loop() -> Result<(), String> {
     while STREAMING.load(Ordering::Relaxed) {
-        match capturer.get_next_frame() {
-            Ok(Frame::Video(scap::frame::VideoFrame::BGRA(frame))) => {
-                match bgra_to_jpeg(&frame.data, frame.width as u32, frame.height as u32) {
-                    Ok(jpeg) => {
-                        if let Ok(mut guard) = LAST_FRAME.lock() {
-                            *guard = Some(jpeg);
-                        }
-                    }
-                    Err(e) => eprintln!("[recorder] jpeg error: {e}"),
+        match take_screenshot_jpeg() {
+            Ok(jpeg) => {
+                if let Ok(mut g) = LAST_FRAME.lock() {
+                    *g = Some(jpeg);
                 }
             }
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("[recorder] frame error: {e}");
-                std::thread::sleep(Duration::from_secs(1));
-            }
+            Err(e) => eprintln!("[recorder] screenshot error: {e}"),
         }
+        std::thread::sleep(Duration::from_secs(1));
     }
-
-    capturer.stop_capture();
     Ok(())
 }
 
-fn bgra_to_jpeg(data: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
-    use image::{RgbaImage, DynamicImage};
+fn take_screenshot_jpeg() -> Result<Vec<u8>, String> {
+    use image::DynamicImage;
     use std::io::Cursor;
 
-    let mut rgba = Vec::with_capacity(data.len());
-    for chunk in data.chunks_exact(4) {
-        rgba.push(chunk[2]);
-        rgba.push(chunk[1]);
-        rgba.push(chunk[0]);
-        rgba.push(chunk[3]);
-    }
+    let screens = screenshots::Screen::all().map_err(|e| e.to_string())?;
+    let screen = screens.into_iter().next().ok_or("no screen")?;
+    let capture = screen.capture().map_err(|e| e.to_string())?;
 
-    let img = RgbaImage::from_raw(width, height, rgba)
-        .ok_or("failed to create image")?;
-    let rgb = DynamicImage::ImageRgba8(img).to_rgb8();
+    let w = capture.width();
+    let h = capture.height();
+    let rgba = image::RgbaImage::from_raw(w, h, capture.into_raw())
+        .ok_or("bad image buffer")?;
+    let img = DynamicImage::ImageRgba8(rgba);
 
+    // Scale down for efficiency
+    let img = if w > 1280 {
+        let ratio = 1280.0 / w as f64;
+        let new_h = (h as f64 * ratio) as u32;
+        img.resize_exact(1280, new_h, image::imageops::FilterType::Triangle)
+    } else {
+        img
+    };
+
+    let rgb = img.to_rgb8();
     let mut buf = Cursor::new(Vec::new());
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 60)
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 50)
         .encode(rgb.as_raw(), rgb.width(), rgb.height(), image::ExtendedColorType::Rgb8)
         .map_err(|e| e.to_string())?;
 
