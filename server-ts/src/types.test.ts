@@ -41,4 +41,8 @@ describe("BudgetStateSchema", () => {
       expect(BudgetStateSchema.parse(s)).toBe(s);
     }
   });
+
+  it("rejects any other value", () => {
+    expect(() => BudgetStateSchema.parse("paused")).toThrow();
+  });
 });

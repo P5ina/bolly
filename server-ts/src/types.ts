@@ -40,7 +40,7 @@ export const BudgetDailySchema = z.object({
   tokens_in: z.number().int().nonnegative().default(0),
   tokens_out: z.number().int().nonnegative().default(0),
   dollars_spent: z.number().nonnegative().default(0),
-  cap_usd: z.number().positive(),
+  cap_usd: z.number().positive().max(10_000),
   state: BudgetStateSchema.default("ok"),
 });
 export type BudgetDaily = z.infer<typeof BudgetDailySchema>;
@@ -68,7 +68,7 @@ export const OutreachEntrySchema = z.object({
   id: z.string().min(1),
   ts: z.number().int().nonnegative(),
   channel: OutreachChannelSchema,
-  title: z.string(),
+  title: z.string().min(1),
   body: z.string().optional(),
   urgency: z.enum(["low", "medium", "high"]).default("medium"),
   delivered: z.boolean(),
