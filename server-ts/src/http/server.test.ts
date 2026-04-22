@@ -39,7 +39,7 @@ describe("createApp", () => {
       pricePerMTokOut: 15,
       broadcaster,
     });
-    const app = createApp({ authToken: undefined, pool, broadcaster });
+    const { app } = createApp({ authToken: undefined, pool, broadcaster });
 
     const res = await app.request("/api/chat", {
       method: "POST",
@@ -60,7 +60,7 @@ describe("createApp", () => {
       pricePerMTokOut: 15,
       broadcaster: new Broadcaster(),
     });
-    const app = createApp({ authToken: "secret", pool, broadcaster: new Broadcaster() });
+    const { app } = createApp({ authToken: "secret", pool, broadcaster: new Broadcaster() });
 
     const res = await app.request("/api/chat", {
       method: "POST",
@@ -80,7 +80,7 @@ describe("createApp", () => {
       pricePerMTokOut: 15,
       broadcaster: new Broadcaster(),
     });
-    const app = createApp({ authToken: undefined, pool, broadcaster: new Broadcaster() });
+    const { app } = createApp({ authToken: undefined, pool, broadcaster: new Broadcaster() });
 
     const res = await app.request("/api/health");
     expect(res.status).toBe(200);

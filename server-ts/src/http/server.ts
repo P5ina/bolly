@@ -1,7 +1,10 @@
+import { createNodeWebSocket } from "@hono/node-ws";
 import { Hono } from "hono";
+import type { WSEvents } from "hono/ws";
 import type { Broadcaster } from "../events/broadcaster.js";
 import type { WorkerPool } from "../mind/pool.js";
 import { requireAuth } from "./auth.js";
+import { wsHandler } from "./ws.js";
 
 export type AppOptions = {
   authToken: string | undefined;
@@ -11,6 +14,7 @@ export type AppOptions = {
 
 export function createApp(opts: AppOptions) {
   const app = new Hono();
+  const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
   app.get("/api/health", (c) => c.json({ ok: true }));
 
@@ -24,13 +28,16 @@ export function createApp(opts: AppOptions) {
     }>();
 
     const worker = opts.pool.get(body.instance_slug, body.chat_id);
-    // Fire-and-forget: the mind turn runs asynchronously and broadcasts
-    // progress over WebSocket. The HTTP caller just gets a 202.
     void worker.handleUserMessage(body.content).catch((err) => {
       console.error("mind worker error", err);
     });
     return c.body(null, 202);
   });
 
-  return app;
+  // Cast needed because wsHandler uses WSEvents<unknown> to avoid importing
+  // the `ws` package type — upgradeWebSocket expects WSEvents<WebSocket>.
+  // biome-ignore lint/suspicious/noExplicitAny: bridging wsHandler's unknown generic to node-ws WebSocket
+  app.get("/api/ws", upgradeWebSocket(wsHandler(opts.broadcaster) as () => WSEvents<any>));
+
+  return { app, injectWebSocket };
 }
