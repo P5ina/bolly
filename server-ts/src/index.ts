@@ -24,6 +24,7 @@ export { computeState, TIGHT_THRESHOLD } from "./budget/state.js";
 export {
   loadDaily,
   recordSpend,
+  recordSpendFromLoaded,
   todayUtc,
   type SpendDelta,
 } from "./budget/ledger.js";

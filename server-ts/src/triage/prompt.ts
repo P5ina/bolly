@@ -1,7 +1,7 @@
-import type { BudgetState, Event } from "../types.js";
+import type { BudgetState, Event, OutreachChannel } from "../types.js";
 
 export type OutreachHint = {
-  channel: "push" | "email" | "digest";
+  channel: OutreachChannel;
   title: string;
   ts: number;
   urgency: "low" | "medium" | "high";

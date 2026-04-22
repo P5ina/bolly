@@ -45,6 +45,22 @@ export async function recordSpend(
   delta: SpendDelta,
 ): Promise<BudgetDaily> {
   const current = await loadDaily(home, slug, day, capUsd);
+  return recordSpendFromLoaded(current, home, slug, day, capUsd, delta);
+}
+
+/**
+ * Variant of {@link recordSpend} that accepts an already-loaded ledger.
+ * Skips the disk read so callers that already have the ledger (e.g. chargeAndCall)
+ * pay one read + one write instead of two reads + one write.
+ */
+export async function recordSpendFromLoaded(
+  current: BudgetDaily,
+  home: string,
+  slug: string,
+  day: string,
+  capUsd: number,
+  delta: SpendDelta,
+): Promise<BudgetDaily> {
   const next: BudgetDaily = {
     day,
     calls: current.calls + 1,

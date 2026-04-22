@@ -28,9 +28,10 @@ const SettingsSchema = z.object({
 // z.output gives the fully-resolved shape after defaults are applied
 export type Settings = z.output<typeof SettingsSchema>;
 
-// Cast required: TS infers the input type from parse({}); at runtime zod fills
-// all defaults so the cast is sound.
-export const DEFAULT_SETTINGS = SettingsSchema.parse({}) as unknown as Settings;
+// readToml<T> infers T from ZodSchema<T> as zod's *input* type, so the parsed
+// result (which is actually z.output) needs a local cast. The `if (!result)`
+// check handles null explicitly so the cast is never applied to a null value.
+export const DEFAULT_SETTINGS: Settings = SettingsSchema.parse({}) as Settings;
 
 /**
  * Read the instance's settings.toml; fall back to DEFAULT_SETTINGS if
@@ -39,5 +40,6 @@ export const DEFAULT_SETTINGS = SettingsSchema.parse({}) as unknown as Settings;
  */
 export async function loadSettings(home: string, slug: string): Promise<Settings> {
   const result = await readToml(settingsFile(home, slug), SettingsSchema);
-  return (result as unknown as Settings) ?? DEFAULT_SETTINGS;
+  if (!result) return DEFAULT_SETTINGS;
+  return result as Settings;
 }

@@ -1,5 +1,5 @@
-import type { BudgetState } from "../types.js";
-import { type SpendDelta, loadDaily, recordSpend } from "./ledger.js";
+import type { BudgetDaily, BudgetState } from "../types.js";
+import { type SpendDelta, loadDaily, recordSpendFromLoaded } from "./ledger.js";
 
 export type ChargeContext = {
   home: string;
@@ -32,13 +32,14 @@ export async function chargeAndCall<T>(
   ctx: ChargeContext,
   fn: (state: BudgetState) => Promise<CallSuccess<T>>,
 ): Promise<CallOutcome<T>> {
-  const ledger = await loadDaily(ctx.home, ctx.slug, ctx.day, ctx.capUsd);
+  const ledger: BudgetDaily = await loadDaily(ctx.home, ctx.slug, ctx.day, ctx.capUsd);
 
   if (ctx.tier === 3 && ledger.state === "suppressed") {
     return { downgraded: true, reason: "budget_cap" };
   }
 
   const result = await fn(ledger.state);
-  await recordSpend(ctx.home, ctx.slug, ctx.day, ctx.capUsd, result.usage);
+  // Pass the pre-loaded ledger so we don't re-read the same file from disk.
+  await recordSpendFromLoaded(ledger, ctx.home, ctx.slug, ctx.day, ctx.capUsd, result.usage);
   return result;
 }
