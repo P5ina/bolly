@@ -104,6 +104,12 @@ export async function runMindWithTools(inputs: MindFullTurnInputs): Promise<Mind
   let totalCacheCreation = 0;
 
   let lastAssistantContent: ContentBlock[] = [];
+  // When stop_reason is max_tokens, Claude's response was cut off mid-sentence
+  // and the next turn continues from where it left off. We accumulate the
+  // truncated text blocks so the caller (MindWorker) can persist a complete
+  // assistant response instead of losing the pre-continuation content.
+  const accumulatedPriorBlocks: ContentBlock[] = [];
+  let accumulatedPriorText = "";
   let turns = 0;
 
   for (let i = 0; i < maxIterations; i++) {
@@ -144,6 +150,14 @@ export async function runMindWithTools(inputs: MindFullTurnInputs): Promise<Mind
     ];
 
     if (response.stop_reason === "max_tokens") {
+      // Preserve this turn's text so finalText + assistantContent aren't
+      // silently truncated when the continuation completes.
+      for (const block of lastAssistantContent) {
+        if (block.type === "text") {
+          accumulatedPriorBlocks.push(block);
+          accumulatedPriorText += block.text;
+        }
+      }
       messages = [...messages, { role: "user", content: CONTINUATION_PROMPT }];
       continue;
     }
@@ -172,16 +186,17 @@ export async function runMindWithTools(inputs: MindFullTurnInputs): Promise<Mind
     messages = [...messages, { role: "user", content: toolResultBlocks }];
   }
 
-  const finalText = lastAssistantContent
+  const finalTurnText = lastAssistantContent
     .filter((b) => b.type === "text")
     .map((b) => (b as { type: "text"; text: string }).text)
     .join("");
+  const finalText = accumulatedPriorText + finalTurnText;
 
   return {
     finalText,
     turns,
     hitMaxIterations: turns >= maxIterations,
-    assistantContent: lastAssistantContent,
+    assistantContent: [...accumulatedPriorBlocks, ...lastAssistantContent],
     totalUsage: {
       input_tokens: totalInput,
       output_tokens: totalOutput,

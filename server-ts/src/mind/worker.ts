@@ -61,6 +61,22 @@ export class MindWorker {
     broadcaster.emit({ type: "agent_running", instance_slug: slug, chat_id: chatId });
 
     try {
+      // Load the pre-append conversation snapshot FIRST, alongside other context.
+      // The user entry is appended below, after we have the snapshot we'll pass
+      // to runBudgetedMind — this avoids the user message appearing twice
+      // (once in the conversation history, once as the new userMessage).
+      const instDir = instanceDir(home, slug);
+      const [soul, mood, rhythm, enabledSkills, triageRules, settings, conversation] =
+        await Promise.all([
+          tryReadFile(join(instDir, "soul.md")),
+          tryReadFile(join(instDir, "mood.md")),
+          tryReadFile(join(instDir, "rhythm.json")),
+          loadSkills(home, slug, { enabledOnly: true }),
+          loadTriageRules(home, slug),
+          loadSettings(home, slug),
+          loadConversation(home, slug, chatId),
+        ]);
+
       const userEntry: ConversationEntry = {
         id: `msg_${Date.now()}_u`,
         role: "user",
@@ -82,19 +98,6 @@ export class MindWorker {
         chat_id: chatId,
         message: userMsg,
       });
-
-      // Assemble context
-      const instDir = instanceDir(home, slug);
-      const [soul, mood, rhythm, enabledSkills, triageRules, settings, conversation] =
-        await Promise.all([
-          tryReadFile(join(instDir, "soul.md")),
-          tryReadFile(join(instDir, "mood.md")),
-          tryReadFile(join(instDir, "rhythm.json")),
-          loadSkills(home, slug, { enabledOnly: true }),
-          loadTriageRules(home, slug),
-          loadSettings(home, slug),
-          loadConversation(home, slug, chatId),
-        ]);
 
       const systemPrompt = buildSystemPrompt({
         employeeName: slug,
@@ -123,7 +126,14 @@ export class MindWorker {
         // conversation and runBudgetedMind adds it as userMessage.
         conversation,
         userMessage: text,
-        executeTool: async (name) => `[${name} not wired in Plan 2]`,
+        // TODO(Plan4): wire real outreach delivery (send_push/email/digest) +
+        // cross-instance (emit_instance_event). Plan 2 ships with a loud stub
+        // so any production caller sees the placeholder in the assistant reply
+        // rather than silent failure.
+        executeTool: async (name) => {
+          console.warn(`[bolly] executeTool stub invoked for '${name}' — Plan 4 not yet wired`);
+          return `[bolly-stub] tool '${name}' is not wired yet. Plan 4 will implement it.`;
+        },
         maxIterations: 10,
       });
 

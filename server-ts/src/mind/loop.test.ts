@@ -250,7 +250,11 @@ describe("runMindWithTools — max_tokens continuation", () => {
       maxIterations: 5,
     });
 
-    expect(result.finalText).toBe("part two");
+    expect(result.finalText).toBe("part onepart two");
+    expect(result.assistantContent).toEqual([
+      { type: "text", text: "part one" },
+      { type: "text", text: "part two" },
+    ]);
     expect(result.turns).toBe(2);
     // Second call should include a continuation nudge as the last user message
     const secondCall = client.calls[1];
