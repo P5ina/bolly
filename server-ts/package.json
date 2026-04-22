@@ -10,7 +10,9 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "tsc --noEmit && biome check src"
+    "check": "tsc --noEmit && biome check src",
+    "start": "node dist/main.js",
+    "dev": "tsc --watch & node --enable-source-maps --watch dist/main.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.1",
