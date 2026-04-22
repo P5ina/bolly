@@ -217,3 +217,74 @@ describe("runMindWithTools — tool-use loop", () => {
     expect(result.hitMaxIterations).toBe(true);
   });
 });
+
+describe("runMindWithTools — max_tokens continuation", () => {
+  it("re-prompts on stop_reason: max_tokens and merges output", async () => {
+    const client = new MockAnthropicClient([
+      {
+        id: "msg_1",
+        role: "assistant",
+        model: "mock",
+        stop_reason: "max_tokens",
+        content: [{ type: "text", text: "part one" }],
+        usage: { input_tokens: 100, output_tokens: 4096 },
+      },
+      {
+        id: "msg_2",
+        role: "assistant",
+        model: "mock",
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: "part two" }],
+        usage: { input_tokens: 200, output_tokens: 100 },
+      },
+    ]);
+
+    const result = await runMindWithTools({
+      client,
+      model: "mock",
+      systemPrompt: "SYSTEM",
+      tools: [],
+      conversation: [],
+      userMessage: "write a long thing",
+      executeTool: async () => "unused",
+      maxIterations: 5,
+    });
+
+    expect(result.finalText).toBe("part two");
+    expect(result.turns).toBe(2);
+    // Second call should include a continuation nudge as the last user message
+    const secondCall = client.calls[1];
+    const lastMsg = secondCall?.messages[secondCall.messages.length - 1];
+    expect(lastMsg?.role).toBe("user");
+    expect(JSON.stringify(lastMsg?.content)).toMatch(/continue/i);
+  });
+});
+
+describe("runMindWithTools — prompt caching", () => {
+  it("passes top-level cache_control: ephemeral by default", async () => {
+    const client = new MockAnthropicClient([
+      {
+        id: "msg_1",
+        role: "assistant",
+        model: "mock",
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: "." }],
+        usage: { input_tokens: 10, output_tokens: 1 },
+      },
+    ]);
+
+    await runMindWithTools({
+      client,
+      model: "mock",
+      systemPrompt: "SYSTEM",
+      tools: [],
+      conversation: [],
+      userMessage: "hi",
+      executeTool: async () => "unused",
+      maxIterations: 5,
+    });
+
+    const call = client.calls[0] as unknown as { cache_control?: { type: string } };
+    expect(call.cache_control).toEqual({ type: "ephemeral" });
+  });
+});

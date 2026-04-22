@@ -3,6 +3,9 @@ import type { ContentBlock, ConversationEntry } from "../conversation/types.js";
 import type { MindClient } from "./anthropic-client.js";
 import type { ToolDefinition } from "./skill-tool.js";
 
+const CONTINUATION_PROMPT =
+  "[system: your previous response was cut off due to length. please continue exactly where you left off.]";
+
 export type MindTurnInputs = {
   client: MindClient;
   model: string;
@@ -111,7 +114,9 @@ export async function runMindWithTools(inputs: MindFullTurnInputs): Promise<Mind
       system: systemPrompt,
       tools: tools as unknown as Anthropic.Messages.ToolUnion[],
       messages,
-    });
+      cache_control: { type: "ephemeral" },
+      // biome-ignore lint/suspicious/noExplicitAny: top-level cache_control is not in the typed params yet
+    } as any);
 
     totalInput += response.usage.input_tokens;
     totalOutput += response.usage.output_tokens;
@@ -129,6 +134,10 @@ export async function runMindWithTools(inputs: MindFullTurnInputs): Promise<Mind
       },
     ];
 
+    if (response.stop_reason === "max_tokens") {
+      messages = [...messages, { role: "user", content: CONTINUATION_PROMPT }];
+      continue;
+    }
     if (response.stop_reason !== "tool_use") break;
 
     // Execute each tool_use block and produce tool_result blocks
