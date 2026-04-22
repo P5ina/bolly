@@ -32,3 +32,26 @@ describe("public API", () => {
     expect(api.DEFAULT_TRIAGE_TEMPLATE).toBeDefined();
   });
 });
+
+describe("Plan 2 public API", () => {
+  it("re-exports runtime config, conversation store, mind, events, http", () => {
+    expect(api.loadConfig).toBeTypeOf("function");
+    expect(api.loadConversation).toBeTypeOf("function");
+    expect(api.appendConversationEntry).toBeTypeOf("function");
+    expect(api.buildSystemPrompt).toBeTypeOf("function");
+    expect(api.skillToTool).toBeTypeOf("function");
+    expect(api.builtInTools).toBeTypeOf("function");
+    expect(api.createAnthropicClient).toBeTypeOf("function");
+    expect(api.MockAnthropicClient).toBeTypeOf("function");
+    expect(api.runMindTurn).toBeTypeOf("function");
+    expect(api.runMindWithTools).toBeTypeOf("function");
+    expect(api.runMindStreaming).toBeTypeOf("function");
+    expect(api.runBudgetedMind).toBeTypeOf("function");
+    expect(api.MindWorker).toBeTypeOf("function");
+    expect(api.WorkerPool).toBeTypeOf("function");
+    expect(api.Broadcaster).toBeTypeOf("function");
+    expect(api.serializeServerEvent).toBeTypeOf("function");
+    expect(api.createApp).toBeTypeOf("function");
+    expect(api.requireAuth).toBeTypeOf("function");
+  });
+});

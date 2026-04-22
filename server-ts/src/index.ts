@@ -36,3 +36,54 @@ export {
   type CallOutcome,
 } from "./budget/charge-and-call.js";
 export { Throttle, type ThrottleConfig } from "./budget/throttle.js";
+
+// Plan 2 — Mind runtime
+export { loadConfig, type RuntimeConfig } from "./config.js";
+
+export {
+  loadConversation,
+  saveConversation,
+  appendConversationEntry,
+} from "./conversation/store.js";
+export {
+  ContentBlockSchema,
+  ConversationEntrySchema,
+  ConversationSchema,
+  type ContentBlock,
+  type ConversationEntry,
+  type Conversation,
+} from "./conversation/types.js";
+
+export { buildSystemPrompt, type SystemPromptInputs } from "./mind/system-prompt.js";
+export {
+  skillToTool,
+  skillToToolName,
+  builtInTools,
+  type ToolDefinition,
+} from "./mind/skill-tool.js";
+export { createAnthropicClient, type MindClient } from "./mind/anthropic-client.js";
+export { MockAnthropicClient, type MockMessage, type MockStream } from "./mind/mock-client.js";
+export {
+  runMindTurn,
+  runMindWithTools,
+  runMindStreaming,
+  type MindTurnInputs,
+  type MindTurnResult,
+  type MindFullTurnInputs,
+  type MindFullTurnResult,
+  type MindStreamingInputs,
+  type MindStreamingResult,
+} from "./mind/loop.js";
+export { runBudgetedMind, type BudgetedMindResult } from "./mind/budgeted-mind.js";
+export { MindWorker, type MindWorkerOptions } from "./mind/worker.js";
+export { WorkerPool, type WorkerPoolOptions } from "./mind/pool.js";
+
+export { Broadcaster, type Subscriber } from "./events/broadcaster.js";
+export {
+  serializeServerEvent,
+  type ServerEvent,
+  type ChatMessage,
+} from "./events/server-event.js";
+
+export { createApp, type AppOptions } from "./http/server.js";
+export { requireAuth } from "./http/auth.js";
