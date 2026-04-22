@@ -115,7 +115,16 @@ export async function runMindWithTools(inputs: MindFullTurnInputs): Promise<Mind
       tools: tools as unknown as Anthropic.Messages.ToolUnion[],
       messages,
       cache_control: { type: "ephemeral" },
-      // biome-ignore lint/suspicious/noExplicitAny: top-level cache_control is not in the typed params yet
+      context_management: {
+        edits: [
+          {
+            type: "compact_20260112",
+            trigger: { type: "input_tokens", value: 150_000 },
+          },
+        ],
+      },
+      betas: ["compact-2026-01-12"],
+      // biome-ignore lint/suspicious/noExplicitAny: top-level cache_control / context_management / betas are not in the typed params yet
     } as any);
 
     totalInput += response.usage.input_tokens;

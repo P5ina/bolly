@@ -288,3 +288,79 @@ describe("runMindWithTools — prompt caching", () => {
     expect(call.cache_control).toEqual({ type: "ephemeral" });
   });
 });
+
+describe("runMindWithTools — compaction", () => {
+  it("passes context_management and the compact beta header", async () => {
+    const client = new MockAnthropicClient([
+      {
+        id: "msg_1",
+        role: "assistant",
+        model: "mock",
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: "." }],
+        usage: { input_tokens: 10, output_tokens: 1 },
+      },
+    ]);
+
+    await runMindWithTools({
+      client,
+      model: "mock",
+      systemPrompt: "SYSTEM",
+      tools: [],
+      conversation: [],
+      userMessage: "hi",
+      executeTool: async () => "unused",
+      maxIterations: 5,
+    });
+
+    const call = client.calls[0] as unknown as {
+      context_management?: { edits: Array<{ type: string }> };
+      betas?: string[];
+    };
+    expect(call.context_management?.edits?.[0]?.type).toBe("compact_20260112");
+    expect(call.betas).toContain("compact-2026-01-12");
+  });
+
+  it("preserves compaction blocks across turns", async () => {
+    // Turn 1: max_tokens (forces a continuation turn) with a compaction block
+    const client = new MockAnthropicClient([
+      {
+        id: "msg_1",
+        role: "assistant",
+        model: "mock",
+        stop_reason: "max_tokens",
+        content: [
+          { type: "compaction", content: "earlier conversation summary" },
+          { type: "text", text: "new text after compaction" },
+        ],
+        usage: { input_tokens: 160_000, output_tokens: 4096 },
+      },
+      {
+        id: "msg_2",
+        role: "assistant",
+        model: "mock",
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: "done" }],
+        usage: { input_tokens: 50_000, output_tokens: 100 },
+      },
+    ]);
+
+    await runMindWithTools({
+      client,
+      model: "mock",
+      systemPrompt: "SYSTEM",
+      tools: [],
+      conversation: [],
+      userMessage: "long request",
+      executeTool: async () => "unused",
+      maxIterations: 5,
+    });
+
+    // The second call's message history must include the compaction block on
+    // the assistant turn from message 1 (not just the text).
+    const secondCall = client.calls[1];
+    const assistantTurn = secondCall?.messages.find((m) => m.role === "assistant");
+    const blocks = assistantTurn?.content as Array<{ type: string }>;
+    expect(blocks.find((b) => b.type === "compaction")).toBeDefined();
+  });
+});
