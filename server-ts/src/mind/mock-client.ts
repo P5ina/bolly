@@ -21,6 +21,11 @@ export type MockMessage = {
 
 type CreateParams = Anthropic.Messages.MessageCreateParamsNonStreaming;
 
+export type MockStream = {
+  deltas: string[];
+  final: MockMessage;
+};
+
 /**
  * In-memory Anthropic client that replays a queue of canned messages.
  * Records every call for later assertion. Implements the same shape as
@@ -28,10 +33,13 @@ type CreateParams = Anthropic.Messages.MessageCreateParamsNonStreaming;
  */
 export class MockAnthropicClient implements MindClient {
   readonly calls: CreateParams[] = [];
+  readonly streamCalls: CreateParams[] = [];
   private readonly queue: MockMessage[];
+  private readonly streamQueue: MockStream[];
 
-  constructor(responses: MockMessage[]) {
+  constructor(responses: MockMessage[], opts: { streams?: MockStream[] } = {}) {
     this.queue = [...responses];
+    this.streamQueue = [...(opts.streams ?? [])];
   }
 
   readonly messages = {
@@ -41,9 +49,33 @@ export class MockAnthropicClient implements MindClient {
       if (!next) throw new Error("MockAnthropicClient: no queued response");
       return next;
     },
-    // Streaming mock ships in Task 13; create alone covers Tasks 9-12.
-    stream: (): never => {
-      throw new Error("MockAnthropicClient.stream: not implemented in this fixture");
+    stream: (params: CreateParams) => {
+      this.streamCalls.push(params);
+      const next = this.streamQueue.shift();
+      if (!next) throw new Error("MockAnthropicClient.stream: no queued stream");
+      const { deltas, final } = next;
+
+      async function* events() {
+        yield { type: "message_start", message: { id: final.id } };
+        yield { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } };
+        for (const delta of deltas) {
+          yield {
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "text_delta", text: delta },
+          };
+        }
+        yield { type: "content_block_stop", index: 0 };
+        yield { type: "message_stop" };
+      }
+
+      const iter = events();
+      return {
+        [Symbol.asyncIterator]() {
+          return iter;
+        },
+        finalMessage: async () => final,
+      };
     },
   } as unknown as MindClient["messages"];
 }

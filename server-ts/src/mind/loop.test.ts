@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runMindTurn, runMindWithTools } from "./loop.js";
+import { runMindStreaming, runMindTurn, runMindWithTools } from "./loop.js";
 import { MockAnthropicClient } from "./mock-client.js";
 
 describe("runMindTurn — single-turn text", () => {
@@ -362,5 +362,39 @@ describe("runMindWithTools — compaction", () => {
     const assistantTurn = secondCall?.messages.find((m) => m.role === "assistant");
     const blocks = assistantTurn?.content as Array<{ type: string }>;
     expect(blocks.find((b) => b.type === "compaction")).toBeDefined();
+  });
+});
+
+describe("runMindStreaming", () => {
+  it("emits delta callbacks as text streams in", async () => {
+    const client = new MockAnthropicClient([], {
+      streams: [
+        {
+          deltas: ["Hi ", "there"],
+          final: {
+            id: "msg_1",
+            role: "assistant",
+            model: "mock",
+            stop_reason: "end_turn",
+            content: [{ type: "text", text: "Hi there" }],
+            usage: { input_tokens: 10, output_tokens: 3 },
+          },
+        },
+      ],
+    });
+
+    const chunks: string[] = [];
+    const result = await runMindStreaming({
+      client,
+      model: "mock",
+      systemPrompt: "SYSTEM",
+      tools: [],
+      conversation: [],
+      userMessage: "hi",
+      onTextDelta: (text) => chunks.push(text),
+    });
+
+    expect(chunks).toEqual(["Hi ", "there"]);
+    expect(result.finalText).toBe("Hi there");
   });
 });

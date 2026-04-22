@@ -190,3 +190,57 @@ export async function runMindWithTools(inputs: MindFullTurnInputs): Promise<Mind
     },
   };
 }
+
+export type MindStreamingInputs = MindTurnInputs & {
+  onTextDelta: (text: string) => void;
+};
+
+export type MindStreamingResult = {
+  finalText: string;
+  assistantContent: ContentBlock[];
+  totalUsage: MindTurnResult["totalUsage"];
+};
+
+export async function runMindStreaming(inputs: MindStreamingInputs): Promise<MindStreamingResult> {
+  const { client, model, systemPrompt, tools, onTextDelta } = inputs;
+
+  const messages: Anthropic.Messages.MessageParam[] = [
+    ...conversationToMessages(inputs.conversation),
+    { role: "user", content: inputs.userMessage },
+  ];
+
+  const stream = client.messages.stream({
+    model,
+    max_tokens: 4096,
+    system: systemPrompt,
+    tools: tools as unknown as Anthropic.Messages.ToolUnion[],
+    messages,
+    cache_control: { type: "ephemeral" },
+    context_management: {
+      edits: [{ type: "compact_20260112", trigger: { type: "input_tokens", value: 150_000 } }],
+    },
+    betas: ["compact-2026-01-12"],
+    // biome-ignore lint/suspicious/noExplicitAny: top-level cache_control / context_management / betas are not in the typed params yet
+  } as any);
+
+  for await (const event of stream) {
+    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+      onTextDelta(event.delta.text);
+    }
+  }
+
+  const final = await stream.finalMessage();
+  return {
+    finalText: final.content
+      .filter((b: { type: string }) => b.type === "text")
+      .map((b: unknown) => (b as { text: string }).text)
+      .join(""),
+    assistantContent: final.content as unknown as ContentBlock[],
+    totalUsage: {
+      input_tokens: final.usage.input_tokens,
+      output_tokens: final.usage.output_tokens,
+      cache_read_input_tokens: final.usage.cache_read_input_tokens ?? 0,
+      cache_creation_input_tokens: final.usage.cache_creation_input_tokens ?? 0,
+    },
+  };
+}

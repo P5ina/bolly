@@ -70,3 +70,27 @@ describe("MockAnthropicClient.messages.create", () => {
     expect(m.content[0]).toMatchObject({ type: "tool_use", name: "send_push" });
   });
 });
+
+describe("MockAnthropicClient.messages.stream", () => {
+  it("yields queued delta strings and returns a final message", async () => {
+    const client = new MockAnthropicClient([], {
+      streams: [{ deltas: ["Hel", "lo!"], final: TEXT_MESSAGE }],
+    });
+
+    const stream = client.messages.stream({
+      model: "mock",
+      max_tokens: 100,
+      messages: [{ role: "user", content: "hi" }],
+    });
+
+    const collected: string[] = [];
+    for await (const event of stream) {
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        collected.push(event.delta.text);
+      }
+    }
+    expect(collected).toEqual(["Hel", "lo!"]);
+    const final = await stream.finalMessage();
+    expect(final.content[0]).toEqual({ type: "text", text: "hello" });
+  });
+});
