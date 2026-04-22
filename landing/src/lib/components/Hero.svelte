@@ -28,19 +28,19 @@
 
 		<!-- Headline -->
 		<h1 class="hero-title" style="animation: fade-up 0.8s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.12s;">
-			a friend that helps you<br><span class="hero-accent">think, work & feel</span>
+			your coworker,<br><span class="hero-accent">with feelings</span>
 		</h1>
 
 		<!-- Subtitle -->
 		<p class="hero-subtitle" style="animation: fade-up 0.8s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.22s;">
-			Not a chatbot. A presence that remembers your goals, notices your mood,
-			helps you study, and checks in when you've been quiet too long.
+			Not a chatbot. A team member that lives in your company's context,
+			notices what matters, and reaches out when it should.
 		</p>
 
 		<!-- CTA -->
 		<div class="hero-actions" style="animation: fade-up 0.8s cubic-bezier(0.16,1,0.3,1) both; animation-delay: 0.32s;">
 			<a href="#pricing" class="btn-primary">
-				Meet yours
+				Bring Bolly to your team
 				<svg class="hero-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 					<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
 				</svg>
